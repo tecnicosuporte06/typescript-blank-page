@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Teste Webhook Evolution</title>
+</head>
+<body>
+    <h1>Teste do Webhook Evolution</h1>
+    <button onclick="testWebhook()">Testar Webhook</button>
+    <pre id="result"></pre>
+
+    <script>
+        async function testWebhook() {
+            const result = document.getElementById('result');
+            result.textContent = 'Enviando teste...';
+            
+            try {
+                const response = await fetch('https://zldeaozqxjwvzgrblyrh.supabase.co/functions/v1/evolution-webhook-v2', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-Secret': 'supabase-evolution-webhook'
+                    },
+                    body: JSON.stringify({
+                        "event": "messages.upsert",
+                        "instance": "teste",
+                        "data": {
+                            "key": {
+                                "remoteJid": "5511999999999@s.whatsapp.net",
+                                "fromMe": false,
+                                "id": "test-message-" + Date.now()
+                            },
+                            "message": {
+                                "conversation": "Teste de webhook!"
+                            },
+                            "pushName": "Teste"
+                        }
+                    })
+                });
+                
+                const responseText = await response.text();
+                result.textContent = `Status: ${response.status}\nResponse: ${responseText}`;
+            } catch (error) {
+                result.textContent = `Erro: ${error.message}`;
+            }
+        }
+    </script>
+</body>
+</html>

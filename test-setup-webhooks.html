@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Test Setup Webhooks</title>
+</head>
+<body>
+    <button onclick="setupWebhooks()">Setup Evolution Webhooks</button>
+    <div id="result"></div>
+    
+    <script>
+        async function setupWebhooks() {
+            try {
+                const response = await fetch('https://zldeaozqxjwvzgrblyrh.supabase.co/functions/v1/setup-evolution-webhooks', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'x-system-user-id': '60623ab9-9d8f-4a9d-a1f0-91e1dfc21b70',
+                        'x-system-user-email': 'luciano@tezeus.com.br',
+                        'x-workspace-id': '9379d213-8df0-47a8-a1b0-9d71e036fa5d'
+                    }
+                });
+                
+                const result = await response.json();
+                document.getElementById('result').innerHTML = '<pre>' + JSON.stringify(result, null, 2) + '</pre>';
+            } catch (error) {
+                document.getElementById('result').innerHTML = 'Error: ' + error.message;
+            }
+        }
+    </script>
+</body>
+</html>

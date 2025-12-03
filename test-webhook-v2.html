@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Teste Direto Evolution Webhook V2</title>
+    <style>
+        body { font-family: Arial; margin: 20px; }
+        .test-section { margin: 20px 0; padding: 15px; border: 1px solid #ccc; }
+        button { padding: 10px 20px; margin: 5px; }
+        pre { background: #f5f5f5; padding: 10px; max-height: 300px; overflow-y: auto; }
+    </style>
+</head>
+<body>
+    <h1>Teste Direto Evolution Webhook V2</h1>
+    
+    <div class="test-section">
+        <h3>1. Teste Simples (sem X-Secret)</h3>
+        <button onclick="testSimple()">Testar sem X-Secret</button>
+        <pre id="result1"></pre>
+    </div>
+
+    <div class="test-section">
+        <h3>2. Teste com X-Secret correto</h3>
+        <button onclick="testWithSecret()">Testar com X-Secret</button>
+        <pre id="result2"></pre>
+    </div>
+
+    <div class="test-section">
+        <h3>3. Teste com payload completo</h3>
+        <button onclick="testFullPayload()">Testar Payload Completo</button>
+        <pre id="result3"></pre>
+    </div>
+
+    <script>
+        const baseUrl = 'https://zldeaozqxjwvzgrblyrh.supabase.co/functions/v1/evolution-webhook-v2';
+
+        async function testRequest(description, headers, body, resultId) {
+            const result = document.getElementById(resultId);
+            result.textContent = `${description} - Enviando...`;
+            
+            try {
+                const response = await fetch(baseUrl, {
+                    method: 'POST',
+                    headers: headers,
+                    body: JSON.stringify(body)
+                });
+                
+                const responseText = await response.text();
+                result.textContent = `${description}
+Status: ${response.status}
+Headers: ${JSON.stringify(Object.fromEntries(response.headers))}
+Response: ${responseText}`;
+            } catch (error) {
+                result.textContent = `${description}
+Erro: ${error.message}`;
+            }
+        }
+
+        function testSimple() {
+            testRequest(
+                'Teste sem X-Secret', 
+                {'Content-Type': 'application/json'}, 
+                {test: 'basic'}, 
+                'result1'
+            );
+        }
+
+        function testWithSecret() {
+            testRequest(
+                'Teste com X-Secret', 
+                {
+                    'Content-Type': 'application/json',
+                    'X-Secret': 'supabase-evolution-webhook'
+                }, 
+                {test: 'with_secret'}, 
+                'result2'
+            );
+        }
+
+        function testFullPayload() {
+            testRequest(
+                'Teste Payload Completo',
+                {
+                    'Content-Type': 'application/json',
+                    'X-Secret': 'supabase-evolution-webhook'
+                },
+                {
+                    "event": "messages.upsert",
+                    "instance": "teste",
+                    "data": {
+                        "key": {
+                            "remoteJid": "5511999999999@s.whatsapp.net",
+                            "fromMe": false,
+                            "id": "test-msg-" + Date.now()
+                        },
+                        "message": {
+                            "conversation": "Teste de webhook manual!"
+                        },
+                        "pushName": "Teste Manual"
+                    }
+                },
+                'result3'
+            );
+        }
+    </script>
+</body>
+</html>

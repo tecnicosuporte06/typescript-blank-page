@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Verificar Webhook Evolution API</title>
+    <style>
+        body { font-family: Arial; margin: 20px; }
+        .test-section { margin: 20px 0; padding: 15px; border: 1px solid #ccc; }
+        button { padding: 10px 20px; margin: 5px; }
+        pre { background: #f5f5f5; padding: 10px; max-height: 400px; overflow-y: auto; }
+        input { width: 100%; padding: 8px; margin: 5px 0; }
+    </style>
+</head>
+<body>
+    <h1>Verificar Configuração Webhook Evolution API</h1>
+    
+    <div class="test-section">
+        <h3>Configurações</h3>
+        <label>Evolution URL:</label>
+        <input id="evolutionUrl" value="https://evolution-evolution.upvzfg.easypanel.host" />
+        
+        <label>API Token:</label>
+        <input id="apiToken" value="271bb55a-d1aa-4634-bda0-89719c288540" />
+        
+        <label>Instance Name:</label>
+        <input id="instanceName" value="teste" />
+    </div>
+
+    <div class="test-section">
+        <h3>1. Verificar configuração do webhook</h3>
+        <button onclick="checkWebhookConfig()">Verificar Webhook</button>
+        <pre id="result1"></pre>
+    </div>
+
+    <div class="test-section">
+        <h3>2. Reconfigurar webhook</h3>
+        <button onclick="setWebhook()">Configurar Webhook</button>
+        <pre id="result2"></pre>
+    </div>
+
+    <div class="test-section">
+        <h3>3. Testar conexão da instância</h3>
+        <button onclick="checkInstance()">Verificar Instância</button>
+        <pre id="result3"></pre>
+    </div>
+
+    <script>
+        function getConfig() {
+            return {
+                evolutionUrl: document.getElementById('evolutionUrl').value,
+                apiToken: document.getElementById('apiToken').value,
+                instanceName: document.getElementById('instanceName').value
+            };
+        }
+
+        async function checkWebhookConfig() {
+            const result = document.getElementById('result1');
+            const config = getConfig();
+            result.textContent = 'Verificando configuração do webhook...';
+            
+            try {
+                const response = await fetch(`${config.evolutionUrl}/webhook/find/${config.instanceName}`, {
+                    method: 'GET',
+                    headers: {
+                        'apikey': config.apiToken,
+                        'Content-Type': 'application/json'
+                    }
+                });
+                
+                const data = await response.text();
+                result.textContent = `Status: ${response.status}\nResponse: ${data}`;
+            } catch (error) {
+                result.textContent = `Erro: ${error.message}`;
+            }
+        }
+
+        async function setWebhook() {
+            const result = document.getElementById('result2');
+            const config = getConfig();
+            result.textContent = 'Configurando webhook...';
+            
+            const webhookData = {
+                url: 'https://zldeaozqxjwvzgrblyrh.supabase.co/functions/v1/evolution-webhook-v2',
+                enabled: true,
+                events: [
+                    'APPLICATION_STARTUP',
+                    'QRCODE_UPDATED',
+                    'CONNECTION_UPDATE',
+                    'MESSAGES_UPSERT',
+                    'MESSAGES_UPDATE',
+                    'SEND_MESSAGE'
+                ],
+                webhook_by_events: false,
+                webhook_base64: true
+            };
+            
+            try {
+                const response = await fetch(`${config.evolutionUrl}/webhook/set/${config.instanceName}`, {
+                    method: 'POST',
+                    headers: {
+                        'apikey': config.apiToken,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(webhookData)
+                });
+                
+                const data = await response.text();
+                result.textContent = `Status: ${response.status}\nResponse: ${data}`;
+            } catch (error) {
+                result.textContent = `Erro: ${error.message}`;
+            }
+        }
+
+        async function checkInstance() {
+            const result = document.getElementById('result3');
+            const config = getConfig();
+            result.textContent = 'Verificando instância...';
+            
+            try {
+                const response = await fetch(`${config.evolutionUrl}/instance/connectionState/${config.instanceName}`, {
+                    method: 'GET',
+                    headers: {
+                        'apikey': config.apiToken,
+                        'Content-Type': 'application/json'
+                    }
+                });
+                
+                const data = await response.text();
+                result.textContent = `Status: ${response.status}\nResponse: ${data}`;
+            } catch (error) {
+                result.textContent = `Erro: ${error.message}`;
+            }
+        }
+    </script>
+</body>
+</html>
