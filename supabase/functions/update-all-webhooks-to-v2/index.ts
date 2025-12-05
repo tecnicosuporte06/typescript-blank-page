@@ -40,7 +40,12 @@ serve(async (req) => {
 
     console.log(`📊 Found ${instances.length} instances to update`);
 
-    const webhookUrl = 'https://zldeaozqxjwvzgrblyrh.supabase.co/functions/v1/evolution-webhook-v2';
+    // Usa a URL do Supabase das variáveis de ambiente
+    const supabaseUrl = Deno.env.get('SUPABASE_URL');
+    if (!supabaseUrl) {
+      throw new Error('SUPABASE_URL não está configurada nas variáveis de ambiente');
+    }
+    const webhookUrl = `${supabaseUrl}/functions/v1/evolution-webhook-v2`;
     const results = [];
 
     for (const instance of instances) {

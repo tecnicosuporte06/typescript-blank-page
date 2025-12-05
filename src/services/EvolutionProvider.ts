@@ -1,5 +1,6 @@
 import { supabase } from "@/integrations/supabase/client";
 import { getWorkspaceHeaders } from "@/lib/workspaceHeaders";
+import { getSupabaseFunctionUrl } from "@/lib/config";
 
 interface ConnectionCreateRequest {
   instanceName: string;
@@ -148,7 +149,7 @@ class EvolutionProvider {
         
         const headers = getWorkspaceHeaders(request.workspaceId);
         console.log('📤 Request headers:', headers);
-        console.log('🔗 Function URL will be: https://zldeaozqxjwvzgrblyrh.supabase.co/functions/v1/evolution-create-instance');
+        console.log('🔗 Function URL will be:', getSupabaseFunctionUrl('evolution-create-instance'));
         
         const response = await supabase.functions.invoke('evolution-create-instance', {
           body: request,

@@ -5,6 +5,7 @@ import { useToast } from "@/components/ui/use-toast";
 import { useWorkspace } from "@/contexts/WorkspaceContext";
 import { supabase } from "@/integrations/supabase/client";
 import { useWorkspaceHeaders } from "@/lib/workspaceHeaders";
+import { getSupabaseFunctionUrl } from "@/lib/config";
 import { Loader2, Bug, CheckCircle, XCircle, AlertCircle } from "lucide-react";
 export const TestWebhookReceptionModal = () => {
   const [isOpen, setIsOpen] = useState(false);
@@ -41,7 +42,7 @@ export const TestWebhookReceptionModal = () => {
         body: {
           instance_name: 'emp',
           // Use the actual instance name from your connection
-          webhookUrl: `https://zldeaozqxjwvzgrblyrh.supabase.co/functions/v1/test-webhook-reception`,
+          webhookUrl: getSupabaseFunctionUrl('test-webhook-reception'),
           events: ['MESSAGES_UPSERT', 'CONNECTION_UPDATE', 'QRCODE_UPDATED']
         },
         headers: getHeaders()
@@ -116,7 +117,7 @@ export const TestWebhookReceptionModal = () => {
       const {
         data: webhookSettings
       } = await supabase.from('workspace_webhook_settings').select('webhook_url').eq('workspace_id', selectedWorkspace?.workspace_id).single();
-      const originalUrl = webhookSettings?.webhook_url || 'https://zldeaozqxjwvzgrblyrh.supabase.co/functions/v1/evolution-webhook';
+      const originalUrl = webhookSettings?.webhook_url || getSupabaseFunctionUrl('evolution-webhook');
       const {
         error
       } = await supabase.functions.invoke('configure-evolution-webhook', {

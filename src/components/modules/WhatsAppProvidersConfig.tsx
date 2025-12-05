@@ -12,6 +12,7 @@ import { Loader2, Zap, CheckCircle2, XCircle, Trash2, Save, TestTube2, Copy, Web
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { toast } from 'sonner';
 import type { WhatsAppProvider } from '@/types/whatsapp-provider';
+import { getSupabaseFunctionUrl } from '@/lib/config';
 
 interface WhatsAppProvidersConfigProps {
   workspaceId: string;
@@ -256,9 +257,8 @@ export function WhatsAppProvidersConfig({ workspaceId, workspaceName }: WhatsApp
   const zapiProvider = providers.find(p => p.provider === 'zapi');
   const activeProvider = providers.find(p => p.is_active);
 
-  // Webhook URLs
-  const SUPABASE_PROJECT_ID = 'zldeaozqxjwvzgrblyrh';
-  const zapiWebhookUrl = `https://${SUPABASE_PROJECT_ID}.supabase.co/functions/v1/zapi-webhook`;
+  // Webhook URLs - usando configuração dinâmica
+  const zapiWebhookUrl = getSupabaseFunctionUrl('zapi-webhook');
 
   const copyToClipboard = (text: string) => {
     navigator.clipboard.writeText(text);

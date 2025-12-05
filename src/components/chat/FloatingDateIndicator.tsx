@@ -16,9 +16,9 @@ export function FloatingDateIndicator({ date, visible }: FloatingDateIndicatorPr
       )}
     >
       <div 
-        className="bg-background/95 backdrop-blur-sm border border-border rounded-full px-4 py-1.5 shadow-lg"
+        className="bg-background/95 dark:bg-[#1f1f1f]/95 backdrop-blur-sm border border-border dark:border-gray-700 rounded-full px-4 py-1.5 shadow-lg dark:shadow-xl"
       >
-        <span className="text-xs font-medium text-foreground capitalize">
+        <span className="text-xs font-medium text-foreground dark:text-gray-200 capitalize">
           {date}
         </span>
       </div>
