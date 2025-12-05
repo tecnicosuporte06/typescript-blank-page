@@ -1,57 +1,32 @@
 /**
  * Configuração centralizada da aplicação
- * Todas as URLs e chaves são carregadas de variáveis de ambiente
+ * Valores do projeto Supabase conectado
  */
 
+// Configuração do Supabase (valores do projeto conectado)
+const SUPABASE_URL = "https://zdrgvdlfhrbynpkvtyhx.supabase.co";
+const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inpkcmd2ZGxmaHJieW5wa3Z0eWh4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjQ3MDU2OTEsImV4cCI6MjA4MDI4MTY5MX0.MzCe3coYsKtl5knDRE2zrmTSomu58nMVVUokj5QMToM";
+const SUPABASE_PROJECT_ID = "zdrgvdlfhrbynpkvtyhx";
+
 /**
- * Obtém a URL do Supabase das variáveis de ambiente
- * Fallback para desenvolvimento local se necessário
+ * Obtém a URL do Supabase
  */
 export function getSupabaseUrl(): string {
-  const url = import.meta.env.VITE_SUPABASE_URL;
-  
-  if (!url) {
-    throw new Error(
-      'VITE_SUPABASE_URL não está configurada. ' +
-      'Configure a variável de ambiente VITE_SUPABASE_URL no arquivo .env'
-    );
-  }
-  
-  return url;
+  return SUPABASE_URL;
 }
 
 /**
- * Obtém a chave pública (anon key) do Supabase das variáveis de ambiente
+ * Obtém a chave pública (anon key) do Supabase
  */
 export function getSupabaseAnonKey(): string {
-  const key = import.meta.env.VITE_SUPABASE_ANON_KEY;
-  
-  if (!key) {
-    throw new Error(
-      'VITE_SUPABASE_ANON_KEY não está configurada. ' +
-      'Configure a variável de ambiente VITE_SUPABASE_ANON_KEY no arquivo .env'
-    );
-  }
-  
-  return key;
+  return SUPABASE_ANON_KEY;
 }
 
 /**
- * Extrai o Project ID da URL do Supabase
- * Exemplo: https://zldeaozqxjwvzgrblyrh.supabase.co -> zldeaozqxjwvzgrblyrh
+ * Obtém o Project ID do Supabase
  */
 export function getSupabaseProjectId(): string {
-  const url = getSupabaseUrl();
-  const match = url.match(/https?:\/\/([^.]+)\.supabase\.co/);
-  
-  if (!match || !match[1]) {
-    throw new Error(
-      'Não foi possível extrair o Project ID da URL do Supabase. ' +
-      'A URL deve estar no formato: https://PROJECT_ID.supabase.co'
-    );
-  }
-  
-  return match[1];
+  return SUPABASE_PROJECT_ID;
 }
 
 /**
@@ -59,8 +34,7 @@ export function getSupabaseProjectId(): string {
  * @param functionName Nome da função (ex: 'evolution-webhook-v2')
  */
 export function getSupabaseFunctionUrl(functionName: string): string {
-  const baseUrl = getSupabaseUrl();
-  return `${baseUrl}/functions/v1/${functionName}`;
+  return `${SUPABASE_URL}/functions/v1/${functionName}`;
 }
 
 /**
@@ -68,10 +42,9 @@ export function getSupabaseFunctionUrl(functionName: string): string {
  */
 export const config = {
   supabase: {
-    url: getSupabaseUrl(),
-    anonKey: getSupabaseAnonKey(),
-    projectId: getSupabaseProjectId(),
+    url: SUPABASE_URL,
+    anonKey: SUPABASE_ANON_KEY,
+    projectId: SUPABASE_PROJECT_ID,
     getFunctionUrl: getSupabaseFunctionUrl,
   },
 };
-
