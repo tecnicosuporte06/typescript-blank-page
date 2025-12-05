@@ -10,7 +10,7 @@ export type Database = {
   // Allows to automatically instantiate createClient with right options
   // instead of createClient<Database, { PostgrestVersion: 'XX' }>(URL, KEY)
   __InternalSupabase: {
-    PostgrestVersion: "12.2.12 (cd3cf9e)"
+    PostgrestVersion: "13.0.5"
   }
   public: {
     Tables: {
@@ -3755,6 +3755,16 @@ export type Database = {
         }
         Returns: string
       }
+      create_system_user_with_password: {
+        Args: {
+          p_email: string
+          p_name: string
+          p_password: string
+          p_profile?: string
+          p_status?: string
+        }
+        Returns: string
+      }
       current_system_user_id: { Args: never; Returns: string }
       debug_current_user: { Args: never; Returns: Json }
       debug_user_permissions: {
@@ -3807,13 +3817,11 @@ export type Database = {
         Returns: {
           avatar: string
           cargo_id: string
-          created_at: string
           email: string
           id: string
           name: string
           profile: string
           status: string
-          updated_at: string
         }[]
       }
       has_role: {
@@ -3918,6 +3926,10 @@ export type Database = {
       }
       update_fixed_phone_numbers: { Args: never; Returns: number }
       update_my_password: { Args: { new_password: string }; Returns: boolean }
+      update_system_user_password: {
+        Args: { p_new_password: string; p_user_id: string }
+        Returns: boolean
+      }
       update_user_password: {
         Args: { new_password: string; user_email: string }
         Returns: boolean
@@ -3928,8 +3940,25 @@ export type Database = {
       }
     }
     Enums: {
-      app_role: "master" | "user" | "admin"
+      app_role: "admin" | "master" | "user"
+      conversation_status:
+        | "active"
+        | "open"
+        | "closed"
+        | "pending"
+        | "em_atendimento"
+      message_status: "sending" | "sent" | "delivered" | "read" | "failed"
+      message_type:
+        | "text"
+        | "image"
+        | "video"
+        | "audio"
+        | "document"
+        | "sticker"
+        | "location"
+        | "reaction"
       org_role: "OWNER" | "ADMIN" | "USER"
+      sender_type: "contact" | "agent" | "ia" | "system" | "user"
       system_profile: "master" | "admin" | "user"
       workspace_role: "mentor_master" | "gestor" | "colaborador"
     }
@@ -4059,8 +4088,27 @@ export type CompositeTypes<
 export const Constants = {
   public: {
     Enums: {
-      app_role: ["master", "user", "admin"],
+      app_role: ["admin", "master", "user"],
+      conversation_status: [
+        "active",
+        "open",
+        "closed",
+        "pending",
+        "em_atendimento",
+      ],
+      message_status: ["sending", "sent", "delivered", "read", "failed"],
+      message_type: [
+        "text",
+        "image",
+        "video",
+        "audio",
+        "document",
+        "sticker",
+        "location",
+        "reaction",
+      ],
       org_role: ["OWNER", "ADMIN", "USER"],
+      sender_type: ["contact", "agent", "ia", "system", "user"],
       system_profile: ["master", "admin", "user"],
       workspace_role: ["mentor_master", "gestor", "colaborador"],
     },
