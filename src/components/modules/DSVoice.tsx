@@ -6,7 +6,7 @@ import { Card, CardContent, CardHeader } from "@/components/ui/card";
 // Removido Table shadcn em favor de table nativa HTML estilo Excel
 // import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
-import { MessageSquare, Mic, Image, FileText, Filter, Play, Settings, Search, Edit, Trash2, Upload, Plus, GripVertical, Download } from "lucide-react";
+import { MessageSquare, Mic, Image, FileText, Filter, Play, Settings, Search, Edit, Trash2, Upload, Plus, GripVertical, Download, Sparkles } from "lucide-react";
 import { DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors, DragEndEvent } from '@dnd-kit/core';
 import { arrayMove, SortableContext, sortableKeyboardCoordinates, verticalListSortingStrategy, useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
@@ -1056,8 +1056,8 @@ export function DSVoice() {
             <div>
               <div className="flex justify-between items-center mb-3">
                 <label className="text-sm font-medium">Etapas</label>
-                <Button onClick={handleOpenAddStepModal} variant="outline" size="sm" className="dark:border-gray-600 dark:text-gray-200 dark:hover:bg-[#1f1f1f]">
-                  <Plus className="h-4 w-4 mr-2" />
+                <Button onClick={handleOpenAddStepModal} variant="outline" size="sm" className="border border-[#d4d4d4] bg-white text-gray-800 hover:bg-gray-100 dark:border-gray-600 dark:bg-transparent dark:text-gray-200 dark:hover:bg-[#1f1f1f]">
+                  <Sparkles className="h-4 w-4 mr-2" />
                   Adicionar Etapas
                 </Button>
               </div>

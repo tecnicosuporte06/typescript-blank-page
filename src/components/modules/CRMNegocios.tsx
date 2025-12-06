@@ -661,9 +661,9 @@ function SortableColumnWrapper({ id, children }: SortableColumnWrapperProps) {
       {children}
       <div 
         {...listeners} 
-        className="cursor-grab active:cursor-grabbing absolute top-3 right-12 z-10 p-1.5 opacity-0 group-hover:opacity-100 transition-opacity duration-200 bg-background/80 backdrop-blur-sm rounded hover:bg-background shadow-sm border border-border/50"
+        className="cursor-grab active:cursor-grabbing absolute top-3 right-12 z-10 p-1.5 opacity-0 group-hover:opacity-100 transition-opacity duration-200 bg-background/80 backdrop-blur-sm rounded hover:bg-background shadow-sm border border-border/50 dark:bg-[#1f1f1f]/80 dark:hover:bg-[#2a2a2a] dark:border-gray-700/50"
       >
-        <GripVertical className="h-4 w-4 text-muted-foreground" />
+        <GripVertical className="h-4 w-4 text-muted-foreground dark:text-gray-400" />
       </div>
     </div>
   );

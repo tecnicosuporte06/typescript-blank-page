@@ -269,8 +269,8 @@ export function TransferConversationModal({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[480px] p-0 gap-0 border border-[#d4d4d4] bg-white shadow-sm rounded-none">
-        <DialogHeader className="bg-primary text-primary-foreground p-4 m-0 rounded-none border-b border-[#d4d4d4]">
+      <DialogContent className="sm:max-w-[480px] p-0 gap-0 border border-[#d4d4d4] dark:border-gray-700 bg-white dark:bg-[#0f0f0f] shadow-sm rounded-none">
+        <DialogHeader className="bg-primary text-primary-foreground p-4 m-0 rounded-none border-b border-[#d4d4d4] dark:border-gray-700">
           <DialogTitle className="text-base font-bold text-primary-foreground">Transferir Atendimento</DialogTitle>
           <DialogDescription className="text-primary-foreground/90 text-xs">
             Escolha o novo responsável, fila (opcional) e conexão para este
@@ -278,9 +278,9 @@ export function TransferConversationModal({
           </DialogDescription>
         </DialogHeader>
 
-        <div className="space-y-4 p-6">
+        <div className="space-y-4 p-6 dark:bg-[#0f0f0f]">
           <div className="space-y-1.5">
-            <Label className="text-xs font-bold text-gray-700">
+            <Label className="text-xs font-bold text-gray-700 dark:text-gray-200">
               Usuário responsável <span className="text-destructive">*</span>
             </Label>
             <Select
@@ -288,18 +288,18 @@ export function TransferConversationModal({
               onValueChange={setSelectedUserId}
               disabled={isUserSelectDisabled}
             >
-              <SelectTrigger className="w-full h-8 text-xs rounded-none border-gray-300 focus:ring-0 focus:ring-offset-0">
+              <SelectTrigger className="w-full h-8 text-xs rounded-none border-gray-300 dark:border-gray-600 dark:bg-[#2d2d2d] dark:text-gray-200 focus:ring-0 focus:ring-offset-0">
                 <SelectValue placeholder="Selecione um usuário" />
               </SelectTrigger>
-              <SelectContent className="rounded-none border-gray-300">
-                <SelectItem value="none" className="text-xs rounded-none cursor-pointer">Sem responsável</SelectItem>
+              <SelectContent className="rounded-none border-gray-300 dark:border-gray-600 dark:bg-[#2d2d2d]">
+                <SelectItem value="none" className="text-xs rounded-none cursor-pointer dark:text-gray-200 dark:focus:bg-gray-700">Sem responsável</SelectItem>
                 {userOptions.length === 0 ? (
-                  <SelectItem value="__empty" disabled className="text-xs rounded-none">
+                  <SelectItem value="__empty" disabled className="text-xs rounded-none dark:text-gray-400">
                     Nenhum usuário disponível
                   </SelectItem>
                 ) : (
                   userOptions.map((user) => (
-                    <SelectItem key={user.id} value={user.id} className="text-xs rounded-none cursor-pointer">
+                    <SelectItem key={user.id} value={user.id} className="text-xs rounded-none cursor-pointer dark:text-gray-200 dark:focus:bg-gray-700">
                       {user.name}
                     </SelectItem>
                   ))
@@ -309,7 +309,7 @@ export function TransferConversationModal({
           </div>
 
           <div className="space-y-1.5">
-            <Label className="text-xs font-bold text-gray-700">
+            <Label className="text-xs font-bold text-gray-700 dark:text-gray-200">
               Fila (opcional)
             </Label>
             <Select
@@ -317,13 +317,13 @@ export function TransferConversationModal({
               onValueChange={setSelectedQueueId}
               disabled={isQueueSelectDisabled}
             >
-              <SelectTrigger className="w-full h-8 text-xs rounded-none border-gray-300 focus:ring-0 focus:ring-offset-0">
+              <SelectTrigger className="w-full h-8 text-xs rounded-none border-gray-300 dark:border-gray-600 dark:bg-[#2d2d2d] dark:text-gray-200 focus:ring-0 focus:ring-offset-0">
                 <SelectValue placeholder="Selecione uma fila (opcional)" />
               </SelectTrigger>
-              <SelectContent className="rounded-none border-gray-300">
-                <SelectItem value="none" className="text-xs rounded-none cursor-pointer">Sem fila</SelectItem>
+              <SelectContent className="rounded-none border-gray-300 dark:border-gray-600 dark:bg-[#2d2d2d]">
+                <SelectItem value="none" className="text-xs rounded-none cursor-pointer dark:text-gray-200 dark:focus:bg-gray-700">Sem fila</SelectItem>
                 {queueOptions.map((queue) => (
-                  <SelectItem key={queue.id} value={queue.id} className="text-xs rounded-none cursor-pointer">
+                  <SelectItem key={queue.id} value={queue.id} className="text-xs rounded-none cursor-pointer dark:text-gray-200 dark:focus:bg-gray-700">
                     {queue.name}
                   </SelectItem>
                 ))}
@@ -332,7 +332,7 @@ export function TransferConversationModal({
           </div>
 
           <div className="space-y-1.5">
-            <Label className="text-xs font-bold text-gray-700">
+            <Label className="text-xs font-bold text-gray-700 dark:text-gray-200">
               Conexão <span className="text-destructive">*</span>
             </Label>
             <Select
@@ -340,17 +340,17 @@ export function TransferConversationModal({
               onValueChange={setSelectedConnectionId}
               disabled={isProcessing || isLoadingConnections}
             >
-              <SelectTrigger className="w-full h-8 text-xs rounded-none border-gray-300 focus:ring-0 focus:ring-offset-0">
+              <SelectTrigger className="w-full h-8 text-xs rounded-none border-gray-300 dark:border-gray-600 dark:bg-[#2d2d2d] dark:text-gray-200 focus:ring-0 focus:ring-offset-0">
                 <SelectValue placeholder="Selecione uma conexão" />
               </SelectTrigger>
-              <SelectContent className="rounded-none border-gray-300">
+              <SelectContent className="rounded-none border-gray-300 dark:border-gray-600 dark:bg-[#2d2d2d]">
                 {connectionOptions.length === 0 ? (
-                  <SelectItem value="__empty" disabled className="text-xs rounded-none">
+                  <SelectItem value="__empty" disabled className="text-xs rounded-none dark:text-gray-400">
                     Nenhuma conexão disponível
                   </SelectItem>
                 ) : (
                   connectionOptions.map((connection) => (
-                    <SelectItem key={connection.id} value={connection.id} className="text-xs rounded-none cursor-pointer">
+                    <SelectItem key={connection.id} value={connection.id} className="text-xs rounded-none cursor-pointer dark:text-gray-200 dark:focus:bg-gray-700">
                       {connection.name}
                     </SelectItem>
                   ))
@@ -360,13 +360,13 @@ export function TransferConversationModal({
           </div>
         </div>
 
-        <DialogFooter className="bg-gray-50 border-t border-[#d4d4d4] p-4 m-0 rounded-none gap-2">
+        <DialogFooter className="bg-gray-50 dark:bg-[#1a1a1a] border-t border-[#d4d4d4] dark:border-gray-700 p-4 m-0 rounded-none gap-2">
           <Button
             type="button"
             variant="outline"
             onClick={() => onOpenChange(false)}
             disabled={isProcessing}
-            className="h-8 text-xs rounded-none"
+            className="h-8 text-xs rounded-none dark:border-gray-600 dark:text-gray-200 dark:hover:bg-[#2a2a2a] dark:bg-[#1a1a1a]"
           >
             Cancelar
           </Button>

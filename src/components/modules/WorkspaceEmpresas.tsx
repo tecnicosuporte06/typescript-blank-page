@@ -131,20 +131,45 @@ export function WorkspaceEmpresas({ onNavigateToUsers, onNavigateToConfig }: Wor
 
   if (isLoading) {
     return (
-      <div className="p-6">
+      <div className="p-6 bg-white dark:bg-[#0f0f0f] text-gray-900 dark:text-gray-100 min-h-full">
         <div className="flex items-center justify-between mb-6">
-          <h1 className="text-2xl font-semibold">Minha Empresa</h1>
+          <div>
+            <h1 className="text-2xl font-semibold">Minha Empresa</h1>
+            <p className="text-muted-foreground dark:text-gray-400">
+              Informações e configurações da empresa atual
+            </p>
+          </div>
         </div>
-        <div className="grid grid-cols-1 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
           {[...Array(3)].map((_, i) => (
-            <Card key={i} className="animate-pulse rounded-none">
-              <CardHeader>
-                <div className="w-full h-6 bg-muted rounded-none" />
+            <Card key={i} className="animate-pulse rounded-none border border-[#d4d4d4] shadow-sm bg-white dark:border-gray-700 dark:bg-[#1f1f1f]">
+              <CardHeader className="pb-3 bg-[#f0f0f0] border-b border-[#d4d4d4] rounded-none dark:bg-[#2d2d2d] dark:border-gray-700">
+                <div className="flex items-start justify-between">
+                  <div className="flex items-center gap-2">
+                    <div className="w-5 h-5 bg-gray-300 dark:bg-gray-600 rounded" />
+                    <div className="w-32 h-5 bg-gray-300 dark:bg-gray-600 rounded" />
+                  </div>
+                  <div className="w-20 h-5 bg-gray-300 dark:bg-gray-600 rounded" />
+                </div>
               </CardHeader>
-              <CardContent>
-                <div className="space-y-2">
-                  <div className="w-3/4 h-4 bg-muted rounded-none" />
-                  <div className="w-1/2 h-4 bg-muted rounded-none" />
+              <CardContent className="space-y-4 bg-white dark:bg-[#1f1f1f] pt-4">
+                <div className="space-y-3">
+                  <div className="flex items-center gap-2">
+                    <div className="w-4 h-4 bg-gray-300 dark:bg-gray-600 rounded" />
+                    <div className="w-40 h-4 bg-gray-300 dark:bg-gray-600 rounded" />
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <div className="w-4 h-4 bg-gray-300 dark:bg-gray-600 rounded" />
+                    <div className="w-40 h-4 bg-gray-300 dark:bg-gray-600 rounded" />
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <div className="w-4 h-4 bg-gray-300 dark:bg-gray-600 rounded" />
+                    <div className="w-36 h-4 bg-gray-300 dark:bg-gray-600 rounded" />
+                  </div>
+                </div>
+                <div className="flex gap-2 justify-center pt-2">
+                  <div className="w-24 h-8 bg-gray-300 dark:bg-gray-600 rounded-none" />
+                  <div className="w-24 h-8 bg-gray-300 dark:bg-gray-600 rounded-none" />
                 </div>
               </CardContent>
             </Card>

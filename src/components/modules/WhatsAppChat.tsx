@@ -1843,7 +1843,7 @@ export function WhatsAppChat({
                     <UserCircle className={cn("h-3.5 w-3.5", activeTab === 'mine' ? "text-black" : "text-gray-500")} />
                     {!sidebarCollapsed && <>
                         <span className="flex-1 text-left">Minhas conversas</span>
-                        <span className={cn("text-[10px] px-1 py-0 rounded-none border", activeTab === 'mine' ? "bg-white border-gray-300" : "bg-gray-200 border-transparent")}>
+                        <span className={cn("text-[10px] px-1 py-0 rounded-none border", activeTab === 'mine' ? "bg-white border-gray-300 dark:bg-black/20 dark:border-primary-foreground/20" : "bg-gray-200 border-transparent dark:bg-[#333] dark:text-gray-400")}>
                           {conversations.filter(c => c.assigned_user_id === user?.id && c.status !== 'closed').length}
                         </span>
                       </>}
@@ -1861,7 +1861,7 @@ export function WhatsAppChat({
                     <UserX className={cn("h-3.5 w-3.5", activeTab === 'unassigned' ? "text-black" : "text-gray-500")} />
                     {!sidebarCollapsed && <>
                         <span className="flex-1 text-left">Não atribuídas</span>
-                        <span className={cn("text-[10px] px-1 py-0 rounded-none border", activeTab === 'unassigned' ? "bg-white border-gray-300" : "bg-gray-200 border-transparent")}>
+                        <span className={cn("text-[10px] px-1 py-0 rounded-none border", activeTab === 'unassigned' ? "bg-white border-gray-300 dark:bg-black/20 dark:border-primary-foreground/20" : "bg-gray-200 border-transparent dark:bg-[#333] dark:text-gray-400")}>
                           {conversations.filter(c => !c.assigned_user_id && c.status !== 'closed').length}
                         </span>
                       </>}
@@ -1879,7 +1879,7 @@ export function WhatsAppChat({
                     <MessageCircle className={cn("h-3.5 w-3.5", activeTab === 'unread' ? "text-black" : "text-gray-500")} />
                     {!sidebarCollapsed && <>
                         <span className="flex-1 text-left">Não lidas</span>
-                        <span className={cn("text-[10px] px-1 py-0 rounded-none border", activeTab === 'unread' ? "bg-white border-gray-300" : "bg-gray-200 border-transparent")}>
+                        <span className={cn("text-[10px] px-1 py-0 rounded-none border", activeTab === 'unread' ? "bg-white border-gray-300 dark:bg-black/20 dark:border-primary-foreground/20" : "bg-gray-200 border-transparent dark:bg-[#333] dark:text-gray-400")}>
                           {conversations.filter(c => conversationNotifications.has(c.id) && c.status !== 'closed').length}
                         </span>
                       </>}
@@ -1897,7 +1897,7 @@ export function WhatsAppChat({
                     <UsersRound className={cn("h-3.5 w-3.5", activeTab === 'groups' ? "text-black" : "text-gray-500")} />
                     {!sidebarCollapsed && <>
                         <span className="flex-1 text-left">Grupos</span>
-                        <span className={cn("text-[10px] px-1 py-0 rounded-none border", activeTab === 'groups' ? "bg-white border-gray-300" : "bg-gray-200 border-transparent")}>
+                        <span className={cn("text-[10px] px-1 py-0 rounded-none border", activeTab === 'groups' ? "bg-white border-gray-300 dark:bg-black/20 dark:border-primary-foreground/20" : "bg-gray-200 border-transparent dark:bg-[#333] dark:text-gray-400")}>
                           0
                         </span>
                       </>}
@@ -2177,7 +2177,7 @@ export function WhatsAppChat({
                                 className="object-cover"
                               />
                             ) : null}
-                            <AvatarFallback className="bg-gray-100 text-gray-500 text-[9px] font-bold rounded-none border border-gray-200">
+                            <AvatarFallback className="bg-gray-100 text-gray-500 text-[9px] font-bold rounded-none border border-gray-200 dark:bg-gray-800 dark:text-gray-200 dark:border-gray-700">
                               {(() => {
                                 const displayName = conversation.assigned_user_name || assignedUsersMap.get(conversation.assigned_user_id || '')?.name;
                                 return displayName ? displayName.split(' ').map((n: string) => n[0]).join('').substring(0, 2).toUpperCase() : '?';
@@ -2297,14 +2297,14 @@ export function WhatsAppChat({
                     {selectedConversation.agente_ativo && agent ? (
                       <button
                         onClick={() => setChangeAgentModalOpen(true)}
-                        className="flex items-center gap-2 px-3 py-1 bg-gradient-to-r from-green-50 to-emerald-50 border border-[#d4d4d4] rounded-none shadow-sm hover:shadow-md transition-all group h-8"
+                        className="flex items-center gap-2 px-3 py-1 bg-gradient-to-r from-green-50 to-emerald-50 dark:from-green-900/30 dark:to-emerald-900/30 border border-[#d4d4d4] dark:border-green-800 rounded-none shadow-sm hover:shadow-md transition-all group h-8"
                         title="Agente ativo - clique para trocar"
                       >
                         <div className="flex items-center gap-1.5">
-                          <div className="w-1.5 h-1.5 bg-green-500 rounded-full animate-pulse shadow-lg shadow-green-500/50" />
-                          <Bot className="w-3.5 h-3.5 text-green-600 group-hover:scale-110 transition-transform" />
+                          <div className="w-1.5 h-1.5 bg-green-500 dark:bg-green-400 rounded-full animate-pulse shadow-lg shadow-green-500/50 dark:shadow-green-400/50" />
+                          <Bot className="w-3.5 h-3.5 text-green-600 dark:text-green-400 group-hover:scale-110 transition-transform" />
                         </div>
-                        <span className="text-xs font-bold text-green-700 leading-none">
+                        <span className="text-xs font-bold text-green-700 dark:text-green-300 leading-none">
                           {agent.name}
                         </span>
                       </button>
@@ -2326,10 +2326,10 @@ export function WhatsAppChat({
                     
                     <button
                       onClick={() => setAssignmentHistoryModalOpen(true)}
-                      className="p-1.5 hover:bg-gray-100 rounded-none border border-[#d4d4d4] h-8 w-8 flex items-center justify-center transition-colors"
+                      className="p-1.5 hover:bg-gray-100 rounded-none border border-[#d4d4d4] dark:border-gray-600 dark:hover:bg-gray-700 h-8 w-8 flex items-center justify-center transition-colors"
                       title="Ver histórico de agentes e transferências"
                     >
-                      <Clock className="h-3.5 w-3.5 text-gray-500" />
+                      <Clock className="h-3.5 w-3.5 text-gray-500 dark:text-gray-400" />
                     </button>
                   </div>
                   

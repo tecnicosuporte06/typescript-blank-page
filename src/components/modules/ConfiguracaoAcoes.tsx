@@ -176,7 +176,7 @@ export const ConfiguracaoAcoes: React.FC = () => {
                   </tr>
                 )}
 
-                {lossReasons.map((reason) => (
+                {!isLoading && lossReasons.length > 0 && lossReasons.map((reason) => (
                   <tr key={reason.id} className="bg-white hover:bg-yellow-50 transition-colors dark:bg-[#111111] dark:hover:bg-[#1f2937]">
                     {editingId === reason.id ? (
                       <>
@@ -199,24 +199,24 @@ export const ConfiguracaoAcoes: React.FC = () => {
                         <td className="border border-[#e0e0e0] px-3 py-3 text-gray-500 dark:border-gray-700 dark:text-gray-400">
                           {lossReasons.find(r => r.id === editingId)?.is_active !== false ? 'Motivo ativo' : 'Motivo inativo'}
                         </td>
-                        <td className="border border-[#e0e0e0] px-3 py-3 text-center">
+                        <td className="border border-[#e0e0e0] px-3 py-3 text-center dark:border-gray-700">
                           <div className="flex items-center justify-center gap-1">
                             <Button
                               size="icon"
                               variant="ghost"
-                              className="h-7 w-7 rounded-none hover:bg-green-50"
+                              className="h-7 w-7 rounded-none hover:bg-green-50 dark:hover:bg-green-900/30"
                               onClick={handleSaveEdit}
                               disabled={!editingName.trim()}
                             >
-                              <Check className="h-4 w-4 text-green-600" />
+                              <Check className="h-4 w-4 text-green-600 dark:text-green-400" />
                             </Button>
                             <Button
                               size="icon"
                               variant="ghost"
-                              className="h-7 w-7 rounded-none hover:bg-red-50"
+                              className="h-7 w-7 rounded-none hover:bg-red-50 dark:hover:bg-red-900/30"
                               onClick={handleCancelEdit}
                             >
-                              <X className="h-4 w-4 text-red-600" />
+                              <X className="h-4 w-4 text-red-600 dark:text-red-400" />
                             </Button>
                           </div>
                         </td>
@@ -240,23 +240,23 @@ export const ConfiguracaoAcoes: React.FC = () => {
                             {reason.is_active !== false ? 'Motivo ativo' : 'Motivo inativo'}
                           </Badge>
                         </td>
-                        <td className="border border-[#e0e0e0] px-3 py-3">
+                        <td className="border border-[#e0e0e0] px-3 py-3 dark:border-gray-700">
                           <div className="flex items-center justify-center gap-1">
                             <Button
                               size="icon"
                               variant="ghost"
-                              className="h-7 w-7 rounded-none hover:bg-gray-200"
+                              className="h-7 w-7 rounded-none hover:bg-gray-200 dark:hover:bg-gray-700"
                               onClick={() => handleStartEdit(reason.id, reason.name)}
                             >
-                              <Edit2 className="h-4 w-4" />
+                              <Edit2 className="h-4 w-4 dark:text-gray-300" />
                             </Button>
                             <Button
                               size="icon"
                               variant="ghost"
-                              className="h-7 w-7 rounded-none hover:bg-red-50"
+                              className="h-7 w-7 rounded-none hover:bg-red-50 dark:hover:bg-red-900/30"
                               onClick={() => setDeleteReasonId(reason.id)}
                             >
-                              <Trash2 className="h-4 w-4 text-red-600" />
+                              <Trash2 className="h-4 w-4 text-red-600 dark:text-red-400" />
                             </Button>
                           </div>
                         </td>
