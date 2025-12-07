@@ -82,6 +82,21 @@ function setCachedConfig(config: DatabaseConfigSimple): void {
 }
 
 /**
+ * Limpa o cache de configuração (útil após atualizar credenciais)
+ */
+export function clearConfigCache(): void {
+  if (typeof window === 'undefined') return;
+  
+  try {
+    localStorage.removeItem(CACHE_KEY);
+    localStorage.removeItem(CACHE_TIMESTAMP_KEY);
+    console.log('✅ [clearConfigCache] Cache limpo');
+  } catch (error) {
+    console.warn('Erro ao limpar cache de configuração:', error);
+  }
+}
+
+/**
  * Busca a configuração única do banco de dados
  * Retorna a primeira configuração encontrada (ou cria uma se não existir)
  */
@@ -94,30 +109,48 @@ export async function getDatabaseConfig(): Promise<DatabaseConfig | null> {
     
     console.log('🔍 [getDatabaseConfig] Buscando configuração única do banco de dados...');
     
-    // Buscar primeira configuração (não importa qual, pois só há uma)
-    const result = await (supabase as any)
+    // Primeiro, tentar buscar todas as configurações para ver o que temos
+    const allConfigsResult = await (supabase as any)
       .from('database_configs')
-      .select('id, name, url, anon_key, project_id')
-      .limit(1)
-      .single();
+      .select('id, name, url, anon_key, project_id, updated_at, created_at');
     
-    if (result.error || !result.data) {
-      console.warn('⚠️ [getDatabaseConfig] Nenhuma configuração encontrada:', result.error);
+    console.log('📊 [getDatabaseConfig] Todas as configurações encontradas:', {
+      count: allConfigsResult.data?.length || 0,
+      error: allConfigsResult.error,
+      data: allConfigsResult.data
+    });
+    
+    if (allConfigsResult.error) {
+      console.error('❌ [getDatabaseConfig] Erro ao buscar configurações:', allConfigsResult.error);
       return null;
     }
     
+    if (!allConfigsResult.data || allConfigsResult.data.length === 0) {
+      console.warn('⚠️ [getDatabaseConfig] Nenhuma configuração encontrada na tabela');
+      return null;
+    }
+    
+    // Ordenar por updated_at DESC (mais recente primeiro), depois por created_at DESC
+    const sortedConfigs = allConfigsResult.data.sort((a: any, b: any) => {
+      const aDate = new Date(a.updated_at || a.created_at).getTime();
+      const bDate = new Date(b.updated_at || b.created_at).getTime();
+      return bDate - aDate;
+    });
+    
+    const latestConfig = sortedConfigs[0];
+    
     const config: DatabaseConfig = {
-      id: result.data.id,
-      name: result.data.name || 'Configuração Principal',
-      url: result.data.url,
-      anonKey: result.data.anon_key,
-      projectId: result.data.project_id
+      id: latestConfig.id,
+      name: latestConfig.name || 'Configuração Principal',
+      url: latestConfig.url,
+      anonKey: latestConfig.anon_key,
+      projectId: latestConfig.project_id
     };
     
-    console.log('✅ [getDatabaseConfig] Configuração encontrada:', config.name);
+    console.log('✅ [getDatabaseConfig] Configuração encontrada (mais recente):', config.name, config.url);
     
     // Atualizar cache e estado global
-    const cacheConfig: DatabaseConfig = {
+    const cacheConfig: DatabaseConfigSimple = {
       url: config.url,
       anonKey: config.anonKey,
       projectId: config.projectId
@@ -172,7 +205,7 @@ export async function createDatabaseConfig(config: Omit<DatabaseConfig, 'id'>): 
     console.log('✅ [createDatabaseConfig] Configuração criada:', newConfig.name);
     
     // Atualizar cache e estado global
-    const cacheConfig: DatabaseConfig = {
+    const cacheConfig: DatabaseConfigSimple = {
       url: newConfig.url,
       anonKey: newConfig.anonKey,
       projectId: newConfig.projectId
@@ -202,12 +235,51 @@ export async function fetchActiveDatabaseConfig(forceRefresh: boolean = false): 
     
     console.log('🔍 [fetchActiveDatabaseConfig] Buscando configuração do banco de dados (GLOBAL)...');
     
-    // Buscar primeira configuração (não importa qual, pois só há uma)
+    // Buscar configuração mais recente (ORDER BY updated_at DESC para pegar a última atualizada)
     const result = await (supabase as any)
       .from('database_configs')
       .select('url, anon_key, project_id')
+      .order('updated_at', { ascending: false, nullsFirst: false })
       .limit(1)
-      .single();
+      .maybeSingle();
+    
+    // Se não encontrou, tentar buscar qualquer uma (fallback)
+    if (result.error || !result.data) {
+      const fallbackResult = await (supabase as any)
+        .from('database_configs')
+        .select('url, anon_key, project_id')
+        .limit(1)
+        .maybeSingle();
+      
+      if (fallbackResult.error || !fallbackResult.data) {
+        console.warn('⚠️ [fetchActiveDatabaseConfig] Erro ao buscar configuração do banco:', fallbackResult.error);
+        
+        const cached = getCachedConfig();
+        if (cached) {
+          console.warn('⚠️ [fetchActiveDatabaseConfig] Usando cache como fallback');
+          currentConfig = cached;
+          return cached;
+        }
+        
+        console.warn('⚠️ [fetchActiveDatabaseConfig] Usando configuração padrão como último recurso');
+        currentConfig = DEFAULT_CONFIG;
+        return DEFAULT_CONFIG;
+      }
+      
+      const config: DatabaseConfigSimple = {
+        url: fallbackResult.data.url,
+        anonKey: fallbackResult.data.anon_key,
+        projectId: fallbackResult.data.project_id
+      };
+      
+      console.log('✅ [fetchActiveDatabaseConfig] Configuração encontrada (fallback):', config.url);
+      
+      setCachedConfig(config);
+      currentConfig = config;
+      configLoaded = true;
+      
+      return config;
+    }
     
     if (result.error || !result.data) {
       console.warn('⚠️ [fetchActiveDatabaseConfig] Erro ao buscar configuração do banco:', result.error);
@@ -347,7 +419,7 @@ export async function switchDatabase(databaseName: string): Promise<boolean> {
     }
     
     // Atualizar cache e estado
-    const newConfig: DatabaseConfig = {
+    const newConfig: DatabaseConfigSimple = {
       url: fetchResult.data.url,
       anonKey: fetchResult.data.anon_key,
       projectId: fetchResult.data.project_id

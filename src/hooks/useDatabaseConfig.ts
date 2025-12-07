@@ -142,6 +142,10 @@ export function useDatabaseConfig(): UseDatabaseConfigReturn {
 
       console.log('✅ [updateConfig] Configuração atualizada com sucesso');
 
+      // Limpar cache para forçar busca da nova configuração
+      const { clearConfigCache } = await import('@/lib/config');
+      clearConfigCache();
+
       // Atualizar configuração local e recriar cliente Supabase
       const updatedConfig = { ...config!, ...updates };
       setConfig(updatedConfig);
@@ -149,7 +153,7 @@ export function useDatabaseConfig(): UseDatabaseConfigReturn {
       // Recriar cliente Supabase com nova configuração
       await recreateSupabaseClient();
 
-      // Buscar configuração atualizada do banco
+      // Buscar configuração atualizada do banco (forçar refresh)
       const activeConfigData = await fetchActiveDatabaseConfig(true);
       if (activeConfigData) {
         updateDatabaseConfig(activeConfigData);

@@ -35,22 +35,54 @@ export function DatabaseConfigManager() {
         projectId: config.projectId || '',
         anonKey: config.anonKey || '',
       });
+    } else {
+      // Se não há configuração, inicializar formulário vazio para permitir criar
+      setEditForm({
+        name: '',
+        url: '',
+        projectId: '',
+        anonKey: '',
+      });
     }
   }, [config]);
 
   // Salvar configuração
   const handleSave = async () => {
-    if (!config) return;
+    // Validar campos obrigatórios
+    if (!editForm.url || !editForm.anonKey || !editForm.projectId) {
+      return;
+    }
 
     setIsSaving(true);
     try {
-      const success = await updateConfig(config.id, editForm);
-      if (success) {
-        // Recarregar página após salvar para aplicar mudanças
-        setTimeout(() => {
-          window.location.reload();
-        }, 1000);
+      if (config) {
+        // Atualizar configuração existente
+        const success = await updateConfig(config.id, editForm);
+        if (success) {
+          // Recarregar página após salvar para aplicar mudanças
+          setTimeout(() => {
+            window.location.reload();
+          }, 1000);
+        }
+      } else {
+        // Criar nova configuração
+        const { createDatabaseConfig } = await import('@/lib/config');
+        const newConfig = await createDatabaseConfig({
+          name: editForm.name || 'Configuração Principal',
+          url: editForm.url!,
+          anonKey: editForm.anonKey!,
+          projectId: editForm.projectId!,
+        });
+        
+        if (newConfig) {
+          // Recarregar página após criar para aplicar mudanças
+          setTimeout(() => {
+            window.location.reload();
+          }, 1000);
+        }
       }
+    } catch (error) {
+      console.error('Erro ao salvar configuração:', error);
     } finally {
       setIsSaving(false);
     }
@@ -58,12 +90,19 @@ export function DatabaseConfigManager() {
 
   // Testar conexão
   const handleTestConnection = async () => {
-    if (!config) return;
+    // Validar campos obrigatórios
+    if (!editForm.url || !editForm.anonKey) {
+      return;
+    }
     
+    // Usar dados do formulário para testar (mesmo que não tenha config salva)
     const testConfig: DatabaseConfig = {
-      ...config,
-      ...editForm,
-    } as DatabaseConfig;
+      id: config?.id || 'temp',
+      name: editForm.name || 'Teste',
+      url: editForm.url!,
+      anonKey: editForm.anonKey!,
+      projectId: editForm.projectId || '',
+    };
     
     await testConnection(testConfig);
   };
@@ -136,7 +175,7 @@ export function DatabaseConfigManager() {
             </div>
           </CardContent>
         </Card>
-      ) : config ? (
+      ) : (
         <Card className="bg-white dark:bg-[#1f1f1f] border-[#d4d4d4] dark:border-gray-700">
           <CardHeader>
             <div className="flex items-center gap-2">
@@ -144,7 +183,9 @@ export function DatabaseConfigManager() {
               <CardTitle className="text-gray-800 dark:text-gray-200">Credenciais do Banco de Dados</CardTitle>
             </div>
             <CardDescription className="text-gray-600 dark:text-gray-400">
-              Configure as credenciais do Supabase. Após salvar, a página será recarregada para aplicar as mudanças.
+              {config 
+                ? 'Configure as credenciais do Supabase. Após salvar, a página será recarregada para aplicar as mudanças.'
+                : 'Configure as credenciais do Supabase. Uma nova configuração será criada ao salvar.'}
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
@@ -223,8 +264,8 @@ export function DatabaseConfigManager() {
             <div className="flex gap-2 pt-4">
               <Button
                 onClick={handleSave}
-                disabled={isSaving}
-                className="flex-1 bg-primary dark:bg-primary text-white hover:bg-primary/90"
+                disabled={isSaving || !editForm.url || !editForm.anonKey || !editForm.projectId}
+                className="flex-1 bg-primary dark:bg-primary text-white hover:bg-primary/90 disabled:opacity-50"
               >
                 {isSaving ? (
                   <>
@@ -234,15 +275,15 @@ export function DatabaseConfigManager() {
                 ) : (
                   <>
                     <Save className="h-4 w-4 mr-2" />
-                    Salvar Configuração
+                    {config ? 'Salvar Configuração' : 'Criar Configuração'}
                   </>
                 )}
               </Button>
               <Button
                 onClick={handleTestConnection}
                 variant="outline"
-                disabled={isTesting}
-                className="border-[#d4d4d4] dark:border-gray-700 bg-white dark:bg-[#2d2d2d] text-gray-800 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-[#3d3d3d]"
+                disabled={isTesting || !editForm.url || !editForm.anonKey}
+                className="border-[#d4d4d4] dark:border-gray-700 bg-white dark:bg-[#2d2d2d] text-gray-800 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-[#3d3d3d] disabled:opacity-50"
               >
                 {isTesting ? (
                   <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
@@ -252,14 +293,6 @@ export function DatabaseConfigManager() {
                 Testar Conexão
               </Button>
             </div>
-          </CardContent>
-        </Card>
-      ) : (
-        <Card className="bg-white dark:bg-[#1f1f1f] border-[#d4d4d4] dark:border-gray-700">
-          <CardContent className="pt-6">
-            <p className="text-center text-muted-foreground dark:text-gray-400">
-              Nenhuma configuração encontrada. Uma configuração será criada automaticamente ao salvar.
-            </p>
           </CardContent>
         </Card>
       )}
