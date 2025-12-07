@@ -1,12 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { supabase, recreateSupabaseClient } from '@/integrations/supabase/client';
-import {
-  getDatabaseConfig,
-  fetchActiveDatabaseConfig,
-  updateDatabaseConfig,
-  createDatabaseConfig,
-  DEFAULT_CONFIG
-} from '@/lib/config';
+import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/hooks/useAuth';
 
@@ -242,16 +235,9 @@ export function useDatabaseConfig(): UseDatabaseConfigReturn {
       return;
     }
     
-    // Inicializar cliente Supabase e carregar configuração
-    const initializeAndLoad = async () => {
+    // Carregar configuração
+    const loadConfig = async () => {
       try {
-        // Garantir que o cliente está inicializado com a configuração correta
-        const { initializeSupabaseClient } = await import('@/integrations/supabase/client');
-        await initializeSupabaseClient();
-        
-        // Aguardar um pouco para garantir que o cliente Supabase esteja pronto
-        await new Promise(resolve => setTimeout(resolve, 300));
-        
         console.log('🔄 [useDatabaseConfig] Iniciando carregamento inicial...');
         hasLoadedRef.current = true;
         await refreshConfig();
@@ -260,7 +246,7 @@ export function useDatabaseConfig(): UseDatabaseConfigReturn {
       }
     };
     
-    initializeAndLoad();
+    loadConfig();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user]); // Depender apenas do usuário, refreshConfig é estável
 

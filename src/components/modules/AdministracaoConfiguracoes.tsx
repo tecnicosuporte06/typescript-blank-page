@@ -11,7 +11,6 @@ import { useWorkspace } from "@/contexts/WorkspaceContext";
 import { ColorPickerModal } from "@/components/modals/ColorPickerModal";
 import { useSystemCustomization } from "@/hooks/useSystemCustomization";
 import { useAuth } from "@/hooks/useAuth";
-import { DatabaseConfigManager } from "./DatabaseConfigManager";
 import { Upload, RotateCcw, Palette } from "lucide-react";
 
 export function AdministracaoConfiguracoes() {
@@ -214,7 +213,7 @@ export function AdministracaoConfiguracoes() {
     <div className="h-full flex flex-col">
       <div className="bg-white dark:bg-[#1f1f1f] border border-[#d4d4d4] dark:border-gray-700 shadow-sm">
         <Tabs defaultValue="personalizacao" className="w-full">
-          <TabsList className="grid w-full grid-cols-3 bg-[#f3f3f3] dark:bg-[#2d2d2d] rounded-none h-auto p-0 border-b border-[#d4d4d4] dark:border-gray-700">
+          <TabsList className="grid w-full grid-cols-2 bg-[#f3f3f3] dark:bg-[#2d2d2d] rounded-none h-auto p-0 border-b border-[#d4d4d4] dark:border-gray-700">
             <TabsTrigger 
               value="personalizacao" 
               className="rounded-none py-3 px-6 text-xs font-semibold uppercase tracking-wide data-[state=active]:bg-[#FEF3C7] dark:data-[state=active]:bg-gray-700 data-[state=active]:text-black dark:data-[state=active]:text-white data-[state=active]:border-b-2 data-[state=active]:border-gray-300 dark:data-[state=active]:border-gray-600 data-[state=active]:shadow-none"
@@ -226,12 +225,6 @@ export function AdministracaoConfiguracoes() {
               className="rounded-none py-3 px-6 text-xs font-semibold uppercase tracking-wide data-[state=active]:bg-[#FEF3C7] dark:data-[state=active]:bg-gray-700 data-[state=active]:text-black dark:data-[state=active]:text-white data-[state=active]:border-b-2 data-[state=active]:border-gray-300 dark:data-[state=active]:border-gray-600 data-[state=active]:shadow-none"
             >
               API WhatsApp
-            </TabsTrigger>
-            <TabsTrigger 
-              value="bancos-dados" 
-              className="rounded-none py-3 px-6 text-xs font-semibold uppercase tracking-wide data-[state=active]:bg-[#FEF3C7] dark:data-[state=active]:bg-gray-700 data-[state=active]:text-black dark:data-[state=active]:text-white data-[state=active]:border-b-2 data-[state=active]:border-gray-300 dark:data-[state=active]:border-gray-600 data-[state=active]:shadow-none"
-            >
-              Bancos de Dados
             </TabsTrigger>
           </TabsList>
           
@@ -436,9 +429,6 @@ export function AdministracaoConfiguracoes() {
             <WhatsAppProvidersMaster />
           </TabsContent>
 
-          <TabsContent value="bancos-dados" className="p-6 mt-0 bg-white dark:bg-[#1f1f1f]">
-            <DatabaseConfigManager />
-          </TabsContent>
 
         </Tabs>
       </div>
