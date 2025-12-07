@@ -1,6 +1,6 @@
 import { useState, useMemo, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Search, Settings, Home, Users, Building2, BarChart3, Settings2, BrainCircuit, LayoutDashboard, UserCircle, ListOrdered, LogOut, ArrowLeft, Edit, Trash2, Activity, Bell, AlertTriangle, Plus, Eye, EyeOff, MoreVertical, User } from 'lucide-react';
+import { Search, Settings, Home, Users, Building2, BarChart3, Settings2, BrainCircuit, LayoutDashboard, UserCircle, ListOrdered, LogOut, ArrowLeft, Edit, Trash2, Activity, Bell, AlertTriangle, Plus, Eye, EyeOff, MoreVertical, User, Upload } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -29,6 +29,7 @@ import {
 import { WorkspaceUsersModal } from '@/components/modals/WorkspaceUsersModal';
 import { WorkspaceConfigModal } from '@/components/modals/WorkspaceConfigModal';
 import { CreateWorkspaceModal } from '@/components/modals/CreateWorkspaceModal';
+import { ImportNegociosContatosModal } from '@/components/modals/ImportNegociosContatosModal';
 import { supabase } from '@/integrations/supabase/client';
 import { RelatoriosAvancados } from '@/components/relatorios-avancados/RelatoriosAvancados';
 import { Badge } from '@/components/ui/badge';
@@ -734,6 +735,16 @@ export default function MasterDashboard() {
                                 )}
                               </DropdownMenuItem>
                               <DropdownMenuItem
+                                onClick={() => {
+                                  setWorkspaceForImport(workspace);
+                                  setImportModalOpen(true);
+                                }}
+                                className="text-xs dark:focus:bg-gray-800"
+                              >
+                                <Upload className="mr-2 h-3.5 w-3.5" />
+                                Importar Negócios
+                              </DropdownMenuItem>
+                              <DropdownMenuItem
                                 onClick={() => handleDeleteWorkspace(workspace)}
                                 className="text-destructive text-xs dark:text-red-400 dark:focus:bg-gray-800"
                               >
@@ -778,6 +789,16 @@ export default function MasterDashboard() {
           </div>
         </footer>
       </div>
+
+      {/* Modal de Importação */}
+      {workspaceForImport && (
+        <ImportNegociosContatosModal
+          open={importModalOpen}
+          onOpenChange={setImportModalOpen}
+          workspaceId={workspaceForImport.workspace_id}
+          workspaceName={workspaceForImport.name}
+        />
+      )}
 
       {/* Modal de Usuários */}
       {selectedWorkspaceForModal && (
