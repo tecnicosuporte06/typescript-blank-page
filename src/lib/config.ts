@@ -12,21 +12,30 @@ const CACHE_TIMESTAMP_KEY = 'tezeus_database_config_timestamp';
 const CACHE_TTL = 30 * 1000; // 30 segundos apenas (cache muito curto para garantir sincronização)
 
 // Valores padrão (fallback apenas em caso de erro crítico) - Base 1 (2.1 tester)
-const DEFAULT_CONFIG = {
+export const DEFAULT_CONFIG = {
   url: "https://zdrgvdlfhrbynpkvtyhx.supabase.co",
   anonKey: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inpkcmd2ZGxmaHJieW5wa3Z0eWh4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjQ3MDU2OTEsImV4cCI6MjA4MDI4MTY5MX0.MzCe3coYsKtl5knDRE2zrmTSomu58nMVVUokj5QMToM",
   projectId: "zdrgvdlfhrbynpkvtyhx"
 };
 
-// Tipo para configuração de banco
-interface DatabaseConfig {
+// Tipo para configuração de banco (completa, com id e name)
+export interface DatabaseConfig {
+  id: string;
+  name: string;
+  url: string;
+  anonKey: string;
+  projectId: string;
+}
+
+// Tipo para configuração de banco (simplificada, sem id e name - para cache)
+interface DatabaseConfigSimple {
   url: string;
   anonKey: string;
   projectId: string;
 }
 
 // Estado global da configuração (inicializado com padrão, será atualizado do banco)
-let currentConfig: DatabaseConfig = DEFAULT_CONFIG;
+let currentConfig: DatabaseConfigSimple = DEFAULT_CONFIG;
 let configLoaded = false; // Flag para indicar se já carregou do banco
 
 /**
@@ -34,7 +43,7 @@ let configLoaded = false; // Flag para indicar se já carregou do banco
  * NOTA: Cache é apenas para performance. SEMPRE validar com banco de dados.
  * O cache não deve ser usado como fonte de verdade, apenas para evitar queries desnecessárias.
  */
-function getCachedConfig(): DatabaseConfig | null {
+function getCachedConfig(): DatabaseConfigSimple | null {
   if (typeof window === 'undefined') return null;
   
   try {
@@ -61,7 +70,7 @@ function getCachedConfig(): DatabaseConfig | null {
 /**
  * Salva configuração no cache (localStorage)
  */
-function setCachedConfig(config: DatabaseConfig): void {
+function setCachedConfig(config: DatabaseConfigSimple): void {
   if (typeof window === 'undefined') return;
   
   try {
@@ -73,23 +82,131 @@ function setCachedConfig(config: DatabaseConfig): void {
 }
 
 /**
- * Busca configuração ativa do banco de dados
- * SEMPRE busca do banco de dados (não usa cache) para garantir que seja GLOBAL
- * Esta função é assíncrona e deve ser chamada quando o cliente Supabase já estiver disponível
+ * Busca a configuração única do banco de dados
+ * Retorna a primeira configuração encontrada (ou cria uma se não existir)
  */
-export async function fetchActiveDatabaseConfig(forceRefresh: boolean = false): Promise<DatabaseConfig | null> {
+export async function getDatabaseConfig(): Promise<DatabaseConfig | null> {
   if (typeof window === 'undefined') return null;
   
   try {
     // Importação dinâmica para evitar dependência circular
     const { supabase } = await import('@/integrations/supabase/client');
     
-    console.log('🔍 [fetchActiveDatabaseConfig] Buscando configuração ativa do banco de dados (GLOBAL)...');
+    console.log('🔍 [getDatabaseConfig] Buscando configuração única do banco de dados...');
     
+    // Buscar primeira configuração (não importa qual, pois só há uma)
+    const result = await (supabase as any)
+      .from('database_configs')
+      .select('id, name, url, anon_key, project_id')
+      .limit(1)
+      .single();
+    
+    if (result.error || !result.data) {
+      console.warn('⚠️ [getDatabaseConfig] Nenhuma configuração encontrada:', result.error);
+      return null;
+    }
+    
+    const config: DatabaseConfig = {
+      id: result.data.id,
+      name: result.data.name || 'Configuração Principal',
+      url: result.data.url,
+      anonKey: result.data.anon_key,
+      projectId: result.data.project_id
+    };
+    
+    console.log('✅ [getDatabaseConfig] Configuração encontrada:', config.name);
+    
+    // Atualizar cache e estado global
+    const cacheConfig: DatabaseConfig = {
+      url: config.url,
+      anonKey: config.anonKey,
+      projectId: config.projectId
+    };
+    setCachedConfig(cacheConfig);
+    currentConfig = cacheConfig;
+    configLoaded = true;
+    
+    return config;
+  } catch (error) {
+    console.error('❌ [getDatabaseConfig] Erro ao buscar configuração:', error);
+    return null;
+  }
+}
+
+/**
+ * Cria uma nova configuração de banco de dados
+ */
+export async function createDatabaseConfig(config: Omit<DatabaseConfig, 'id'>): Promise<DatabaseConfig | null> {
+  if (typeof window === 'undefined') return null;
+  
+  try {
+    const { supabase } = await import('@/integrations/supabase/client');
+    
+    console.log('🔄 [createDatabaseConfig] Criando nova configuração...');
+    
+    const { data, error } = await (supabase as any)
+      .from('database_configs')
+      .insert({
+        name: config.name || 'Configuração Principal',
+        url: config.url,
+        anon_key: config.anonKey,
+        project_id: config.projectId,
+        is_active: true
+      })
+      .select('id, name, url, anon_key, project_id')
+      .single();
+    
+    if (error) {
+      console.error('❌ [createDatabaseConfig] Erro ao criar configuração:', error);
+      throw error;
+    }
+    
+    const newConfig: DatabaseConfig = {
+      id: data.id,
+      name: data.name,
+      url: data.url,
+      anonKey: data.anon_key,
+      projectId: data.project_id
+    };
+    
+    console.log('✅ [createDatabaseConfig] Configuração criada:', newConfig.name);
+    
+    // Atualizar cache e estado global
+    const cacheConfig: DatabaseConfig = {
+      url: newConfig.url,
+      anonKey: newConfig.anonKey,
+      projectId: newConfig.projectId
+    };
+    setCachedConfig(cacheConfig);
+    currentConfig = cacheConfig;
+    configLoaded = true;
+    
+    return newConfig;
+  } catch (error) {
+    console.error('❌ [createDatabaseConfig] Erro ao criar configuração:', error);
+    return null;
+  }
+}
+
+/**
+ * Busca configuração ativa do banco de dados (para uso interno)
+ * SEMPRE busca do banco de dados (não usa cache) para garantir que seja GLOBAL
+ * Esta função é assíncrona e deve ser chamada quando o cliente Supabase já estiver disponível
+ */
+export async function fetchActiveDatabaseConfig(forceRefresh: boolean = false): Promise<DatabaseConfigSimple | null> {
+  if (typeof window === 'undefined') return null;
+  
+  try {
+    // Importação dinâmica para evitar dependência circular
+    const { supabase } = await import('@/integrations/supabase/client');
+    
+    console.log('🔍 [fetchActiveDatabaseConfig] Buscando configuração do banco de dados (GLOBAL)...');
+    
+    // Buscar primeira configuração (não importa qual, pois só há uma)
     const result = await (supabase as any)
       .from('database_configs')
       .select('url, anon_key, project_id')
-      .eq('is_active', true)
+      .limit(1)
       .single();
     
     if (result.error || !result.data) {
@@ -109,13 +226,13 @@ export async function fetchActiveDatabaseConfig(forceRefresh: boolean = false): 
       return DEFAULT_CONFIG;
     }
     
-    const config: DatabaseConfig = {
+    const config: DatabaseConfigSimple = {
       url: result.data.url,
       anonKey: result.data.anon_key,
       projectId: result.data.project_id
     };
     
-    console.log('✅ [fetchActiveDatabaseConfig] Configuração ativa encontrada:', config.url);
+    console.log('✅ [fetchActiveDatabaseConfig] Configuração encontrada:', config.url);
     
     // Atualizar cache e estado global (cache apenas para performance, mas sempre validar com banco)
     setCachedConfig(config);
@@ -143,7 +260,7 @@ export async function fetchActiveDatabaseConfig(forceRefresh: boolean = false): 
 /**
  * Atualiza a configuração ativa manualmente
  */
-export function updateDatabaseConfig(config: DatabaseConfig): void {
+export function updateDatabaseConfig(config: DatabaseConfigSimple): void {
   currentConfig = config;
   setCachedConfig(config);
 }

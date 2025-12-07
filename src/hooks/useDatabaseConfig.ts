@@ -1,10 +1,11 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { supabase, recreateSupabaseClient } from '@/integrations/supabase/client';
 import {
-  getAllDatabaseConfigs,
-  switchDatabase,
+  getDatabaseConfig,
   fetchActiveDatabaseConfig,
-  updateDatabaseConfig
+  updateDatabaseConfig,
+  createDatabaseConfig,
+  DEFAULT_CONFIG
 } from '@/lib/config';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/hooks/useAuth';
@@ -14,61 +15,66 @@ export interface DatabaseConfig {
   name: string;
   url: string;
   projectId: string;
-  anonKey: string; // Agora sempre presente (não opcional)
-  isActive: boolean;
+  anonKey: string;
 }
 
 interface UseDatabaseConfigReturn {
-  configs: DatabaseConfig[];
-  activeConfig: DatabaseConfig | null;
+  config: DatabaseConfig | null;
   loading: boolean;
   error: string | null;
-  refreshConfigs: () => Promise<void>;
-  switchToDatabase: (databaseName: string) => Promise<boolean>;
+  isTesting: boolean;
+  refreshConfig: () => Promise<void>;
   updateConfig: (id: string, updates: Partial<DatabaseConfig>) => Promise<boolean>;
   testConnection: (config: DatabaseConfig) => Promise<boolean>;
 }
 
 /**
- * Hook para gerenciar configurações de bancos de dados
- * Permite visualizar, alternar e editar configurações de banco
+ * Hook para gerenciar a configuração única de banco de dados
+ * Permite visualizar e editar a configuração do banco
  */
 export function useDatabaseConfig(): UseDatabaseConfigReturn {
-  const [configs, setConfigs] = useState<DatabaseConfig[]>([]);
-  const [activeConfig, setActiveConfig] = useState<DatabaseConfig | null>(null);
+  const [config, setConfig] = useState<DatabaseConfig | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [isTesting, setIsTesting] = useState(false);
   const { toast } = useToast();
   const { user } = useAuth();
   const hasLoadedRef = useRef(false);
 
   /**
-   * Busca todas as configurações de banco
+   * Busca a configuração única do banco
+   * Se não existir, cria uma configuração padrão
    */
-  const refreshConfigs = useCallback(async () => {
+  const refreshConfig = useCallback(async () => {
     try {
       setLoading(true);
       setError(null);
 
-      console.log('🔄 [useDatabaseConfig] Iniciando busca de configurações...');
-      const data = await getAllDatabaseConfigs();
+      console.log('🔄 [useDatabaseConfig] Buscando configuração única...');
+      let data = await getDatabaseConfig();
       
-      console.log('📊 [useDatabaseConfig] Dados recebidos:', data);
+      // Se não existe configuração, criar uma padrão
+      if (!data) {
+        console.log('⚠️ [useDatabaseConfig] Nenhuma configuração encontrada. Criando configuração padrão...');
+        data = await createDatabaseConfig({
+          name: 'Configuração Principal',
+          url: DEFAULT_CONFIG.url,
+          anonKey: DEFAULT_CONFIG.anonKey,
+          projectId: DEFAULT_CONFIG.projectId
+        });
+      }
       
-      if (data && data.length > 0) {
-        setConfigs(data);
-        const active = data.find(c => c.isActive);
-        setActiveConfig(active || null);
-        console.log('✅ [useDatabaseConfig] Configurações carregadas:', data.length, 'ativa:', active?.name);
+      if (data) {
+        setConfig(data);
+        console.log('✅ [useDatabaseConfig] Configuração carregada:', data.name);
       } else {
-        setConfigs([]);
-        setActiveConfig(null);
-        console.warn('⚠️ [useDatabaseConfig] Nenhuma configuração encontrada');
+        setConfig(null);
+        console.warn('⚠️ [useDatabaseConfig] Não foi possível carregar ou criar configuração');
       }
     } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : 'Erro ao buscar configurações';
+      const errorMessage = err instanceof Error ? err.message : 'Erro ao buscar configuração';
       setError(errorMessage);
-      console.error('❌ [useDatabaseConfig] Erro ao buscar configurações:', err);
+      console.error('❌ [useDatabaseConfig] Erro ao buscar configuração:', err);
       toast({
         title: 'Erro',
         description: errorMessage,
@@ -80,58 +86,7 @@ export function useDatabaseConfig(): UseDatabaseConfigReturn {
   }, [toast]);
 
   /**
-   * Alterna para uma configuração de banco específica
-   */
-  const switchToDatabase = useCallback(async (databaseName: string): Promise<boolean> => {
-    try {
-      setError(null);
-
-      const success = await switchDatabase(databaseName);
-      
-      if (success) {
-        console.log('✅ [switchToDatabase] Banco alterado no banco de dados (GLOBAL). Recriando cliente...');
-        
-        // Recriar cliente Supabase com nova configuração GLOBAL
-        await recreateSupabaseClient();
-        
-        // Buscar configuração ativa atualizada do banco (forçar refresh)
-        const activeConfigData = await fetchActiveDatabaseConfig(true);
-        if (activeConfigData) {
-          updateDatabaseConfig(activeConfigData);
-        }
-        
-        // Atualizar lista de configurações
-        await refreshConfigs();
-        
-        toast({
-          title: 'Sucesso',
-          description: `Banco de dados alterado para ${databaseName} (GLOBAL - afeta todos os usuários)`,
-        });
-        
-        // Recarregar página após um breve delay para aplicar mudanças GLOBAIS
-        setTimeout(() => {
-          window.location.reload();
-        }, 1000);
-        
-        return true;
-      } else {
-        throw new Error('Falha ao alternar banco de dados');
-      }
-    } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : 'Erro ao alternar banco de dados';
-      setError(errorMessage);
-      console.error('Erro ao alternar banco:', err);
-      toast({
-        title: 'Erro',
-        description: errorMessage,
-        variant: 'destructive',
-      });
-      return false;
-    }
-  }, [refreshConfigs, toast]);
-
-  /**
-   * Atualiza uma configuração de banco
+   * Atualiza a configuração do banco
    */
   const updateConfig = useCallback(async (
     id: string,
@@ -150,17 +105,12 @@ export function useDatabaseConfig(): UseDatabaseConfigReturn {
         updated_at: new Date().toISOString()
       };
 
-      if (updates.name !== undefined) {
-        updateData.name = updates.name;
-        console.log('📝 [updateConfig] Atualizando nome para:', updates.name);
-      }
+      if (updates.name !== undefined) updateData.name = updates.name;
       if (updates.url !== undefined) updateData.url = updates.url;
       if (updates.projectId !== undefined) updateData.project_id = updates.projectId;
       if (updates.anonKey !== undefined) updateData.anon_key = updates.anonKey;
-      if (updates.isActive !== undefined) updateData.is_active = updates.isActive;
 
-      console.log('💾 [updateConfig] Dados para atualizar:', updateData);
-      console.log('🔍 [updateConfig] Usando cliente Supabase com URL:', (supabase as any).supabaseUrl);
+      console.log('💾 [updateConfig] Atualizando configuração:', updateData);
 
       const { error: updateError } = await (supabase as any)
         .from('database_configs')
@@ -170,17 +120,13 @@ export function useDatabaseConfig(): UseDatabaseConfigReturn {
       if (updateError) {
         console.error('❌ [updateConfig] Erro ao atualizar:', updateError);
         
-        // Se o erro for de permissão ou RLS, pode ser que o cliente não esteja sincronizado
+        // Se o erro for de permissão ou RLS, tentar recriar cliente e tentar novamente
         if (updateError.message?.includes('permission') || updateError.message?.includes('row-level security')) {
           console.warn('⚠️ [updateConfig] Erro de permissão detectado. Tentando recriar cliente e tentar novamente...');
           
-          // Recriar cliente e tentar novamente
           await recreateSupabaseClient();
-          
-          // Aguardar um pouco para o cliente ser recriado
           await new Promise(resolve => setTimeout(resolve, 500));
           
-          // Tentar novamente
           const { error: retryError } = await (supabase as any)
             .from('database_configs')
             .update(updateData)
@@ -196,23 +142,22 @@ export function useDatabaseConfig(): UseDatabaseConfigReturn {
 
       console.log('✅ [updateConfig] Configuração atualizada com sucesso');
 
-      // Sempre atualizar a lista após edição para refletir mudanças (incluindo nome)
-      await refreshConfigs();
+      // Atualizar configuração local e recriar cliente Supabase
+      const updatedConfig = { ...config!, ...updates };
+      setConfig(updatedConfig);
 
-      // Se foi marcado como ativo, garantir que apenas este esteja ativo
-      if (updates.isActive === true) {
-        // Buscar configuração atualizada após refresh
-        const updatedConfigs = await getAllDatabaseConfigs();
-        const configToSwitch = updatedConfigs?.find(c => c.id === id);
-        const newName = updates.name || configToSwitch?.name || '';
-        if (newName) {
-          await switchToDatabase(newName);
-        }
+      // Recriar cliente Supabase com nova configuração
+      await recreateSupabaseClient();
+
+      // Buscar configuração atualizada do banco
+      const activeConfigData = await fetchActiveDatabaseConfig(true);
+      if (activeConfigData) {
+        updateDatabaseConfig(activeConfigData);
       }
 
       toast({
         title: 'Sucesso',
-        description: 'Configuração atualizada com sucesso',
+        description: 'Configuração salva com sucesso. A página será recarregada.',
       });
 
       return true;
@@ -227,17 +172,17 @@ export function useDatabaseConfig(): UseDatabaseConfigReturn {
       });
       return false;
     }
-  }, [switchToDatabase, refreshConfigs, toast]);
+  }, [config, toast]);
 
   /**
    * Testa conexão com uma configuração de banco
    */
-  const testConnection = useCallback(async (config: DatabaseConfig): Promise<boolean> => {
+  const testConnection = useCallback(async (testConfig: DatabaseConfig): Promise<boolean> => {
     try {
+      setIsTesting(true);
       setError(null);
 
-      // A anonKey já vem na lista de configurações, não precisa buscar
-      const anonKey = config.anonKey;
+      const anonKey = testConfig.anonKey;
 
       if (!anonKey) {
         throw new Error('Chave anon não encontrada para esta configuração');
@@ -245,7 +190,7 @@ export function useDatabaseConfig(): UseDatabaseConfigReturn {
 
       // Criar cliente temporário para testar
       const { createClient } = await import('@supabase/supabase-js');
-      const testClient = createClient(config.url, anonKey, {
+      const testClient = createClient(testConfig.url, anonKey, {
         auth: {
           persistSession: false,
         },
@@ -277,21 +222,23 @@ export function useDatabaseConfig(): UseDatabaseConfigReturn {
         variant: 'destructive',
       });
       return false;
+    } finally {
+      setIsTesting(false);
     }
   }, [toast]);
 
-  // Carregar configurações ao montar o hook e quando o usuário estiver disponível
+  // Carregar configuração ao montar o hook e quando o usuário estiver disponível
   useEffect(() => {
     // Não carregar se já carregou ou se não há usuário ainda
     if (hasLoadedRef.current) return;
     
     // Aguardar usuário estar disponível (importante para RLS)
     if (!user) {
-      console.log('⏳ [useDatabaseConfig] Aguardando usuário para carregar configurações...');
+      console.log('⏳ [useDatabaseConfig] Aguardando usuário para carregar configuração...');
       return;
     }
     
-    // Inicializar cliente Supabase e carregar configurações
+    // Inicializar cliente Supabase e carregar configuração
     const initializeAndLoad = async () => {
       try {
         // Garantir que o cliente está inicializado com a configuração correta
@@ -303,7 +250,7 @@ export function useDatabaseConfig(): UseDatabaseConfigReturn {
         
         console.log('🔄 [useDatabaseConfig] Iniciando carregamento inicial...');
         hasLoadedRef.current = true;
-        await refreshConfigs();
+        await refreshConfig();
       } catch (err) {
         console.error('❌ [useDatabaseConfig] Erro no carregamento inicial:', err);
       }
@@ -311,17 +258,15 @@ export function useDatabaseConfig(): UseDatabaseConfigReturn {
     
     initializeAndLoad();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user]); // Depender apenas do usuário, refreshConfigs é estável
+  }, [user]); // Depender apenas do usuário, refreshConfig é estável
 
   return {
-    configs,
-    activeConfig,
+    config,
     loading,
     error,
-    refreshConfigs,
-    switchToDatabase,
+    isTesting,
+    refreshConfig,
     updateConfig,
     testConnection,
   };
 }
-
