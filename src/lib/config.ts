@@ -215,47 +215,101 @@ export async function switchDatabase(databaseName: string): Promise<boolean> {
 export async function getAllDatabaseConfigs(): Promise<Array<{ id: string; name: string; url: string; projectId: string; isActive: boolean }> | null> {
   if (typeof window === 'undefined') return null;
   
-  try {
-    const { supabase } = await import('@/integrations/supabase/client');
+  // Função de retry
+  const retryQuery = async (attempt: number = 0): Promise<any> => {
+    const maxAttempts = 3;
+    const baseDelay = 1000;
     
-    console.log('🔍 [getAllDatabaseConfigs] Buscando configurações de banco...');
-    
-    const result = await (supabase as any)
-      .from('database_configs')
-      .select('id, name, url, project_id, is_active')
-      .order('name');
-    
-    console.log('📦 [getAllDatabaseConfigs] Resultado:', {
-      hasError: !!result.error,
-      error: result.error,
-      dataLength: result.data?.length || 0,
-      data: result.data
-    });
-    
-    if (result.error) {
-      console.error('❌ [getAllDatabaseConfigs] Erro ao buscar configurações:', result.error);
-      throw new Error(result.error.message || 'Erro ao buscar configurações');
+    try {
+      const { supabase } = await import('@/integrations/supabase/client');
+      
+      // Verificar se há sessão ativa
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
+        console.warn('⚠️ [getAllDatabaseConfigs] Sem sessão ativa, tentando buscar mesmo assim...');
+      }
+      
+      console.log(`🔍 [getAllDatabaseConfigs] Tentativa ${attempt + 1}/${maxAttempts} - Buscando configurações...`);
+      
+      // Criar um timeout para evitar queries que ficam penduradas
+      const queryPromise = (supabase as any)
+        .from('database_configs')
+        .select('id, name, url, project_id, is_active')
+        .order('name');
+      
+      const timeoutPromise = new Promise((_, reject) => 
+        setTimeout(() => reject(new Error('Query timeout após 10 segundos')), 10000)
+      );
+      
+      const result = await Promise.race([queryPromise, timeoutPromise]) as any;
+      
+      console.log('📦 [getAllDatabaseConfigs] Resultado:', {
+        hasError: !!result.error,
+        error: result.error,
+        dataLength: result.data?.length || 0,
+        data: result.data
+      });
+      
+      if (result.error) {
+        // Erros específicos que não devem fazer retry
+        const noRetryErrors = [
+          'permission denied',
+          'new row violates row-level security policy',
+          'relation "database_configs" does not exist'
+        ];
+        
+        const shouldRetry = !noRetryErrors.some(err => 
+          result.error.message?.toLowerCase().includes(err)
+        );
+        
+        if (!shouldRetry || attempt >= maxAttempts - 1) {
+          console.error('❌ [getAllDatabaseConfigs] Erro ao buscar configurações:', result.error);
+          throw new Error(result.error.message || 'Erro ao buscar configurações');
+        }
+        
+        // Fazer retry com backoff exponencial
+        const delay = baseDelay * Math.pow(2, attempt);
+        console.warn(`⚠️ [getAllDatabaseConfigs] Erro na tentativa ${attempt + 1}, tentando novamente em ${delay}ms...`);
+        await new Promise(resolve => setTimeout(resolve, delay));
+        return retryQuery(attempt + 1);
+      }
+      
+      if (!result.data || result.data.length === 0) {
+        console.warn('⚠️ [getAllDatabaseConfigs] Nenhuma configuração encontrada');
+        return [];
+      }
+      
+      const mapped = result.data.map((config: any) => ({
+        id: config.id,
+        name: config.name,
+        url: config.url,
+        projectId: config.project_id,
+        isActive: config.is_active
+      }));
+      
+      console.log('✅ [getAllDatabaseConfigs] Configurações mapeadas:', mapped);
+      return mapped;
+    } catch (error: any) {
+      // Se for timeout ou erro de conexão, tentar novamente
+      const isRetryableError = 
+        error?.message?.includes('timeout') ||
+        error?.message?.includes('Failed to fetch') ||
+        error?.message?.includes('NetworkError') ||
+        error?.code === 'ECONNREFUSED';
+      
+      if (isRetryableError && attempt < maxAttempts - 1) {
+        const delay = baseDelay * Math.pow(2, attempt);
+        console.warn(`⚠️ [getAllDatabaseConfigs] Erro de conexão na tentativa ${attempt + 1}, tentando novamente em ${delay}ms...`);
+        await new Promise(resolve => setTimeout(resolve, delay));
+        return retryQuery(attempt + 1);
+      }
+      
+      console.error('❌ [getAllDatabaseConfigs] Erro capturado:', error);
+      throw error;
     }
-    
-    if (!result.data || result.data.length === 0) {
-      console.warn('⚠️ [getAllDatabaseConfigs] Nenhuma configuração encontrada');
-      return [];
-    }
-    
-    const mapped = result.data.map((config: any) => ({
-      id: config.id,
-      name: config.name,
-      url: config.url,
-      projectId: config.project_id,
-      isActive: config.is_active
-    }));
-    
-    console.log('✅ [getAllDatabaseConfigs] Configurações mapeadas:', mapped);
-    return mapped;
-  } catch (error) {
-    console.error('❌ [getAllDatabaseConfigs] Erro capturado:', error);
-    throw error;
-  }
+  };
+  
+  return await retryQuery();
 }
 
 /**

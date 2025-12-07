@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { supabase, recreateSupabaseClient } from '@/integrations/supabase/client';
 import {
   getAllDatabaseConfigs,
@@ -7,6 +7,7 @@ import {
   updateDatabaseConfig
 } from '@/lib/config';
 import { useToast } from '@/hooks/use-toast';
+import { useAuth } from '@/hooks/useAuth';
 
 export interface DatabaseConfig {
   id: string;
@@ -38,6 +39,8 @@ export function useDatabaseConfig(): UseDatabaseConfigReturn {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const { toast } = useToast();
+  const { user } = useAuth();
+  const hasLoadedRef = useRef(false);
 
   /**
    * Busca todas as configurações de banco
@@ -253,10 +256,29 @@ export function useDatabaseConfig(): UseDatabaseConfigReturn {
     }
   }, [toast]);
 
-  // Carregar configurações ao montar o hook
+  // Carregar configurações ao montar o hook e quando o usuário estiver disponível
   useEffect(() => {
-    refreshConfigs();
-  }, [refreshConfigs]);
+    // Não carregar se já carregou ou se não há usuário ainda
+    if (hasLoadedRef.current) return;
+    
+    // Aguardar usuário estar disponível (importante para RLS)
+    if (!user) {
+      console.log('⏳ [useDatabaseConfig] Aguardando usuário para carregar configurações...');
+      return;
+    }
+    
+    // Aguardar um pouco para garantir que o cliente Supabase esteja pronto
+    const timer = setTimeout(() => {
+      console.log('🔄 [useDatabaseConfig] Iniciando carregamento inicial...');
+      hasLoadedRef.current = true;
+      refreshConfigs().catch(err => {
+        console.error('❌ [useDatabaseConfig] Erro no carregamento inicial:', err);
+      });
+    }, 300);
+    
+    return () => clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user]); // Depender apenas do usuário, refreshConfigs é estável
 
   return {
     configs,

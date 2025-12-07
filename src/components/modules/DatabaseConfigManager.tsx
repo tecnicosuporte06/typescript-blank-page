@@ -113,10 +113,10 @@ export function DatabaseConfigManager() {
 
   if (!isMaster) {
     return (
-      <Card>
+      <Card className="bg-white dark:bg-[#1f1f1f] border-[#d4d4d4] dark:border-gray-700">
         <CardHeader>
-          <CardTitle>Acesso Negado</CardTitle>
-          <CardDescription>
+          <CardTitle className="text-gray-800 dark:text-gray-200">Acesso Negado</CardTitle>
+          <CardDescription className="text-gray-600 dark:text-gray-400">
             Apenas usuários master podem gerenciar configurações de banco de dados.
           </CardDescription>
         </CardHeader>
@@ -125,28 +125,48 @@ export function DatabaseConfigManager() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 text-gray-800 dark:text-gray-200">
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-2xl font-bold">Configurações de Banco de Dados</h2>
-          <p className="text-muted-foreground">
+          <h2 className="text-2xl font-bold text-gray-800 dark:text-gray-200">Configurações de Banco de Dados</h2>
+          <p className="text-muted-foreground dark:text-gray-400">
             Gerencie as configurações dos bancos Supabase disponíveis no sistema
           </p>
         </div>
-        <Button onClick={refreshConfigs} variant="outline" size="sm">
+        <Button 
+          onClick={refreshConfigs} 
+          variant="outline" 
+          size="sm" 
+          className="border-[#d4d4d4] dark:border-gray-700 bg-white dark:bg-[#2d2d2d] text-gray-800 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-[#3d3d3d]"
+        >
           <RefreshCw className="h-4 w-4 mr-2" />
           Atualizar
         </Button>
       </div>
 
       {error && (
-        <Card className="border-destructive">
+        <Card className="border-destructive bg-white dark:bg-[#1f1f1f] border-[#d4d4d4] dark:border-gray-700">
           <CardContent className="pt-6">
-            <p className="text-destructive font-semibold mb-2">Erro ao carregar configurações:</p>
-            <p className="text-destructive text-sm">{error}</p>
-            <p className="text-muted-foreground text-xs mt-2">
+            <p className="text-destructive dark:text-red-400 font-semibold mb-2">Erro ao carregar configurações:</p>
+            <p className="text-destructive dark:text-red-400 text-sm mb-4">{error}</p>
+            <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  console.log('🔄 [DatabaseConfigManager] Tentando recarregar após erro...');
+                  refreshConfigs();
+                }}
+                disabled={loading}
+                className="border-[#d4d4d4] dark:border-gray-700 bg-white dark:bg-[#2d2d2d] text-gray-800 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-[#3d3d3d]"
+              >
+                <RefreshCw className={`h-4 w-4 mr-2 ${loading ? 'animate-spin' : ''}`} />
+                Tentar Novamente
+              </Button>
+              <p className="text-muted-foreground dark:text-gray-400 text-xs">
               Verifique o console do navegador (F12) para mais detalhes.
             </p>
+            </div>
           </CardContent>
         </Card>
       )}
@@ -154,13 +174,13 @@ export function DatabaseConfigManager() {
       {loading ? (
         <div className="space-y-4">
           {[1, 2].map((i) => (
-            <Card key={i}>
+            <Card key={i} className="bg-white dark:bg-[#1f1f1f] border-[#d4d4d4] dark:border-gray-700">
               <CardHeader>
-                <Skeleton className="h-6 w-48" />
-                <Skeleton className="h-4 w-64 mt-2" />
+                <Skeleton className="h-6 w-48 bg-gray-200 dark:bg-gray-700" />
+                <Skeleton className="h-4 w-64 mt-2 bg-gray-200 dark:bg-gray-700" />
               </CardHeader>
               <CardContent>
-                <Skeleton className="h-20 w-full" />
+                <Skeleton className="h-20 w-full bg-gray-200 dark:bg-gray-700" />
               </CardContent>
             </Card>
           ))}
@@ -170,29 +190,29 @@ export function DatabaseConfigManager() {
           {configs.map((config) => (
             <Card 
               key={config.id} 
-              className={config.isActive ? 'border-primary border-2' : ''}
+              className={`bg-white dark:bg-[#1f1f1f] border-[#d4d4d4] dark:border-gray-700 ${config.isActive ? 'border-primary dark:border-primary border-2' : ''}`}
             >
               <CardHeader>
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
-                    <Database className="h-5 w-5" />
-                    <CardTitle>{config.name}</CardTitle>
+                    <Database className="h-5 w-5 text-gray-700 dark:text-gray-300" />
+                    <CardTitle className="text-gray-800 dark:text-gray-200">{config.name}</CardTitle>
                   </div>
                   {config.isActive && (
-                    <Badge variant="default" className="bg-green-500">
+                    <Badge variant="default" className="bg-green-500 dark:bg-green-600 text-white">
                       <Power className="h-3 w-3 mr-1" />
                       Ativo
                     </Badge>
                   )}
                 </div>
-                <CardDescription>
+                <CardDescription className="text-gray-600 dark:text-gray-400">
                   {config.projectId}
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
                 <div>
-                  <Label className="text-xs text-muted-foreground">URL</Label>
-                  <p className="text-sm font-mono break-all">{config.url}</p>
+                  <Label className="text-xs text-muted-foreground dark:text-gray-400">URL</Label>
+                  <p className="text-sm font-mono break-all text-gray-700 dark:text-gray-300">{config.url}</p>
                 </div>
 
                 <div className="flex gap-2">
@@ -201,7 +221,7 @@ export function DatabaseConfigManager() {
                       onClick={() => setSwitchingTo(config.name)}
                       variant="default"
                       size="sm"
-                      className="flex-1"
+                      className="flex-1 bg-primary dark:bg-primary text-white hover:bg-primary/90"
                     >
                       <Power className="h-4 w-4 mr-2" />
                       Usar Este Banco
@@ -211,6 +231,7 @@ export function DatabaseConfigManager() {
                     onClick={() => handleEdit(config)}
                     variant="outline"
                     size="sm"
+                    className="border-[#d4d4d4] dark:border-gray-700 bg-white dark:bg-[#2d2d2d] text-gray-800 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-[#3d3d3d]"
                   >
                     <Edit2 className="h-4 w-4 mr-2" />
                     Editar
@@ -220,6 +241,7 @@ export function DatabaseConfigManager() {
                     variant="outline"
                     size="sm"
                     disabled={isTesting && testingConfig?.id === config.id}
+                    className="border-[#d4d4d4] dark:border-gray-700 bg-white dark:bg-[#2d2d2d] text-gray-800 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-[#3d3d3d] disabled:opacity-50"
                   >
                     {isTesting && testingConfig?.id === config.id ? (
                       <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
@@ -236,9 +258,9 @@ export function DatabaseConfigManager() {
       )}
 
       {configs.length === 0 && !loading && (
-        <Card>
+        <Card className="bg-white dark:bg-[#1f1f1f] border-[#d4d4d4] dark:border-gray-700">
           <CardContent className="pt-6">
-            <p className="text-center text-muted-foreground">
+            <p className="text-center text-muted-foreground dark:text-gray-400">
               Nenhuma configuração de banco encontrada. Execute as migrations para criar as configurações iniciais.
             </p>
           </CardContent>
@@ -247,43 +269,46 @@ export function DatabaseConfigManager() {
 
       {/* Dialog de Edição */}
       <Dialog open={!!editingConfig} onOpenChange={(open) => !open && setEditingConfig(null)}>
-        <DialogContent>
+        <DialogContent className="bg-white dark:bg-[#1f1f1f] border-[#d4d4d4] dark:border-gray-700">
           <DialogHeader>
-            <DialogTitle>Editar Configuração</DialogTitle>
-            <DialogDescription>
+            <DialogTitle className="text-gray-800 dark:text-gray-200">Editar Configuração</DialogTitle>
+            <DialogDescription className="text-gray-600 dark:text-gray-400">
               Atualize as informações da configuração de banco de dados.
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-4">
             <div>
-              <Label htmlFor="edit-name">Nome</Label>
+              <Label htmlFor="edit-name" className="text-gray-700 dark:text-gray-300">Nome</Label>
               <Input
                 id="edit-name"
                 value={editForm.name || ''}
                 onChange={(e) => setEditForm({ ...editForm, name: e.target.value })}
                 placeholder="Base 1"
+                className="bg-white dark:bg-[#2d2d2d] border-[#d4d4d4] dark:border-gray-700 text-gray-800 dark:text-gray-200"
               />
             </div>
             <div>
-              <Label htmlFor="edit-url">URL</Label>
+              <Label htmlFor="edit-url" className="text-gray-700 dark:text-gray-300">URL</Label>
               <Input
                 id="edit-url"
                 value={editForm.url || ''}
                 onChange={(e) => setEditForm({ ...editForm, url: e.target.value })}
                 placeholder="https://projeto.supabase.co"
+                className="bg-white dark:bg-[#2d2d2d] border-[#d4d4d4] dark:border-gray-700 text-gray-800 dark:text-gray-200"
               />
             </div>
             <div>
-              <Label htmlFor="edit-project-id">Project ID</Label>
+              <Label htmlFor="edit-project-id" className="text-gray-700 dark:text-gray-300">Project ID</Label>
               <Input
                 id="edit-project-id"
                 value={editForm.projectId || ''}
                 onChange={(e) => setEditForm({ ...editForm, projectId: e.target.value })}
                 placeholder="projeto-id"
+                className="bg-white dark:bg-[#2d2d2d] border-[#d4d4d4] dark:border-gray-700 text-gray-800 dark:text-gray-200"
               />
             </div>
             <div>
-              <Label htmlFor="edit-anon-key">Anon Key</Label>
+              <Label htmlFor="edit-anon-key" className="text-gray-700 dark:text-gray-300">Anon Key</Label>
               <div className="relative">
                 <Input
                   id="edit-anon-key"
@@ -291,32 +316,36 @@ export function DatabaseConfigManager() {
                   value={editForm.anonKey || ''}
                   onChange={(e) => setEditForm({ ...editForm, anonKey: e.target.value })}
                   placeholder="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
-                  className="pr-10"
+                  className="pr-10 bg-white dark:bg-[#2d2d2d] border-[#d4d4d4] dark:border-gray-700 text-gray-800 dark:text-gray-200"
                 />
                 <Button
                   type="button"
                   variant="ghost"
                   size="sm"
-                  className="absolute right-0 top-0 h-full px-3 py-2 hover:bg-transparent"
+                  className="absolute right-0 top-0 h-full px-3 py-2 hover:bg-transparent dark:hover:bg-transparent"
                   onClick={() => setShowAnonKey(!showAnonKey)}
                 >
                   {showAnonKey ? (
-                    <EyeOff className="h-4 w-4 text-gray-500" />
+                    <EyeOff className="h-4 w-4 text-gray-500 dark:text-gray-400" />
                   ) : (
-                    <Eye className="h-4 w-4 text-gray-500" />
+                    <Eye className="h-4 w-4 text-gray-500 dark:text-gray-400" />
                   )}
                 </Button>
               </div>
-              <p className="text-xs text-muted-foreground mt-1">
+              <p className="text-xs text-muted-foreground dark:text-gray-400 mt-1">
                 Chave pública (anon key) do Supabase. Necessária para conexão.
               </p>
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setEditingConfig(null)}>
+            <Button 
+              variant="outline" 
+              onClick={() => setEditingConfig(null)}
+              className="border-[#d4d4d4] dark:border-gray-700 bg-white dark:bg-[#2d2d2d] text-gray-800 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-[#3d3d3d]"
+            >
               Cancelar
             </Button>
-            <Button onClick={handleSaveEdit}>
+            <Button onClick={handleSaveEdit} className="bg-primary dark:bg-primary text-white hover:bg-primary/90">
               Salvar
             </Button>
           </DialogFooter>
@@ -325,23 +354,28 @@ export function DatabaseConfigManager() {
 
       {/* Alert Dialog de Confirmação de Troca */}
       <AlertDialog open={!!switchingTo} onOpenChange={(open) => !open && setSwitchingTo(null)}>
-        <AlertDialogContent>
+        <AlertDialogContent className="bg-white dark:bg-[#1f1f1f] border-[#d4d4d4] dark:border-gray-700">
           <AlertDialogHeader>
-            <AlertDialogTitle>Confirmar Troca de Banco</AlertDialogTitle>
-            <AlertDialogDescription>
-              Você está prestes a alternar para o banco <strong>{switchingTo}</strong>.
+            <AlertDialogTitle className="text-gray-800 dark:text-gray-200">Confirmar Troca de Banco</AlertDialogTitle>
+            <AlertDialogDescription className="text-gray-600 dark:text-gray-400">
+              Você está prestes a alternar para o banco <strong className="text-gray-800 dark:text-gray-200">{switchingTo}</strong>.
               Esta ação irá:
-              <ul className="list-disc list-inside mt-2 space-y-1">
+              <ul className="list-disc list-inside mt-2 space-y-1 text-gray-600 dark:text-gray-400">
                 <li>Desativar o banco atual</li>
                 <li>Ativar o banco selecionado</li>
                 <li>Recarregar a página para aplicar as mudanças</li>
               </ul>
-              <strong className="block mt-2">Tem certeza que deseja continuar?</strong>
+              <strong className="block mt-2 text-gray-800 dark:text-gray-200">Tem certeza que deseja continuar?</strong>
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Cancelar</AlertDialogCancel>
-            <AlertDialogAction onClick={handleConfirmSwitch}>
+            <AlertDialogCancel className="border-[#d4d4d4] dark:border-gray-700 bg-white dark:bg-[#2d2d2d] text-gray-800 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-[#3d3d3d]">
+              Cancelar
+            </AlertDialogCancel>
+            <AlertDialogAction 
+              onClick={handleConfirmSwitch}
+              className="bg-primary dark:bg-primary text-white hover:bg-primary/90"
+            >
               Confirmar Troca
             </AlertDialogAction>
           </AlertDialogFooter>
