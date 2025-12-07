@@ -212,7 +212,7 @@ export async function switchDatabase(databaseName: string): Promise<boolean> {
 /**
  * Obtém todas as configurações de banco disponíveis
  */
-export async function getAllDatabaseConfigs(): Promise<Array<{ id: string; name: string; url: string; projectId: string; isActive: boolean }> | null> {
+export async function getAllDatabaseConfigs(): Promise<Array<{ id: string; name: string; url: string; projectId: string; anonKey: string; isActive: boolean }> | null> {
   if (typeof window === 'undefined') return null;
   
   // Função de retry
@@ -234,7 +234,7 @@ export async function getAllDatabaseConfigs(): Promise<Array<{ id: string; name:
       // Criar um timeout para evitar queries que ficam penduradas
       const queryPromise = (supabase as any)
         .from('database_configs')
-        .select('id, name, url, project_id, is_active')
+        .select('id, name, url, project_id, anon_key, is_active')
         .order('name');
       
       const timeoutPromise = new Promise((_, reject) => 
@@ -284,6 +284,7 @@ export async function getAllDatabaseConfigs(): Promise<Array<{ id: string; name:
         name: config.name,
         url: config.url,
         projectId: config.project_id,
+        anonKey: config.anon_key || '', // Incluir anon_key para evitar query adicional
         isActive: config.is_active
       }));
       

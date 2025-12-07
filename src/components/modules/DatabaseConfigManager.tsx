@@ -50,31 +50,15 @@ export function DatabaseConfigManager() {
   const [showAnonKey, setShowAnonKey] = useState(false);
 
   // Abrir modal de edição
-  const handleEdit = async (config: DatabaseConfig) => {
+  const handleEdit = (config: DatabaseConfig) => {
     setEditingConfig(config);
     
-    // Buscar anon_key do banco se não estiver disponível
-    let anonKey = config.anonKey;
-    if (!anonKey) {
-      try {
-        const { supabase } = await import('@/integrations/supabase/client');
-        const { data: configData } = await (supabase as any)
-          .from('database_configs')
-          .select('anon_key')
-          .eq('id', config.id)
-          .single();
-        anonKey = configData?.anon_key || '';
-      } catch (error) {
-        console.warn('Erro ao buscar anon_key:', error);
-        anonKey = '';
-      }
-    }
-    
+    // A anonKey já vem na lista de configurações, não precisa buscar
     setEditForm({
       name: config.name,
       url: config.url,
       projectId: config.projectId,
-      anonKey: anonKey,
+      anonKey: config.anonKey || '', // Usar anonKey que já vem nos dados
     });
     setShowAnonKey(false); // Resetar visibilidade ao abrir
   };

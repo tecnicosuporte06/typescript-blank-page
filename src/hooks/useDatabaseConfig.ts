@@ -14,7 +14,7 @@ export interface DatabaseConfig {
   name: string;
   url: string;
   projectId: string;
-  anonKey?: string;
+  anonKey: string; // Agora sempre presente (não opcional)
   isActive: boolean;
 }
 
@@ -204,16 +204,8 @@ export function useDatabaseConfig(): UseDatabaseConfigReturn {
     try {
       setError(null);
 
-      // Buscar anonKey do banco se não estiver disponível
-      let anonKey = config.anonKey;
-      if (!anonKey) {
-        const { data: configData } = await (supabase as any)
-          .from('database_configs')
-          .select('anon_key')
-          .eq('id', config.id)
-          .single();
-        anonKey = configData?.anon_key;
-      }
+      // A anonKey já vem na lista de configurações, não precisa buscar
+      const anonKey = config.anonKey;
 
       if (!anonKey) {
         throw new Error('Chave anon não encontrada para esta configuração');
