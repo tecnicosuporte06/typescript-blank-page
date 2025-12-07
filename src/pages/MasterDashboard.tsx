@@ -69,6 +69,8 @@ export default function MasterDashboard() {
   const [workspaceToToggle, setWorkspaceToToggle] = useState<Workspace | null>(null);
   const [toggleConfirmationText, setToggleConfirmationText] = useState('');
   const [userSearchQuery, setUserSearchQuery] = useState('');
+  const [importModalOpen, setImportModalOpen] = useState(false);
+  const [workspaceForImport, setWorkspaceForImport] = useState<Workspace | null>(null);
   const usuariosRef = useRef<AdministracaoUsuariosRef>(null);
   const filasRef = useRef<AutomacoesFilasMasterRef>(null);
   const agentesRef = useRef<DSAgenteMasterRef>(null);
