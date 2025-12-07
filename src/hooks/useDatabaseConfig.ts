@@ -90,7 +90,7 @@ export function useDatabaseConfig(): UseDatabaseConfigReturn {
       
       if (success) {
         // Recriar cliente Supabase com nova configuração
-        recreateSupabaseClient();
+        await recreateSupabaseClient();
         
         // Atualizar lista de configurações
         await refreshConfigs();
@@ -138,6 +138,12 @@ export function useDatabaseConfig(): UseDatabaseConfigReturn {
     try {
       setError(null);
 
+      // Verificar se há sessão ativa antes de tentar atualizar
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
+        console.warn('⚠️ [updateConfig] Sem sessão ativa, tentando continuar mesmo assim...');
+      }
+
       const updateData: any = {
         updated_at: new Date().toISOString()
       };
@@ -152,6 +158,7 @@ export function useDatabaseConfig(): UseDatabaseConfigReturn {
       if (updates.isActive !== undefined) updateData.is_active = updates.isActive;
 
       console.log('💾 [updateConfig] Dados para atualizar:', updateData);
+      console.log('🔍 [updateConfig] Usando cliente Supabase com URL:', (supabase as any).supabaseUrl);
 
       const { error: updateError } = await (supabase as any)
         .from('database_configs')
@@ -160,7 +167,29 @@ export function useDatabaseConfig(): UseDatabaseConfigReturn {
 
       if (updateError) {
         console.error('❌ [updateConfig] Erro ao atualizar:', updateError);
-        throw updateError;
+        
+        // Se o erro for de permissão ou RLS, pode ser que o cliente não esteja sincronizado
+        if (updateError.message?.includes('permission') || updateError.message?.includes('row-level security')) {
+          console.warn('⚠️ [updateConfig] Erro de permissão detectado. Tentando recriar cliente e tentar novamente...');
+          
+          // Recriar cliente e tentar novamente
+          await recreateSupabaseClient();
+          
+          // Aguardar um pouco para o cliente ser recriado
+          await new Promise(resolve => setTimeout(resolve, 500));
+          
+          // Tentar novamente
+          const { error: retryError } = await (supabase as any)
+            .from('database_configs')
+            .update(updateData)
+            .eq('id', id);
+          
+          if (retryError) {
+            throw retryError;
+          }
+        } else {
+          throw updateError;
+        }
       }
 
       console.log('✅ [updateConfig] Configuração atualizada com sucesso');
@@ -170,8 +199,9 @@ export function useDatabaseConfig(): UseDatabaseConfigReturn {
 
       // Se foi marcado como ativo, garantir que apenas este esteja ativo
       if (updates.isActive === true) {
-        // Se o nome mudou, usar o novo nome para alternar
-        const configToSwitch = configs.find(c => c.id === id);
+        // Buscar configuração atualizada após refresh
+        const updatedConfigs = await getAllDatabaseConfigs();
+        const configToSwitch = updatedConfigs?.find(c => c.id === id);
         const newName = updates.name || configToSwitch?.name || '';
         if (newName) {
           await switchToDatabase(newName);
@@ -187,7 +217,7 @@ export function useDatabaseConfig(): UseDatabaseConfigReturn {
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Erro ao atualizar configuração';
       setError(errorMessage);
-      console.error('Erro ao atualizar configuração:', err);
+      console.error('❌ [updateConfig] Erro ao atualizar configuração:', err);
       toast({
         title: 'Erro',
         description: errorMessage,
@@ -259,16 +289,25 @@ export function useDatabaseConfig(): UseDatabaseConfigReturn {
       return;
     }
     
-    // Aguardar um pouco para garantir que o cliente Supabase esteja pronto
-    const timer = setTimeout(() => {
-      console.log('🔄 [useDatabaseConfig] Iniciando carregamento inicial...');
-      hasLoadedRef.current = true;
-      refreshConfigs().catch(err => {
+    // Inicializar cliente Supabase e carregar configurações
+    const initializeAndLoad = async () => {
+      try {
+        // Garantir que o cliente está inicializado com a configuração correta
+        const { initializeSupabaseClient } = await import('@/integrations/supabase/client');
+        await initializeSupabaseClient();
+        
+        // Aguardar um pouco para garantir que o cliente Supabase esteja pronto
+        await new Promise(resolve => setTimeout(resolve, 300));
+        
+        console.log('🔄 [useDatabaseConfig] Iniciando carregamento inicial...');
+        hasLoadedRef.current = true;
+        await refreshConfigs();
+      } catch (err) {
         console.error('❌ [useDatabaseConfig] Erro no carregamento inicial:', err);
-      });
-    }, 300);
+      }
+    };
     
-    return () => clearTimeout(timer);
+    initializeAndLoad();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user]); // Depender apenas do usuário, refreshConfigs é estável
 
