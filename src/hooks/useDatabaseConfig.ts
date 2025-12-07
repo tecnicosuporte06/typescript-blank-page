@@ -89,24 +89,26 @@ export function useDatabaseConfig(): UseDatabaseConfigReturn {
       const success = await switchDatabase(databaseName);
       
       if (success) {
-        // Recriar cliente Supabase com nova configuração
+        console.log('✅ [switchToDatabase] Banco alterado no banco de dados (GLOBAL). Recriando cliente...');
+        
+        // Recriar cliente Supabase com nova configuração GLOBAL
         await recreateSupabaseClient();
         
-        // Atualizar lista de configurações
-        await refreshConfigs();
-        
-        // Buscar configuração ativa atualizada
-        const activeConfigData = await fetchActiveDatabaseConfig();
+        // Buscar configuração ativa atualizada do banco (forçar refresh)
+        const activeConfigData = await fetchActiveDatabaseConfig(true);
         if (activeConfigData) {
           updateDatabaseConfig(activeConfigData);
         }
         
+        // Atualizar lista de configurações
+        await refreshConfigs();
+        
         toast({
           title: 'Sucesso',
-          description: `Banco de dados alterado para ${databaseName}`,
+          description: `Banco de dados alterado para ${databaseName} (GLOBAL - afeta todos os usuários)`,
         });
         
-        // Recarregar página após um breve delay para aplicar mudanças
+        // Recarregar página após um breve delay para aplicar mudanças GLOBAIS
         setTimeout(() => {
           window.location.reload();
         }, 1000);

@@ -6,23 +6,16 @@
  * com cache em localStorage e fallback para valores hardcoded.
  */
 
-// Chave para armazenar configuração em cache
+// Chave para armazenar configuração em cache (apenas para performance, sempre validar com banco)
 const CACHE_KEY = 'tezeus_database_config';
 const CACHE_TIMESTAMP_KEY = 'tezeus_database_config_timestamp';
-const CACHE_TTL = 5 * 60 * 1000; // 5 minutos
+const CACHE_TTL = 30 * 1000; // 30 segundos apenas (cache muito curto para garantir sincronização)
 
-// Valores padrão (fallback) - Base 1 (2.1 tester)
+// Valores padrão (fallback apenas em caso de erro crítico) - Base 1 (2.1 tester)
 const DEFAULT_CONFIG = {
   url: "https://zdrgvdlfhrbynpkvtyhx.supabase.co",
   anonKey: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inpkcmd2ZGxmaHJieW5wa3Z0eWh4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjQ3MDU2OTEsImV4cCI6MjA4MDI4MTY5MX0.MzCe3coYsKtl5knDRE2zrmTSomu58nMVVUokj5QMToM",
   projectId: "zdrgvdlfhrbynpkvtyhx"
-};
-
-// Configuração alternativa - Base 2 (2.0 com clientes)
-const ALTERNATIVE_CONFIG = {
-  url: "https://zldeaozqxjwvzgrblyrh.supabase.co",
-  anonKey: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InpsZGVhb3pxeGp3dnpncmJseXJoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTMzNDQyNDYsImV4cCI6MjA2ODkyMDI0Nn0.4KmrswdBfTyHLqrUt9NdCBUjDPKCeO2NN7Vvqepr4xM",
-  projectId: "zldeaozqxjwvzgrblyrh"
 };
 
 // Tipo para configuração de banco
@@ -32,11 +25,14 @@ interface DatabaseConfig {
   projectId: string;
 }
 
-// Estado global da configuração (inicializado com cache ou padrão)
-let currentConfig: DatabaseConfig = getCachedConfig() || DEFAULT_CONFIG;
+// Estado global da configuração (inicializado com padrão, será atualizado do banco)
+let currentConfig: DatabaseConfig = DEFAULT_CONFIG;
+let configLoaded = false; // Flag para indicar se já carregou do banco
 
 /**
  * Obtém configuração do cache (localStorage)
+ * NOTA: Cache é apenas para performance. SEMPRE validar com banco de dados.
+ * O cache não deve ser usado como fonte de verdade, apenas para evitar queries desnecessárias.
  */
 function getCachedConfig(): DatabaseConfig | null {
   if (typeof window === 'undefined') return null;
@@ -47,12 +43,16 @@ function getCachedConfig(): DatabaseConfig | null {
     
     if (cached && timestamp) {
       const age = Date.now() - parseInt(timestamp, 10);
+      // Cache muito curto (30 segundos) para garantir sincronização GLOBAL
       if (age < CACHE_TTL) {
+        console.log('📦 [getCachedConfig] Usando cache (idade:', Math.round(age/1000), 's)');
         return JSON.parse(cached);
+      } else {
+        console.log('⏰ [getCachedConfig] Cache expirado, será buscado do banco');
       }
     }
   } catch (error) {
-    console.warn('Erro ao ler cache de configuração:', error);
+    console.warn('⚠️ [getCachedConfig] Erro ao ler cache de configuração:', error);
   }
   
   return null;
@@ -74,14 +74,17 @@ function setCachedConfig(config: DatabaseConfig): void {
 
 /**
  * Busca configuração ativa do banco de dados
+ * SEMPRE busca do banco de dados (não usa cache) para garantir que seja GLOBAL
  * Esta função é assíncrona e deve ser chamada quando o cliente Supabase já estiver disponível
  */
-export async function fetchActiveDatabaseConfig(): Promise<DatabaseConfig | null> {
+export async function fetchActiveDatabaseConfig(forceRefresh: boolean = false): Promise<DatabaseConfig | null> {
   if (typeof window === 'undefined') return null;
   
   try {
     // Importação dinâmica para evitar dependência circular
     const { supabase } = await import('@/integrations/supabase/client');
+    
+    console.log('🔍 [fetchActiveDatabaseConfig] Buscando configuração ativa do banco de dados (GLOBAL)...');
     
     const result = await (supabase as any)
       .from('database_configs')
@@ -90,8 +93,20 @@ export async function fetchActiveDatabaseConfig(): Promise<DatabaseConfig | null
       .single();
     
     if (result.error || !result.data) {
-      console.warn('Erro ao buscar configuração do banco:', result.error);
-      return null;
+      console.warn('⚠️ [fetchActiveDatabaseConfig] Erro ao buscar configuração do banco:', result.error);
+      
+      // Se não conseguir buscar do banco, tentar usar cache como último recurso
+      const cached = getCachedConfig();
+      if (cached) {
+        console.warn('⚠️ [fetchActiveDatabaseConfig] Usando cache como fallback');
+        currentConfig = cached;
+        return cached;
+      }
+      
+      // Se não tem cache, usar padrão
+      console.warn('⚠️ [fetchActiveDatabaseConfig] Usando configuração padrão como último recurso');
+      currentConfig = DEFAULT_CONFIG;
+      return DEFAULT_CONFIG;
     }
     
     const config: DatabaseConfig = {
@@ -100,14 +115,28 @@ export async function fetchActiveDatabaseConfig(): Promise<DatabaseConfig | null
       projectId: result.data.project_id
     };
     
-    // Atualizar cache e estado global
+    console.log('✅ [fetchActiveDatabaseConfig] Configuração ativa encontrada:', config.url);
+    
+    // Atualizar cache e estado global (cache apenas para performance, mas sempre validar com banco)
     setCachedConfig(config);
     currentConfig = config;
+    configLoaded = true;
     
     return config;
   } catch (error) {
-    console.warn('Erro ao buscar configuração do banco:', error);
-    return null;
+    console.error('❌ [fetchActiveDatabaseConfig] Erro ao buscar configuração do banco:', error);
+    
+    // Em caso de erro, tentar cache
+    const cached = getCachedConfig();
+    if (cached) {
+      console.warn('⚠️ [fetchActiveDatabaseConfig] Usando cache devido a erro');
+      currentConfig = cached;
+      return cached;
+    }
+    
+    // Último recurso: usar padrão
+    currentConfig = DEFAULT_CONFIG;
+    return DEFAULT_CONFIG;
   }
 }
 
@@ -121,7 +150,7 @@ export function updateDatabaseConfig(config: DatabaseConfig): void {
 
 /**
  * Obtém a URL do Supabase
- * Retorna a configuração atual (cache ou padrão)
+ * Se ainda não carregou do banco, retorna padrão (será atualizado quando buscar do banco)
  */
 export function getSupabaseUrl(): string {
   return currentConfig.url;
@@ -129,7 +158,7 @@ export function getSupabaseUrl(): string {
 
 /**
  * Obtém a chave pública (anon key) do Supabase
- * Retorna a configuração atual (cache ou padrão)
+ * Se ainda não carregou do banco, retorna padrão (será atualizado quando buscar do banco)
  */
 export function getSupabaseAnonKey(): string {
   return currentConfig.anonKey;
@@ -137,10 +166,17 @@ export function getSupabaseAnonKey(): string {
 
 /**
  * Obtém o Project ID do Supabase
- * Retorna a configuração atual (cache ou padrão)
+ * Se ainda não carregou do banco, retorna padrão (será atualizado quando buscar do banco)
  */
 export function getSupabaseProjectId(): string {
   return currentConfig.projectId;
+}
+
+/**
+ * Verifica se a configuração já foi carregada do banco
+ */
+export function isConfigLoaded(): boolean {
+  return configLoaded;
 }
 
 /**

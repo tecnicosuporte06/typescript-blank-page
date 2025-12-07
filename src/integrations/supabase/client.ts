@@ -31,36 +31,38 @@ function createSupabaseClient(): SupabaseClient<Database> {
   });
 }
 
-// Cliente Supabase principal (inicializado na importação)
+// Cliente Supabase principal (inicializado na importação com padrão)
+// Será atualizado com a configuração GLOBAL do banco quando initializeSupabaseClient() for chamado
 let supabaseInstance: SupabaseClient<Database> = createSupabaseClient();
 
 /**
  * Inicializa o cliente Supabase com a configuração correta
- * Busca a configuração ativa do banco e recria o cliente se necessário
- * Deve ser chamada após o carregamento da página
+ * SEMPRE busca a configuração ativa do banco (GLOBAL) e recria o cliente
+ * Deve ser chamada após o carregamento da página e autenticação
  */
 export async function initializeSupabaseClient(): Promise<void> {
   try {
-    console.log('🔄 [initializeSupabaseClient] Inicializando cliente Supabase...');
+    console.log('🔄 [initializeSupabaseClient] Inicializando cliente Supabase com configuração GLOBAL...');
     
     // Importar dinamicamente para evitar dependência circular
     const { fetchActiveDatabaseConfig } = await import('@/lib/config');
     
-    // Buscar configuração ativa do banco
-    const activeConfig = await fetchActiveDatabaseConfig();
+    // SEMPRE buscar configuração ativa do banco (forçar refresh para garantir sincronização)
+    const activeConfig = await fetchActiveDatabaseConfig(true);
     
     if (activeConfig) {
-      console.log('✅ [initializeSupabaseClient] Configuração ativa encontrada:', activeConfig.url);
+      console.log('✅ [initializeSupabaseClient] Configuração GLOBAL encontrada:', activeConfig.url);
       
       // Verificar se a configuração atual do cliente é diferente
       const currentUrl = getSupabaseUrl();
       const currentKey = getSupabaseAnonKey();
       
       if (currentUrl !== activeConfig.url || currentKey !== activeConfig.anonKey) {
-        console.log('🔄 [initializeSupabaseClient] Configuração diferente detectada, recriando cliente...');
+        console.log('🔄 [initializeSupabaseClient] Configuração diferente detectada, recriando cliente com configuração GLOBAL...');
         await recreateSupabaseClient();
+        console.log('✅ [initializeSupabaseClient] Cliente recriado com configuração GLOBAL');
       } else {
-        console.log('✅ [initializeSupabaseClient] Cliente já está com a configuração correta');
+        console.log('✅ [initializeSupabaseClient] Cliente já está com a configuração GLOBAL correta');
       }
     } else {
       console.warn('⚠️ [initializeSupabaseClient] Nenhuma configuração ativa encontrada, usando padrão');

@@ -184,6 +184,16 @@ export const useAuthState = () => {
       // Set user role based on profile
       setUserRole(mapProfileToRole(user.profile));
 
+      // Inicializar cliente Supabase com configuração GLOBAL após login
+      // Isso garante que todos os usuários usem a mesma configuração de banco
+      try {
+        const { initializeSupabaseClient } = await import('@/integrations/supabase/client');
+        await initializeSupabaseClient();
+        console.log('✅ [login] Cliente Supabase inicializado com configuração GLOBAL');
+      } catch (initError) {
+        console.warn('⚠️ [login] Erro ao inicializar cliente Supabase (continuando mesmo assim):', initError);
+      }
+
       return {};
     } catch (error) {
       console.error('Login error:', error);
