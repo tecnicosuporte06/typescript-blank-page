@@ -1,7 +1,9 @@
 import React, { forwardRef, useImperativeHandle, useRef, useEffect, useState } from "react";
 import { cn } from "@/lib/utils";
+import { parseActionText, getActionDisplayInfo } from "@/lib/action-parser";
+import { X } from "lucide-react";
 
-export interface ActionBadge {
+export interface ActionBadgeData {
   id: string;
   type: string;
   label: string;
@@ -23,136 +25,7 @@ export interface PromptEditorRef {
 
 type EditorNode = 
   | { type: 'text', content: string }
-  | { type: 'action', content: string, id: string, actionType: string, label: string, className: string };
-
-interface ActionDetails {
-  type: string;
-  label: string;
-  className: string;
-  values: Record<string, string>;
-}
-
-function parseActionDetails(actionText: string): ActionDetails | null {
-  console.log('🔍 Tentando fazer parse de:', actionText);
-  
-  // Adicionar Tag
-  const tagMatch = actionText.match(/\[ADD_ACTION\]:\s*\[tag_name:\s*(.*?)\]\s*,\s*\[tag_id:\s*(.*?)\]\s*,\s*\[contact_id:\s*CONTACT_ID\]/);
-  if (tagMatch) {
-    console.log('✅ Match encontrado: adicionar tag');
-    return {
-      type: 'adicionar_tag',
-      label: `Adicionar Tag: ${tagMatch[1]}`,
-      className: 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300',
-      values: { tag_name: tagMatch[1], tag_id: tagMatch[2] }
-    };
-  }
-
-  // Transferir Coluna CRM
-  const colunaMatch = actionText.match(/\[ADD_ACTION\]:\s*\[pipeline_id:\s*(.*?)\]\s*,\s*\[coluna_id:\s*(.*?)\]\s*,\s*\[card_id:\s*ID_DO_CARD\]\s*,\s*\[contact_id:\s*CONTACT_ID\]/);
-  if (colunaMatch) {
-    console.log('✅ Match encontrado: transferir coluna crm');
-    return {
-      type: 'transferir_coluna_crm',
-      label: 'Transferir Coluna CRM',
-      className: 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-300',
-      values: { pipeline_id: colunaMatch[1], coluna_id: colunaMatch[2] }
-    };
-  }
-
-  // Transferir Conexão
-  const conexaoMatch = actionText.match(/\[ADD_ACTION\]:\s*\[conection_name:\s*(.*?)\]\s*,\s*\[conection_id:\s*(.*?)\]\s*,\s*\[contact_id:\s*CONTACT_ID\](?:\s*,\s*\[instabce_phone:\s*INSTANCE_PHONE\])?/);
-  if (conexaoMatch) {
-    console.log('✅ Match encontrado: transferir conexão');
-    return {
-      type: 'transferir_conexao',
-      label: `Transferir Conexão: ${conexaoMatch[1]}`,
-      className: 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300',
-      values: { conection_name: conexaoMatch[1], conection_id: conexaoMatch[2] }
-    };
-  }
-
-  // Transferir Fila
-  const filaMatch = actionText.match(/\[ADD_ACTION\]:\s*\[fila_id:\s*(.*?)\]\s*,\s*\[contact_id:\s*CONTACT_ID\]\s*,\s*\[conversation_id:\s*CONVERSATION_ID\](?:\s*,\s*\[instabce_phone:\s*INSTANCE_PHONE\])?/);
-  if (filaMatch) {
-    console.log('✅ Match encontrado: transferir fila');
-    return {
-      type: 'transferir_fila',
-      label: 'Transferir Fila',
-      className: 'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-300',
-      values: { fila_id: filaMatch[1] }
-    };
-  }
-
-  // Criar Card
-  const criarCardMatch = actionText.match(/\[ADD_ACTION\]:\s*\[pipeline_id:\s*(.*?)\]\s*,\s*\[coluna_id:\s*(.*?)\]\s*,\s*\[contact_id:\s*CONTACT_ID\]\s*,\s*\[conversation_id:\s*CONVERSATION_ID\](?:\s*,\s*\[instabce_phone:\s*INSTANCE_PHONE\])?/);
-  if (criarCardMatch) {
-    console.log('✅ Match encontrado: criar card');
-    return {
-      type: 'criar_card',
-      label: 'Criar Card no CRM',
-      className: 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300',
-      values: { pipeline_id: criarCardMatch[1], coluna_id: criarCardMatch[2] }
-    };
-  }
-
-  // Salvar Informações Adicionais
-  const salvarInfoMatch = actionText.match(/\[ADD_ACTION\]:\s*\[workspace_id:\s*WORKSPACE_ID\]\s*,\s*\[contact_id:\s*CONTACT_ID\]\s*,\s*\[field_name:\s*(.*?)\]\s*,\s*\[field_value:\s*(.*?)\]/);
-  if (salvarInfoMatch) {
-    console.log('✅ Match encontrado: salvar informações adicionais');
-    return {
-      type: 'salvar_informacoes',
-      label: `Salvar campo ${salvarInfoMatch[1]}`,
-      className: 'bg-pink-100 text-pink-700 dark:bg-pink-900/30 dark:text-pink-300',
-      values: { field_name: salvarInfoMatch[1], field_value: salvarInfoMatch[2] }
-    };
-  }
-
-  console.log('❌ Nenhum match encontrado');
-  return null;
-}
-
-function parseTextToNodes(text: string): EditorNode[] {
-  const nodes: EditorNode[] = [];
-  // Regex simplificada: captura [ADD_ACTION]: seguido de tudo até nova linha ou fim
-  const actionRegex = /\[ADD_ACTION\]:[^\n]*/g;
-  let lastIndex = 0;
-  let match;
-  
-  while ((match = actionRegex.exec(text)) !== null) {
-    // Texto antes da ação
-    if (match.index > lastIndex) {
-      const textContent = text.substring(lastIndex, match.index);
-      if (textContent) {
-        nodes.push({ type: 'text', content: textContent });
-      }
-    }
-    
-    // A ação em si - sempre renderiza com destaque amarelo
-    const actionText = match[0].trim();
-    if (actionText) {
-      nodes.push({ 
-        type: 'action', 
-        content: actionText,
-        id: `action-${match.index}-${Math.random().toString(36).substr(2, 9)}`,
-        actionType: 'action',
-        label: actionText,
-        className: 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/50 dark:text-yellow-200 border border-yellow-300 dark:border-yellow-700'
-      });
-    }
-    
-    lastIndex = match.index + match[0].length;
-  }
-  
-  // Texto restante após a última ação
-  if (lastIndex < text.length) {
-    const textContent = text.substring(lastIndex);
-    if (textContent) {
-      nodes.push({ type: 'text', content: textContent });
-    }
-  }
-  
-  return nodes;
-}
+  | { type: 'action', content: string, id: string, position: number };
 
 export const RichPromptEditor = forwardRef<PromptEditorRef, RichPromptEditorProps>(({
   value,
@@ -203,38 +76,91 @@ export const RichPromptEditor = forwardRef<PromptEditorRef, RichPromptEditorProp
     // Limpa o conteúdo atual
     containerRef.current.innerHTML = "";
     
-    const nodes = parseTextToNodes(text);
+    // Parsear ações do texto
+    const actions = parseActionText(text);
+    let lastIndex = 0;
     
-    nodes.forEach(node => {
-      if (node.type === 'text') {
-        const textNode = document.createTextNode(node.content);
-        containerRef.current!.appendChild(textNode);
-      } else {
+    actions.forEach((action, idx) => {
+      // Texto antes da ação
+      if (action.position > lastIndex) {
+        const textContent = text.substring(lastIndex, action.position);
+        if (textContent) {
+          const textNode = document.createTextNode(textContent);
+          containerRef.current!.appendChild(textNode);
+        }
+      }
+      
+      // Obter informações da ação
+      const actionInfo = getActionDisplayInfo(action.match);
+      
+      if (actionInfo) {
+        // Criar badge usando DOM
         const badge = document.createElement('span');
         badge.setAttribute('contentEditable', 'false');
-        badge.setAttribute('data-action', node.content);
-        badge.setAttribute('data-action-id', node.id);
-        badge.className = `inline-flex items-center gap-1 px-2 py-1 rounded-md text-xs font-mono m-0.5 ${node.className}`;
+        badge.setAttribute('data-action', action.match);
+        badge.setAttribute('data-action-id', `action-${action.position}-${idx}`);
+        badge.className = cn(
+          "inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium border",
+          "select-none transition-all duration-200",
+          actionInfo.color
+        );
         badge.style.userSelect = 'none';
+        badge.style.margin = '0 2px';
         
-        const textSpan = document.createElement('span');
-        textSpan.textContent = node.label;
-        badge.appendChild(textSpan);
+        // Ícone (criar SVG baseado no tipo)
+        const iconContainer = document.createElement('span');
+        iconContainer.className = 'flex-shrink-0';
+        iconContainer.innerHTML = getIconSVG(actionInfo.type);
+        badge.appendChild(iconContainer);
         
+        // Label
+        const labelSpan = document.createElement('span');
+        labelSpan.className = 'truncate max-w-[200px]';
+        labelSpan.textContent = actionInfo.label;
+        badge.appendChild(labelSpan);
+        
+        // Botão remover
         const removeBtn = document.createElement('button');
-        removeBtn.className = 'hover:bg-black/10 dark:hover:bg-white/10 rounded-full p-0.5 transition-colors';
+        removeBtn.type = 'button';
+        removeBtn.className = 'ml-0.5 rounded-full p-0.5 transition-colors hover:bg-black/10 dark:hover:bg-white/10 opacity-70 hover:opacity-100';
+        removeBtn.setAttribute('aria-label', 'Remover ação');
         removeBtn.tabIndex = -1;
         removeBtn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>';
         removeBtn.onclick = (e) => {
           e.preventDefault();
           e.stopPropagation();
-          handleRemoveAction(node.id);
+          handleRemoveAction(`action-${action.position}-${idx}`);
         };
         badge.appendChild(removeBtn);
         
         containerRef.current!.appendChild(badge);
       }
+      
+      lastIndex = action.position + action.match.length;
     });
+    
+    // Texto restante
+    if (lastIndex < text.length) {
+      const textContent = text.substring(lastIndex);
+      if (textContent) {
+        const textNode = document.createTextNode(textContent);
+        containerRef.current!.appendChild(textNode);
+      }
+    }
+  };
+
+  // Função auxiliar para obter SVG do ícone baseado no tipo
+  const getIconSVG = (type: string): string => {
+    const icons: Record<string, string> = {
+      'adicionar_tag': '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2H2v10l9.29 9.29a1 1 0 0 0 1.41 0l10-10a1 1 0 0 0 0-1.41L12 2Z"/><circle cx="7" cy="7" r="1.5"/></svg>',
+      'transferir_fila': '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 3h5v5"/><path d="M8 3H3v5"/><path d="M12 22v-8.3a4 4 0 0 0-1.172-2.828L4 3"/><path d="m12 22 7-7-7-7v4.3a4 4 0 0 1 1.172 2.829L19.5 15"/></svg>',
+      'transferir_conexao': '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 18h1.4c1.3 0 2.5-.6 3.3-1.7l6.1-8.6c.7-1.1 2-1.7 3.3-1.7H22"/><path d="m18 2 4 4-4 4"/><path d="m2 6 4-4 4 4"/><path d="m22 18-4 4-4-4"/></svg>',
+      'criar_card': '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20h16"/><path d="M6 16h12"/><path d="M8 12h8"/><rect width="20" height="4" x="2" y="4" rx="1"/></svg>',
+      'transferir_coluna_crm': '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>',
+      'salvar_informacoes': '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/><path d="M3 12c0 1.66 4 3 9 3s9-1.34 9-3"/></svg>',
+      'enviar_funil': '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/></svg>',
+    };
+    return icons[type] || icons['salvar_informacoes'];
   };
 
   // Renderiza o conteúdo inicial e quando value muda externamente
@@ -292,35 +218,62 @@ export const RichPromptEditor = forwardRef<PromptEditorRef, RichPromptEditorProp
 
     // Se for uma ação, insere como badge
     if (text.startsWith('[ADD_ACTION]:')) {
-      const actionDetails = parseActionDetails(text);
-      const badge = document.createElement('span');
+      const actionInfo = getActionDisplayInfo(text);
       const actionId = `action-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-      badge.setAttribute('contentEditable', 'false');
-      badge.setAttribute('data-action', text);
-      badge.setAttribute('data-action-id', actionId);
-      badge.className = `inline-flex items-center gap-1 px-2 py-1 rounded-xl text-sm m-1 ${actionDetails?.className || 'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300'}`;
-      badge.style.userSelect = 'none';
       
-      const textSpan = document.createElement('span');
-      textSpan.textContent = actionDetails?.label || text;
-      badge.appendChild(textSpan);
-      
-      const removeBtn = document.createElement('button');
-      removeBtn.className = 'hover:bg-black/10 dark:hover:bg-white/10 rounded-full p-0.5 transition-colors';
-      removeBtn.tabIndex = -1;
-      removeBtn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>';
-      removeBtn.onclick = (e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        handleRemoveAction(actionId);
-      };
-      badge.appendChild(removeBtn);
-      
-      range.insertNode(badge);
-      range.setStartAfter(badge);
-      range.collapse(true);
-      selection.removeAllRanges();
-      selection.addRange(range);
+      if (actionInfo) {
+        const badge = document.createElement('span');
+        badge.setAttribute('contentEditable', 'false');
+        badge.setAttribute('data-action', text);
+        badge.setAttribute('data-action-id', actionId);
+        badge.className = cn(
+          "inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium border",
+          "select-none transition-all duration-200",
+          actionInfo.color
+        );
+        badge.style.userSelect = 'none';
+        badge.style.margin = '0 2px';
+        
+        // Ícone
+        const iconContainer = document.createElement('span');
+        iconContainer.className = 'flex-shrink-0';
+        iconContainer.innerHTML = getIconSVG(actionInfo.type);
+        badge.appendChild(iconContainer);
+        
+        // Label
+        const labelSpan = document.createElement('span');
+        labelSpan.className = 'truncate max-w-[200px]';
+        labelSpan.textContent = actionInfo.label;
+        badge.appendChild(labelSpan);
+        
+        // Botão remover
+        const removeBtn = document.createElement('button');
+        removeBtn.type = 'button';
+        removeBtn.className = 'ml-0.5 rounded-full p-0.5 transition-colors hover:bg-black/10 dark:hover:bg-white/10 opacity-70 hover:opacity-100';
+        removeBtn.setAttribute('aria-label', 'Remover ação');
+        removeBtn.tabIndex = -1;
+        removeBtn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>';
+        removeBtn.onclick = (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          handleRemoveAction(actionId);
+        };
+        badge.appendChild(removeBtn);
+        
+        range.insertNode(badge);
+        range.setStartAfter(badge);
+        range.collapse(true);
+        selection.removeAllRanges();
+        selection.addRange(range);
+      } else {
+        // Fallback: inserir como texto se não conseguir parsear
+        const textNode = document.createTextNode(text);
+        range.insertNode(textNode);
+        range.setStartAfter(textNode);
+        range.collapse(true);
+        selection.removeAllRanges();
+        selection.addRange(range);
+      }
     } else {
       // Insere texto normal
       const textNode = document.createTextNode(text);

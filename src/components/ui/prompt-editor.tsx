@@ -1,8 +1,9 @@
-import React, { forwardRef, useImperativeHandle, useRef } from "react";
+import React, { forwardRef, useImperativeHandle, useRef, useMemo } from "react";
 import { cn } from "@/lib/utils";
-import { X } from "lucide-react";
+import { parseActionText } from "@/lib/action-parser";
+import { ActionBadge } from "./action-badge";
 
-export interface ActionBadge {
+export interface ActionBadgeData {
   id: string;
   type: string;
   label: string;
@@ -20,68 +21,6 @@ interface PromptEditorProps {
 export interface PromptEditorRef {
   getCursorPosition: () => number;
   insertText: (text: string) => void;
-}
-
-// Função para extrair tags e texto puro do conteúdo
-function parseContent(content: string): { tags: Array<{ match: string; display: string; position: number; data?: Record<string, string> }> } {
-  const tags: Array<{ match: string; display: string; position: number; data?: Record<string, string> }> = [];
-  
-  // Regex que captura [ADD_ACTION]: seguido de todos os parâmetros [key: value]
-  const actionPattern = /\[ADD_ACTION\]:\s*(?:\[[^\]]+\](?:,\s*)?)+/g;
-  const simpleActionPattern = /\[Adicionar Tag:\s*[^\]]+\]|\[Transferir Fila:\s*[^\]]+\]|\[Transferir Conexão:\s*[^\]]+\]|\[Criar Card CRM:\s*[^\]]+\]|\[Transferir para Coluna:\s*[^\]]+\]/g;
-  
-  let match;
-  
-  // Processar padrões complexos [ADD_ACTION]: [tag name: ...], [tag id: ...], [contact id: ...];
-  while ((match = actionPattern.exec(content)) !== null) {
-    const fullMatch = match[0];
-    const startPos = match.index ?? 0;
-    
-    // Extrair todos os pares [chave: valor] da ação
-    const paramMatches = fullMatch.match(/\[[^\]]+\]/g);
-    const data: Record<string, string> = {};
-    
-    if (paramMatches) {
-      paramMatches.forEach(param => {
-        // Remover [ e ] para obter "chave: valor"
-        const paramText = param.replace(/[\[\]]/g, '');
-        const colonIndex = paramText.indexOf(':');
-        
-        if (colonIndex > 0) {
-          const key = paramText.substring(0, colonIndex).trim();
-          const value = paramText.substring(colonIndex + 1).trim();
-          data[key] = value;
-        }
-      });
-    }
-    
-    // Extrair primeira propriedade para display
-    const firstPropMatch = fullMatch.match(/\[([^\]]+)\]/);
-    const displayText = firstPropMatch ? firstPropMatch[1].substring(0, 30) : 'Action';
-    
-    tags.push({
-      match: fullMatch,
-      display: displayText,
-      position: startPos,
-      data: Object.keys(data).length > 0 ? data : undefined
-    });
-  }
-  
-  // Processar padrões simples
-  while ((match = simpleActionPattern.exec(content)) !== null) {
-    const fullMatch = match[0];
-    
-    tags.push({
-      match: fullMatch,
-      display: fullMatch,
-      position: match.index ?? 0
-    });
-  }
-  
-  // Ordenar por posição
-  tags.sort((a, b) => a.position - b.position);
-  
-  return { tags };
 }
 
 export const PromptEditor = forwardRef<PromptEditorRef, PromptEditorProps>(({
@@ -129,9 +68,33 @@ export const PromptEditor = forwardRef<PromptEditorRef, PromptEditorProps>(({
     insertText,
   }));
 
-  // Parsear conteúdo para extrair tags
-  const parsed = parseContent(value);
-  const hasTags = parsed.tags.length > 0;
+  // Parsear ações do texto
+  const actions = useMemo(() => parseActionText(value), [value]);
+
+  // Função para remover ação do texto
+  const handleRemoveAction = (actionMatch: string, actionPosition: number) => {
+    if (!textareaRef.current) return;
+
+    const textarea = textareaRef.current;
+    const beforeAction = value.substring(0, actionPosition);
+    const afterAction = value.substring(actionPosition + actionMatch.length);
+    
+    // Remover quebras de linha extras que possam ter sido adicionadas
+    const newValue = (beforeAction + afterAction)
+      .replace(/\n\n\n+/g, '\n\n') // Máximo 2 quebras de linha consecutivas
+      .trim();
+    
+    onChange(newValue);
+    
+    // Restaurar foco e posição do cursor
+    setTimeout(() => {
+      if (textareaRef.current) {
+        const newPosition = Math.min(actionPosition, newValue.length);
+        textareaRef.current.setSelectionRange(newPosition, newPosition);
+        textareaRef.current.focus();
+      }
+    }, 0);
+  };
 
   return (
     <div className="relative">
@@ -149,71 +112,67 @@ export const PromptEditor = forwardRef<PromptEditorRef, PromptEditorProps>(({
           "relative z-0",
           className
         )}
+        style={{ color: actions.length > 0 ? 'transparent' : undefined }}
       />
       
-      {/* Overlay com tags renderizadas - apenas visual, não afeta o textarea */}
-      {hasTags && (
+      {/* Overlay com badges renderizadas - apenas visual, não afeta o textarea */}
+      {actions.length > 0 && (
         <div 
-          className="absolute inset-0 p-4 pointer-events-none z-10 font-mono text-sm whitespace-pre-wrap break-words overflow-hidden"
+          className="absolute inset-0 p-4 pointer-events-none z-10 text-sm whitespace-pre-wrap break-words overflow-hidden"
           style={{ 
-            color: 'transparent',
-            WebkitTextFillColor: 'transparent',
-            textShadow: '0 0 0 rgba(0,0,0,0)'
+            fontFamily: 'ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace',
           }}
         >
           {(() => {
             let lastIndex = 0;
             const elements: React.ReactNode[] = [];
             
-            parsed.tags.forEach((tag, idx) => {
-              // Adicionar texto antes da tag
-              if (tag.position > lastIndex) {
-                const beforeText = value.substring(lastIndex, tag.position);
+            actions.forEach((action, idx) => {
+              // Adicionar texto antes da ação
+              if (action.position > lastIndex) {
+                const beforeText = value.substring(lastIndex, action.position);
                 if (beforeText) {
-                  elements.push(<span key={`text-${idx}`}>{beforeText}</span>);
+                  elements.push(
+                    <span 
+                      key={`text-${idx}`}
+                      className="text-gray-900 dark:text-gray-100"
+                    >
+                      {beforeText}
+                    </span>
+                  );
                 }
               }
               
-              // Adicionar badge apenas para [ADD_ACTION]
-              // O resto do texto da ação fica normal
-              const actionKeyword = "[ADD_ACTION]";
-              const restOfAction = tag.match.substring(actionKeyword.length);
-              
+              // Adicionar badge visual
               elements.push(
-                <React.Fragment key={`action-${idx}`}>
-                  <span
-                    style={{
-                      display: 'inline-flex',
-                      alignItems: 'center',
-                      gap: '4px',
-                      backgroundColor: 'rgba(147, 51, 234, 0.1)',
-                      border: '1px solid rgba(147, 51, 234, 0.3)',
-                      borderRadius: '12px',
-                      padding: '2px 8px',
-                      margin: '0 2px',
-                      fontSize: '11px',
-                      fontWeight: '500',
-                      lineHeight: '1.5',
-                      verticalAlign: 'baseline',
-                    }}
-                  >
-                    <span style={{ color: 'rgb(147, 51, 234)' }}>
-                      {actionKeyword}
-                    </span>
-                    <X className="w-3 h-3" style={{ cursor: 'pointer', flexShrink: 0 }} />
-                  </span>
-                  <span>{restOfAction}</span>
-                </React.Fragment>
+                <span
+                  key={`action-${idx}`}
+                  className="pointer-events-auto"
+                  style={{ display: 'inline-block', margin: '0 2px' }}
+                >
+                  <ActionBadge
+                    actionText={action.match}
+                    onRemove={() => handleRemoveAction(action.match, action.position)}
+                    showRemoveButton={true}
+                  />
+                </span>
               );
               
-              lastIndex = tag.position + tag.match.length;
+              lastIndex = action.position + action.match.length;
             });
             
             // Adicionar texto restante
             if (lastIndex < value.length) {
               const remainingText = value.substring(lastIndex);
               if (remainingText) {
-                elements.push(<span key="text-end">{remainingText}</span>);
+                elements.push(
+                  <span 
+                    key="text-end"
+                    className="text-gray-900 dark:text-gray-100"
+                  >
+                    {remainingText}
+                  </span>
+                );
               }
             }
             

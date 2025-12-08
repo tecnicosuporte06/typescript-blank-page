@@ -9,20 +9,20 @@ const buttonVariants = cva(
   {
     variants: {
       variant: {
-        default: "bg-primary text-primary-foreground hover:bg-primary/90",
+        default: "bg-primary text-primary-foreground hover:bg-primary/90 dark:bg-primary dark:hover:bg-primary/90",
         destructive:
-          "bg-destructive text-destructive-foreground hover:bg-destructive/90",
+          "bg-destructive text-destructive-foreground hover:bg-destructive/90 dark:bg-destructive dark:hover:bg-destructive/90",
         outline:
-          "border border-input bg-background hover:bg-accent hover:text-accent-foreground",
+          "border border-input bg-background hover:bg-accent hover:text-accent-foreground dark:border-gray-700 dark:bg-[#161616] dark:text-gray-200 dark:hover:bg-gray-800 dark:hover:text-gray-100",
         secondary:
-          "bg-secondary text-secondary-foreground hover:bg-secondary/80",
-        ghost: "hover:bg-accent hover:text-accent-foreground",
-        link: "text-primary underline-offset-4 hover:underline",
+          "bg-secondary text-secondary-foreground hover:bg-secondary/80 dark:bg-secondary dark:hover:bg-secondary/80",
+        ghost: "hover:bg-accent hover:text-accent-foreground dark:hover:bg-gray-800 dark:hover:text-gray-100",
+        link: "text-primary underline-offset-4 hover:underline dark:text-primary",
         // Tezeus custom variants
-        yellow: "bg-primary text-primary-foreground hover:bg-primary/90 font-medium",
-        outlineYellow: "bg-background text-primary border border-primary hover:bg-accent hover:text-primary focus-visible:ring-primary/40",
-        success: "bg-success text-success-foreground hover:bg-success/90",
-        warning: "bg-warning text-warning-foreground hover:bg-warning/90",
+        yellow: "bg-primary text-primary-foreground hover:bg-primary/90 font-medium dark:bg-primary dark:hover:bg-primary/90",
+        outlineYellow: "bg-background text-primary border border-primary hover:bg-accent hover:text-primary focus-visible:ring-primary/40 dark:bg-[#161616] dark:text-primary dark:border-primary dark:hover:bg-gray-800",
+        success: "bg-success text-success-foreground hover:bg-success/90 dark:bg-success dark:hover:bg-success/90",
+        warning: "bg-warning text-warning-foreground hover:bg-warning/90 dark:bg-warning dark:hover:bg-warning/90",
       },
       size: {
         default: "h-10 px-4 py-2",

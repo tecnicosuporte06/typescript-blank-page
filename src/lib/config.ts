@@ -4,9 +4,9 @@
  */
 
 // Base 1 (2.1 tester)
-//export const SUPABASE_URL = "https://zdrgvdlfhrbynpkvtyhx.supabase.co";
-//export const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inpkcmd2ZGxmaHJieW5wa3Z0eWh4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjQ3MDU2OTEsImV4cCI6MjA4MDI4MTY5MX0.MzCe3coYsKtl5knDRE2zrmTSomu58nMVVUokj5QMToM";
-//export const SUPABASE_PROJECT_ID = "zdrgvdlfhrbynpkvtyhx";
+// export const SUPABASE_URL = "https://zdrgvdlfhrbynpkvtyhx.supabase.co";
+// export const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inpkcmd2ZGxmaHJieW5wa3Z0eWh4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjQ3MDU2OTEsImV4cCI6MjA4MDI4MTY5MX0.MzCe3coYsKtl5knDRE2zrmTSomu58nMVVUokj5QMToM";
+// export const SUPABASE_PROJECT_ID = "zdrgvdlfhrbynpkvtyhx";
 
 // Base 2 (2.0 com clientes) - Comentada
  export const SUPABASE_URL = "https://zldeaozqxjwvzgrblyrh.supabase.co";

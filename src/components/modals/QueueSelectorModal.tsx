@@ -55,24 +55,28 @@ export function QueueSelectorModal({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-md">
+      <DialogContent className="sm:max-w-md bg-white dark:bg-[#0b0b0b] text-gray-900 dark:text-gray-100 dark:border-gray-700">
         <DialogHeader>
-          <DialogTitle>Selecionar Fila</DialogTitle>
+          <DialogTitle className="dark:text-gray-100">Selecionar Fila</DialogTitle>
         </DialogHeader>
 
         <div className="space-y-4 py-4">
           {loading ? (
             <div className="flex items-center justify-center py-8">
-              <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+              <Loader2 className="h-6 w-6 animate-spin text-muted-foreground dark:text-gray-400" />
             </div>
           ) : (
             <Select value={selectedQueueId} onValueChange={setSelectedQueueId}>
-              <SelectTrigger>
+              <SelectTrigger className="dark:bg-[#161616] dark:border-gray-700 dark:text-gray-100 dark:placeholder:text-gray-400">
                 <SelectValue placeholder="Selecione uma fila" />
               </SelectTrigger>
-              <SelectContent>
+              <SelectContent className="dark:bg-[#161616] dark:border-gray-700 dark:text-gray-100">
                 {queues.map((queue) => (
-                  <SelectItem key={queue.id} value={queue.id}>
+                  <SelectItem 
+                    key={queue.id} 
+                    value={queue.id}
+                    className="dark:focus:bg-gray-700 dark:text-gray-200"
+                  >
                     <div className="flex items-center gap-2">
                       {queue.color && (
                         <div
@@ -90,10 +94,18 @@ export function QueueSelectorModal({
         </div>
 
         <DialogFooter className="gap-2 sm:gap-0">
-          <Button variant="outline" onClick={handleCancel}>
+          <Button 
+            variant="outline" 
+            onClick={handleCancel}
+            className="dark:border-gray-700 dark:text-gray-200 dark:hover:bg-gray-800"
+          >
             Cancelar
           </Button>
-          <Button onClick={handleConfirm} disabled={!selectedQueueId || loading}>
+          <Button 
+            onClick={handleConfirm} 
+            disabled={!selectedQueueId || loading}
+            className="dark:bg-primary dark:hover:bg-primary/90"
+          >
             Confirmar
           </Button>
         </DialogFooter>

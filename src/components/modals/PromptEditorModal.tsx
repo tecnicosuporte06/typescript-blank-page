@@ -311,17 +311,17 @@ export function PromptEditorModal({
                   className="min-h-[400px]"
                 />
               </ContextMenuTrigger>
-              <ContextMenuContent className="w-64">
+              <ContextMenuContent className="w-64 bg-white dark:bg-[#2d2d2d] border-[#d4d4d4] dark:border-gray-600 text-gray-900 dark:text-gray-100">
                 {actionButtons.map((action) => (
                   <ContextMenuItem
                     key={action.id}
                     onClick={() => handleActionSelect(action)}
-                    className="flex items-center gap-3 cursor-pointer"
+                    className="flex items-center gap-3 cursor-pointer focus:bg-[#e6f2ff] dark:focus:bg-gray-700 dark:text-gray-200"
                   >
-                    <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center text-primary">
+                    <div className="w-8 h-8 rounded-full bg-primary/10 dark:bg-primary/20 flex items-center justify-center text-primary dark:text-primary">
                       {action.icon}
                     </div>
-                    <span>{action.label}</span>
+                    <span className="dark:text-gray-200">{action.label}</span>
                   </ContextMenuItem>
                 ))}
               </ContextMenuContent>

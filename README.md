@@ -1,58 +1,52 @@
-# Welcome to your Lovable project
+# Tezeus CRM - Sistema de Gestão Empresarial
 
-## Project info
+## Sobre o Projeto
 
-**URL**: https://lovable.dev/projects/fea07c44-e907-4e9b-8df3-fee3c0ca7e87
+Sistema CRM completo com gestão de negócios, contatos, automações e muito mais.
 
-## How can I edit this code?
+## Como editar este código?
 
-There are several ways of editing your application.
+Existem várias formas de editar a aplicação.
 
-**Use Lovable**
+**Use sua IDE preferida**
 
-Simply visit the [Lovable Project](https://lovable.dev/projects/fea07c44-e907-4e9b-8df3-fee3c0ca7e87) and start prompting.
+Se você quiser trabalhar localmente usando sua própria IDE, clone este repositório e faça push das alterações.
 
-Changes made via Lovable will be committed automatically to this repo.
+O único requisito é ter Node.js & npm instalados - [instale com nvm](https://github.com/nvm-sh/nvm#installing-and-updating)
 
-**Use your preferred IDE**
-
-If you want to work locally using your own IDE, you can clone this repo and push changes. Pushed changes will also be reflected in Lovable.
-
-The only requirement is having Node.js & npm installed - [install with nvm](https://github.com/nvm-sh/nvm#installing-and-updating)
-
-Follow these steps:
+Siga estes passos:
 
 ```sh
-# Step 1: Clone the repository using the project's Git URL.
+# Passo 1: Clone o repositório usando a URL Git do projeto.
 git clone <YOUR_GIT_URL>
 
-# Step 2: Navigate to the project directory.
+# Passo 2: Navegue até o diretório do projeto.
 cd <YOUR_PROJECT_NAME>
 
-# Step 3: Install the necessary dependencies.
+# Passo 3: Instale as dependências necessárias.
 npm i
 
-# Step 4: Start the development server with auto-reloading and an instant preview.
+# Passo 4: Inicie o servidor de desenvolvimento com recarregamento automático.
 npm run dev
 ```
 
-**Edit a file directly in GitHub**
+**Edite um arquivo diretamente no GitHub**
 
-- Navigate to the desired file(s).
-- Click the "Edit" button (pencil icon) at the top right of the file view.
-- Make your changes and commit the changes.
+- Navegue até o(s) arquivo(s) desejado(s).
+- Clique no botão "Edit" (ícone de lápis) no canto superior direito da visualização do arquivo.
+- Faça suas alterações e faça commit das mudanças.
 
 **Use GitHub Codespaces**
 
-- Navigate to the main page of your repository.
-- Click on the "Code" button (green button) near the top right.
-- Select the "Codespaces" tab.
-- Click on "New codespace" to launch a new Codespace environment.
-- Edit files directly within the Codespace and commit and push your changes once you're done.
+- Navegue até a página principal do seu repositório.
+- Clique no botão "Code" (botão verde) próximo ao canto superior direito.
+- Selecione a aba "Codespaces".
+- Clique em "New codespace" para iniciar um novo ambiente Codespace.
+- Edite arquivos diretamente no Codespace e faça commit e push das alterações quando terminar.
 
-## What technologies are used for this project?
+## Quais tecnologias são usadas neste projeto?
 
-This project is built with:
+Este projeto é construído com:
 
 - Vite
 - TypeScript
@@ -60,14 +54,6 @@ This project is built with:
 - shadcn-ui
 - Tailwind CSS
 
-## How can I deploy this project?
+## Como fazer deploy deste projeto?
 
-Simply open [Lovable](https://lovable.dev/projects/fea07c44-e907-4e9b-8df3-fee3c0ca7e87) and click on Share -> Publish.
-
-## Can I connect a custom domain to my Lovable project?
-
-Yes, you can!
-
-To connect a domain, navigate to Project > Settings > Domains and click Connect Domain.
-
-Read more here: [Setting up a custom domain](https://docs.lovable.dev/tips-tricks/custom-domain#step-by-step-guide)
+Consulte a documentação de deploy do seu provedor de hospedagem preferido para instruções sobre como fazer deploy de aplicações Vite/React.
