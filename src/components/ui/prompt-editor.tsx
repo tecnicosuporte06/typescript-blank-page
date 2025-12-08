@@ -1,7 +1,6 @@
-import React, { forwardRef, useImperativeHandle, useRef, useMemo } from "react";
+import React, { forwardRef, useImperativeHandle, useRef, useEffect, useState } from "react";
 import { cn } from "@/lib/utils";
-import { parseActionText } from "@/lib/action-parser";
-import { ActionBadge } from "./action-badge";
+import { parseActionText, getActionDisplayInfo } from "@/lib/action-parser";
 
 export interface ActionBadgeData {
   id: string;
@@ -10,6 +9,9 @@ export interface ActionBadgeData {
   data: Record<string, any>;
   position: number;
 }
+
+// Alias para compatibilidade com PromptEditorModal
+export type ActionBadge = ActionBadgeData;
 
 interface PromptEditorProps {
   value: string;
@@ -29,38 +31,378 @@ export const PromptEditor = forwardRef<PromptEditorRef, PromptEditorProps>(({
   placeholder,
   className,
 }, ref) => {
-  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const isInternalUpdateRef = useRef(false);
+  const [isFocused, setIsFocused] = useState(false);
 
-  const handleChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
-    onChange(e.target.value);
+  // Extrai o texto completo do DOM, substituindo badges por seus data-action
+  const extractTextFromDOM = (): string => {
+    if (!containerRef.current) return "";
+    
+    let result = "";
+    const processNode = (node: Node): void => {
+      if (node.nodeType === Node.TEXT_NODE) {
+        result += node.textContent || "";
+      } else if (node.nodeType === Node.ELEMENT_NODE) {
+        const el = node as HTMLElement;
+        if (el.hasAttribute('data-action')) {
+          // Se é um badge, adicionar o texto da ação
+          result += el.getAttribute('data-action') || "";
+        } else {
+          // Processar filhos recursivamente
+          Array.from(node.childNodes).forEach(processNode);
+        }
+      }
+    };
+
+    Array.from(containerRef.current.childNodes).forEach(processNode);
+    return result;
+  };
+
+  // Função auxiliar para obter SVG do ícone baseado no tipo
+  const getIconSVG = (type: string): string => {
+    const icons: Record<string, string> = {
+      'adicionar_tag': '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2H2v10l9.29 9.29a1 1 0 0 0 1.41 0l10-10a1 1 0 0 0 0-1.41L12 2Z"/><circle cx="7" cy="7" r="1.5"/></svg>',
+      'transferir_fila': '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 3h5v5"/><path d="M8 3H3v5"/><path d="M12 22v-8.3a4 4 0 0 0-1.172-2.828L4 3"/><path d="m12 22 7-7-7-7v4.3a4 4 0 0 1 1.172 2.829L19.5 15"/></svg>',
+      'transferir_conexao': '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 18h1.4c1.3 0 2.5-.6 3.3-1.7l6.1-8.6c.7-1.1 2-1.7 3.3-1.7H22"/><path d="m18 2 4 4-4 4"/><path d="m2 6 4-4 4 4"/><path d="m22 18-4 4-4-4"/></svg>',
+      'criar_card': '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20h16"/><path d="M6 16h12"/><path d="M8 12h8"/><rect width="20" height="4" x="2" y="4" rx="1"/></svg>',
+      'transferir_coluna_crm': '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>',
+      'salvar_informacoes': '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/><path d="M3 12c0 1.66 4 3 9 3s9-1.34 9-3"/></svg>',
+      'enviar_funil': '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/></svg>',
+    };
+    return icons[type] || icons['salvar_informacoes'];
+  };
+
+  // Renderiza o conteúdo parseado com badges inline usando DOM
+  const renderContent = (text: string) => {
+    if (!containerRef.current) return;
+
+    const selection = window.getSelection();
+    let savedRange: Range | null = null;
+
+    // Salvar posição do cursor
+    if (selection && selection.rangeCount > 0) {
+      try {
+        const range = selection.getRangeAt(0);
+        // Verificar se o range está dentro do container
+        if (containerRef.current.contains(range.startContainer)) {
+          savedRange = range.cloneRange();
+        }
+      } catch (e) {
+        // Ignorar erros ao salvar range
+      }
+    }
+
+    // Limpa o conteúdo atual de forma segura
+    // Usar replaceChildren que é mais seguro e moderno
+    try {
+      // Criar um fragment vazio para limpar
+      containerRef.current.replaceChildren();
+    } catch (e) {
+      // Fallback: limpar manualmente se replaceChildren não estiver disponível
+      while (containerRef.current.firstChild) {
+        try {
+          containerRef.current.removeChild(containerRef.current.firstChild);
+        } catch (err) {
+          // Se falhar, tentar limpar de outra forma
+          break;
+        }
+      }
+    }
+
+    // Parsear ações do texto
+    const actions = parseActionText(text);
+    let lastIndex = 0;
+
+    actions.forEach((action, idx) => {
+      // Texto antes da ação
+      if (action.position > lastIndex) {
+        const textContent = text.substring(lastIndex, action.position);
+        if (textContent) {
+          const textNode = document.createTextNode(textContent);
+          containerRef.current!.appendChild(textNode);
+        }
+      }
+
+      // Obter informações da ação
+      const actionInfo = getActionDisplayInfo(action.match);
+
+      if (actionInfo) {
+        // Criar badge usando DOM
+        const badge = document.createElement('span');
+        badge.setAttribute('contentEditable', 'false');
+        badge.setAttribute('data-action', action.match);
+        badge.setAttribute('data-action-id', `action-${action.position}-${idx}`);
+        badge.className = cn(
+          "inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium border",
+          "select-none transition-all duration-200",
+          actionInfo.color
+        );
+        badge.style.userSelect = 'none';
+        badge.style.margin = '0 2px';
+        badge.style.display = 'inline-flex';
+        badge.style.verticalAlign = 'baseline';
+
+        // Ícone
+        const iconContainer = document.createElement('span');
+        iconContainer.className = 'flex-shrink-0';
+        iconContainer.innerHTML = getIconSVG(actionInfo.type);
+        badge.appendChild(iconContainer);
+
+        // Label
+        const labelSpan = document.createElement('span');
+        labelSpan.className = 'truncate max-w-[200px]';
+        labelSpan.textContent = actionInfo.label;
+        badge.appendChild(labelSpan);
+
+        // Botão remover
+        const removeBtn = document.createElement('button');
+        removeBtn.type = 'button';
+        removeBtn.className = 'ml-0.5 rounded-full p-0.5 transition-colors hover:bg-black/10 dark:hover:bg-white/10 opacity-70 hover:opacity-100';
+        removeBtn.setAttribute('aria-label', 'Remover ação');
+        removeBtn.tabIndex = -1;
+        removeBtn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>';
+        removeBtn.onclick = (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          handleRemoveAction(`action-${action.position}-${idx}`);
+        };
+        badge.appendChild(removeBtn);
+
+        containerRef.current!.appendChild(badge);
+      } else {
+        // Se não conseguir parsear, inserir como texto
+        const textNode = document.createTextNode(action.match);
+        containerRef.current!.appendChild(textNode);
+      }
+
+      lastIndex = action.position + action.match.length;
+    });
+
+    // Texto restante
+    if (lastIndex < text.length) {
+      const textContent = text.substring(lastIndex);
+      if (textContent) {
+        const textNode = document.createTextNode(textContent);
+        containerRef.current!.appendChild(textNode);
+      }
+    }
+
+    // Adicionar placeholder se estiver vazio e não focado
+    if (!isFocused && containerRef.current.childNodes.length === 0 && placeholder) {
+      const placeholderNode = document.createElement('span');
+      placeholderNode.className = 'text-muted-foreground pointer-events-none select-none';
+      placeholderNode.textContent = placeholder;
+      containerRef.current.appendChild(placeholderNode);
+    }
+
+    // Tentar restaurar seleção (simplificado)
+    if (savedRange && selection) {
+      try {
+        // Focar no container
+        containerRef.current.focus();
+      } catch (e) {
+        // Ignorar erros
+      }
+    }
+  };
+
+  // Renderizar conteúdo inicial
+  useEffect(() => {
+    if (!containerRef.current) return;
+    
+    // Aguardar um frame para garantir que o React terminou de montar
+    requestAnimationFrame(() => {
+      if (!containerRef.current) return;
+      
+      // Renderizar conteúdo inicial se o container estiver vazio
+      if (containerRef.current.childNodes.length === 0 && value) {
+        renderContent(value);
+      }
+    });
+  }, []);
+
+  // Sincronizar conteúdo quando value mudar externamente
+  useEffect(() => {
+    if (!containerRef.current) return;
+
+    // Se for uma atualização interna, ignora
+    if (isInternalUpdateRef.current) {
+      isInternalUpdateRef.current = false;
+      return;
+    }
+
+    // Aguardar um frame para evitar conflitos com o React
+    requestAnimationFrame(() => {
+      if (!containerRef.current) return;
+      
+      // Verificar se o conteúdo atual do DOM é diferente do value
+      const currentText = extractTextFromDOM();
+      const newValue = value || "";
+      
+      // Só atualiza se o valor externo for diferente do atual
+      if (currentText !== newValue) {
+        renderContent(newValue);
+      }
+    });
+  }, [value]);
+
+  // Função para remover ação do texto
+  const handleRemoveAction = (actionId: string) => {
+    if (!containerRef.current) return;
+    
+    const badge = containerRef.current.querySelector(`[data-action-id="${actionId}"]`);
+    if (badge) {
+      const actionText = badge.getAttribute('data-action') || '';
+      badge.remove();
+      isInternalUpdateRef.current = true;
+      const newValue = extractTextFromDOM();
+      onChange(newValue);
+    }
   };
 
   const getCursorPosition = (): number => {
-    if (!textareaRef.current) return 0;
-    return textareaRef.current.selectionStart;
+    if (!containerRef.current) return 0;
+
+    const selection = window.getSelection();
+    if (!selection || selection.rangeCount === 0) return 0;
+
+    const range = selection.getRangeAt(0);
+    const preCaretRange = range.cloneRange();
+    preCaretRange.selectNodeContents(containerRef.current);
+    preCaretRange.setEnd(range.endContainer, range.endOffset);
+
+    // Contar caracteres, substituindo badges por seus data-action
+    let position = 0;
+    const walker = document.createTreeWalker(
+      containerRef.current,
+      NodeFilter.SHOW_TEXT | NodeFilter.SHOW_ELEMENT
+    );
+
+    let node: Node | null;
+    while ((node = walker.nextNode())) {
+      if (node === range.endContainer) {
+        if (node.nodeType === Node.TEXT_NODE) {
+          position += range.endOffset;
+        } else if (node.nodeType === Node.ELEMENT_NODE) {
+          const el = node as HTMLElement;
+          if (el.hasAttribute('data-action')) {
+            position += el.getAttribute('data-action')?.length || 0;
+          }
+        }
+        break;
+      }
+
+      if (node.nodeType === Node.TEXT_NODE) {
+        position += node.textContent?.length || 0;
+      } else if (node.nodeType === Node.ELEMENT_NODE) {
+        const el = node as HTMLElement;
+        if (el.hasAttribute('data-action')) {
+          position += el.getAttribute('data-action')?.length || 0;
+        }
+      }
+    }
+
+    return position;
   };
 
   const insertText = (text: string) => {
-    if (!textareaRef.current) return;
+    if (!containerRef.current) return;
 
-    const textarea = textareaRef.current;
-    const start = textarea.selectionStart;
-    const end = textarea.selectionEnd;
-    const currentValue = textarea.value;
+    const selection = window.getSelection();
+    if (!selection || selection.rangeCount === 0) {
+      // Se não houver seleção, focar no container e inserir no final
+      containerRef.current.focus();
+      const textNode = document.createTextNode(text);
+      containerRef.current.appendChild(textNode);
+      
+      // Mover cursor para o final
+      const range = document.createRange();
+      range.selectNodeContents(textNode);
+      range.collapse(false);
+      selection.removeAllRanges();
+      selection.addRange(range);
+      
+      isInternalUpdateRef.current = true;
+      onChange(extractTextFromDOM());
+      return;
+    }
 
-    // Inserir texto na posição do cursor
-    const newValue = currentValue.substring(0, start) + text + currentValue.substring(end);
-    
-    onChange(newValue);
+    const range = selection.getRangeAt(0);
+    range.deleteContents();
 
-    // Mover cursor para depois do texto inserido
-    setTimeout(() => {
-      if (textareaRef.current) {
-        const newPosition = start + text.length;
-        textareaRef.current.setSelectionRange(newPosition, newPosition);
-        textareaRef.current.focus();
+    // Se for uma ação, insere como badge
+    if (text.trim().startsWith('[ADD_ACTION]:')) {
+      const actionInfo = getActionDisplayInfo(text.trim());
+      const actionId = `action-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+      
+      if (actionInfo) {
+        const badge = document.createElement('span');
+        badge.setAttribute('contentEditable', 'false');
+        badge.setAttribute('data-action', text.trim());
+        badge.setAttribute('data-action-id', actionId);
+        badge.className = cn(
+          "inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium border",
+          "select-none transition-all duration-200",
+          actionInfo.color
+        );
+        badge.style.userSelect = 'none';
+        badge.style.margin = '0 2px';
+        badge.style.display = 'inline-flex';
+        badge.style.verticalAlign = 'baseline';
+        
+        // Ícone
+        const iconContainer = document.createElement('span');
+        iconContainer.className = 'flex-shrink-0';
+        iconContainer.innerHTML = getIconSVG(actionInfo.type);
+        badge.appendChild(iconContainer);
+        
+        // Label
+        const labelSpan = document.createElement('span');
+        labelSpan.className = 'truncate max-w-[200px]';
+        labelSpan.textContent = actionInfo.label;
+        badge.appendChild(labelSpan);
+        
+        // Botão remover
+        const removeBtn = document.createElement('button');
+        removeBtn.type = 'button';
+        removeBtn.className = 'ml-0.5 rounded-full p-0.5 transition-colors hover:bg-black/10 dark:hover:bg-white/10 opacity-70 hover:opacity-100';
+        removeBtn.setAttribute('aria-label', 'Remover ação');
+        removeBtn.tabIndex = -1;
+        removeBtn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>';
+        removeBtn.onclick = (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          handleRemoveAction(actionId);
+        };
+        badge.appendChild(removeBtn);
+        
+        range.insertNode(badge);
+        range.setStartAfter(badge);
+        range.collapse(true);
+        selection.removeAllRanges();
+        selection.addRange(range);
+      } else {
+        // Fallback: inserir como texto se não conseguir parsear
+        const textNode = document.createTextNode(text);
+        range.insertNode(textNode);
+        range.setStartAfter(textNode);
+        range.collapse(true);
+        selection.removeAllRanges();
+        selection.addRange(range);
       }
-    }, 0);
+    } else {
+      // Inserir texto normal
+      const textNode = document.createTextNode(text);
+      range.insertNode(textNode);
+      range.setStartAfter(textNode);
+      range.collapse(true);
+      selection.removeAllRanges();
+      selection.addRange(range);
+    }
+
+    isInternalUpdateRef.current = true;
+    onChange(extractTextFromDOM());
   };
 
   useImperativeHandle(ref, () => ({
@@ -68,118 +410,97 @@ export const PromptEditor = forwardRef<PromptEditorRef, PromptEditorProps>(({
     insertText,
   }));
 
-  // Parsear ações do texto
-  const actions = useMemo(() => parseActionText(value), [value]);
-
-  // Função para remover ação do texto
-  const handleRemoveAction = (actionMatch: string, actionPosition: number) => {
-    if (!textareaRef.current) return;
-
-    const textarea = textareaRef.current;
-    const beforeAction = value.substring(0, actionPosition);
-    const afterAction = value.substring(actionPosition + actionMatch.length);
+  const handleInput = () => {
+    isInternalUpdateRef.current = true;
+    const newValue = extractTextFromDOM();
     
-    // Remover quebras de linha extras que possam ter sido adicionadas
-    const newValue = (beforeAction + afterAction)
-      .replace(/\n\n\n+/g, '\n\n') // Máximo 2 quebras de linha consecutivas
-      .trim();
+    // Remover placeholder se houver conteúdo
+    if (containerRef.current && newValue.trim() !== '') {
+      const placeholderNode = containerRef.current.querySelector('.text-muted-foreground.pointer-events-none');
+      if (placeholderNode) {
+        placeholderNode.remove();
+      }
+    }
     
     onChange(newValue);
-    
-    // Restaurar foco e posição do cursor
-    setTimeout(() => {
-      if (textareaRef.current) {
-        const newPosition = Math.min(actionPosition, newValue.length);
-        textareaRef.current.setSelectionRange(newPosition, newPosition);
-        textareaRef.current.focus();
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    // Prevenir Backspace/Delete em badges
+    if (e.key === 'Backspace' || e.key === 'Delete') {
+      const selection = window.getSelection();
+      if (selection && selection.rangeCount > 0) {
+        const range = selection.getRangeAt(0);
+        let node: Node | null = range.startContainer;
+
+        // Verificar se está tentando deletar um badge
+        if (node.nodeType === Node.ELEMENT_NODE) {
+          const el = node as HTMLElement;
+          if (el.hasAttribute('data-action')) {
+            e.preventDefault();
+            const actionId = el.getAttribute('data-action-id') || '';
+            if (actionId) {
+              handleRemoveAction(actionId);
+            }
+            return;
+          }
+        }
+
+        // Verificar se o nó pai é um badge
+        let parent = node.parentElement;
+        while (parent && parent !== containerRef.current) {
+          if (parent.hasAttribute('data-action')) {
+            e.preventDefault();
+            const actionId = parent.getAttribute('data-action-id') || '';
+            if (actionId) {
+              handleRemoveAction(actionId);
+            }
+            return;
+          }
+          parent = parent.parentElement;
+        }
       }
-    }, 0);
+    }
   };
 
   return (
-    <div className="relative">
-      <textarea
-        ref={textareaRef}
-        value={value}
-        onChange={handleChange}
-        placeholder={placeholder}
-        className={cn(
-          "w-full min-h-[400px] p-4 rounded-md border border-input bg-background",
-          "font-mono text-sm resize-none",
-          "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
-          "placeholder:text-muted-foreground",
-          "dark:bg-[#1a1a1a] dark:text-gray-100 dark:border-gray-700 dark:placeholder:text-gray-500 dark:focus-visible:ring-offset-[#1a1a1a]",
-          "relative z-0",
-          className
-        )}
-        style={{ color: actions.length > 0 ? 'transparent' : undefined }}
-      />
-      
-      {/* Overlay com badges renderizadas - apenas visual, não afeta o textarea */}
-      {actions.length > 0 && (
-        <div 
-          className="absolute inset-0 p-4 pointer-events-none z-10 text-sm whitespace-pre-wrap break-words overflow-hidden"
-          style={{ 
-            fontFamily: 'ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace',
-          }}
-        >
-          {(() => {
-            let lastIndex = 0;
-            const elements: React.ReactNode[] = [];
-            
-            actions.forEach((action, idx) => {
-              // Adicionar texto antes da ação
-              if (action.position > lastIndex) {
-                const beforeText = value.substring(lastIndex, action.position);
-                if (beforeText) {
-                  elements.push(
-                    <span 
-                      key={`text-${idx}`}
-                      className="text-gray-900 dark:text-gray-100"
-                    >
-                      {beforeText}
-                    </span>
-                  );
-                }
-              }
-              
-              // Adicionar badge visual
-              elements.push(
-                <span
-                  key={`action-${idx}`}
-                  className="pointer-events-auto"
-                  style={{ display: 'inline-block', margin: '0 2px' }}
-                >
-                  <ActionBadge
-                    actionText={action.match}
-                    onRemove={() => handleRemoveAction(action.match, action.position)}
-                    showRemoveButton={true}
-                  />
-                </span>
-              );
-              
-              lastIndex = action.position + action.match.length;
-            });
-            
-            // Adicionar texto restante
-            if (lastIndex < value.length) {
-              const remainingText = value.substring(lastIndex);
-              if (remainingText) {
-                elements.push(
-                  <span 
-                    key="text-end"
-                    className="text-gray-900 dark:text-gray-100"
-                  >
-                    {remainingText}
-                  </span>
-                );
-              }
-            }
-            
-            return elements;
-          })()}
-        </div>
+    <div
+      ref={containerRef}
+      contentEditable
+      suppressContentEditableWarning
+      onInput={handleInput}
+      onKeyDown={handleKeyDown}
+      onFocus={() => {
+        setIsFocused(true);
+        // Remover placeholder ao focar
+        if (containerRef.current) {
+          const placeholderNode = containerRef.current.querySelector('.text-muted-foreground.pointer-events-none');
+          if (placeholderNode) {
+            placeholderNode.remove();
+          }
+        }
+      }}
+      onBlur={() => {
+        setIsFocused(false);
+        // Adicionar placeholder se estiver vazio
+        if (containerRef.current && extractTextFromDOM().trim() === '' && placeholder) {
+          const placeholderNode = document.createElement('span');
+          placeholderNode.className = 'text-muted-foreground pointer-events-none select-none';
+          placeholderNode.textContent = placeholder;
+          containerRef.current.appendChild(placeholderNode);
+        }
+      }}
+      className={cn(
+        "w-full min-h-[400px] p-4 rounded-md border border-input bg-background",
+        "font-mono text-sm resize-none overflow-y-auto",
+        "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
+        "dark:bg-[#1a1a1a] dark:text-gray-100 dark:border-gray-700 dark:placeholder:text-gray-500 dark:focus-visible:ring-offset-[#1a1a1a]",
+        className
       )}
-    </div>
+      style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}
+      data-placeholder={placeholder}
+    />
   );
 });
+
+PromptEditor.displayName = "PromptEditor";
