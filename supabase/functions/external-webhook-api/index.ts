@@ -409,11 +409,87 @@ async function validatePipelineAndColumn(
   return true;
 }
 
+// Função para verificar se a coluna precisa de conversation_id
+// (baseado nas automações que têm ações que requerem conversation)
+async function checkIfColumnNeedsConversation(
+  supabase: any,
+  columnId: string
+): Promise<boolean> {
+  try {
+    console.log(`🔍 Verificando se coluna ${columnId} precisa de conversation_id...`);
+    
+    // Buscar automações da coluna
+    const { data: automations, error: automationsError } = await (supabase as any)
+      .rpc('get_column_automations', { p_column_id: columnId });
+
+    if (automationsError || !automations || automations.length === 0) {
+      console.log(`ℹ️ Nenhuma automação encontrada na coluna ${columnId}`);
+      return false;
+    }
+
+    console.log(`📋 ${automations.length} automação(ões) encontrada(s) na coluna`);
+
+    // Verificar cada automação ativa
+    for (const automation of automations) {
+      if (!automation.is_active) {
+        continue;
+      }
+
+      // Buscar detalhes da automação
+      const { data: automationDetails, error: detailsError } = await (supabase as any)
+        .rpc('get_automation_details', { p_automation_id: automation.id });
+
+      if (detailsError || !automationDetails) {
+        continue;
+      }
+
+      let parsedDetails = automationDetails;
+      if (typeof automationDetails === 'string') {
+        try {
+          parsedDetails = JSON.parse(automationDetails);
+        } catch {
+          continue;
+        }
+      }
+
+      const triggers = parsedDetails.triggers || [];
+      const actions = parsedDetails.actions || [];
+
+      // Verificar se tem trigger enter_column
+      const hasEnterColumnTrigger = triggers.some((t: any) => 
+        (t.trigger_type || t?.trigger_type) === 'enter_column'
+      );
+
+      if (!hasEnterColumnTrigger) {
+        continue;
+      }
+
+      // Verificar se tem ações que precisam de conversation_id
+      const actionsNeedingConversation = actions.filter((a: any) => 
+        ['send_message', 'send_funnel'].includes(a.action_type)
+      );
+
+      if (actionsNeedingConversation.length > 0) {
+        console.log(`✅ Coluna ${columnId} precisa de conversation_id (automação "${automation.name}" tem ações que requerem conversa)`);
+        return true;
+      }
+    }
+
+    console.log(`ℹ️ Coluna ${columnId} não precisa de conversation_id`);
+    return false;
+  } catch (error) {
+    console.error(`❌ Erro ao verificar se coluna precisa de conversation_id:`, error);
+    // Em caso de erro, assumir que não precisa (para não bloquear criação)
+    return false;
+  }
+}
+
 // Função para criar card
 async function createCard(
   supabase: any,
   cardData: CardData,
-  contactId: string
+  contactId: string,
+  conversationId?: string | null
 ): Promise<string> {
   // Validar que contact_id existe
   const { data: contact, error: contactError } = await supabase
@@ -439,6 +515,12 @@ async function createCard(
     status: cardData.status || "aberto",
     moved_to_column_at: new Date().toISOString(), // ✅ Registrar timestamp de entrada na coluna
   };
+
+  // Adicionar conversation_id se fornecido
+  if (conversationId) {
+    insertData.conversation_id = conversationId;
+    console.log(`✅ Card será criado com conversation_id: ${conversationId}`);
+  }
 
   if (cardData.responsible_user_id) {
     insertData.responsible_user_id = cardData.responsible_user_id;
@@ -1322,8 +1404,91 @@ serve(async (req) => {
         });
       }
 
-      // Criar card
-      cardId = await createCard(supabase, payload.card, contactId);
+      // Verificar se a coluna precisa de conversation_id
+      const needsConversation = await checkIfColumnNeedsConversation(
+        supabase,
+        payload.card.column_id
+      );
+
+      let conversationId: string | null = null;
+      
+      // Se a coluna precisa de conversa OU se foi solicitado no payload, criar conversa
+      if (needsConversation || payload.conversation?.create) {
+        try {
+          // Se já foi solicitado no payload, usar a função createConversation
+          if (payload.conversation?.create) {
+            conversationId = await createConversation(
+              supabase,
+              contactId,
+              payload.workspace_id,
+              payload.conversation
+            );
+          } else {
+            // Se não foi solicitado mas a coluna precisa, criar automaticamente
+            const { data: contact } = await supabase
+              .from("contacts")
+              .select("id, phone")
+              .eq("id", contactId)
+              .maybeSingle();
+
+            if (contact?.phone) {
+              // Verificar se já existe conversa aberta
+              const { data: existingConversation } = await supabase
+                .from("conversations")
+                .select("id")
+                .eq("contact_id", contactId)
+                .eq("workspace_id", payload.workspace_id)
+                .eq("status", "open")
+                .maybeSingle();
+
+              if (existingConversation) {
+                conversationId = existingConversation.id;
+                console.log(`✅ Conversa existente encontrada: ${conversationId}`);
+              } else {
+                // Criar conversa automaticamente
+                const { data: defaultConnection } = await supabase
+                  .from("connections")
+                  .select("id, instance_name")
+                  .eq("workspace_id", payload.workspace_id)
+                  .eq("status", "connected")
+                  .order("created_at", { ascending: true })
+                  .limit(1)
+                  .maybeSingle();
+
+                const conversationPayload: any = {
+                  contact_id: contactId,
+                  workspace_id: payload.workspace_id,
+                  status: "open",
+                  canal: "whatsapp",
+                  agente_ativo: false,
+                  connection_id: defaultConnection?.id || null,
+                  evolution_instance: defaultConnection?.instance_name || null,
+                };
+
+                const { data: newConversation, error: convError } = await supabase
+                  .from("conversations")
+                  .insert(conversationPayload)
+                  .select("id")
+                  .single();
+
+                if (!convError && newConversation) {
+                  conversationId = newConversation.id;
+                  console.log(`✅ Conversa criada automaticamente (necessária para automações): ${conversationId}`);
+                }
+              }
+            }
+          }
+        } catch (convError: any) {
+          console.error("⚠️ Erro ao criar conversa:", convError);
+          // Se a coluna precisa de conversa mas não conseguimos criar, avisar mas não bloquear
+          if (needsConversation) {
+            console.warn("⚠️ ATENÇÃO: Coluna precisa de conversation_id mas não foi possível criar conversa");
+          }
+        }
+      }
+
+      // Criar card (com conversation_id se disponível)
+      cardId = await createCard(supabase, payload.card, contactId, conversationId);
       console.log(`✅ Card criado com sucesso: ${cardId}`);
       
       // ✅ Acionar automações de coluna em background (não bloqueia resposta)
@@ -1343,22 +1508,6 @@ serve(async (req) => {
             console.error(`❌ ==========================================================`);
           });
       }, 500); // Espera 500ms para garantir que o card está disponível
-      
-      // Criar conversa se solicitado
-      let conversationId = null;
-      if (payload.conversation?.create) {
-        try {
-          conversationId = await createConversation(
-            supabase,
-            contactId,
-            payload.workspace_id,
-            payload.conversation
-          );
-        } catch (convError: any) {
-          console.error("Erro ao criar conversa (não crítico):", convError);
-          // Não falhar a requisição se conversa falhar
-        }
-      }
       
       eventType = "external_api_both";
       responseBody = {
