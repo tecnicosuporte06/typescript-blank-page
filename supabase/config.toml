@@ -48,3 +48,6 @@ verify_jwt = false
 
 [functions.convert-webm-to-mp3]
 verify_jwt = false
+
+[functions.external-webhook-api]
+verify_jwt = false
