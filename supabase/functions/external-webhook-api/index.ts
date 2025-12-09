@@ -317,40 +317,15 @@ async function addInitialMessage(
   workspaceId: string,
   content: string
 ): Promise<void> {
-  // Inserir mensagem no banco para histórico
-  const { data: insertedMessage, error: messageError } = await supabase
-    .from("messages")
-    .insert({
-      conversation_id: conversationId,
-      workspace_id: workspaceId,
-      content: content,
-      message_type: "text",
-      sender_type: "system",
-      status: "sending", // Status inicial - será atualizado pelo test-send-msg
-      origem_resposta: "automatica",
-      metadata: {
-        source: "external_webhook_api",
-        initial_message: true,
-      },
-    })
-    .select("id")
-    .single();
-
-  if (messageError) {
-    console.error("❌ Erro ao adicionar mensagem inicial:", messageError);
-    console.warn("⚠️ Não foi possível adicionar mensagem inicial, mas conversa foi criada");
-    return;
-  }
-
-  console.log("✅ Mensagem inicial inserida no banco:", insertedMessage?.id);
-
-  // Disparar webhook do N8n via test-send-msg
+  // Não inserir mensagem manualmente - deixar test-send-msg fazer tudo
+  // O test-send-msg cria a mensagem no banco E dispara o webhook do N8n
   try {
     console.log(`📤 ========== DISPARANDO WEBHOOK N8N PARA MENSAGEM INICIAL ==========`);
     console.log(`📤 Conversa ID: ${conversationId}`);
     console.log(`📤 Workspace ID: ${workspaceId}`);
+    console.log(`📤 Conteúdo: ${content.substring(0, 50)}...`);
     
-    // Preparar payload seguindo o padrão do pipeline-management
+    // Preparar payload seguindo exatamente o formato que test-send-msg espera
     const payload = {
       conversation_id: conversationId,
       content: content,
@@ -362,7 +337,11 @@ async function addInitialMessage(
     
     console.log(`📦 Payload completo:`, JSON.stringify(payload, null, 2));
     
-    // Chamar test-send-msg para disparar webhook do N8n
+    // Chamar test-send-msg que vai:
+    // 1. Criar a mensagem no banco
+    // 2. Chamar message-sender
+    // 3. Que chama n8n-send-message
+    // 4. Que monta o payload correto e envia para o N8n
     const supabaseUrl = Deno.env.get("SUPABASE_URL") || "";
     const sendMessageUrl = `${supabaseUrl}/functions/v1/test-send-msg`;
     
@@ -382,13 +361,16 @@ async function addInitialMessage(
     if (!sendResponse.ok) {
       const errorText = await sendResponse.text();
       console.error(`❌ Erro ao disparar webhook N8n:`, errorText);
+      console.error(`❌ Status: ${sendResponse.status}`);
       // Não falhar a criação da conversa se o envio falhar
     } else {
       const responseData = await sendResponse.json().catch(() => ({}));
-      console.log(`✅ Webhook N8n disparado com sucesso:`, responseData);
+      console.log(`✅ Webhook N8n disparado com sucesso`);
+      console.log(`✅ Resposta:`, JSON.stringify(responseData, null, 2));
     }
   } catch (error) {
     console.error(`❌ Erro ao disparar webhook N8n (não crítico):`, error);
+    console.error(`❌ Stack trace:`, error instanceof Error ? error.stack : 'N/A');
     // Não falhar a criação da conversa se o envio falhar
   }
 }
@@ -758,21 +740,40 @@ async function triggerColumnAutomations(
     console.log(`🤖 Column ID: ${columnId}`);
     console.log(`🤖 Timestamp: ${new Date().toISOString()}`);
 
-    // Buscar dados completos do card
+    // Buscar dados completos do card (com retry para garantir disponibilidade)
     console.log(`📋 Buscando dados completos do card...`);
-    const { data: card, error: cardError } = await supabaseClient
-      .from('pipeline_cards')
-      .select(`
-        *,
-        conversation:conversations(id, contact_id, connection_id, workspace_id),
-        contact:contacts(id, phone, name),
-        pipelines:pipelines!inner(id, workspace_id, name)
-      `)
-      .eq('id', cardId)
-      .single();
+    let card = null;
+    let cardError = null;
+    const maxRetries = 3;
+    
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      const { data, error } = await supabaseClient
+        .from('pipeline_cards')
+        .select(`
+          *,
+          conversation:conversations(id, contact_id, connection_id, workspace_id),
+          contact:contacts(id, phone, name),
+          pipelines:pipelines!inner(id, workspace_id, name)
+        `)
+        .eq('id', cardId)
+        .single();
+      
+      if (!error && data) {
+        card = data;
+        cardError = null;
+        console.log(`✅ Card encontrado na tentativa ${attempt}`);
+        break;
+      } else {
+        cardError = error;
+        if (attempt < maxRetries) {
+          console.warn(`⚠️ Tentativa ${attempt} falhou, aguardando antes de tentar novamente...`);
+          await new Promise(resolve => setTimeout(resolve, 300 * attempt)); // Backoff exponencial
+        }
+      }
+    }
 
     if (cardError || !card) {
-      console.error(`❌ Erro ao buscar card:`, cardError);
+      console.error(`❌ Erro ao buscar card após ${maxRetries} tentativas:`, cardError);
       console.error(`❌ Card ID fornecido: ${cardId}`);
       return;
     }
@@ -1218,11 +1219,25 @@ serve(async (req) => {
       }
 
       cardId = await createCard(supabase, payload.card, payload.card.contact_id);
+      console.log(`✅ Card criado com sucesso: ${cardId}`);
       
       // ✅ Acionar automações de coluna em background (não bloqueia resposta)
-      triggerColumnAutomations(supabase, cardId, payload.card.column_id).catch(err => {
-        console.error(`❌ Erro ao acionar automações (não crítico):`, err);
-      });
+      // Pequena espera para garantir que o card está disponível no banco
+      setTimeout(() => {
+        console.log(`🤖 Iniciando processamento de automações em background para card ${cardId}`);
+        triggerColumnAutomations(supabase, cardId, payload.card.column_id)
+          .then(() => {
+            console.log(`✅ Processamento de automações concluído para card ${cardId}`);
+          })
+          .catch(err => {
+            console.error(`❌ ========== ERRO CRÍTICO AO ACIONAR AUTOMAÇÕES ==========`);
+            console.error(`❌ Card ID: ${cardId}`);
+            console.error(`❌ Column ID: ${payload.card.column_id}`);
+            console.error(`❌ Erro:`, err);
+            console.error(`❌ Stack trace:`, err instanceof Error ? err.stack : 'N/A');
+            console.error(`❌ ==========================================================`);
+          });
+      }, 500); // Espera 500ms para garantir que o card está disponível
       
       eventType = "external_api_card";
       responseBody = {
@@ -1309,11 +1324,25 @@ serve(async (req) => {
 
       // Criar card
       cardId = await createCard(supabase, payload.card, contactId);
+      console.log(`✅ Card criado com sucesso: ${cardId}`);
       
       // ✅ Acionar automações de coluna em background (não bloqueia resposta)
-      triggerColumnAutomations(supabase, cardId, payload.card.column_id).catch(err => {
-        console.error(`❌ Erro ao acionar automações (não crítico):`, err);
-      });
+      // Pequena espera para garantir que o card está disponível no banco
+      setTimeout(() => {
+        console.log(`🤖 Iniciando processamento de automações em background para card ${cardId}`);
+        triggerColumnAutomations(supabase, cardId, payload.card.column_id)
+          .then(() => {
+            console.log(`✅ Processamento de automações concluído para card ${cardId}`);
+          })
+          .catch(err => {
+            console.error(`❌ ========== ERRO CRÍTICO AO ACIONAR AUTOMAÇÕES ==========`);
+            console.error(`❌ Card ID: ${cardId}`);
+            console.error(`❌ Column ID: ${payload.card.column_id}`);
+            console.error(`❌ Erro:`, err);
+            console.error(`❌ Stack trace:`, err instanceof Error ? err.stack : 'N/A');
+            console.error(`❌ ==========================================================`);
+          });
+      }, 500); // Espera 500ms para garantir que o card está disponível
       
       // Criar conversa se solicitado
       let conversationId = null;
