@@ -317,7 +317,8 @@ async function addInitialMessage(
   workspaceId: string,
   content: string
 ): Promise<void> {
-  const { error: messageError } = await supabase
+  // Inserir mensagem no banco para histórico
+  const { data: insertedMessage, error: messageError } = await supabase
     .from("messages")
     .insert({
       conversation_id: conversationId,
@@ -325,20 +326,70 @@ async function addInitialMessage(
       content: content,
       message_type: "text",
       sender_type: "system",
-      status: "sent",
+      status: "sending", // Status inicial - será atualizado pelo test-send-msg
       origem_resposta: "automatica",
       metadata: {
         source: "external_webhook_api",
         initial_message: true,
       },
-    });
+    })
+    .select("id")
+    .single();
 
   if (messageError) {
-    console.error("Erro ao adicionar mensagem inicial:", messageError);
-    // Não lançar erro - mensagem inicial é opcional
+    console.error("❌ Erro ao adicionar mensagem inicial:", messageError);
     console.warn("⚠️ Não foi possível adicionar mensagem inicial, mas conversa foi criada");
-  } else {
-    console.log("✅ Mensagem inicial adicionada à conversa");
+    return;
+  }
+
+  console.log("✅ Mensagem inicial inserida no banco:", insertedMessage?.id);
+
+  // Disparar webhook do N8n via test-send-msg
+  try {
+    console.log(`📤 ========== DISPARANDO WEBHOOK N8N PARA MENSAGEM INICIAL ==========`);
+    console.log(`📤 Conversa ID: ${conversationId}`);
+    console.log(`📤 Workspace ID: ${workspaceId}`);
+    
+    // Preparar payload seguindo o padrão do pipeline-management
+    const payload = {
+      conversation_id: conversationId,
+      content: content,
+      message_type: "text",
+      sender_type: "system",
+      sender_id: null,
+      clientMessageId: `webhook_initial_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+    };
+    
+    console.log(`📦 Payload completo:`, JSON.stringify(payload, null, 2));
+    
+    // Chamar test-send-msg para disparar webhook do N8n
+    const supabaseUrl = Deno.env.get("SUPABASE_URL") || "";
+    const sendMessageUrl = `${supabaseUrl}/functions/v1/test-send-msg`;
+    
+    console.log(`🌐 URL da edge function: ${sendMessageUrl}`);
+    console.log(`⏱️ Iniciando requisição HTTP...`);
+    
+    const sendResponse = await fetch(sendMessageUrl, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(payload),
+    });
+    
+    console.log(`✅ Resposta recebida - Status: ${sendResponse.status} ${sendResponse.statusText}`);
+    
+    if (!sendResponse.ok) {
+      const errorText = await sendResponse.text();
+      console.error(`❌ Erro ao disparar webhook N8n:`, errorText);
+      // Não falhar a criação da conversa se o envio falhar
+    } else {
+      const responseData = await sendResponse.json().catch(() => ({}));
+      console.log(`✅ Webhook N8n disparado com sucesso:`, responseData);
+    }
+  } catch (error) {
+    console.error(`❌ Erro ao disparar webhook N8n (não crítico):`, error);
+    // Não falhar a criação da conversa se o envio falhar
   }
 }
 
@@ -702,9 +753,13 @@ async function triggerColumnAutomations(
   columnId: string
 ): Promise<void> {
   try {
-    console.log(`🤖 Acionando automações para card ${cardId} na coluna ${columnId}`);
+    console.log(`\n🤖 ========== ACIONANDO AUTOMAÇÕES DE COLUNA ==========`);
+    console.log(`🤖 Card ID: ${cardId}`);
+    console.log(`🤖 Column ID: ${columnId}`);
+    console.log(`🤖 Timestamp: ${new Date().toISOString()}`);
 
     // Buscar dados completos do card
+    console.log(`📋 Buscando dados completos do card...`);
     const { data: card, error: cardError } = await supabaseClient
       .from('pipeline_cards')
       .select(`
@@ -718,15 +773,34 @@ async function triggerColumnAutomations(
 
     if (cardError || !card) {
       console.error(`❌ Erro ao buscar card:`, cardError);
+      console.error(`❌ Card ID fornecido: ${cardId}`);
       return;
     }
 
+    console.log(`✅ Card encontrado:`, {
+      id: card.id,
+      contact_id: card.contact_id,
+      conversation_id: card.conversation_id || card.conversation?.id,
+      pipeline_id: card.pipeline_id,
+      column_id: card.column_id,
+      has_conversation: !!(card.conversation_id || card.conversation?.id),
+      has_contact: !!card.contact_id
+    });
+
+    // Validar se card tem conversation_id quando necessário para ações
+    const hasConversationId = !!(card.conversation_id || card.conversation?.id);
+    if (!hasConversationId) {
+      console.warn(`⚠️ Card não tem conversation_id - algumas ações podem não funcionar`);
+    }
+
     // Buscar automações da coluna com trigger enter_column
+    console.log(`🔍 Buscando automações da coluna ${columnId}...`);
     const { data: automations, error: automationsError } = await (supabaseClient as any)
       .rpc('get_column_automations', { p_column_id: columnId });
 
     if (automationsError) {
-      console.error(`❌ Erro ao buscar automações:`, automationsError);
+      console.error(`❌ Erro ao buscar automações via RPC:`, automationsError);
+      console.error(`❌ Erro completo:`, JSON.stringify(automationsError, null, 2));
       return;
     }
 
@@ -736,9 +810,13 @@ async function triggerColumnAutomations(
     }
 
     console.log(`✅ ${automations.length} automação(ões) encontrada(s) na coluna`);
+    console.log(`📋 IDs das automações:`, automations.map((a: any) => ({ id: a.id, name: a.name, is_active: a.is_active })));
 
     // Processar cada automação
     for (const automation of automations) {
+      console.log(`\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`);
+      console.log(`🔄 Processando automação: "${automation.name}" (ID: ${automation.id})`);
+      
       if (!automation.is_active) {
         console.log(`⏭️ Automação "${automation.name}" está inativa, pulando`);
         continue;
@@ -746,11 +824,18 @@ async function triggerColumnAutomations(
 
       try {
         // Buscar detalhes completos da automação
+        console.log(`📋 Buscando detalhes da automação ${automation.id}...`);
         const { data: automationDetails, error: detailsError } = await (supabaseClient as any)
           .rpc('get_automation_details', { p_automation_id: automation.id });
 
-        if (detailsError || !automationDetails) {
+        if (detailsError) {
           console.error(`❌ Erro ao buscar detalhes da automação ${automation.id}:`, detailsError);
+          console.error(`❌ Erro completo:`, JSON.stringify(detailsError, null, 2));
+          continue;
+        }
+
+        if (!automationDetails) {
+          console.error(`❌ Detalhes da automação ${automation.id} não encontrados`);
           continue;
         }
 
@@ -758,14 +843,18 @@ async function triggerColumnAutomations(
         if (typeof automationDetails === 'string') {
           try {
             parsedDetails = JSON.parse(automationDetails);
-          } catch {
-            console.error(`❌ Erro ao parsear detalhes da automação`);
+            console.log(`✅ Detalhes da automação parseados com sucesso`);
+          } catch (parseError) {
+            console.error(`❌ Erro ao parsear detalhes da automação:`, parseError);
             continue;
           }
         }
 
         const triggers = parsedDetails.triggers || [];
         const actions = parsedDetails.actions || [];
+
+        console.log(`📋 Triggers encontrados:`, triggers.length);
+        console.log(`📋 Ações encontradas:`, actions.length);
 
         // Verificar se tem trigger enter_column
         const hasEnterColumnTrigger = triggers.some((t: any) => 
@@ -774,11 +863,15 @@ async function triggerColumnAutomations(
 
         if (!hasEnterColumnTrigger) {
           console.log(`⏭️ Automação "${automation.name}" não tem trigger enter_column, pulando`);
+          console.log(`📋 Triggers disponíveis:`, triggers.map((t: any) => t.trigger_type || t?.trigger_type));
           continue;
         }
 
+        console.log(`✅ Trigger enter_column encontrado na automação "${automation.name}"`);
+
         // Verificar se já foi executada (evitar duplicatas)
-        const { data: existingExecution } = await supabaseClient
+        console.log(`🔍 Verificando se automação já foi executada recentemente...`);
+        const { data: existingExecution, error: executionCheckError } = await supabaseClient
           .from('automation_executions')
           .select('id')
           .eq('card_id', cardId)
@@ -788,28 +881,55 @@ async function triggerColumnAutomations(
           .gte('executed_at', new Date(Date.now() - 60000).toISOString()) // Último minuto
           .maybeSingle();
 
+        if (executionCheckError) {
+          console.warn(`⚠️ Erro ao verificar execução anterior:`, executionCheckError);
+        }
+
         if (existingExecution) {
-          console.log(`⏭️ Automação "${automation.name}" já foi executada recentemente, pulando`);
+          console.log(`⏭️ Automação "${automation.name}" já foi executada recentemente (execution ID: ${existingExecution.id}), pulando`);
           continue;
         }
 
         console.log(`🚀 Executando automação "${automation.name}"`);
+
+        // Validar conversation_id antes de executar ações que precisam dele
+        const actionsNeedingConversation = actions.filter((a: any) => 
+          ['send_message', 'send_funnel'].includes(a.action_type)
+        );
+
+        if (actionsNeedingConversation.length > 0 && !hasConversationId) {
+          console.warn(`⚠️ Automação "${automation.name}" tem ${actionsNeedingConversation.length} ação(ões) que precisam de conversation_id, mas o card não tem. Pulando essas ações.`);
+          console.warn(`⚠️ Ações que serão puladas:`, actionsNeedingConversation.map((a: any) => a.action_type));
+        }
 
         // Executar ações em ordem
         const sortedActions = [...actions].sort((a: any, b: any) => 
           (a.action_order || 0) - (b.action_order || 0)
         );
 
-        for (const action of sortedActions) {
+        console.log(`📋 Executando ${sortedActions.length} ação(ões) em ordem...`);
+        for (let i = 0; i < sortedActions.length; i++) {
+          const action = sortedActions[i];
+          console.log(`  [${i + 1}/${sortedActions.length}] Executando ação: ${action.action_type}`);
+          
+          // Verificar se ação precisa de conversation_id
+          if (['send_message', 'send_funnel'].includes(action.action_type) && !hasConversationId) {
+            console.warn(`  ⚠️ Ação ${action.action_type} precisa de conversation_id, mas card não tem. Pulando.`);
+            continue;
+          }
+
           try {
             await executeAutomationAction(action, card, supabaseClient);
+            console.log(`  ✅ Ação ${action.action_type} executada com sucesso`);
           } catch (actionError) {
-            console.error(`❌ Erro ao executar ação ${action.action_type}:`, actionError);
+            console.error(`  ❌ Erro ao executar ação ${action.action_type}:`, actionError);
+            console.error(`  ❌ Stack trace:`, actionError instanceof Error ? actionError.stack : 'N/A');
             // Continua com próxima ação mesmo se uma falhar
           }
         }
 
         // Registrar execução
+        console.log(`📝 Registrando execução da automação...`);
         await supabaseClient
           .from('automation_executions')
           .insert({
@@ -819,6 +939,9 @@ async function triggerColumnAutomations(
             trigger_type: 'enter_column',
             executed_at: new Date().toISOString()
           })
+          .then(() => {
+            console.log(`✅ Execução registrada com sucesso`);
+          })
           .catch(err => {
             // Ignorar erro de duplicata (pode acontecer em race conditions)
             console.warn(`⚠️ Erro ao registrar execução (pode ser duplicata):`, err);
@@ -827,13 +950,18 @@ async function triggerColumnAutomations(
         console.log(`✅ Automação "${automation.name}" executada com sucesso`);
       } catch (automationError) {
         console.error(`❌ Erro ao processar automação ${automation.id}:`, automationError);
+        console.error(`❌ Stack trace:`, automationError instanceof Error ? automationError.stack : 'N/A');
         // Continua com próxima automação
       }
     }
 
-    console.log(`🤖 Processamento de automações concluído`);
+    console.log(`\n🤖 ========== PROCESSAMENTO DE AUTOMAÇÕES CONCLUÍDO ==========`);
   } catch (error) {
-    console.error(`❌ Erro geral ao acionar automações:`, error);
+    console.error(`\n❌ ========== ERRO GERAL AO ACIONAR AUTOMAÇÕES ==========`);
+    console.error(`❌ Erro:`, error);
+    console.error(`❌ Stack trace:`, error instanceof Error ? error.stack : 'N/A');
+    console.error(`❌ Card ID: ${cardId}`);
+    console.error(`❌ Column ID: ${columnId}`);
     // Não falha a criação do card se as automações falharem
   }
 }
