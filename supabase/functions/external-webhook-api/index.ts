@@ -296,8 +296,13 @@ async function createConversation(
     throw new Error(`Erro ao criar conversa: ${conversationError?.message || "Erro desconhecido"}`);
   }
 
-  console.log("Nova conversa criada:", newConversation.id);
-
+  console.log("✅ [createConversation] Nova conversa criada:", newConversation.id);
+  console.log("✅ [createConversation] conversation_id que será retornado:", newConversation.id);
+  
+  // Pequeno delay para garantir que a transação foi commitada
+  // Isso ajuda quando o conversation_id é usado imediatamente após a criação
+  await new Promise(resolve => setTimeout(resolve, 100));
+  
   // Adicionar mensagem inicial se fornecida
   if (conversationData.initial_message) {
     await addInitialMessage(
@@ -1370,12 +1375,31 @@ serve(async (req) => {
         console.log(`🔍 [create_card] contact_id para validação: ${payload.card.contact_id}`);
         console.log(`🔍 [create_card] workspace_id para validação: ${payload.workspace_id}`);
         
-        // Validar se a conversa existe e pertence ao contato e workspace
-        const { data: existingConv, error: convCheckError } = await supabase
-          .from("conversations")
-          .select("id, contact_id, workspace_id")
-          .eq("id", conversationId)
-          .maybeSingle();
+        // Validar se a conversa existe (com retry para lidar com timing issues)
+        let existingConv = null;
+        let convCheckError = null;
+        const maxRetries = 3;
+        
+        for (let attempt = 1; attempt <= maxRetries; attempt++) {
+          const { data, error } = await supabase
+            .from("conversations")
+            .select("id, contact_id, workspace_id")
+            .eq("id", conversationId)
+            .maybeSingle();
+          
+          if (!error && data) {
+            existingConv = data;
+            convCheckError = null;
+            console.log(`✅ [create_card] Conversa encontrada na tentativa ${attempt}`);
+            break;
+          } else {
+            convCheckError = error;
+            if (attempt < maxRetries) {
+              console.warn(`⚠️ [create_card] Tentativa ${attempt} falhou, aguardando antes de tentar novamente...`);
+              await new Promise(resolve => setTimeout(resolve, 200 * attempt)); // Backoff exponencial
+            }
+          }
+        }
         
         console.log(`🔍 [create_card] Resultado da busca de conversa:`, {
           found: !!existingConv,
@@ -1388,11 +1412,12 @@ serve(async (req) => {
         });
         
         if (convCheckError) {
-          console.error(`❌ [create_card] Erro ao buscar conversa:`, convCheckError);
+          console.error(`❌ [create_card] Erro ao buscar conversa após ${maxRetries} tentativas:`, convCheckError);
           console.warn(`⚠️ [create_card] Tentando buscar/criar conversa automaticamente...`);
           conversationId = null; // Reset para buscar/criar
         } else if (!existingConv) {
-          console.warn(`⚠️ [create_card] Conversa ${conversationId} não encontrada no banco`);
+          console.warn(`⚠️ [create_card] Conversa ${conversationId} não encontrada no banco após ${maxRetries} tentativas`);
+          console.warn(`⚠️ [create_card] Isso pode indicar que o conversation_id está incorreto ou a conversa ainda não foi commitada`);
           console.warn(`⚠️ [create_card] Tentando buscar/criar conversa automaticamente...`);
           conversationId = null; // Reset para buscar/criar
         } else if (existingConv.contact_id !== payload.card.contact_id) {
