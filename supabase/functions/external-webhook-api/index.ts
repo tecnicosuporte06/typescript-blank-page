@@ -416,22 +416,31 @@ async function checkIfColumnNeedsConversation(
   columnId: string
 ): Promise<boolean> {
   try {
-    console.log(`🔍 Verificando se coluna ${columnId} precisa de conversation_id...`);
+    console.log(`🔍 [checkIfColumnNeedsConversation] Verificando se coluna ${columnId} precisa de conversation_id...`);
     
     // Buscar automações da coluna
     const { data: automations, error: automationsError } = await (supabase as any)
       .rpc('get_column_automations', { p_column_id: columnId });
 
-    if (automationsError || !automations || automations.length === 0) {
-      console.log(`ℹ️ Nenhuma automação encontrada na coluna ${columnId}`);
+    if (automationsError) {
+      console.error(`❌ [checkIfColumnNeedsConversation] Erro ao buscar automações:`, automationsError);
       return false;
     }
 
-    console.log(`📋 ${automations.length} automação(ões) encontrada(s) na coluna`);
+    if (!automations || automations.length === 0) {
+      console.log(`ℹ️ [checkIfColumnNeedsConversation] Nenhuma automação encontrada na coluna ${columnId}`);
+      return false;
+    }
+
+    console.log(`📋 [checkIfColumnNeedsConversation] ${automations.length} automação(ões) encontrada(s) na coluna`);
+    console.log(`📋 [checkIfColumnNeedsConversation] Automações:`, automations.map((a: any) => ({ id: a.id, name: a.name, is_active: a.is_active })));
 
     // Verificar cada automação ativa
     for (const automation of automations) {
+      console.log(`🔍 [checkIfColumnNeedsConversation] Verificando automação: "${automation.name}" (ID: ${automation.id}, Ativa: ${automation.is_active})`);
+      
       if (!automation.is_active) {
+        console.log(`⏭️ [checkIfColumnNeedsConversation] Automação "${automation.name}" está inativa, pulando`);
         continue;
       }
 
@@ -439,7 +448,13 @@ async function checkIfColumnNeedsConversation(
       const { data: automationDetails, error: detailsError } = await (supabase as any)
         .rpc('get_automation_details', { p_automation_id: automation.id });
 
-      if (detailsError || !automationDetails) {
+      if (detailsError) {
+        console.error(`❌ [checkIfColumnNeedsConversation] Erro ao buscar detalhes da automação ${automation.id}:`, detailsError);
+        continue;
+      }
+
+      if (!automationDetails) {
+        console.warn(`⚠️ [checkIfColumnNeedsConversation] Detalhes da automação ${automation.id} não encontrados`);
         continue;
       }
 
@@ -447,7 +462,9 @@ async function checkIfColumnNeedsConversation(
       if (typeof automationDetails === 'string') {
         try {
           parsedDetails = JSON.parse(automationDetails);
-        } catch {
+          console.log(`✅ [checkIfColumnNeedsConversation] Detalhes parseados com sucesso`);
+        } catch (parseError) {
+          console.error(`❌ [checkIfColumnNeedsConversation] Erro ao parsear detalhes:`, parseError);
           continue;
         }
       }
@@ -455,30 +472,43 @@ async function checkIfColumnNeedsConversation(
       const triggers = parsedDetails.triggers || [];
       const actions = parsedDetails.actions || [];
 
+      console.log(`📋 [checkIfColumnNeedsConversation] Automação "${automation.name}" tem ${triggers.length} trigger(s) e ${actions.length} ação(ões)`);
+      console.log(`📋 [checkIfColumnNeedsConversation] Triggers:`, triggers.map((t: any) => t.trigger_type || t?.trigger_type));
+      console.log(`📋 [checkIfColumnNeedsConversation] Actions:`, actions.map((a: any) => a.action_type));
+
       // Verificar se tem trigger enter_column
       const hasEnterColumnTrigger = triggers.some((t: any) => 
         (t.trigger_type || t?.trigger_type) === 'enter_column'
       );
 
       if (!hasEnterColumnTrigger) {
+        console.log(`⏭️ [checkIfColumnNeedsConversation] Automação "${automation.name}" não tem trigger enter_column, pulando`);
         continue;
       }
+
+      console.log(`✅ [checkIfColumnNeedsConversation] Automação "${automation.name}" tem trigger enter_column`);
 
       // Verificar se tem ações que precisam de conversation_id
       const actionsNeedingConversation = actions.filter((a: any) => 
         ['send_message', 'send_funnel'].includes(a.action_type)
       );
 
+      console.log(`📋 [checkIfColumnNeedsConversation] Ações que precisam de conversation_id: ${actionsNeedingConversation.length}`);
       if (actionsNeedingConversation.length > 0) {
-        console.log(`✅ Coluna ${columnId} precisa de conversation_id (automação "${automation.name}" tem ações que requerem conversa)`);
+        console.log(`📋 [checkIfColumnNeedsConversation] Ações:`, actionsNeedingConversation.map((a: any) => a.action_type));
+      }
+
+      if (actionsNeedingConversation.length > 0) {
+        console.log(`✅ [checkIfColumnNeedsConversation] Coluna ${columnId} precisa de conversation_id (automação "${automation.name}" tem ações que requerem conversa)`);
         return true;
       }
     }
 
-    console.log(`ℹ️ Coluna ${columnId} não precisa de conversation_id`);
+    console.log(`ℹ️ [checkIfColumnNeedsConversation] Coluna ${columnId} não precisa de conversation_id`);
     return false;
   } catch (error) {
-    console.error(`❌ Erro ao verificar se coluna precisa de conversation_id:`, error);
+    console.error(`❌ [checkIfColumnNeedsConversation] Erro ao verificar se coluna precisa de conversation_id:`, error);
+    console.error(`❌ [checkIfColumnNeedsConversation] Stack:`, error instanceof Error ? error.stack : 'N/A');
     // Em caso de erro, assumir que não precisa (para não bloquear criação)
     return false;
   }
@@ -519,24 +549,41 @@ async function createCard(
   // Adicionar conversation_id se fornecido
   if (conversationId) {
     insertData.conversation_id = conversationId;
-    console.log(`✅ Card será criado com conversation_id: ${conversationId}`);
+    console.log(`✅ [createCard] Card será criado com conversation_id: ${conversationId}`);
+  } else {
+    console.log(`⚠️ [createCard] Card será criado SEM conversation_id (conversationId = ${conversationId})`);
   }
 
   if (cardData.responsible_user_id) {
     insertData.responsible_user_id = cardData.responsible_user_id;
   }
 
+  console.log(`📝 [createCard] Inserindo card com dados:`, JSON.stringify({
+    pipeline_id: insertData.pipeline_id,
+    column_id: insertData.column_id,
+    contact_id: insertData.contact_id,
+    conversation_id: insertData.conversation_id || null,
+    description: insertData.description
+  }, null, 2));
+
   const { data: newCard, error } = await supabase
     .from("pipeline_cards")
     .insert(insertData)
-    .select("id")
+    .select("id, conversation_id")
     .single();
 
   if (error || !newCard) {
+    console.error(`❌ [createCard] Erro ao inserir card:`, error);
     throw new Error(`Erro ao criar card: ${error?.message || "Erro desconhecido"}`);
   }
 
-  console.log("Novo card criado:", newCard.id);
+  console.log(`✅ [createCard] Novo card criado: ${newCard.id}`);
+  console.log(`✅ [createCard] Card criado com conversation_id: ${newCard.conversation_id || 'null'}`);
+  
+  if (!newCard.conversation_id && conversationId) {
+    console.error(`❌ [createCard] ATENÇÃO: conversationId foi passado (${conversationId}) mas o card foi criado sem conversation_id!`);
+  }
+  
   return newCard.id;
 }
 
@@ -1300,36 +1347,47 @@ serve(async (req) => {
         });
       }
 
-      // Verificar se a coluna precisa de conversation_id
+      // ✅ CRÍTICO: Verificar se a coluna precisa de conversation_id ANTES de criar o card
+      console.log(`🔍 [create_card] Verificando se coluna precisa de conversation_id...`);
       const needsConversation = await checkIfColumnNeedsConversation(
         supabase,
         payload.card.column_id
       );
+      console.log(`🔍 [create_card] Resultado: needsConversation = ${needsConversation}`);
 
       let conversationId: string | null = null;
       
       // Se a coluna precisa de conversa OU se foi solicitado no payload, criar conversa
       if (needsConversation || payload.conversation?.create) {
+        console.log(`📞 [create_card] Conversa é necessária. Iniciando criação...`);
         try {
           // Se já foi solicitado no payload, usar a função createConversation
           if (payload.conversation?.create) {
+            console.log(`📞 [create_card] Usando createConversation do payload...`);
             conversationId = await createConversation(
               supabase,
               payload.card.contact_id!,
               payload.workspace_id,
               payload.conversation
             );
+            console.log(`📞 [create_card] createConversation retornou: ${conversationId}`);
           } else {
             // Se não foi solicitado mas a coluna precisa, criar automaticamente
-            const { data: contact } = await supabase
+            console.log(`📞 [create_card] Criando conversa automaticamente (coluna precisa)...`);
+            const { data: contact, error: contactError } = await supabase
               .from("contacts")
               .select("id, phone")
               .eq("id", payload.card.contact_id!)
               .maybeSingle();
 
+            if (contactError) {
+              console.error(`❌ [create_card] Erro ao buscar contato:`, contactError);
+            }
+
             if (contact?.phone) {
+              console.log(`📞 [create_card] Contato tem telefone: ${contact.phone}`);
               // Verificar se já existe conversa aberta
-              const { data: existingConversation } = await supabase
+              const { data: existingConversation, error: existingError } = await supabase
                 .from("conversations")
                 .select("id")
                 .eq("contact_id", payload.card.contact_id!)
@@ -1337,12 +1395,17 @@ serve(async (req) => {
                 .eq("status", "open")
                 .maybeSingle();
 
+              if (existingError) {
+                console.error(`❌ [create_card] Erro ao buscar conversa existente:`, existingError);
+              }
+
               if (existingConversation) {
                 conversationId = existingConversation.id;
-                console.log(`✅ Conversa existente encontrada: ${conversationId}`);
+                console.log(`✅ [create_card] Conversa existente encontrada: ${conversationId}`);
               } else {
+                console.log(`📞 [create_card] Conversa não existe. Criando nova...`);
                 // Criar conversa automaticamente
-                const { data: defaultConnection } = await supabase
+                const { data: defaultConnection, error: connError } = await supabase
                   .from("connections")
                   .select("id, instance_name")
                   .eq("workspace_id", payload.workspace_id)
@@ -1350,6 +1413,10 @@ serve(async (req) => {
                   .order("created_at", { ascending: true })
                   .limit(1)
                   .maybeSingle();
+
+                if (connError) {
+                  console.error(`❌ [create_card] Erro ao buscar conexão padrão:`, connError);
+                }
 
                 const conversationPayload: any = {
                   contact_id: payload.card.contact_id!,
@@ -1361,35 +1428,59 @@ serve(async (req) => {
                   evolution_instance: defaultConnection?.instance_name || null,
                 };
 
+                console.log(`📞 [create_card] Payload da conversa:`, JSON.stringify(conversationPayload, null, 2));
+
                 const { data: newConversation, error: convError } = await supabase
                   .from("conversations")
                   .insert(conversationPayload)
                   .select("id")
                   .single();
 
+                if (convError) {
+                  console.error(`❌ [create_card] ERRO CRÍTICO ao criar conversa:`, convError);
+                  console.error(`❌ [create_card] Erro completo:`, JSON.stringify(convError, null, 2));
+                }
+
                 if (!convError && newConversation) {
                   conversationId = newConversation.id;
-                  console.log(`✅ Conversa criada automaticamente (necessária para automações): ${conversationId}`);
+                  console.log(`✅ [create_card] Conversa criada automaticamente (necessária para automações): ${conversationId}`);
                 } else {
-                  console.error(`❌ Erro ao criar conversa:`, convError);
+                  console.error(`❌ [create_card] Falha ao criar conversa. newConversation:`, newConversation);
                 }
               }
             } else {
-              console.warn(`⚠️ Contato não tem telefone, não é possível criar conversa`);
+              console.warn(`⚠️ [create_card] Contato não tem telefone, não é possível criar conversa`);
+              console.warn(`⚠️ [create_card] Contact data:`, contact);
             }
           }
         } catch (convError: any) {
-          console.error("⚠️ Erro ao criar conversa:", convError);
-          // Se a coluna precisa de conversa mas não conseguimos criar, avisar mas não bloquear
-          if (needsConversation) {
-            console.warn("⚠️ ATENÇÃO: Coluna precisa de conversation_id mas não foi possível criar conversa");
-          }
+          console.error("❌ [create_card] Exception ao criar conversa:", convError);
+          console.error("❌ [create_card] Stack:", convError?.stack);
         }
+      } else {
+        console.log(`ℹ️ [create_card] Coluna não precisa de conversation_id e não foi solicitado no payload`);
+      }
+
+      // ✅ CRÍTICO: Se a coluna precisa de conversa mas não conseguimos criar, BLOQUEAR criação do card
+      if (needsConversation && !conversationId) {
+        console.error(`❌ [create_card] ERRO CRÍTICO: Coluna precisa de conversation_id mas não foi possível criar conversa!`);
+        console.error(`❌ [create_card] Bloqueando criação do card para evitar automações quebradas.`);
+        responseStatus = 500;
+        responseBody = {
+          success: false,
+          error: "CONVERSATION_REQUIRED",
+          message: "A coluna possui automações que requerem uma conversa, mas não foi possível criar a conversa. Verifique se o contato possui telefone e se há uma conexão WhatsApp ativa.",
+        };
+        return new Response(JSON.stringify(responseBody), {
+          status: responseStatus,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
       }
 
       // Criar card (com conversation_id se disponível)
+      console.log(`📝 [create_card] Criando card com conversationId: ${conversationId || 'null'}`);
       cardId = await createCard(supabase, payload.card, payload.card.contact_id!, conversationId);
-      console.log(`✅ Card criado com sucesso: ${cardId}`);
+      console.log(`✅ [create_card] Card criado com sucesso: ${cardId}`);
       
       // ✅ Acionar automações de coluna em background (não bloqueia resposta)
       // Pequena espera para garantir que o card está disponível no banco
@@ -1492,36 +1583,47 @@ serve(async (req) => {
         });
       }
 
-      // Verificar se a coluna precisa de conversation_id
+      // ✅ CRÍTICO: Verificar se a coluna precisa de conversation_id ANTES de criar o card
+      console.log(`🔍 [create_contact_with_card] Verificando se coluna precisa de conversation_id...`);
       const needsConversation = await checkIfColumnNeedsConversation(
         supabase,
         payload.card.column_id
       );
+      console.log(`🔍 [create_contact_with_card] Resultado: needsConversation = ${needsConversation}`);
 
       let conversationId: string | null = null;
       
       // Se a coluna precisa de conversa OU se foi solicitado no payload, criar conversa
       if (needsConversation || payload.conversation?.create) {
+        console.log(`📞 [create_contact_with_card] Conversa é necessária. Iniciando criação...`);
         try {
           // Se já foi solicitado no payload, usar a função createConversation
           if (payload.conversation?.create) {
+            console.log(`📞 [create_contact_with_card] Usando createConversation do payload...`);
             conversationId = await createConversation(
               supabase,
               contactId,
               payload.workspace_id,
               payload.conversation
             );
+            console.log(`📞 [create_contact_with_card] createConversation retornou: ${conversationId}`);
           } else {
             // Se não foi solicitado mas a coluna precisa, criar automaticamente
-            const { data: contact } = await supabase
+            console.log(`📞 [create_contact_with_card] Criando conversa automaticamente (coluna precisa)...`);
+            const { data: contact, error: contactError } = await supabase
               .from("contacts")
               .select("id, phone")
               .eq("id", contactId)
               .maybeSingle();
 
+            if (contactError) {
+              console.error(`❌ [create_contact_with_card] Erro ao buscar contato:`, contactError);
+            }
+
             if (contact?.phone) {
+              console.log(`📞 [create_contact_with_card] Contato tem telefone: ${contact.phone}`);
               // Verificar se já existe conversa aberta
-              const { data: existingConversation } = await supabase
+              const { data: existingConversation, error: existingError } = await supabase
                 .from("conversations")
                 .select("id")
                 .eq("contact_id", contactId)
@@ -1529,12 +1631,17 @@ serve(async (req) => {
                 .eq("status", "open")
                 .maybeSingle();
 
+              if (existingError) {
+                console.error(`❌ [create_contact_with_card] Erro ao buscar conversa existente:`, existingError);
+              }
+
               if (existingConversation) {
                 conversationId = existingConversation.id;
-                console.log(`✅ Conversa existente encontrada: ${conversationId}`);
+                console.log(`✅ [create_contact_with_card] Conversa existente encontrada: ${conversationId}`);
               } else {
+                console.log(`📞 [create_contact_with_card] Conversa não existe. Criando nova...`);
                 // Criar conversa automaticamente
-                const { data: defaultConnection } = await supabase
+                const { data: defaultConnection, error: connError } = await supabase
                   .from("connections")
                   .select("id, instance_name")
                   .eq("workspace_id", payload.workspace_id)
@@ -1542,6 +1649,10 @@ serve(async (req) => {
                   .order("created_at", { ascending: true })
                   .limit(1)
                   .maybeSingle();
+
+                if (connError) {
+                  console.error(`❌ [create_contact_with_card] Erro ao buscar conexão padrão:`, connError);
+                }
 
                 const conversationPayload: any = {
                   contact_id: contactId,
@@ -1553,31 +1664,59 @@ serve(async (req) => {
                   evolution_instance: defaultConnection?.instance_name || null,
                 };
 
+                console.log(`📞 [create_contact_with_card] Payload da conversa:`, JSON.stringify(conversationPayload, null, 2));
+
                 const { data: newConversation, error: convError } = await supabase
                   .from("conversations")
                   .insert(conversationPayload)
                   .select("id")
                   .single();
 
+                if (convError) {
+                  console.error(`❌ [create_contact_with_card] ERRO CRÍTICO ao criar conversa:`, convError);
+                  console.error(`❌ [create_contact_with_card] Erro completo:`, JSON.stringify(convError, null, 2));
+                }
+
                 if (!convError && newConversation) {
                   conversationId = newConversation.id;
-                  console.log(`✅ Conversa criada automaticamente (necessária para automações): ${conversationId}`);
+                  console.log(`✅ [create_contact_with_card] Conversa criada automaticamente (necessária para automações): ${conversationId}`);
+                } else {
+                  console.error(`❌ [create_contact_with_card] Falha ao criar conversa. newConversation:`, newConversation);
                 }
               }
+            } else {
+              console.warn(`⚠️ [create_contact_with_card] Contato não tem telefone, não é possível criar conversa`);
+              console.warn(`⚠️ [create_contact_with_card] Contact data:`, contact);
             }
           }
         } catch (convError: any) {
-          console.error("⚠️ Erro ao criar conversa:", convError);
-          // Se a coluna precisa de conversa mas não conseguimos criar, avisar mas não bloquear
-          if (needsConversation) {
-            console.warn("⚠️ ATENÇÃO: Coluna precisa de conversation_id mas não foi possível criar conversa");
-          }
+          console.error("❌ [create_contact_with_card] Exception ao criar conversa:", convError);
+          console.error("❌ [create_contact_with_card] Stack:", convError?.stack);
         }
+      } else {
+        console.log(`ℹ️ [create_contact_with_card] Coluna não precisa de conversation_id e não foi solicitado no payload`);
+      }
+
+      // ✅ CRÍTICO: Se a coluna precisa de conversa mas não conseguimos criar, BLOQUEAR criação do card
+      if (needsConversation && !conversationId) {
+        console.error(`❌ [create_contact_with_card] ERRO CRÍTICO: Coluna precisa de conversation_id mas não foi possível criar conversa!`);
+        console.error(`❌ [create_contact_with_card] Bloqueando criação do card para evitar automações quebradas.`);
+        responseStatus = 500;
+        responseBody = {
+          success: false,
+          error: "CONVERSATION_REQUIRED",
+          message: "A coluna possui automações que requerem uma conversa, mas não foi possível criar a conversa. Verifique se o contato possui telefone e se há uma conexão WhatsApp ativa.",
+        };
+        return new Response(JSON.stringify(responseBody), {
+          status: responseStatus,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
       }
 
       // Criar card (com conversation_id se disponível)
+      console.log(`📝 [create_contact_with_card] Criando card com conversationId: ${conversationId || 'null'}`);
       cardId = await createCard(supabase, payload.card, contactId, conversationId);
-      console.log(`✅ Card criado com sucesso: ${cardId}`);
+      console.log(`✅ [create_contact_with_card] Card criado com sucesso: ${cardId}`);
       
       // ✅ Acionar automações de coluna em background (não bloqueia resposta)
       // Pequena espera para garantir que o card está disponível no banco
