@@ -22,6 +22,8 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { getSupabaseFunctionUrl } from "@/lib/config";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Pipeline, PipelineColumn } from "@/hooks/usePipelines";
 
 interface ApiKey {
   id: string;
@@ -48,13 +50,32 @@ export function WorkspaceApiKeys() {
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [keyToDelete, setKeyToDelete] = useState<ApiKey | null>(null);
 
+  // Estados para Payload Personalizado
+  const [pipelines, setPipelines] = useState<Pipeline[]>([]);
+  const [columns, setColumns] = useState<PipelineColumn[]>([]);
+  const [selectedPipelineId, setSelectedPipelineId] = useState<string>("");
+  const [selectedColumnId, setSelectedColumnId] = useState<string>("");
+  const [loadingPipelines, setLoadingPipelines] = useState(false);
+  const [loadingColumns, setLoadingColumns] = useState(false);
+  const [copiedPayload, setCopiedPayload] = useState(false);
+
   const apiUrl = getSupabaseFunctionUrl("external-webhook-api");
 
   useEffect(() => {
     if (selectedWorkspace) {
       loadApiKeys();
+      loadPipelines();
     }
   }, [selectedWorkspace]);
+
+  useEffect(() => {
+    if (selectedPipelineId && selectedWorkspace) {
+      loadColumns(selectedPipelineId);
+    } else {
+      setColumns([]);
+      setSelectedColumnId("");
+    }
+  }, [selectedPipelineId, selectedWorkspace]);
 
   const loadApiKeys = async () => {
     if (!selectedWorkspace) return;
@@ -237,6 +258,115 @@ export function WorkspaceApiKeys() {
     return new Date(dateString).toLocaleString("pt-BR");
   };
 
+  const loadPipelines = async () => {
+    if (!selectedWorkspace) return;
+
+    try {
+      setLoadingPipelines(true);
+      const headers = getHeaders();
+
+      const { data, error } = await supabase.functions.invoke("pipeline-management/pipelines", {
+        method: "GET",
+        headers,
+      });
+
+      if (error) throw error;
+
+      setPipelines(data || []);
+    } catch (error: any) {
+      console.error("Erro ao carregar pipelines:", error);
+      toast({
+        title: "Erro",
+        description: "Erro ao carregar pipelines",
+        variant: "destructive",
+      });
+    } finally {
+      setLoadingPipelines(false);
+    }
+  };
+
+  const loadColumns = async (pipelineId: string) => {
+    if (!selectedWorkspace || !pipelineId) return;
+
+    try {
+      setLoadingColumns(true);
+      const headers = getHeaders();
+
+      const { data, error } = await supabase.functions.invoke(
+        `pipeline-management/columns?pipeline_id=${pipelineId}`,
+        {
+          method: "GET",
+          headers,
+        }
+      );
+
+      if (error) throw error;
+
+      setColumns(data || []);
+    } catch (error: any) {
+      console.error("Erro ao carregar colunas:", error);
+      toast({
+        title: "Erro",
+        description: "Erro ao carregar colunas",
+        variant: "destructive",
+      });
+    } finally {
+      setLoadingColumns(false);
+    }
+  };
+
+  const generatePayload = () => {
+    if (!selectedWorkspace || !selectedPipelineId || !selectedColumnId) {
+      return null;
+    }
+
+    const payload = {
+      action: "create_contact_with_card",
+      workspace_id: selectedWorkspace.workspace_id,
+      contact: {
+        name: "Nome do Cliente",
+        phone: "5511999999999",
+        email: "email@exemplo.com",
+      },
+      card: {
+        pipeline_id: selectedPipelineId,
+        column_id: selectedColumnId,
+        description: "Descrição do negócio",
+        value: 0,
+      },
+    };
+
+    return JSON.stringify(payload, null, 2);
+  };
+
+  const copyPayload = async () => {
+    const payload = generatePayload();
+    if (!payload) {
+      toast({
+        title: "Erro",
+        description: "Selecione pipeline e coluna para gerar o payload",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    try {
+      await navigator.clipboard.writeText(payload);
+      setCopiedPayload(true);
+      toast({
+        title: "Copiado",
+        description: "Payload copiado para a área de transferência",
+      });
+      setTimeout(() => setCopiedPayload(false), 2000);
+    } catch (error) {
+      toast({
+        title: "Erro",
+        description: "Erro ao copiar payload",
+        variant: "destructive",
+      });
+    }
+  };
+
   if (!selectedWorkspace) {
     return (
       <div className="flex items-center justify-center h-full">
@@ -254,7 +384,7 @@ export function WorkspaceApiKeys() {
     <div className="h-full flex flex-col overflow-hidden">
       <div className="bg-white dark:bg-[#1f1f1f] border border-[#d4d4d4] dark:border-gray-700 shadow-sm flex flex-col h-full overflow-hidden">
         <Tabs defaultValue="keys" className="w-full flex flex-col h-full overflow-hidden">
-          <TabsList className="grid w-full grid-cols-2 bg-[#f3f3f3] dark:bg-[#2d2d2d] rounded-none h-auto p-0 border-b border-[#d4d4d4] dark:border-gray-700">
+          <TabsList className="grid w-full grid-cols-3 bg-[#f3f3f3] dark:bg-[#2d2d2d] rounded-none h-auto p-0 border-b border-[#d4d4d4] dark:border-gray-700">
             <TabsTrigger
               value="keys"
               className="rounded-none py-3 px-6 text-xs font-semibold uppercase tracking-wide data-[state=active]:bg-[#FEF3C7] dark:data-[state=active]:bg-gray-700 data-[state=active]:text-black dark:data-[state=active]:text-white data-[state=active]:border-b-2 data-[state=active]:border-gray-300 dark:data-[state=active]:border-gray-600 data-[state=active]:shadow-none"
@@ -266,6 +396,12 @@ export function WorkspaceApiKeys() {
               className="rounded-none py-3 px-6 text-xs font-semibold uppercase tracking-wide data-[state=active]:bg-[#FEF3C7] dark:data-[state=active]:bg-gray-700 data-[state=active]:text-black dark:data-[state=active]:text-white data-[state=active]:border-b-2 data-[state=active]:border-gray-300 dark:data-[state=active]:border-gray-600 data-[state=active]:shadow-none"
             >
               Documentação
+            </TabsTrigger>
+            <TabsTrigger
+              value="payload-generator"
+              className="rounded-none py-3 px-6 text-xs font-semibold uppercase tracking-wide data-[state=active]:bg-[#FEF3C7] dark:data-[state=active]:bg-gray-700 data-[state=active]:text-black dark:data-[state=active]:text-white data-[state=active]:border-b-2 data-[state=active]:border-gray-300 dark:data-[state=active]:border-gray-600 data-[state=active]:shadow-none"
+            >
+              Payload Personalizado
             </TabsTrigger>
           </TabsList>
 
@@ -708,6 +844,164 @@ X-API-Key: sua_api_key_aqui
                   </div>
                 </CardContent>
               </Card>
+            </div>
+          </TabsContent>
+
+          <TabsContent value="payload-generator" className="p-6 mt-0 bg-white dark:bg-[#1f1f1f] overflow-y-auto flex-1">
+            <div className="space-y-6 max-w-4xl mx-auto">
+              <div className="flex items-center gap-3 pb-4 border-b border-[#d4d4d4] dark:border-gray-700">
+                <Code className="w-5 h-5 text-gray-700 dark:text-gray-300" />
+                <div>
+                  <h2 className="text-sm font-bold text-gray-800 dark:text-gray-200 uppercase tracking-wide">
+                    Gerador de Payload Personalizado
+                  </h2>
+                  <p className="text-xs text-gray-600 dark:text-gray-400 mt-1">
+                    Selecione pipeline e coluna para gerar um payload com os IDs corretos
+                  </p>
+                </div>
+              </div>
+
+              <Card className="border-[#d4d4d4] dark:border-gray-700 bg-white dark:bg-[#1f1f1f]">
+                <CardHeader className="bg-white dark:bg-[#1f1f1f]">
+                  <CardTitle className="text-sm text-gray-800 dark:text-gray-200">Seleção de Pipeline e Coluna</CardTitle>
+                  <CardDescription className="text-xs text-gray-600 dark:text-gray-400">
+                    Escolha o pipeline e a coluna para gerar o payload
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-4 bg-white dark:bg-[#1f1f1f]">
+                  {/* Workspace (readonly) */}
+                  <div className="space-y-2">
+                    <Label className="text-xs font-medium text-gray-700 dark:text-gray-300">Workspace</Label>
+                    <Input
+                      value={selectedWorkspace?.name || ""}
+                      disabled
+                      className="h-8 text-xs rounded-none border-[#d4d4d4] dark:border-gray-700 bg-[#f3f3f3] dark:bg-[#2d2d2d] text-gray-600 dark:text-gray-400 cursor-not-allowed"
+                    />
+                  </div>
+
+                  {/* Pipeline Select */}
+                  <div className="space-y-2">
+                    <Label className="text-xs font-medium text-gray-700 dark:text-gray-300">Pipeline</Label>
+                    <Select
+                      value={selectedPipelineId}
+                      onValueChange={setSelectedPipelineId}
+                      disabled={loadingPipelines || pipelines.length === 0}
+                    >
+                      <SelectTrigger className="h-8 text-xs rounded-none border-[#d4d4d4] dark:border-gray-700 bg-white dark:bg-[#2d2d2d] text-gray-900 dark:text-gray-100">
+                        <SelectValue
+                          placeholder={
+                            loadingPipelines
+                              ? "Carregando pipelines..."
+                              : pipelines.length === 0
+                              ? "Nenhum pipeline disponível"
+                              : "Selecione um pipeline"
+                          }
+                        />
+                      </SelectTrigger>
+                      {pipelines.length > 0 && (
+                        <SelectContent className="dark:bg-[#2d2d2d] dark:border-gray-700">
+                          {pipelines.map((pipeline) => (
+                            <SelectItem
+                              key={pipeline.id}
+                              value={pipeline.id}
+                              className="text-xs dark:text-gray-200 dark:focus:bg-gray-700"
+                            >
+                              {pipeline.name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      )}
+                    </Select>
+                  </div>
+
+                  {/* Column Select */}
+                  <div className="space-y-2">
+                    <Label className="text-xs font-medium text-gray-700 dark:text-gray-300">Coluna</Label>
+                    <Select
+                      value={selectedColumnId}
+                      onValueChange={setSelectedColumnId}
+                      disabled={!selectedPipelineId || loadingColumns || columns.length === 0}
+                    >
+                      <SelectTrigger className="h-8 text-xs rounded-none border-[#d4d4d4] dark:border-gray-700 bg-white dark:bg-[#2d2d2d] text-gray-900 dark:text-gray-100">
+                        <SelectValue
+                          placeholder={
+                            !selectedPipelineId
+                              ? "Selecione um pipeline primeiro"
+                              : loadingColumns
+                              ? "Carregando colunas..."
+                              : columns.length === 0
+                              ? "Nenhuma coluna disponível"
+                              : "Selecione uma coluna"
+                          }
+                        />
+                      </SelectTrigger>
+                      {columns.length > 0 && (
+                        <SelectContent className="dark:bg-[#2d2d2d] dark:border-gray-700">
+                          {columns.map((column) => (
+                            <SelectItem
+                              key={column.id}
+                              value={column.id}
+                              className="text-xs dark:text-gray-200 dark:focus:bg-gray-700"
+                            >
+                              {column.name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      )}
+                    </Select>
+                  </div>
+                </CardContent>
+              </Card>
+
+              {/* Generated Payload */}
+              {selectedPipelineId && selectedColumnId && (
+                <Card className="border-[#d4d4d4] dark:border-gray-700 bg-white dark:bg-[#1f1f1f]">
+                  <CardHeader className="bg-white dark:bg-[#1f1f1f]">
+                    <div className="flex items-center justify-between">
+                      <CardTitle className="text-sm text-gray-800 dark:text-gray-200">Payload Gerado</CardTitle>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={copyPayload}
+                        className="h-7 px-3 text-xs rounded-none border-[#d4d4d4] dark:border-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800"
+                      >
+                        {copiedPayload ? (
+                          <>
+                            <Check className="w-3.5 h-3.5 mr-1.5" />
+                            Copiado
+                          </>
+                        ) : (
+                          <>
+                            <Copy className="w-3.5 h-3.5 mr-1.5" />
+                            Copiar
+                          </>
+                        )}
+                      </Button>
+                    </div>
+                    <CardDescription className="text-xs text-gray-600 dark:text-gray-400">
+                      Use este payload na sua requisição para criar contato e card simultaneamente
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent className="bg-white dark:bg-[#1f1f1f]">
+                    <pre className="text-xs bg-[#f3f3f3] dark:bg-[#2d2d2d] p-4 rounded border border-[#d4d4d4] dark:border-gray-700 overflow-x-auto text-gray-900 dark:text-gray-100">
+                      {generatePayload()}
+                    </pre>
+                  </CardContent>
+                </Card>
+              )}
+
+              {(!selectedPipelineId || !selectedColumnId) && (
+                <Card className="border-[#d4d4d4] dark:border-gray-700 bg-white dark:bg-[#1f1f1f]">
+                  <CardContent className="pt-6 bg-white dark:bg-[#1f1f1f]">
+                    <div className="text-center py-8">
+                      <Code className="w-12 h-12 text-gray-400 mx-auto mb-4" />
+                      <p className="text-sm text-gray-600 dark:text-gray-400">
+                        Selecione um pipeline e uma coluna para gerar o payload
+                      </p>
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
             </div>
           </TabsContent>
         </Tabs>

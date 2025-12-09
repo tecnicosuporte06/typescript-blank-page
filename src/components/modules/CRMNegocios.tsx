@@ -593,11 +593,25 @@ function DraggableDeal({
                     variant="ghost" 
                     className={`h-5 w-5 p-0 hover:bg-purple-100 dark:hover:bg-purple-900 hover:text-purple-600 dark:hover:text-purple-400`} 
                     onClick={(e) => {
+                      e.preventDefault();
                       e.stopPropagation();
+                      console.log('🤖 Botão de agente clicado:', { 
+                        hasConversation: !!deal.conversation, 
+                        conversationId: deal.conversation?.id,
+                        hasOnConfigureAgent: !!onConfigureAgent 
+                      });
                       if (deal.conversation?.id && onConfigureAgent) {
+                        console.log('✅ Chamando onConfigureAgent com:', deal.conversation.id);
                         onConfigureAgent(deal.conversation.id);
+                      } else {
+                        console.warn('⚠️ Não foi possível abrir modal:', {
+                          hasConversation: !!deal.conversation,
+                          conversationId: deal.conversation?.id,
+                          hasOnConfigureAgent: !!onConfigureAgent
+                        });
                       }
                     }}
+                    type="button"
                   >
                     <Bot className="w-3 h-3" />
                   </Button>
@@ -2416,8 +2430,13 @@ const [selectedCardForProduct, setSelectedCardForProduct] = useState<{
     }} />
 
       <ChangeAgentModal 
-        open={agentModalOpen} 
-        onOpenChange={setAgentModalOpen} 
+        open={agentModalOpen && !!selectedConversationForAgent} 
+        onOpenChange={(open) => {
+          setAgentModalOpen(open);
+          if (!open) {
+            setSelectedConversationForAgent(null);
+          }
+        }} 
         conversationId={selectedConversationForAgent || ''}
         currentAgentId={currentAgentId}
         onAgentChanged={() => {
