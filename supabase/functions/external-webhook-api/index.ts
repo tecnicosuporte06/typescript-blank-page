@@ -570,15 +570,25 @@ async function createCard(
   console.log(`📝 [createCard] conversationId recebido como parâmetro:`, conversationId || 'null');
   console.log(`📝 [createCard] =========================================`);
 
+  console.log(`📝 [createCard] ========== EXECUTANDO INSERT ==========`);
+  console.log(`📝 [createCard] insertData antes do insert:`, JSON.stringify(insertData, null, 2));
+  console.log(`📝 [createCard] conversation_id no insertData: ${insertData.conversation_id || 'NÃO PRESENTE'}`);
+  console.log(`📝 [createCard] conversationId recebido como parâmetro: ${conversationId || 'null'}`);
+  
   const { data: newCard, error } = await supabase
     .from("pipeline_cards")
     .insert(insertData)
     .select("id, conversation_id")
     .single();
   
+  console.log(`📝 [createCard] ========== RESULTADO DO INSERT ==========`);
+  console.log(`📝 [createCard] newCard retornado:`, newCard ? JSON.stringify(newCard, null, 2) : 'null');
+  console.log(`📝 [createCard] error retornado:`, error ? JSON.stringify(error, null, 2) : 'null');
+  
   if (error) {
     console.error(`❌ [createCard] Erro na inserção:`, error);
     console.error(`❌ [createCard] Erro completo:`, JSON.stringify(error, null, 2));
+    console.error(`❌ [createCard] insertData que causou o erro:`, JSON.stringify(insertData, null, 2));
   }
 
   if (error || !newCard) {
@@ -588,9 +598,18 @@ async function createCard(
 
   console.log(`✅ [createCard] Novo card criado: ${newCard.id}`);
   console.log(`✅ [createCard] Card criado com conversation_id: ${newCard.conversation_id || 'null'}`);
+  console.log(`✅ [createCard] conversation_id no banco: ${newCard.conversation_id || 'null'}`);
+  console.log(`✅ [createCard] conversation_id esperado: ${conversationId || 'null'}`);
   
   if (!newCard.conversation_id && conversationId) {
-    console.error(`❌ [createCard] ATENÇÃO: conversationId foi passado (${conversationId}) mas o card foi criado sem conversation_id!`);
+    console.error(`❌ [createCard] ⚠️⚠️⚠️ ATENÇÃO CRÍTICA ⚠️⚠️⚠️`);
+    console.error(`❌ [createCard] conversationId foi passado (${conversationId}) mas o card foi criado sem conversation_id!`);
+    console.error(`❌ [createCard] Isso indica um problema na inserção ou na estrutura do insertData`);
+    console.error(`❌ [createCard] insertData usado:`, JSON.stringify(insertData, null, 2));
+  } else if (newCard.conversation_id && conversationId && newCard.conversation_id !== conversationId) {
+    console.warn(`⚠️ [createCard] conversation_id no banco (${newCard.conversation_id}) difere do esperado (${conversationId})`);
+  } else if (newCard.conversation_id && conversationId && newCard.conversation_id === conversationId) {
+    console.log(`✅ [createCard] conversation_id confirmado: ${conversationId}`);
   }
   
   return newCard.id;
@@ -1366,8 +1385,11 @@ serve(async (req) => {
       // ✅ NOVO: Se conversation_id foi fornecido no payload, validar e usar diretamente
       let conversationId: string | null = payload.card.conversation_id || null;
       
-      console.log(`🔍 [create_card] conversation_id extraído: ${conversationId || 'null/undefined'}`);
+      console.log(`🔍 [create_card] ========== INÍCIO DA VALIDAÇÃO ==========`);
+      console.log(`🔍 [create_card] conversation_id extraído do payload: ${conversationId || 'null/undefined'}`);
+      console.log(`🔍 [create_card] conversation_id type: ${typeof conversationId}`);
       console.log(`🔍 [create_card] conversation_id é truthy? ${!!conversationId}`);
+      console.log(`🔍 [create_card] payload.card completo:`, JSON.stringify(payload.card, null, 2));
       
       if (conversationId) {
         console.log(`✅ [create_card] conversation_id fornecido no payload: ${conversationId}`);
@@ -1413,26 +1435,36 @@ serve(async (req) => {
         
         if (convCheckError) {
           console.error(`❌ [create_card] Erro ao buscar conversa após ${maxRetries} tentativas:`, convCheckError);
+          console.warn(`⚠️ [create_card] conversation_id fornecido (${conversationId}) não pôde ser validado devido a erro`);
           console.warn(`⚠️ [create_card] Tentando buscar/criar conversa automaticamente...`);
+          const originalConversationId = conversationId; // Preservar o ID original para logs
           conversationId = null; // Reset para buscar/criar
+          console.warn(`⚠️ [create_card] conversationId resetado de "${originalConversationId}" para null`);
         } else if (!existingConv) {
           console.warn(`⚠️ [create_card] Conversa ${conversationId} não encontrada no banco após ${maxRetries} tentativas`);
           console.warn(`⚠️ [create_card] Isso pode indicar que o conversation_id está incorreto ou a conversa ainda não foi commitada`);
           console.warn(`⚠️ [create_card] Tentando buscar/criar conversa automaticamente...`);
+          const originalConversationId = conversationId; // Preservar o ID original para logs
           conversationId = null; // Reset para buscar/criar
+          console.warn(`⚠️ [create_card] conversationId resetado de "${originalConversationId}" para null`);
         } else if (existingConv.contact_id !== payload.card.contact_id) {
           console.warn(`⚠️ [create_card] conversation_id fornecido pertence a outro contato`);
           console.warn(`⚠️ [create_card] Conversa contact_id: ${existingConv.contact_id}, Card contact_id: ${payload.card.contact_id}`);
           console.warn(`⚠️ [create_card] Tentando buscar/criar conversa automaticamente...`);
+          const originalConversationId = conversationId; // Preservar o ID original para logs
           conversationId = null; // Reset para buscar/criar
+          console.warn(`⚠️ [create_card] conversationId resetado de "${originalConversationId}" para null`);
         } else if (existingConv.workspace_id !== payload.workspace_id) {
           console.warn(`⚠️ [create_card] conversation_id fornecido pertence a outro workspace`);
           console.warn(`⚠️ [create_card] Conversa workspace_id: ${existingConv.workspace_id}, Card workspace_id: ${payload.workspace_id}`);
           console.warn(`⚠️ [create_card] Tentando buscar/criar conversa automaticamente...`);
+          const originalConversationId = conversationId; // Preservar o ID original para logs
           conversationId = null; // Reset para buscar/criar
+          console.warn(`⚠️ [create_card] conversationId resetado de "${originalConversationId}" para null`);
         } else {
           console.log(`✅ [create_card] conversation_id validado com sucesso!`);
           console.log(`✅ [create_card] Usando conversation_id: ${conversationId}`);
+          console.log(`✅ [create_card] conversation_id será preservado e usado na criação do card`);
         }
       } else {
         console.log(`ℹ️ [create_card] Nenhum conversation_id fornecido no payload`);
@@ -1575,7 +1607,13 @@ serve(async (req) => {
       }
 
       // Criar card (com conversation_id se disponível)
-      console.log(`📝 [create_card] Criando card com conversationId: ${conversationId || 'null'}`);
+      console.log(`📝 [create_card] ========== ANTES DE CRIAR CARD ==========`);
+      console.log(`📝 [create_card] conversationId final: ${conversationId || 'null'}`);
+      console.log(`📝 [create_card] conversationId type: ${typeof conversationId}`);
+      console.log(`📝 [create_card] conversationId truthy: ${!!conversationId}`);
+      console.log(`📝 [create_card] payload.card.conversation_id original: ${payload.card.conversation_id || 'não fornecido'}`);
+      console.log(`📝 [create_card] =========================================`);
+      
       cardId = await createCard(supabase, payload.card, payload.card.contact_id!, conversationId);
       console.log(`✅ [create_card] Card criado com sucesso: ${cardId}`);
       
