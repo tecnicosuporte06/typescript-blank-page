@@ -34,6 +34,7 @@ import { ConfiguracaoAcoes } from "./modules/ConfiguracaoAcoes";
 import { ParceirosClientes } from "./modules/ParceirosClientes";
 import { WorkspaceEmpresas } from "./modules/WorkspaceEmpresas";
 import { WorkspaceUsersPage } from "./modules/WorkspaceUsersPage";
+import { WorkspaceApiKeys } from "./modules/WorkspaceApiKeys";
 
 export type ModuleType = 
   | "dashboard"
@@ -55,6 +56,7 @@ export type ModuleType =
   | "conexoes"
   | "workspace-empresas"
   | "workspace-usuarios"
+  | "workspace-api-keys"
   | "workspace-relatorios"
   | "parceiros-clientes"
   | "administracao-usuarios"
@@ -174,6 +176,8 @@ export function TezeusCRM() {
         return <WorkspaceEmpresas />;
       case "workspace-usuarios":
         return <WorkspaceUsersPage />;
+      case "workspace-api-keys":
+        return <WorkspaceApiKeys />;
       
       case "parceiros-clientes":
         return <ParceirosClientes />;

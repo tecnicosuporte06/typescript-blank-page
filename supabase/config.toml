@@ -51,3 +51,6 @@ verify_jwt = false
 
 [functions.external-webhook-api]
 verify_jwt = false
+
+[functions.manage-workspace-api-keys]
+verify_jwt = false
