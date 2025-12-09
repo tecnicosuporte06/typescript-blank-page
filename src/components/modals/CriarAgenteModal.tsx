@@ -18,6 +18,7 @@ import { toast } from "sonner";
 import { useWorkspaces } from "@/hooks/useWorkspaces";
 import { PromptEditorModal } from "./PromptEditorModal";
 import { ActionPreviewDisplay } from "@/components/ui/action-preview-display";
+import { sanitizeFileName } from "@/lib/sanitize-file-name";
 import { useQueryClient } from '@tanstack/react-query';
 import { generateRandomId } from "@/lib/generate-random-id";
 
@@ -166,7 +167,9 @@ Exemplo: [ENVIE PARA O TOOL \`info-adicionais\` (METODO POST) o id: campo-empres
           return;
         }
 
-        const filePath = `${formData.workspace_id}/${agentId}/${knowledgeFile.name}`;
+        // Sanitizar nome do arquivo para evitar problemas com caracteres especiais no storage
+        const sanitizedFileName = sanitizeFileName(knowledgeFile.name);
+        const filePath = `${formData.workspace_id}/${agentId}/${sanitizedFileName}`;
         
         // Extrair texto do arquivo usando edge function
         const uploadFormData = new FormData();

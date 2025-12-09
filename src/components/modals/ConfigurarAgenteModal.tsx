@@ -18,6 +18,7 @@ import { Slider } from "@/components/ui/slider";
 import { Bot, Upload, FileText, Trash2, TestTube } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
+import { sanitizeFileName } from "@/lib/sanitize-file-name";
 
 interface AIAgent {
   id: string;
