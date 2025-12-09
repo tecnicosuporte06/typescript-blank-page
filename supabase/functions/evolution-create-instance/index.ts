@@ -332,8 +332,8 @@ serve(async (req) => {
       phone_number: phoneNumber || null,
       auto_create_crm_card: autoCreateCrmCard || false,
       queue_id: queueId || null,
-      metadata: metadata || null,
-      is_default: isDefault // ✅ Set default based on logic
+      metadata: metadata || null
+      // Nota: is_default foi removido pois a coluna não existe na tabela connections
     };
 
     // Handle pipeline and column fields - ensure they're saved when provided
