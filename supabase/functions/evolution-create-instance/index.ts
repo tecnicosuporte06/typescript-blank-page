@@ -172,22 +172,27 @@ serve(async (req) => {
       console.error("❌ Workspace ID:", workspaceId);
       console.error("❌ Provider requested:", provider);
       
-      // Verificar se existe algum provider configurado para este workspace
-      const { data: anyProvider, error: anyProviderError } = await supabase
-        .from("whatsapp_providers")
-        .select("provider, is_active")
-        .eq("workspace_id", workspaceId);
-      
-      console.log("📋 Providers existentes neste workspace:", anyProvider);
-      
       const providerName = provider === 'evolution' ? 'Evolution API' : 'Z-API';
-      let errorMessage = `Provider ${providerName} não está configurado para este workspace (ID: ${workspaceId}).`;
+      let errorMessage = `Provider ${providerName} não está configurado para este workspace.`;
       
-      if (anyProvider && anyProvider.length > 0) {
-        const providersList = anyProvider.map(p => `${p.provider}${p.is_active ? ' (ativo)' : ' (inativo)'}`).join(', ');
-        errorMessage += ` Providers encontrados: ${providersList}. Configure o ${providerName} em Configurações > Providers WhatsApp.`;
-      } else {
-        errorMessage += ` Nenhum provider configurado para este workspace. Configure em Configurações > Providers WhatsApp.`;
+      // Verificar se existe algum provider configurado para este workspace (com tratamento de erro)
+      try {
+        const { data: anyProvider, error: anyProviderError } = await supabase
+          .from("whatsapp_providers")
+          .select("provider, is_active")
+          .eq("workspace_id", workspaceId);
+        
+        if (!anyProviderError && anyProvider && anyProvider.length > 0) {
+          console.log("📋 Providers existentes neste workspace:", anyProvider);
+          const providersList = anyProvider.map(p => `${p.provider}${p.is_active ? ' (ativo)' : ' (inativo)'}`).join(', ');
+          errorMessage += ` Providers encontrados: ${providersList}. Configure o ${providerName} em Configurações > Providers WhatsApp.`;
+        } else {
+          errorMessage += ` Nenhum provider configurado para este workspace. Configure em Configurações > Providers WhatsApp.`;
+        }
+      } catch (queryError) {
+        console.error("❌ Erro ao verificar providers existentes:", queryError);
+        // Continuar com mensagem de erro básica se a query falhar
+        errorMessage += ` Configure em Configurações > Providers WhatsApp.`;
       }
       
       return new Response(
@@ -218,6 +223,18 @@ serve(async (req) => {
       hasZapiUrl: !!selectedProvider.zapi_url,
       hasZapiToken: !!selectedProvider.zapi_token,
     });
+    
+    // Validar token Z-API antes de continuar
+    if (provider === 'zapi' && !selectedProvider.zapi_token) {
+      console.error("❌ Z-API token is missing for provider!");
+      return new Response(
+        JSON.stringify({
+          success: false,
+          error: "Token do Z-API não está configurado. Configure o token em Configurações > Providers WhatsApp.",
+        }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
     
     const activeProvider = selectedProvider; // Manter variável activeProvider para compatibilidade com código existente
     console.log("Active Provider:", activeProvider.provider);
@@ -879,15 +896,23 @@ serve(async (req) => {
     );
   } catch (error) {
     console.error("❌ CRITICAL ERROR in evolution-create-instance:", error);
-    console.error("❌ Error name:", (error as any).name);
-    console.error("❌ Error message:", (error as Error).message);
-    console.error("❌ Error stack:", (error as Error).stack);
+    console.error("❌ Error name:", (error as any)?.name);
+    console.error("❌ Error message:", (error as Error)?.message);
+    console.error("❌ Error stack:", (error as Error)?.stack);
+    console.error("❌ Full error object:", JSON.stringify(error, Object.getOwnPropertyNames(error)));
+
+    const errorMessage = (error as Error)?.message || "Erro desconhecido";
+    const errorName = (error as any)?.name || "UnknownError";
 
     return new Response(
       JSON.stringify({
         success: false,
-        error: `Erro interno: ${(error as Error).message || "Erro desconhecido"}`,
-        errorType: (error as any).name || "UnknownError",
+        error: `Erro interno: ${errorMessage}`,
+        errorType: errorName,
+        details: process.env.DENO_ENV === 'development' ? {
+          stack: (error as Error)?.stack,
+          name: errorName
+        } : undefined
       }),
       { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } },
     );
