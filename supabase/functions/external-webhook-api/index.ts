@@ -1300,7 +1300,95 @@ serve(async (req) => {
         });
       }
 
-      cardId = await createCard(supabase, payload.card, payload.card.contact_id);
+      // Verificar se a coluna precisa de conversation_id
+      const needsConversation = await checkIfColumnNeedsConversation(
+        supabase,
+        payload.card.column_id
+      );
+
+      let conversationId: string | null = null;
+      
+      // Se a coluna precisa de conversa OU se foi solicitado no payload, criar conversa
+      if (needsConversation || payload.conversation?.create) {
+        try {
+          // Se já foi solicitado no payload, usar a função createConversation
+          if (payload.conversation?.create) {
+            conversationId = await createConversation(
+              supabase,
+              payload.card.contact_id!,
+              payload.workspace_id,
+              payload.conversation
+            );
+          } else {
+            // Se não foi solicitado mas a coluna precisa, criar automaticamente
+            const { data: contact } = await supabase
+              .from("contacts")
+              .select("id, phone")
+              .eq("id", payload.card.contact_id!)
+              .maybeSingle();
+
+            if (contact?.phone) {
+              // Verificar se já existe conversa aberta
+              const { data: existingConversation } = await supabase
+                .from("conversations")
+                .select("id")
+                .eq("contact_id", payload.card.contact_id!)
+                .eq("workspace_id", payload.workspace_id)
+                .eq("status", "open")
+                .maybeSingle();
+
+              if (existingConversation) {
+                conversationId = existingConversation.id;
+                console.log(`✅ Conversa existente encontrada: ${conversationId}`);
+              } else {
+                // Criar conversa automaticamente
+                const { data: defaultConnection } = await supabase
+                  .from("connections")
+                  .select("id, instance_name")
+                  .eq("workspace_id", payload.workspace_id)
+                  .eq("status", "connected")
+                  .order("created_at", { ascending: true })
+                  .limit(1)
+                  .maybeSingle();
+
+                const conversationPayload: any = {
+                  contact_id: payload.card.contact_id!,
+                  workspace_id: payload.workspace_id,
+                  status: "open",
+                  canal: "whatsapp",
+                  agente_ativo: false,
+                  connection_id: defaultConnection?.id || null,
+                  evolution_instance: defaultConnection?.instance_name || null,
+                };
+
+                const { data: newConversation, error: convError } = await supabase
+                  .from("conversations")
+                  .insert(conversationPayload)
+                  .select("id")
+                  .single();
+
+                if (!convError && newConversation) {
+                  conversationId = newConversation.id;
+                  console.log(`✅ Conversa criada automaticamente (necessária para automações): ${conversationId}`);
+                } else {
+                  console.error(`❌ Erro ao criar conversa:`, convError);
+                }
+              }
+            } else {
+              console.warn(`⚠️ Contato não tem telefone, não é possível criar conversa`);
+            }
+          }
+        } catch (convError: any) {
+          console.error("⚠️ Erro ao criar conversa:", convError);
+          // Se a coluna precisa de conversa mas não conseguimos criar, avisar mas não bloquear
+          if (needsConversation) {
+            console.warn("⚠️ ATENÇÃO: Coluna precisa de conversation_id mas não foi possível criar conversa");
+          }
+        }
+      }
+
+      // Criar card (com conversation_id se disponível)
+      cardId = await createCard(supabase, payload.card, payload.card.contact_id!, conversationId);
       console.log(`✅ Card criado com sucesso: ${cardId}`);
       
       // ✅ Acionar automações de coluna em background (não bloqueia resposta)
