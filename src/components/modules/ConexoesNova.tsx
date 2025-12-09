@@ -664,6 +664,19 @@ export function ConexoesNova({ workspaceId }: ConexoesNovaProps) {
       
       // Check if it's a CORS or network error and retry up to 3 times
       const errorMessage = error instanceof Error ? error.message : 'Erro desconhecido';
+      
+      // Verificar se é erro de provider não configurado
+      if (errorMessage.includes('não está configurado') || errorMessage.includes('Provider') && errorMessage.includes('não está configurado')) {
+        toast({
+          title: 'Provider não configurado',
+          description: errorMessage + ' Acesse Configurações > Providers WhatsApp para configurar.',
+          variant: 'destructive',
+          duration: 8000,
+        });
+        setIsCreating(false);
+        return;
+      }
+      
       const isCorsError = errorMessage.toLowerCase().includes('cors') || 
                          errorMessage.toLowerCase().includes('network') ||
                          errorMessage.toLowerCase().includes('fetch');

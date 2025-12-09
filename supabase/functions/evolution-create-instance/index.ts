@@ -158,7 +158,7 @@ serve(async (req) => {
     console.log("Supabase Service Key:", supabaseServiceKey ? "Present" : "Missing");
 
     // 🆕 Buscar provider ESPECÍFICO escolhido pelo usuário (não apenas o ativo)
-    console.log(`🔍 Buscando configuração do provider: ${provider}`);
+    console.log(`🔍 Buscando configuração do provider: ${provider} para workspace: ${workspaceId}`);
     
     const { data: selectedProvider, error: providerError } = await supabase
       .from("whatsapp_providers")
@@ -169,11 +169,44 @@ serve(async (req) => {
 
     if (providerError || !selectedProvider) {
       console.error("❌ Provider not found:", providerError);
+      console.error("❌ Workspace ID:", workspaceId);
+      console.error("❌ Provider requested:", provider);
+      
+      // Verificar se existe algum provider configurado para este workspace
+      const { data: anyProvider, error: anyProviderError } = await supabase
+        .from("whatsapp_providers")
+        .select("provider, is_active")
+        .eq("workspace_id", workspaceId);
+      
+      console.log("📋 Providers existentes neste workspace:", anyProvider);
+      
+      const providerName = provider === 'evolution' ? 'Evolution API' : 'Z-API';
+      let errorMessage = `Provider ${providerName} não está configurado para este workspace (ID: ${workspaceId}).`;
+      
+      if (anyProvider && anyProvider.length > 0) {
+        const providersList = anyProvider.map(p => `${p.provider}${p.is_active ? ' (ativo)' : ' (inativo)'}`).join(', ');
+        errorMessage += ` Providers encontrados: ${providersList}. Configure o ${providerName} em Configurações > Providers WhatsApp.`;
+      } else {
+        errorMessage += ` Nenhum provider configurado para este workspace. Configure em Configurações > Providers WhatsApp.`;
+      }
+      
+      return new Response(
+        JSON.stringify({ 
+          success: false, 
+          error: errorMessage
+        }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+    
+    // Verificar se o provider está ativo
+    if (!selectedProvider.is_active) {
+      console.error("❌ Provider encontrado mas está inativo");
       const providerName = provider === 'evolution' ? 'Evolution API' : 'Z-API';
       return new Response(
         JSON.stringify({ 
           success: false, 
-          error: `Provider ${providerName} não está configurado para este workspace. Configure em Configurações > Providers WhatsApp.` 
+          error: `Provider ${providerName} está configurado mas está inativo. Ative o provider em Configurações > Providers WhatsApp.` 
         }),
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
