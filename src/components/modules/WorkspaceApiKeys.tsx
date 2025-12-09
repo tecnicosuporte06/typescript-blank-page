@@ -65,6 +65,9 @@ export function WorkspaceApiKeys() {
   const [loadingTags, setLoadingTags] = useState(false);
   const [initialMessage, setInitialMessage] = useState<string>("");
   const [createConversation, setCreateConversation] = useState<boolean>(false);
+  const [connections, setConnections] = useState<Array<{ id: string; instance_name: string; status: string }>>([]);
+  const [selectedConnectionId, setSelectedConnectionId] = useState<string>("");
+  const [loadingConnections, setLoadingConnections] = useState(false);
 
   const apiUrl = getSupabaseFunctionUrl("external-webhook-api");
 
@@ -73,6 +76,7 @@ export function WorkspaceApiKeys() {
       loadApiKeys();
       loadPipelines();
       loadTags();
+      loadConnections();
     }
   }, [selectedWorkspace]);
 
@@ -349,6 +353,33 @@ export function WorkspaceApiKeys() {
     }
   };
 
+  const loadConnections = async () => {
+    if (!selectedWorkspace) return;
+
+    try {
+      setLoadingConnections(true);
+      const { data, error } = await supabase
+        .from("connections")
+        .select("id, instance_name, status")
+        .eq("workspace_id", selectedWorkspace.workspace_id)
+        .eq("status", "connected")
+        .order("created_at", { ascending: true });
+
+      if (error) throw error;
+
+      setConnections(data || []);
+    } catch (error: any) {
+      console.error("Erro ao carregar conexões:", error);
+      toast({
+        title: "Erro",
+        description: "Erro ao carregar conexões",
+        variant: "destructive",
+      });
+    } finally {
+      setLoadingConnections(false);
+    }
+  };
+
   const toggleTag = (tagId: string) => {
     setSelectedTagIds((prev) =>
       prev.includes(tagId)
@@ -388,6 +419,11 @@ export function WorkspaceApiKeys() {
       payload.conversation = {
         create: true,
       };
+      
+      // Adicionar connection_id se selecionado (ignorar se for "__default__")
+      if (selectedConnectionId && selectedConnectionId !== "__default__") {
+        payload.conversation.connection_id = selectedConnectionId;
+      }
       
       // Adicionar mensagem inicial se fornecida
       if (initialMessage.trim()) {
@@ -1089,19 +1125,68 @@ X-API-Key: sua_api_key_aqui
                       </Label>
                     </div>
                     {createConversation && (
-                      <div className="space-y-2 ml-6">
-                        <Label className="text-xs font-medium text-gray-700 dark:text-gray-300">
-                          Mensagem inicial (Opcional)
-                        </Label>
-                        <Input
-                          value={initialMessage}
-                          onChange={(e) => setInitialMessage(e.target.value)}
-                          placeholder="Ex: Olá! Bem-vindo ao nosso atendimento..."
-                          className="h-8 text-xs rounded-none border-[#d4d4d4] dark:border-gray-700 bg-white dark:bg-[#2d2d2d] text-gray-900 dark:text-gray-100 placeholder:text-gray-500 dark:placeholder:text-gray-400"
-                        />
-                        <p className="text-xs text-gray-500 dark:text-gray-400">
-                          Esta mensagem será enviada automaticamente quando a conversa for criada
-                        </p>
+                      <div className="space-y-3 ml-6">
+                        {/* Connection Select */}
+                        <div className="space-y-2">
+                          <Label className="text-xs font-medium text-gray-700 dark:text-gray-300">
+                            Conexão WhatsApp (Opcional)
+                          </Label>
+                          <Select
+                            value={selectedConnectionId}
+                            onValueChange={setSelectedConnectionId}
+                            disabled={loadingConnections}
+                          >
+                            <SelectTrigger className="h-8 text-xs rounded-none border-[#d4d4d4] dark:border-gray-700 bg-white dark:bg-[#2d2d2d] text-gray-900 dark:text-gray-100">
+                              <SelectValue
+                                placeholder={
+                                  loadingConnections
+                                    ? "Carregando conexões..."
+                                    : connections.length === 0
+                                    ? "Nenhuma conexão disponível"
+                                    : "Selecione uma conexão (opcional)"
+                                }
+                              />
+                            </SelectTrigger>
+                            {connections.length > 0 && (
+                              <SelectContent className="dark:bg-[#2d2d2d] dark:border-gray-700">
+                                <SelectItem
+                                  value="__default__"
+                                  className="text-xs dark:text-gray-200 dark:focus:bg-gray-700"
+                                >
+                                  Usar conexão padrão
+                                </SelectItem>
+                                {connections.map((connection) => (
+                                  <SelectItem
+                                    key={connection.id}
+                                    value={connection.id}
+                                    className="text-xs dark:text-gray-200 dark:focus:bg-gray-700"
+                                  >
+                                    {connection.instance_name}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            )}
+                          </Select>
+                          <p className="text-xs text-gray-500 dark:text-gray-400">
+                            Se não selecionar, será usada a primeira conexão conectada do workspace
+                          </p>
+                        </div>
+
+                        {/* Initial Message */}
+                        <div className="space-y-2">
+                          <Label className="text-xs font-medium text-gray-700 dark:text-gray-300">
+                            Mensagem inicial (Opcional)
+                          </Label>
+                          <Input
+                            value={initialMessage}
+                            onChange={(e) => setInitialMessage(e.target.value)}
+                            placeholder="Ex: Olá! Bem-vindo ao nosso atendimento..."
+                            className="h-8 text-xs rounded-none border-[#d4d4d4] dark:border-gray-700 bg-white dark:bg-[#2d2d2d] text-gray-900 dark:text-gray-100 placeholder:text-gray-500 dark:placeholder:text-gray-400"
+                          />
+                          <p className="text-xs text-gray-500 dark:text-gray-400">
+                            Esta mensagem será enviada automaticamente quando a conversa for criada
+                          </p>
+                        </div>
                       </div>
                     )}
                   </div>
