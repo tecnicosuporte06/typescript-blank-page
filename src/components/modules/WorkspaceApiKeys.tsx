@@ -251,9 +251,9 @@ export function WorkspaceApiKeys() {
   }
 
   return (
-    <div className="h-full flex flex-col">
-      <div className="bg-white dark:bg-[#1f1f1f] border border-[#d4d4d4] dark:border-gray-700 shadow-sm">
-        <Tabs defaultValue="keys" className="w-full">
+    <div className="h-full flex flex-col overflow-hidden">
+      <div className="bg-white dark:bg-[#1f1f1f] border border-[#d4d4d4] dark:border-gray-700 shadow-sm flex flex-col h-full overflow-hidden">
+        <Tabs defaultValue="keys" className="w-full flex flex-col h-full overflow-hidden">
           <TabsList className="grid w-full grid-cols-2 bg-[#f3f3f3] dark:bg-[#2d2d2d] rounded-none h-auto p-0 border-b border-[#d4d4d4] dark:border-gray-700">
             <TabsTrigger
               value="keys"
@@ -269,7 +269,7 @@ export function WorkspaceApiKeys() {
             </TabsTrigger>
           </TabsList>
 
-          <TabsContent value="keys" className="p-6 mt-0 bg-white dark:bg-[#1f1f1f]">
+          <TabsContent value="keys" className="p-6 mt-0 bg-white dark:bg-[#1f1f1f] overflow-y-auto flex-1">
             <div className="space-y-6">
               {/* Header */}
               <div className="flex items-center justify-between pb-4 border-b border-[#d4d4d4] dark:border-gray-700">
@@ -299,21 +299,21 @@ export function WorkspaceApiKeys() {
 
               {/* New Key Form */}
               {showNewKey && (
-                <Card className="border-[#d4d4d4] dark:border-gray-700">
-                  <CardHeader>
-                    <CardTitle className="text-sm">Criar Nova API Key</CardTitle>
-                    <CardDescription className="text-xs">
+                <Card className="border-[#d4d4d4] dark:border-gray-700 bg-white dark:bg-[#1f1f1f]">
+                  <CardHeader className="bg-white dark:bg-[#1f1f1f]">
+                    <CardTitle className="text-sm text-gray-800 dark:text-gray-200">Criar Nova API Key</CardTitle>
+                    <CardDescription className="text-xs text-gray-600 dark:text-gray-400">
                       Dê um nome descritivo para identificar esta chave
                     </CardDescription>
                   </CardHeader>
-                  <CardContent className="space-y-4">
+                  <CardContent className="space-y-4 bg-white dark:bg-[#1f1f1f]">
                     <div className="space-y-2">
-                      <Label className="text-xs font-medium">Nome da Chave</Label>
+                      <Label className="text-xs font-medium text-gray-700 dark:text-gray-300">Nome da Chave</Label>
                       <Input
                         value={newKeyName}
                         onChange={(e) => setNewKeyName(e.target.value)}
                         placeholder="Ex: Integração N8N, Sistema ERP, etc."
-                        className="h-8 text-xs rounded-none"
+                        className="h-8 text-xs rounded-none border-[#d4d4d4] dark:border-gray-700 bg-white dark:bg-[#2d2d2d] text-gray-900 dark:text-gray-100 placeholder:text-gray-500 dark:placeholder:text-gray-400"
                         disabled={loading}
                       />
                     </div>
@@ -326,13 +326,13 @@ export function WorkspaceApiKeys() {
                           <Input
                             value={newKeyValue}
                             readOnly
-                            className="h-8 text-xs font-mono rounded-none bg-white dark:bg-[#2d2d2d]"
+                            className="h-8 text-xs font-mono rounded-none bg-white dark:bg-[#2d2d2d] border-[#d4d4d4] dark:border-gray-700 text-gray-900 dark:text-gray-100"
                           />
                           <Button
                             size="sm"
                             variant="outline"
                             onClick={() => copyToClipboard(newKeyValue, "new")}
-                            className="h-8 px-3 text-xs rounded-none"
+                            className="h-8 px-3 text-xs rounded-none border-[#d4d4d4] dark:border-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800"
                           >
                             {copiedKey === "new" ? (
                               <Check className="w-3.5 h-3.5" />
@@ -348,7 +348,7 @@ export function WorkspaceApiKeys() {
                         onClick={handleCreateKey}
                         disabled={loading || !newKeyName.trim()}
                         size="sm"
-                        className="h-8 px-3 text-xs rounded-none"
+                        className="h-8 px-3 text-xs rounded-none bg-primary text-primary-foreground hover:bg-primary/90 dark:bg-primary dark:text-primary-foreground dark:hover:bg-primary/90"
                       >
                         Criar
                       </Button>
@@ -360,7 +360,7 @@ export function WorkspaceApiKeys() {
                         }}
                         variant="outline"
                         size="sm"
-                        className="h-8 px-3 text-xs rounded-none"
+                        className="h-8 px-3 text-xs rounded-none border-[#d4d4d4] dark:border-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800"
                       >
                         Cancelar
                       </Button>
@@ -487,8 +487,8 @@ export function WorkspaceApiKeys() {
             </div>
           </TabsContent>
 
-          <TabsContent value="documentation" className="p-6 mt-0 bg-white dark:bg-[#1f1f1f]">
-            <div className="space-y-6 max-w-4xl">
+          <TabsContent value="documentation" className="p-6 mt-0 bg-white dark:bg-[#1f1f1f] overflow-y-auto flex-1">
+            <div className="space-y-6 max-w-4xl mx-auto">
               <div className="flex items-center gap-3 pb-4 border-b border-[#d4d4d4] dark:border-gray-700">
                 <BookOpen className="w-5 h-5 text-gray-700 dark:text-gray-300" />
                 <div>
@@ -502,17 +502,17 @@ export function WorkspaceApiKeys() {
               </div>
 
               {/* Endpoint */}
-              <Card className="border-[#d4d4d4] dark:border-gray-700">
-                <CardHeader>
-                  <CardTitle className="text-sm flex items-center gap-2">
-                    <Code className="w-4 h-4" />
+              <Card className="border-[#d4d4d4] dark:border-gray-700 bg-white dark:bg-[#1f1f1f]">
+                <CardHeader className="bg-white dark:bg-[#1f1f1f]">
+                  <CardTitle className="text-sm flex items-center gap-2 text-gray-800 dark:text-gray-200">
+                    <Code className="w-4 h-4 text-gray-700 dark:text-gray-300" />
                     Endpoint
                   </CardTitle>
                 </CardHeader>
-                <CardContent>
+                <CardContent className="bg-white dark:bg-[#1f1f1f]">
                   <div className="space-y-2">
-                    <Label className="text-xs font-medium">URL Base</Label>
-                    <code className="block text-xs font-mono bg-[#f3f3f3] dark:bg-[#2d2d2d] p-3 rounded border border-[#d4d4d4] dark:border-gray-700">
+                    <Label className="text-xs font-medium text-gray-700 dark:text-gray-300">URL Base</Label>
+                    <code className="block text-xs font-mono bg-[#f3f3f3] dark:bg-[#2d2d2d] p-3 rounded border border-[#d4d4d4] dark:border-gray-700 text-gray-900 dark:text-gray-100">
                       {apiUrl}
                     </code>
                   </div>
@@ -520,16 +520,16 @@ export function WorkspaceApiKeys() {
               </Card>
 
               {/* Autenticação */}
-              <Card className="border-[#d4d4d4] dark:border-gray-700">
-                <CardHeader>
-                  <CardTitle className="text-sm">Autenticação</CardTitle>
+              <Card className="border-[#d4d4d4] dark:border-gray-700 bg-white dark:bg-[#1f1f1f]">
+                <CardHeader className="bg-white dark:bg-[#1f1f1f]">
+                  <CardTitle className="text-sm text-gray-800 dark:text-gray-200">Autenticação</CardTitle>
                 </CardHeader>
-                <CardContent className="space-y-4">
+                <CardContent className="space-y-4 bg-white dark:bg-[#1f1f1f]">
                   <p className="text-xs text-gray-600 dark:text-gray-400">
-                    Todas as requisições devem incluir o header <code className="bg-[#f3f3f3] dark:bg-[#2d2d2d] px-1 rounded">X-API-Key</code> com sua API Key.
+                    Todas as requisições devem incluir o header <code className="bg-[#f3f3f3] dark:bg-[#2d2d2d] px-1 rounded text-gray-900 dark:text-gray-100">X-API-Key</code> com sua API Key.
                   </p>
                   <div className="bg-[#f3f3f3] dark:bg-[#2d2d2d] p-3 rounded border border-[#d4d4d4] dark:border-gray-700">
-                    <code className="text-xs font-mono">
+                    <code className="text-xs font-mono text-gray-900 dark:text-gray-100">
                       X-API-Key: tez_xxxxxxxxxxxxxxxxxxxxx
                     </code>
                   </div>
@@ -537,17 +537,17 @@ export function WorkspaceApiKeys() {
               </Card>
 
               {/* Ações */}
-              <Card className="border-[#d4d4d4] dark:border-gray-700">
-                <CardHeader>
-                  <CardTitle className="text-sm">Ações Disponíveis</CardTitle>
+              <Card className="border-[#d4d4d4] dark:border-gray-700 bg-white dark:bg-[#1f1f1f]">
+                <CardHeader className="bg-white dark:bg-[#1f1f1f]">
+                  <CardTitle className="text-sm text-gray-800 dark:text-gray-200">Ações Disponíveis</CardTitle>
                 </CardHeader>
-                <CardContent className="space-y-6">
+                <CardContent className="space-y-6 bg-white dark:bg-[#1f1f1f]">
                   {/* Create Contact */}
                   <div className="space-y-3">
-                    <h3 className="text-xs font-semibold uppercase">1. Criar Contato</h3>
+                    <h3 className="text-xs font-semibold uppercase text-gray-800 dark:text-gray-200">1. Criar Contato</h3>
                     <div className="space-y-2">
-                      <Label className="text-xs font-medium">Request</Label>
-                      <pre className="text-xs bg-[#f3f3f3] dark:bg-[#2d2d2d] p-3 rounded border border-[#d4d4d4] dark:border-gray-700 overflow-x-auto">
+                      <Label className="text-xs font-medium text-gray-700 dark:text-gray-300">Request</Label>
+                      <pre className="text-xs bg-[#f3f3f3] dark:bg-[#2d2d2d] p-3 rounded border border-[#d4d4d4] dark:border-gray-700 overflow-x-auto text-gray-900 dark:text-gray-100">
 {`POST ${apiUrl}
 Content-Type: application/json
 X-API-Key: sua_api_key_aqui
@@ -567,8 +567,8 @@ X-API-Key: sua_api_key_aqui
                       </pre>
                     </div>
                     <div className="space-y-2">
-                      <Label className="text-xs font-medium">Response (Sucesso)</Label>
-                      <pre className="text-xs bg-[#f3f3f3] dark:bg-[#2d2d2d] p-3 rounded border border-[#d4d4d4] dark:border-gray-700 overflow-x-auto">
+                      <Label className="text-xs font-medium text-gray-700 dark:text-gray-300">Response (Sucesso)</Label>
+                      <pre className="text-xs bg-[#f3f3f3] dark:bg-[#2d2d2d] p-3 rounded border border-[#d4d4d4] dark:border-gray-700 overflow-x-auto text-gray-900 dark:text-gray-100">
 {`{
   "success": true,
   "data": {
@@ -582,10 +582,10 @@ X-API-Key: sua_api_key_aqui
 
                   {/* Create Card */}
                   <div className="space-y-3">
-                    <h3 className="text-xs font-semibold uppercase">2. Criar Card no Pipeline</h3>
+                    <h3 className="text-xs font-semibold uppercase text-gray-800 dark:text-gray-200">2. Criar Card no Pipeline</h3>
                     <div className="space-y-2">
-                      <Label className="text-xs font-medium">Request</Label>
-                      <pre className="text-xs bg-[#f3f3f3] dark:bg-[#2d2d2d] p-3 rounded border border-[#d4d4d4] dark:border-gray-700 overflow-x-auto">
+                      <Label className="text-xs font-medium text-gray-700 dark:text-gray-300">Request</Label>
+                      <pre className="text-xs bg-[#f3f3f3] dark:bg-[#2d2d2d] p-3 rounded border border-[#d4d4d4] dark:border-gray-700 overflow-x-auto text-gray-900 dark:text-gray-100">
 {`POST ${apiUrl}
 Content-Type: application/json
 X-API-Key: sua_api_key_aqui
@@ -610,10 +610,10 @@ X-API-Key: sua_api_key_aqui
 
                   {/* Create Contact with Card */}
                   <div className="space-y-3">
-                    <h3 className="text-xs font-semibold uppercase">3. Criar Contato e Card Simultaneamente</h3>
+                    <h3 className="text-xs font-semibold uppercase text-gray-800 dark:text-gray-200">3. Criar Contato e Card Simultaneamente</h3>
                     <div className="space-y-2">
-                      <Label className="text-xs font-medium">Request</Label>
-                      <pre className="text-xs bg-[#f3f3f3] dark:bg-[#2d2d2d] p-3 rounded border border-[#d4d4d4] dark:border-gray-700 overflow-x-auto">
+                      <Label className="text-xs font-medium text-gray-700 dark:text-gray-300">Request</Label>
+                      <pre className="text-xs bg-[#f3f3f3] dark:bg-[#2d2d2d] p-3 rounded border border-[#d4d4d4] dark:border-gray-700 overflow-x-auto text-gray-900 dark:text-gray-100">
 {`POST ${apiUrl}
 Content-Type: application/json
 X-API-Key: sua_api_key_aqui
@@ -637,8 +637,8 @@ X-API-Key: sua_api_key_aqui
                       </pre>
                     </div>
                     <div className="space-y-2">
-                      <Label className="text-xs font-medium">Response (Sucesso)</Label>
-                      <pre className="text-xs bg-[#f3f3f3] dark:bg-[#2d2d2d] p-3 rounded border border-[#d4d4d4] dark:border-gray-700 overflow-x-auto">
+                      <Label className="text-xs font-medium text-gray-700 dark:text-gray-300">Response (Sucesso)</Label>
+                      <pre className="text-xs bg-[#f3f3f3] dark:bg-[#2d2d2d] p-3 rounded border border-[#d4d4d4] dark:border-gray-700 overflow-x-auto text-gray-900 dark:text-gray-100">
 {`{
   "success": true,
   "data": {
@@ -654,51 +654,51 @@ X-API-Key: sua_api_key_aqui
               </Card>
 
               {/* Observações */}
-              <Card className="border-[#d4d4d4] dark:border-gray-700">
-                <CardHeader>
-                  <CardTitle className="text-sm">Observações Importantes</CardTitle>
+              <Card className="border-[#d4d4d4] dark:border-gray-700 bg-white dark:bg-[#1f1f1f]">
+                <CardHeader className="bg-white dark:bg-[#1f1f1f]">
+                  <CardTitle className="text-sm text-gray-800 dark:text-gray-200">Observações Importantes</CardTitle>
                 </CardHeader>
-                <CardContent className="space-y-3">
+                <CardContent className="space-y-3 bg-white dark:bg-[#1f1f1f]">
                   <ul className="space-y-2 text-xs text-gray-600 dark:text-gray-400 list-disc list-inside">
-                    <li>O campo <code className="bg-[#f3f3f3] dark:bg-[#2d2d2d] px-1 rounded">phone</code> é opcional, mas se fornecido, será normalizado (adiciona 55 se necessário)</li>
+                    <li>O campo <code className="bg-[#f3f3f3] dark:bg-[#2d2d2d] px-1 rounded text-gray-900 dark:text-gray-100">phone</code> é opcional, mas se fornecido, será normalizado (adiciona 55 se necessário)</li>
                     <li>Contatos duplicados (mesmo telefone no mesmo workspace) retornam o contato existente sem criar novo</li>
-                    <li>O campo <code className="bg-[#f3f3f3] dark:bg-[#2d2d2d] px-1 rounded">title</code> é obrigatório para cards. Se não fornecido, usa <code className="bg-[#f3f3f3] dark:bg-[#2d2d2d] px-1 rounded">description</code> como fallback</li>
-                    <li>O status padrão dos cards é <code className="bg-[#f3f3f3] dark:bg-[#2d2d2d] px-1 rounded">"aberto"</code></li>
-                    <li>O valor padrão dos cards é <code className="bg-[#f3f3f3] dark:bg-[#2d2d2d] px-1 rounded">0</code></li>
+                    <li>O campo <code className="bg-[#f3f3f3] dark:bg-[#2d2d2d] px-1 rounded text-gray-900 dark:text-gray-100">title</code> é obrigatório para cards. Se não fornecido, usa <code className="bg-[#f3f3f3] dark:bg-[#2d2d2d] px-1 rounded text-gray-900 dark:text-gray-100">description</code> como fallback</li>
+                    <li>O status padrão dos cards é <code className="bg-[#f3f3f3] dark:bg-[#2d2d2d] px-1 rounded text-gray-900 dark:text-gray-100">"aberto"</code></li>
+                    <li>O valor padrão dos cards é <code className="bg-[#f3f3f3] dark:bg-[#2d2d2d] px-1 rounded text-gray-900 dark:text-gray-100">0</code></li>
                     <li>Todas as requisições são registradas em logs para auditoria</li>
                   </ul>
                 </CardContent>
               </Card>
 
               {/* Códigos de Erro */}
-              <Card className="border-[#d4d4d4] dark:border-gray-700">
-                <CardHeader>
-                  <CardTitle className="text-sm">Códigos de Erro</CardTitle>
+              <Card className="border-[#d4d4d4] dark:border-gray-700 bg-white dark:bg-[#1f1f1f]">
+                <CardHeader className="bg-white dark:bg-[#1f1f1f]">
+                  <CardTitle className="text-sm text-gray-800 dark:text-gray-200">Códigos de Erro</CardTitle>
                 </CardHeader>
-                <CardContent>
+                <CardContent className="bg-white dark:bg-[#1f1f1f]">
                   <div className="space-y-2 text-xs">
                     <div className="flex items-start gap-2">
                       <Badge variant="destructive" className="text-xs">401</Badge>
-                      <div>
-                        <strong>UNAUTHORIZED</strong> - API Key inválida ou não fornecida
+                      <div className="text-gray-700 dark:text-gray-300">
+                        <strong className="text-gray-900 dark:text-gray-100">UNAUTHORIZED</strong> - API Key inválida ou não fornecida
                       </div>
                     </div>
                     <div className="flex items-start gap-2">
                       <Badge variant="destructive" className="text-xs">403</Badge>
-                      <div>
-                        <strong>FORBIDDEN</strong> - API Key não tem permissão para o workspace
+                      <div className="text-gray-700 dark:text-gray-300">
+                        <strong className="text-gray-900 dark:text-gray-100">FORBIDDEN</strong> - API Key não tem permissão para o workspace
                       </div>
                     </div>
                     <div className="flex items-start gap-2">
                       <Badge variant="destructive" className="text-xs">404</Badge>
-                      <div>
-                        <strong>WORKSPACE_NOT_FOUND</strong> - Workspace não encontrado
+                      <div className="text-gray-700 dark:text-gray-300">
+                        <strong className="text-gray-900 dark:text-gray-100">WORKSPACE_NOT_FOUND</strong> - Workspace não encontrado
                       </div>
                     </div>
                     <div className="flex items-start gap-2">
                       <Badge variant="destructive" className="text-xs">400</Badge>
-                      <div>
-                        <strong>MISSING_*</strong> - Campos obrigatórios ausentes
+                      <div className="text-gray-700 dark:text-gray-300">
+                        <strong className="text-gray-900 dark:text-gray-100">MISSING_*</strong> - Campos obrigatórios ausentes
                       </div>
                     </div>
                   </div>
