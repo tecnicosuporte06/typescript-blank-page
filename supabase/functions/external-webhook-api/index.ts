@@ -198,15 +198,15 @@ async function createCard(
     throw new Error("Contato não encontrado");
   }
 
-  // Determinar title (obrigatório)
-  const title = cardData.title || cardData.description || "Novo Card";
+  // Determinar description (obrigatório)
+  // Aceita tanto 'title' quanto 'description' do payload para compatibilidade
+  const description = cardData.title || cardData.description || "Novo Card";
 
   const insertData: any = {
     pipeline_id: cardData.pipeline_id,
     column_id: cardData.column_id,
     contact_id: contactId,
-    title: title,
-    description: cardData.description || null,
+    description: description,
     value: cardData.value || 0,
     status: cardData.status || "aberto",
   };

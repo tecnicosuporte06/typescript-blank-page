@@ -597,14 +597,16 @@ X-API-Key: sua_api_key_aqui
     "pipeline_id": "uuid-do-pipeline",
     "column_id": "uuid-da-coluna",
     "contact_id": "uuid-do-contato",
-    "title": "Título do Negócio",
-    "description": "Descrição opcional",
+    "description": "Descrição do Negócio",
     "value": 1500.00,
     "status": "aberto",
     "responsible_user_id": "uuid-do-responsavel"
   }
 }`}
                       </pre>
+                      <p className="text-xs text-gray-600 dark:text-gray-400 italic">
+                        Nota: Você pode usar <code className="bg-[#f3f3f3] dark:bg-[#2d2d2d] px-1 rounded">title</code> no payload (será convertido para <code className="bg-[#f3f3f3] dark:bg-[#2d2d2d] px-1 rounded">description</code>), ou usar <code className="bg-[#f3f3f3] dark:bg-[#2d2d2d] px-1 rounded">description</code> diretamente.
+                      </p>
                     </div>
                   </div>
 
@@ -629,12 +631,14 @@ X-API-Key: sua_api_key_aqui
   "card": {
     "pipeline_id": "uuid-do-pipeline",
     "column_id": "uuid-da-coluna",
-    "title": "Novo Negócio",
-    "description": "Descrição opcional",
+    "description": "Novo Negócio",
     "value": 2000.00
   }
 }`}
                       </pre>
+                      <p className="text-xs text-gray-600 dark:text-gray-400 italic">
+                        Nota: Você pode usar <code className="bg-[#f3f3f3] dark:bg-[#2d2d2d] px-1 rounded">title</code> no payload (será convertido para <code className="bg-[#f3f3f3] dark:bg-[#2d2d2d] px-1 rounded">description</code>), ou usar <code className="bg-[#f3f3f3] dark:bg-[#2d2d2d] px-1 rounded">description</code> diretamente.
+                      </p>
                     </div>
                     <div className="space-y-2">
                       <Label className="text-xs font-medium text-gray-700 dark:text-gray-300">Response (Sucesso)</Label>
@@ -662,7 +666,7 @@ X-API-Key: sua_api_key_aqui
                   <ul className="space-y-2 text-xs text-gray-600 dark:text-gray-400 list-disc list-inside">
                     <li>O campo <code className="bg-[#f3f3f3] dark:bg-[#2d2d2d] px-1 rounded text-gray-900 dark:text-gray-100">phone</code> é opcional, mas se fornecido, será normalizado (adiciona 55 se necessário)</li>
                     <li>Contatos duplicados (mesmo telefone no mesmo workspace) retornam o contato existente sem criar novo</li>
-                    <li>O campo <code className="bg-[#f3f3f3] dark:bg-[#2d2d2d] px-1 rounded text-gray-900 dark:text-gray-100">title</code> é obrigatório para cards. Se não fornecido, usa <code className="bg-[#f3f3f3] dark:bg-[#2d2d2d] px-1 rounded text-gray-900 dark:text-gray-100">description</code> como fallback</li>
+                    <li>Para cards, use o campo <code className="bg-[#f3f3f3] dark:bg-[#2d2d2d] px-1 rounded text-gray-900 dark:text-gray-100">description</code> (obrigatório). Você também pode usar <code className="bg-[#f3f3f3] dark:bg-[#2d2d2d] px-1 rounded text-gray-900 dark:text-gray-100">title</code> no payload - ele será automaticamente convertido para <code className="bg-[#f3f3f3] dark:bg-[#2d2d2d] px-1 rounded text-gray-900 dark:text-gray-100">description</code></li>
                     <li>O status padrão dos cards é <code className="bg-[#f3f3f3] dark:bg-[#2d2d2d] px-1 rounded text-gray-900 dark:text-gray-100">"aberto"</code></li>
                     <li>O valor padrão dos cards é <code className="bg-[#f3f3f3] dark:bg-[#2d2d2d] px-1 rounded text-gray-900 dark:text-gray-100">0</code></li>
                     <li>Todas as requisições são registradas em logs para auditoria</li>
