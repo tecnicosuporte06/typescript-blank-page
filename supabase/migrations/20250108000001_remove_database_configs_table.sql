@@ -30,3 +30,4 @@ DROP TABLE IF EXISTS public.database_configs;
 
 COMMIT;
 
+
