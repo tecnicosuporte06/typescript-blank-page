@@ -838,6 +838,7 @@ X-API-Key: sua_api_key_aqui
     "pipeline_id": "uuid-do-pipeline",
     "column_id": "uuid-da-coluna",
     "contact_id": "uuid-do-contato",
+    "conversation_id": "uuid-da-conversa",
     "description": "Descrição do Negócio",
     "value": 1500.00,
     "status": "aberto",
@@ -846,7 +847,7 @@ X-API-Key: sua_api_key_aqui
 }`}
                       </pre>
                       <p className="text-xs text-gray-600 dark:text-gray-400 italic">
-                        Nota: Você pode usar <code className="bg-[#f3f3f3] dark:bg-[#2d2d2d] px-1 rounded">title</code> no payload (será convertido para <code className="bg-[#f3f3f3] dark:bg-[#2d2d2d] px-1 rounded">description</code>), ou usar <code className="bg-[#f3f3f3] dark:bg-[#2d2d2d] px-1 rounded">description</code> diretamente.
+                        Nota: Você pode usar <code className="bg-[#f3f3f3] dark:bg-[#2d2d2d] px-1 rounded">title</code> no payload (será convertido para <code className="bg-[#f3f3f3] dark:bg-[#2d2d2d] px-1 rounded">description</code>), ou usar <code className="bg-[#f3f3f3] dark:bg-[#2d2d2d] px-1 rounded">description</code> diretamente. <code className="bg-[#f3f3f3] dark:bg-[#2d2d2d] px-1 rounded">conversation_id</code> é opcional - se fornecido, será usado diretamente (deve pertencer ao contato e workspace). Se não fornecido e a coluna precisar de conversa, uma será criada automaticamente.
                       </p>
                     </div>
                   </div>

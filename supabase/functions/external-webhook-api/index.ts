@@ -19,6 +19,7 @@ interface CardData {
   pipeline_id: string;
   column_id: string;
   contact_id?: string;
+  conversation_id?: string; // ✅ Permite passar conversation_id diretamente quando já existe
   title?: string;
   description?: string;
   value?: number;
@@ -1347,18 +1348,40 @@ serve(async (req) => {
         });
       }
 
-      // ✅ CRÍTICO: Verificar se a coluna precisa de conversation_id ANTES de criar o card
-      console.log(`🔍 [create_card] Verificando se coluna precisa de conversation_id...`);
-      const needsConversation = await checkIfColumnNeedsConversation(
-        supabase,
-        payload.card.column_id
-      );
-      console.log(`🔍 [create_card] Resultado: needsConversation = ${needsConversation}`);
-
-      let conversationId: string | null = null;
+      // ✅ NOVO: Se conversation_id foi fornecido no payload, validar e usar diretamente
+      let conversationId: string | null = payload.card.conversation_id || null;
       
-      // Se a coluna precisa de conversa OU se foi solicitado no payload, criar conversa
-      if (needsConversation || payload.conversation?.create) {
+      if (conversationId) {
+        console.log(`✅ [create_card] conversation_id fornecido no payload: ${conversationId}`);
+        // Validar se a conversa existe e pertence ao contato e workspace
+        const { data: existingConv, error: convCheckError } = await supabase
+          .from("conversations")
+          .select("id")
+          .eq("id", conversationId)
+          .eq("contact_id", payload.card.contact_id!)
+          .eq("workspace_id", payload.workspace_id)
+          .maybeSingle();
+        
+        if (convCheckError || !existingConv) {
+          console.warn(`⚠️ [create_card] conversation_id fornecido (${conversationId}) não é válido ou não pertence ao contato/workspace`);
+          console.warn(`⚠️ [create_card] Tentando buscar/criar conversa automaticamente...`);
+          conversationId = null; // Reset para buscar/criar
+        } else {
+          console.log(`✅ [create_card] conversation_id validado com sucesso`);
+        }
+      }
+
+      // ✅ CRÍTICO: Verificar se a coluna precisa de conversation_id (só se não foi fornecido)
+      if (!conversationId) {
+        console.log(`🔍 [create_card] Verificando se coluna precisa de conversation_id...`);
+        const needsConversation = await checkIfColumnNeedsConversation(
+          supabase,
+          payload.card.column_id
+        );
+        console.log(`🔍 [create_card] Resultado: needsConversation = ${needsConversation}`);
+      
+        // Se a coluna precisa de conversa OU se foi solicitado no payload, criar conversa
+        if (needsConversation || payload.conversation?.create) {
         console.log(`📞 [create_card] Conversa é necessária. Iniciando criação...`);
         try {
           // Se já foi solicitado no payload, usar a função createConversation
@@ -1453,15 +1476,22 @@ serve(async (req) => {
               console.warn(`⚠️ [create_card] Contact data:`, contact);
             }
           }
-        } catch (convError: any) {
-          console.error("❌ [create_card] Exception ao criar conversa:", convError);
-          console.error("❌ [create_card] Stack:", convError?.stack);
+         } catch (convError: any) {
+           console.error("❌ [create_card] Exception ao criar conversa:", convError);
+           console.error("❌ [create_card] Stack:", convError?.stack);
+         }
+        } else {
+          console.log(`ℹ️ [create_card] Coluna não precisa de conversation_id e não foi solicitado no payload`);
         }
-      } else {
-        console.log(`ℹ️ [create_card] Coluna não precisa de conversation_id e não foi solicitado no payload`);
-      }
+      } // Fim do if (!conversationId)
 
       // ✅ CRÍTICO: Se a coluna precisa de conversa mas não conseguimos criar, BLOQUEAR criação do card
+      // Verificar novamente se precisa de conversa (pode ter mudado se conversation_id foi fornecido)
+      const needsConversation = await checkIfColumnNeedsConversation(
+        supabase,
+        payload.card.column_id
+      );
+      
       if (needsConversation && !conversationId) {
         console.error(`❌ [create_card] ERRO CRÍTICO: Coluna precisa de conversation_id mas não foi possível criar conversa!`);
         console.error(`❌ [create_card] Bloqueando criação do card para evitar automações quebradas.`);
