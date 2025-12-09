@@ -1327,6 +1327,13 @@ serve(async (req) => {
         });
       }
 
+      // ✅ DEBUG: Log do payload recebido ANTES de qualquer processamento
+      console.log(`📦 [create_card] ========== PAYLOAD RECEBIDO ==========`);
+      console.log(`📦 [create_card] Card data completo:`, JSON.stringify(payload.card, null, 2));
+      console.log(`📦 [create_card] conversation_id no payload.card:`, payload.card.conversation_id || 'NÃO FORNECIDO');
+      console.log(`📦 [create_card] Tipo de conversation_id:`, typeof payload.card.conversation_id);
+      console.log(`📦 [create_card] =========================================`);
+
       // Validar pipeline e coluna
       const isValid = await validatePipelineAndColumn(
         supabase,
@@ -1350,6 +1357,9 @@ serve(async (req) => {
 
       // ✅ NOVO: Se conversation_id foi fornecido no payload, validar e usar diretamente
       let conversationId: string | null = payload.card.conversation_id || null;
+      
+      console.log(`🔍 [create_card] conversation_id extraído: ${conversationId || 'null/undefined'}`);
+      console.log(`🔍 [create_card] conversation_id é truthy? ${!!conversationId}`);
       
       if (conversationId) {
         console.log(`✅ [create_card] conversation_id fornecido no payload: ${conversationId}`);
