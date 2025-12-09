@@ -553,11 +553,24 @@ async function createCard(
   };
 
   // Adicionar conversation_id se fornecido
-  if (conversationId) {
-    insertData.conversation_id = conversationId;
-    console.log(`✅ [createCard] Card será criado com conversation_id: ${conversationId}`);
+  // IMPORTANTE: Verificar tanto o parâmetro quanto o cardData.conversation_id
+  // Isso garante que mesmo se o parâmetro não for passado, o conversation_id do payload será usado
+  const finalConversationId = conversationId || cardData.conversation_id || null;
+  
+  if (finalConversationId) {
+    insertData.conversation_id = finalConversationId;
+    console.log(`✅ [createCard] Card será criado com conversation_id: ${finalConversationId}`);
+    console.log(`✅ [createCard] conversation_id adicionado ao insertData`);
+    console.log(`✅ [createCard] conversation_id origem: ${conversationId ? 'parâmetro' : 'cardData.conversation_id'}`);
   } else {
-    console.log(`⚠️ [createCard] Card será criado SEM conversation_id (conversationId = ${conversationId})`);
+    console.log(`⚠️ [createCard] Card será criado SEM conversation_id`);
+    console.log(`⚠️ [createCard] conversationId parâmetro: ${conversationId || 'null'}`);
+    console.log(`⚠️ [createCard] cardData.conversation_id: ${cardData.conversation_id || 'null'}`);
+    // Garantir que conversation_id não está no insertData se for null/undefined
+    if (insertData.conversation_id) {
+      delete insertData.conversation_id;
+      console.log(`⚠️ [createCard] Removendo conversation_id do insertData (era ${insertData.conversation_id})`);
+    }
   }
 
   if (cardData.responsible_user_id) {
@@ -1400,7 +1413,7 @@ serve(async (req) => {
         // Validar se a conversa existe (com retry para lidar com timing issues)
         let existingConv = null;
         let convCheckError = null;
-        const maxRetries = 3;
+        const maxRetries = 5; // Aumentado de 3 para 5 para lidar melhor com timing
         
         for (let attempt = 1; attempt <= maxRetries; attempt++) {
           const { data, error } = await supabase
@@ -1418,7 +1431,9 @@ serve(async (req) => {
             convCheckError = error;
             if (attempt < maxRetries) {
               console.warn(`⚠️ [create_card] Tentativa ${attempt} falhou, aguardando antes de tentar novamente...`);
-              await new Promise(resolve => setTimeout(resolve, 200 * attempt)); // Backoff exponencial
+              const delay = 300 * attempt; // 300ms, 600ms, 900ms, 1200ms (aumentado de 200ms)
+              console.warn(`⚠️ [create_card] Aguardando ${delay}ms antes da próxima tentativa...`);
+              await new Promise(resolve => setTimeout(resolve, delay)); // Backoff exponencial
             }
           }
         }
@@ -1443,10 +1458,11 @@ serve(async (req) => {
         } else if (!existingConv) {
           console.warn(`⚠️ [create_card] Conversa ${conversationId} não encontrada no banco após ${maxRetries} tentativas`);
           console.warn(`⚠️ [create_card] Isso pode indicar que o conversation_id está incorreto ou a conversa ainda não foi commitada`);
-          console.warn(`⚠️ [create_card] Tentando buscar/criar conversa automaticamente...`);
-          const originalConversationId = conversationId; // Preservar o ID original para logs
-          conversationId = null; // Reset para buscar/criar
-          console.warn(`⚠️ [create_card] conversationId resetado de "${originalConversationId}" para null`);
+          console.warn(`⚠️ [create_card] IMPORTANTE: Se você acabou de criar a conversa, pode ser um problema de timing/replicação`);
+          console.warn(`⚠️ [create_card] Tentando usar o conversation_id mesmo assim (será validado na inserção)...`);
+          // NÃO resetar para null - vamos tentar usar mesmo assim
+          // Se a foreign key falhar, o erro será claro
+          console.warn(`⚠️ [create_card] Mantendo conversation_id: ${conversationId} para tentar inserir`);
         } else if (existingConv.contact_id !== payload.card.contact_id) {
           console.warn(`⚠️ [create_card] conversation_id fornecido pertence a outro contato`);
           console.warn(`⚠️ [create_card] Conversa contact_id: ${existingConv.contact_id}, Card contact_id: ${payload.card.contact_id}`);
