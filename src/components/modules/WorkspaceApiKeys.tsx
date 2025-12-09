@@ -58,6 +58,13 @@ export function WorkspaceApiKeys() {
   const [loadingPipelines, setLoadingPipelines] = useState(false);
   const [loadingColumns, setLoadingColumns] = useState(false);
   const [copiedPayload, setCopiedPayload] = useState(false);
+  
+  // Estados para Tags e Conversa
+  const [tags, setTags] = useState<Array<{ id: string; name: string; color: string }>>([]);
+  const [selectedTagIds, setSelectedTagIds] = useState<string[]>([]);
+  const [loadingTags, setLoadingTags] = useState(false);
+  const [initialMessage, setInitialMessage] = useState<string>("");
+  const [createConversation, setCreateConversation] = useState<boolean>(false);
 
   const apiUrl = getSupabaseFunctionUrl("external-webhook-api");
 
@@ -65,6 +72,7 @@ export function WorkspaceApiKeys() {
     if (selectedWorkspace) {
       loadApiKeys();
       loadPipelines();
+      loadTags();
     }
   }, [selectedWorkspace]);
 
@@ -315,12 +323,46 @@ export function WorkspaceApiKeys() {
     }
   };
 
+  const loadTags = async () => {
+    if (!selectedWorkspace) return;
+
+    try {
+      setLoadingTags(true);
+      const { data, error } = await supabase
+        .from("tags")
+        .select("id, name, color")
+        .eq("workspace_id", selectedWorkspace.workspace_id)
+        .order("name");
+
+      if (error) throw error;
+
+      setTags(data || []);
+    } catch (error: any) {
+      console.error("Erro ao carregar tags:", error);
+      toast({
+        title: "Erro",
+        description: "Erro ao carregar tags",
+        variant: "destructive",
+      });
+    } finally {
+      setLoadingTags(false);
+    }
+  };
+
+  const toggleTag = (tagId: string) => {
+    setSelectedTagIds((prev) =>
+      prev.includes(tagId)
+        ? prev.filter((id) => id !== tagId)
+        : [...prev, tagId]
+    );
+  };
+
   const generatePayload = () => {
     if (!selectedWorkspace || !selectedPipelineId || !selectedColumnId) {
       return null;
     }
 
-    const payload = {
+    const payload: any = {
       action: "create_contact_with_card",
       workspace_id: selectedWorkspace.workspace_id,
       contact: {
@@ -335,6 +377,23 @@ export function WorkspaceApiKeys() {
         value: 0,
       },
     };
+
+    // Adicionar tags se selecionadas
+    if (selectedTagIds.length > 0) {
+      payload.contact.tags = selectedTagIds;
+    }
+
+    // Adicionar conversa se solicitado
+    if (createConversation) {
+      payload.conversation = {
+        create: true,
+      };
+      
+      // Adicionar mensagem inicial se fornecida
+      if (initialMessage.trim()) {
+        payload.conversation.initial_message = initialMessage.trim();
+      }
+    }
 
     return JSON.stringify(payload, null, 2);
   };
@@ -695,9 +754,15 @@ X-API-Key: sua_api_key_aqui
     "name": "Nome do Cliente",
     "phone": "5511999999999",
     "email": "email@exemplo.com",
+    "tags": ["uuid-tag-1", "uuid-tag-2"],
     "extra_info": {
       "campo_customizado": "valor"
     }
+  },
+  "conversation": {
+    "create": true,
+    "connection_id": "uuid-da-conexao",
+    "initial_message": "Olá! Bem-vindo..."
   }
 }`}
                       </pre>
@@ -708,11 +773,15 @@ X-API-Key: sua_api_key_aqui
 {`{
   "success": true,
   "data": {
-    "contact_id": "uuid-gerado"
+    "contact_id": "uuid-gerado",
+    "conversation_id": "uuid-gerado"
   },
   "message": "Contato criado com sucesso"
 }`}
                       </pre>
+                      <p className="text-xs text-gray-600 dark:text-gray-400 italic">
+                        Nota: <code className="bg-[#f3f3f3] dark:bg-[#2d2d2d] px-1 rounded">tags</code> é um array opcional de tag_ids (UUIDs). <code className="bg-[#f3f3f3] dark:bg-[#2d2d2d] px-1 rounded">conversation</code> é opcional e permite criar uma conversa vazia ou com mensagem inicial.
+                      </p>
                     </div>
                   </div>
 
@@ -762,18 +831,24 @@ X-API-Key: sua_api_key_aqui
   "contact": {
     "name": "Nome do Cliente",
     "phone": "5511999999999",
-    "email": "email@exemplo.com"
+    "email": "email@exemplo.com",
+    "tags": ["uuid-tag-1", "uuid-tag-2"]
   },
   "card": {
     "pipeline_id": "uuid-do-pipeline",
     "column_id": "uuid-da-coluna",
     "description": "Novo Negócio",
     "value": 2000.00
+  },
+  "conversation": {
+    "create": true,
+    "connection_id": "uuid-da-conexao",
+    "initial_message": "Olá! Bem-vindo..."
   }
 }`}
                       </pre>
                       <p className="text-xs text-gray-600 dark:text-gray-400 italic">
-                        Nota: Você pode usar <code className="bg-[#f3f3f3] dark:bg-[#2d2d2d] px-1 rounded">title</code> no payload (será convertido para <code className="bg-[#f3f3f3] dark:bg-[#2d2d2d] px-1 rounded">description</code>), ou usar <code className="bg-[#f3f3f3] dark:bg-[#2d2d2d] px-1 rounded">description</code> diretamente.
+                        Nota: Você pode usar <code className="bg-[#f3f3f3] dark:bg-[#2d2d2d] px-1 rounded">title</code> no payload (será convertido para <code className="bg-[#f3f3f3] dark:bg-[#2d2d2d] px-1 rounded">description</code>), ou usar <code className="bg-[#f3f3f3] dark:bg-[#2d2d2d] px-1 rounded">description</code> diretamente. <code className="bg-[#f3f3f3] dark:bg-[#2d2d2d] px-1 rounded">tags</code> é opcional (array de tag_ids). <code className="bg-[#f3f3f3] dark:bg-[#2d2d2d] px-1 rounded">conversation</code> é opcional e permite criar conversa vazia ou com mensagem inicial.
                       </p>
                     </div>
                     <div className="space-y-2">
@@ -783,7 +858,8 @@ X-API-Key: sua_api_key_aqui
   "success": true,
   "data": {
     "contact_id": "uuid-gerado",
-    "card_id": "uuid-gerado"
+    "card_id": "uuid-gerado",
+    "conversation_id": "uuid-gerado"
   },
   "message": "Contato e card criados com sucesso"
 }`}
@@ -802,6 +878,8 @@ X-API-Key: sua_api_key_aqui
                   <ul className="space-y-2 text-xs text-gray-600 dark:text-gray-400 list-disc list-inside">
                     <li>O campo <code className="bg-[#f3f3f3] dark:bg-[#2d2d2d] px-1 rounded text-gray-900 dark:text-gray-100">phone</code> é opcional, mas se fornecido, será normalizado (adiciona 55 se necessário)</li>
                     <li>Contatos duplicados (mesmo telefone no mesmo workspace) retornam o contato existente sem criar novo</li>
+                    <li>O campo <code className="bg-[#f3f3f3] dark:bg-[#2d2d2d] px-1 rounded text-gray-900 dark:text-gray-100">tags</code> é opcional e aceita um array de tag_ids (UUIDs). As tags devem pertencer ao workspace</li>
+                    <li>O campo <code className="bg-[#f3f3f3] dark:bg-[#2d2d2d] px-1 rounded text-gray-900 dark:text-gray-100">conversation</code> é opcional. Se <code className="bg-[#f3f3f3] dark:bg-[#2d2d2d] px-1 rounded text-gray-900 dark:text-gray-100">create: true</code>, cria uma conversa. <code className="bg-[#f3f3f3] dark:bg-[#2d2d2d] px-1 rounded text-gray-900 dark:text-gray-100">connection_id</code> é opcional (usa conexão padrão se não fornecido). <code className="bg-[#f3f3f3] dark:bg-[#2d2d2d] px-1 rounded text-gray-900 dark:text-gray-100">initial_message</code> é opcional e adiciona uma mensagem inicial à conversa</li>
                     <li>Para cards, use o campo <code className="bg-[#f3f3f3] dark:bg-[#2d2d2d] px-1 rounded text-gray-900 dark:text-gray-100">description</code> (obrigatório). Você também pode usar <code className="bg-[#f3f3f3] dark:bg-[#2d2d2d] px-1 rounded text-gray-900 dark:text-gray-100">title</code> no payload - ele será automaticamente convertido para <code className="bg-[#f3f3f3] dark:bg-[#2d2d2d] px-1 rounded text-gray-900 dark:text-gray-100">description</code></li>
                     <li>O status padrão dos cards é <code className="bg-[#f3f3f3] dark:bg-[#2d2d2d] px-1 rounded text-gray-900 dark:text-gray-100">"aberto"</code></li>
                     <li>O valor padrão dos cards é <code className="bg-[#f3f3f3] dark:bg-[#2d2d2d] px-1 rounded text-gray-900 dark:text-gray-100">0</code></li>
@@ -949,6 +1027,83 @@ X-API-Key: sua_api_key_aqui
                         </SelectContent>
                       )}
                     </Select>
+                  </div>
+
+                  {/* Tags Selection */}
+                  <div className="space-y-2">
+                    <Label className="text-xs font-medium text-gray-700 dark:text-gray-300">
+                      Tags (Opcional)
+                    </Label>
+                    {loadingTags ? (
+                      <p className="text-xs text-gray-500 dark:text-gray-400">Carregando tags...</p>
+                    ) : tags.length === 0 ? (
+                      <p className="text-xs text-gray-500 dark:text-gray-400">
+                        Nenhuma tag disponível no workspace
+                      </p>
+                    ) : (
+                      <div className="max-h-40 overflow-y-auto border border-[#d4d4d4] dark:border-gray-700 rounded p-2 bg-white dark:bg-[#2d2d2d]">
+                        <div className="space-y-2">
+                          {tags.map((tag) => (
+                            <label
+                              key={tag.id}
+                              className="flex items-center gap-2 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800 p-1 rounded text-xs"
+                            >
+                              <input
+                                type="checkbox"
+                                checked={selectedTagIds.includes(tag.id)}
+                                onChange={() => toggleTag(tag.id)}
+                                className="w-4 h-4 rounded border-[#d4d4d4] dark:border-gray-700 text-primary focus:ring-primary"
+                              />
+                              <span
+                                className="inline-block w-3 h-3 rounded-full"
+                                style={{ backgroundColor: tag.color || "#6366f1" }}
+                              />
+                              <span className="text-gray-900 dark:text-gray-100">{tag.name}</span>
+                            </label>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                    {selectedTagIds.length > 0 && (
+                      <p className="text-xs text-gray-500 dark:text-gray-400">
+                        {selectedTagIds.length} tag(s) selecionada(s)
+                      </p>
+                    )}
+                  </div>
+
+                  {/* Conversation Options */}
+                  <div className="space-y-2">
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="checkbox"
+                        id="createConversation"
+                        checked={createConversation}
+                        onChange={(e) => setCreateConversation(e.target.checked)}
+                        className="w-4 h-4 rounded border-[#d4d4d4] dark:border-gray-700 text-primary focus:ring-primary"
+                      />
+                      <Label
+                        htmlFor="createConversation"
+                        className="text-xs font-medium text-gray-700 dark:text-gray-300 cursor-pointer"
+                      >
+                        Criar conversa
+                      </Label>
+                    </div>
+                    {createConversation && (
+                      <div className="space-y-2 ml-6">
+                        <Label className="text-xs font-medium text-gray-700 dark:text-gray-300">
+                          Mensagem inicial (Opcional)
+                        </Label>
+                        <Input
+                          value={initialMessage}
+                          onChange={(e) => setInitialMessage(e.target.value)}
+                          placeholder="Ex: Olá! Bem-vindo ao nosso atendimento..."
+                          className="h-8 text-xs rounded-none border-[#d4d4d4] dark:border-gray-700 bg-white dark:bg-[#2d2d2d] text-gray-900 dark:text-gray-100 placeholder:text-gray-500 dark:placeholder:text-gray-400"
+                        />
+                        <p className="text-xs text-gray-500 dark:text-gray-400">
+                          Esta mensagem será enviada automaticamente quando a conversa for criada
+                        </p>
+                      </div>
+                    )}
                   </div>
                 </CardContent>
               </Card>

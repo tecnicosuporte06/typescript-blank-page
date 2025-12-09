@@ -12,6 +12,7 @@ interface ContactData {
   phone?: string;
   email?: string;
   extra_info?: Record<string, any>;
+  tags?: string[]; // Array de tag_ids (UUIDs)
 }
 
 interface CardData {
@@ -25,11 +26,18 @@ interface CardData {
   responsible_user_id?: string;
 }
 
+interface ConversationData {
+  create?: boolean; // Se true, cria conversa
+  connection_id?: string; // Opcional - UUID da conexão
+  initial_message?: string; // Opcional - Mensagem inicial
+}
+
 interface RequestPayload {
   action: "create_contact" | "create_card" | "create_contact_with_card";
   workspace_id: string;
   contact?: ContactData;
   card?: CardData;
+  conversation?: ConversationData; // Opcional - Para criar conversa
 }
 
 // Função para validar API Key
@@ -145,6 +153,193 @@ async function createOrGetContact(
 
   console.log("Novo contato criado:", newContact.id);
   return { id: newContact.id, is_new: true };
+}
+
+// Função para adicionar tags ao contato
+async function addTagsToContact(
+  supabase: any,
+  contactId: string,
+  workspaceId: string,
+  tagIds: string[]
+): Promise<void> {
+  if (!tagIds || tagIds.length === 0) {
+    return;
+  }
+
+  // Validar que as tags pertencem ao workspace
+  const { data: validTags, error: tagsError } = await supabase
+    .from("tags")
+    .select("id")
+    .eq("workspace_id", workspaceId)
+    .in("id", tagIds);
+
+  if (tagsError) {
+    console.error("Erro ao validar tags:", tagsError);
+    throw new Error(`Erro ao validar tags: ${tagsError.message}`);
+  }
+
+  if (!validTags || validTags.length === 0) {
+    console.warn("Nenhuma tag válida encontrada para o workspace");
+    return;
+  }
+
+  const validTagIds = validTags.map((tag: any) => tag.id);
+
+  // Adicionar tags ao contato (usar upsert para evitar duplicatas)
+  const contactTagsData = validTagIds.map((tagId: string) => ({
+    contact_id: contactId,
+    tag_id: tagId,
+  }));
+
+  const { error: insertError } = await supabase
+    .from("contact_tags")
+    .upsert(contactTagsData, {
+      onConflict: "contact_id,tag_id",
+      ignoreDuplicates: true,
+    });
+
+  if (insertError) {
+    console.error("Erro ao adicionar tags ao contato:", insertError);
+    throw new Error(`Erro ao adicionar tags: ${insertError.message}`);
+  }
+
+  console.log(`✅ ${validTagIds.length} tag(s) adicionada(s) ao contato ${contactId}`);
+}
+
+// Função para criar conversa (vazia ou com mensagem inicial)
+async function createConversation(
+  supabase: any,
+  contactId: string,
+  workspaceId: string,
+  conversationData: ConversationData
+): Promise<string | null> {
+  if (!conversationData.create) {
+    return null;
+  }
+
+  // Verificar se já existe conversa aberta para o contato
+  const { data: existingConversation } = await supabase
+    .from("conversations")
+    .select("id")
+    .eq("contact_id", contactId)
+    .eq("workspace_id", workspaceId)
+    .eq("status", "open")
+    .maybeSingle();
+
+  if (existingConversation) {
+    console.log("Conversa existente encontrada:", existingConversation.id);
+    
+    // Se tem mensagem inicial e conversa já existe, adicionar mensagem
+    if (conversationData.initial_message) {
+      await addInitialMessage(
+        supabase,
+        existingConversation.id,
+        workspaceId,
+        conversationData.initial_message
+      );
+    }
+    
+    return existingConversation.id;
+  }
+
+  // Buscar conexão padrão se connection_id não foi fornecido
+  let connectionId = conversationData.connection_id || null;
+  let instanceName = null;
+
+  if (!connectionId) {
+    const { data: defaultConnection } = await supabase
+      .from("connections")
+      .select("id, instance_name")
+      .eq("workspace_id", workspaceId)
+      .eq("status", "connected")
+      .order("created_at", { ascending: true })
+      .limit(1)
+      .maybeSingle();
+
+    if (defaultConnection) {
+      connectionId = defaultConnection.id;
+      instanceName = defaultConnection.instance_name;
+    }
+  } else {
+    // Buscar instance_name da conexão fornecida
+    const { data: connection } = await supabase
+      .from("connections")
+      .select("instance_name")
+      .eq("id", connectionId)
+      .maybeSingle();
+
+    if (connection) {
+      instanceName = connection.instance_name;
+    }
+  }
+
+  // Criar nova conversa
+  const conversationPayload: any = {
+    contact_id: contactId,
+    workspace_id: workspaceId,
+    status: "open",
+    canal: "whatsapp",
+    agente_ativo: false,
+    connection_id: connectionId,
+    evolution_instance: instanceName,
+  };
+
+  const { data: newConversation, error: conversationError } = await supabase
+    .from("conversations")
+    .insert(conversationPayload)
+    .select("id")
+    .single();
+
+  if (conversationError || !newConversation) {
+    console.error("Erro ao criar conversa:", conversationError);
+    throw new Error(`Erro ao criar conversa: ${conversationError?.message || "Erro desconhecido"}`);
+  }
+
+  console.log("Nova conversa criada:", newConversation.id);
+
+  // Adicionar mensagem inicial se fornecida
+  if (conversationData.initial_message) {
+    await addInitialMessage(
+      supabase,
+      newConversation.id,
+      workspaceId,
+      conversationData.initial_message
+    );
+  }
+
+  return newConversation.id;
+}
+
+// Função auxiliar para adicionar mensagem inicial
+async function addInitialMessage(
+  supabase: any,
+  conversationId: string,
+  workspaceId: string,
+  content: string
+): Promise<void> {
+  const { error: messageError } = await supabase
+    .from("messages")
+    .insert({
+      conversation_id: conversationId,
+      workspace_id: workspaceId,
+      content: content,
+      message_type: "text",
+      sender_type: "system",
+      status: "sent",
+      origem_resposta: "automatica",
+      metadata: {
+        source: "external_webhook_api",
+        initial_message: true,
+      },
+    });
+
+  if (messageError) {
+    console.error("Erro ao adicionar mensagem inicial:", messageError);
+    // Não lançar erro - mensagem inicial é opcional
+    console.warn("⚠️ Não foi possível adicionar mensagem inicial, mas conversa foi criada");
+  } else {
+    console.log("✅ Mensagem inicial adicionada à conversa");
+  }
 }
 
 // Função para validar pipeline e coluna
@@ -810,11 +1005,39 @@ serve(async (req) => {
 
       const result = await createOrGetContact(supabase, payload.workspace_id, payload.contact);
       contactId = result.id;
+      
+      // Processar tags se fornecidas
+      if (payload.contact.tags && payload.contact.tags.length > 0) {
+        try {
+          await addTagsToContact(supabase, contactId, payload.workspace_id, payload.contact.tags);
+        } catch (tagError: any) {
+          console.error("Erro ao adicionar tags (não crítico):", tagError);
+          // Não falhar a requisição se tags falharem
+        }
+      }
+      
+      // Criar conversa se solicitado
+      let conversationId = null;
+      if (payload.conversation?.create) {
+        try {
+          conversationId = await createConversation(
+            supabase,
+            contactId,
+            payload.workspace_id,
+            payload.conversation
+          );
+        } catch (convError: any) {
+          console.error("Erro ao criar conversa (não crítico):", convError);
+          // Não falhar a requisição se conversa falhar
+        }
+      }
+      
       eventType = "external_api_contact";
       responseBody = {
         success: true,
         data: {
           contact_id: contactId,
+          ...(conversationId && { conversation_id: conversationId }),
         },
         message: result.is_new ? "Contato criado com sucesso" : "Contato existente retornado",
       };
@@ -925,6 +1148,16 @@ serve(async (req) => {
       const contactResult = await createOrGetContact(supabase, payload.workspace_id, payload.contact);
       contactId = contactResult.id;
 
+      // Processar tags se fornecidas
+      if (payload.contact.tags && payload.contact.tags.length > 0) {
+        try {
+          await addTagsToContact(supabase, contactId, payload.workspace_id, payload.contact.tags);
+        } catch (tagError: any) {
+          console.error("Erro ao adicionar tags (não crítico):", tagError);
+          // Não falhar a requisição se tags falharem
+        }
+      }
+
       // Validar pipeline e coluna
       const isValid = await validatePipelineAndColumn(
         supabase,
@@ -954,12 +1187,29 @@ serve(async (req) => {
         console.error(`❌ Erro ao acionar automações (não crítico):`, err);
       });
       
+      // Criar conversa se solicitado
+      let conversationId = null;
+      if (payload.conversation?.create) {
+        try {
+          conversationId = await createConversation(
+            supabase,
+            contactId,
+            payload.workspace_id,
+            payload.conversation
+          );
+        } catch (convError: any) {
+          console.error("Erro ao criar conversa (não crítico):", convError);
+          // Não falhar a requisição se conversa falhar
+        }
+      }
+      
       eventType = "external_api_both";
       responseBody = {
         success: true,
         data: {
           contact_id: contactId,
           card_id: cardId,
+          ...(conversationId && { conversation_id: conversationId }),
         },
         message: "Contato e card criados com sucesso",
       };
