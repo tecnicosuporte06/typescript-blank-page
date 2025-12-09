@@ -559,19 +559,22 @@ async function createCard(
     insertData.responsible_user_id = cardData.responsible_user_id;
   }
 
-  console.log(`📝 [createCard] Inserindo card com dados:`, JSON.stringify({
-    pipeline_id: insertData.pipeline_id,
-    column_id: insertData.column_id,
-    contact_id: insertData.contact_id,
-    conversation_id: insertData.conversation_id || null,
-    description: insertData.description
-  }, null, 2));
+  console.log(`📝 [createCard] ========== DADOS PARA INSERÇÃO ==========`);
+  console.log(`📝 [createCard] insertData completo:`, JSON.stringify(insertData, null, 2));
+  console.log(`📝 [createCard] conversation_id no insertData:`, insertData.conversation_id || 'NÃO PRESENTE');
+  console.log(`📝 [createCard] conversationId recebido como parâmetro:`, conversationId || 'null');
+  console.log(`📝 [createCard] =========================================`);
 
   const { data: newCard, error } = await supabase
     .from("pipeline_cards")
     .insert(insertData)
     .select("id, conversation_id")
     .single();
+  
+  if (error) {
+    console.error(`❌ [createCard] Erro na inserção:`, error);
+    console.error(`❌ [createCard] Erro completo:`, JSON.stringify(error, null, 2));
+  }
 
   if (error || !newCard) {
     console.error(`❌ [createCard] Erro ao inserir card:`, error);
@@ -1363,22 +1366,51 @@ serve(async (req) => {
       
       if (conversationId) {
         console.log(`✅ [create_card] conversation_id fornecido no payload: ${conversationId}`);
+        console.log(`🔍 [create_card] Validando conversation_id...`);
+        console.log(`🔍 [create_card] contact_id para validação: ${payload.card.contact_id}`);
+        console.log(`🔍 [create_card] workspace_id para validação: ${payload.workspace_id}`);
+        
         // Validar se a conversa existe e pertence ao contato e workspace
         const { data: existingConv, error: convCheckError } = await supabase
           .from("conversations")
-          .select("id")
+          .select("id, contact_id, workspace_id")
           .eq("id", conversationId)
-          .eq("contact_id", payload.card.contact_id!)
-          .eq("workspace_id", payload.workspace_id)
           .maybeSingle();
         
-        if (convCheckError || !existingConv) {
-          console.warn(`⚠️ [create_card] conversation_id fornecido (${conversationId}) não é válido ou não pertence ao contato/workspace`);
+        console.log(`🔍 [create_card] Resultado da busca de conversa:`, {
+          found: !!existingConv,
+          error: convCheckError ? convCheckError.message : null,
+          conversation_data: existingConv ? {
+            id: existingConv.id,
+            contact_id: existingConv.contact_id,
+            workspace_id: existingConv.workspace_id
+          } : null
+        });
+        
+        if (convCheckError) {
+          console.error(`❌ [create_card] Erro ao buscar conversa:`, convCheckError);
+          console.warn(`⚠️ [create_card] Tentando buscar/criar conversa automaticamente...`);
+          conversationId = null; // Reset para buscar/criar
+        } else if (!existingConv) {
+          console.warn(`⚠️ [create_card] Conversa ${conversationId} não encontrada no banco`);
+          console.warn(`⚠️ [create_card] Tentando buscar/criar conversa automaticamente...`);
+          conversationId = null; // Reset para buscar/criar
+        } else if (existingConv.contact_id !== payload.card.contact_id) {
+          console.warn(`⚠️ [create_card] conversation_id fornecido pertence a outro contato`);
+          console.warn(`⚠️ [create_card] Conversa contact_id: ${existingConv.contact_id}, Card contact_id: ${payload.card.contact_id}`);
+          console.warn(`⚠️ [create_card] Tentando buscar/criar conversa automaticamente...`);
+          conversationId = null; // Reset para buscar/criar
+        } else if (existingConv.workspace_id !== payload.workspace_id) {
+          console.warn(`⚠️ [create_card] conversation_id fornecido pertence a outro workspace`);
+          console.warn(`⚠️ [create_card] Conversa workspace_id: ${existingConv.workspace_id}, Card workspace_id: ${payload.workspace_id}`);
           console.warn(`⚠️ [create_card] Tentando buscar/criar conversa automaticamente...`);
           conversationId = null; // Reset para buscar/criar
         } else {
-          console.log(`✅ [create_card] conversation_id validado com sucesso`);
+          console.log(`✅ [create_card] conversation_id validado com sucesso!`);
+          console.log(`✅ [create_card] Usando conversation_id: ${conversationId}`);
         }
+      } else {
+        console.log(`ℹ️ [create_card] Nenhum conversation_id fornecido no payload`);
       }
 
       // ✅ CRÍTICO: Verificar se a coluna precisa de conversation_id (só se não foi fornecido)
