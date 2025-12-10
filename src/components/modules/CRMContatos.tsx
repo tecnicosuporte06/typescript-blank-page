@@ -1243,9 +1243,19 @@ export function CRMContatos() {
         }
 
         try {
+          // Normalizar telefone para o mesmo formato usado pela webhook (55 + dígitos)
+          const normalizePhoneForStorage = (rawPhone: string): string | null => {
+            if (!rawPhone) return null;
+            const digitsOnly = rawPhone.replace(/\D/g, "");
+            if (!digitsOnly) return null;
+            return digitsOnly.startsWith("55") ? digitsOnly : `55${digitsOnly}`;
+          };
+
+          const normalizedPhone = normalizePhoneForStorage(phone);
+
           const { error } = await supabase.from("contacts").insert({
             name,
-            phone,
+            phone: normalizedPhone,
             email,
             workspace_id: selectedWorkspace.workspace_id,
           });

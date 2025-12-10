@@ -92,19 +92,16 @@ async function validateWorkspace(
   return true;
 }
 
-// Função para normalizar telefone
+// Função para normalizar telefone (formato canônico: 55 + dígitos)
 function normalizePhone(phone: string | undefined): string | null {
   if (!phone) return null;
-  
-  // Remove caracteres não numéricos
-  let normalized = phone.replace(/\D/g, "");
-  
+
+  const digitsOnly = phone.replace(/\D/g, "");
+  if (!digitsOnly) return null;
+
   // Adiciona 55 na frente se não tiver
-  if (normalized && !normalized.startsWith("55")) {
-    normalized = "55" + normalized;
-  }
-  
-  return normalized || null;
+  const normalized = digitsOnly.startsWith("55") ? digitsOnly : `55${digitsOnly}`;
+  return normalized;
 }
 
 // Função para criar ou buscar contato
@@ -115,18 +112,50 @@ async function createOrGetContact(
 ): Promise<{ id: string; is_new: boolean }> {
   const normalizedPhone = normalizePhone(contactData.phone);
 
-  // Se tem telefone, buscar contato existente
-  if (normalizedPhone) {
-    const { data: existingContact } = await supabase
-      .from("contacts")
-      .select("id")
-      .eq("workspace_id", workspaceId)
-      .eq("phone", normalizedPhone)
-      .maybeSingle();
+  // Se tem telefone, tentar buscar contato existente por VARIAÇÕES do número
+  if (contactData.phone) {
+    const raw = contactData.phone;
+    const digitsOnly = raw.replace(/\D/g, "");
 
-    if (existingContact) {
-      console.log("Contato existente encontrado:", existingContact.id);
-      return { id: existingContact.id, is_new: false };
+    if (digitsOnly) {
+      const with55 = digitsOnly.startsWith("55") ? digitsOnly : `55${digitsOnly}`;
+      const without55 = with55.startsWith("55") ? with55.substring(2) : with55;
+
+      const variants = Array.from(
+        new Set(
+          [
+            with55,                    // 5599999999999
+            `+${with55}`,              // +5599999999999
+            digitsOnly,                // 999999999999
+            without55,                 // 9999999999 (sem 55)
+          ].filter(Boolean)
+        )
+      );
+
+      if (variants.length > 0) {
+        const orFilter = variants.map((v) => `phone.eq.${v}`).join(",");
+
+        console.log("[createOrGetContact] Buscando contato por variações de telefone:", {
+          workspaceId,
+          originalPhone: raw,
+          digitsOnly,
+          variants,
+        });
+
+        const { data: existingContacts, error } = await supabase
+          .from("contacts")
+          .select("id, phone")
+          .eq("workspace_id", workspaceId)
+          .or(orFilter);
+
+        if (error) {
+          console.error("[createOrGetContact] Erro ao buscar contato por telefone:", error);
+        } else if (existingContacts && existingContacts.length > 0) {
+          const existing = existingContacts[0];
+          console.log("[createOrGetContact] Contato existente encontrado por telefone:", existing);
+          return { id: existing.id, is_new: false };
+        }
+      }
     }
   }
 
