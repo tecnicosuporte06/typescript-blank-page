@@ -20,6 +20,7 @@ interface CardData {
   column_id: string;
   contact_id?: string;
   conversation_id?: string; // ✅ Permite passar conversation_id diretamente quando já existe
+  queue_id?: string | null; // ✅ Fila opcional para atribuição automática da conversa
   title?: string;
   description?: string;
   value?: number;
@@ -100,8 +101,43 @@ function normalizePhone(phone: string | undefined): string | null {
   if (!digitsOnly) return null;
 
   // Adiciona 55 na frente se não tiver
-  const normalized = digitsOnly.startsWith("55") ? digitsOnly : `55${digitsOnly}`;
+  const normalized = digitsOnly.startsWith("55") ? `55${digitsOnly}` : digitsOnly;
   return normalized;
+}
+
+// Função para acionar a fila padrão ou uma fila específica para uma conversa
+async function assignConversationToQueue(
+  supabase: any,
+  conversationId: string | null | undefined,
+  queueId?: string | null
+): Promise<void> {
+  if (!conversationId) {
+    console.log('[assignConversationToQueue] Nenhuma conversationId fornecida, pulando atribuição de fila');
+    return;
+  }
+
+  try {
+    console.log('[assignConversationToQueue] Iniciando atribuição de fila...', {
+      conversationId,
+      queueId: queueId || 'auto',
+    });
+
+    const { data, error } = await supabase.functions.invoke('assign-conversation-to-queue', {
+      body: {
+        conversation_id: conversationId,
+        queue_id: queueId || null, // Se não for fornecido, a função usará a fila padrão da conexão
+      },
+    });
+
+    if (error) {
+      console.error('[assignConversationToQueue] Erro ao chamar assign-conversation-to-queue:', error);
+      return;
+    }
+
+    console.log('[assignConversationToQueue] Resultado da fila:', data);
+  } catch (err) {
+    console.error('[assignConversationToQueue] Exceção ao atribuir fila (não-bloqueante):', err);
+  }
 }
 
 // Função para criar ou buscar contato
@@ -143,8 +179,8 @@ async function createOrGetContact(
         });
 
         const { data: existingContacts, error } = await supabase
-          .from("contacts")
-          .select("id, phone")
+      .from("contacts")
+      .select("id, phone")
           .eq("workspace_id", workspaceId)
           .or(orFilter);
 
@@ -1661,6 +1697,13 @@ serve(async (req) => {
       
       cardId = await createCard(supabase, payload.card, payload.card.contact_id!, conversationId);
       console.log(`✅ [create_card] Card criado com sucesso: ${cardId}`);
+
+      // Atribuir conversa à fila (se houver conversa) - usando queue_id opcional do payload.card
+      try {
+        await assignConversationToQueue(supabase, conversationId, payload.card.queue_id);
+      } catch (queueError) {
+        console.error('⚠️ [create_card] Erro ao atribuir conversa à fila (não-bloqueante):', queueError);
+      }
       
       // ✅ Acionar automações de coluna em background (não bloqueia resposta)
       // Pequena espera para garantir que o card está disponível no banco
@@ -1897,6 +1940,13 @@ serve(async (req) => {
       console.log(`📝 [create_contact_with_card] Criando card com conversationId: ${conversationId || 'null'}`);
       cardId = await createCard(supabase, payload.card, contactId, conversationId);
       console.log(`✅ [create_contact_with_card] Card criado com sucesso: ${cardId}`);
+      
+      // Atribuir conversa à fila (se houver conversa) - usando queue_id opcional do payload.card
+      try {
+        await assignConversationToQueue(supabase, conversationId, payload.card.queue_id);
+      } catch (queueError) {
+        console.error('⚠️ [create_contact_with_card] Erro ao atribuir conversa à fila (não-bloqueante):', queueError);
+      }
       
       // ✅ Acionar automações de coluna em background (não bloqueia resposta)
       // Pequena espera para garantir que o card está disponível no banco

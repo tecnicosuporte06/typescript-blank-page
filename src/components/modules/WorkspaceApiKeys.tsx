@@ -24,6 +24,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { getSupabaseFunctionUrl } from "@/lib/config";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Pipeline, PipelineColumn } from "@/hooks/usePipelines";
+import { useQueues } from "@/hooks/useQueues";
 
 interface ApiKey {
   id: string;
@@ -58,6 +59,7 @@ export function WorkspaceApiKeys() {
   const [loadingPipelines, setLoadingPipelines] = useState(false);
   const [loadingColumns, setLoadingColumns] = useState(false);
   const [copiedPayload, setCopiedPayload] = useState(false);
+  const [selectedQueueId, setSelectedQueueId] = useState<string>("");
   
   // Estados para Tags e Conversa
   const [tags, setTags] = useState<Array<{ id: string; name: string; color: string }>>([]);
@@ -67,6 +69,9 @@ export function WorkspaceApiKeys() {
   const [createConversation, setCreateConversation] = useState<boolean>(false);
 
   const apiUrl = getSupabaseFunctionUrl("external-webhook-api");
+
+  // Filas do workspace para o payload personalizado
+  const { queues, loading: loadingQueues } = useQueues(selectedWorkspace?.workspace_id);
 
   useEffect(() => {
     if (selectedWorkspace) {
@@ -377,6 +382,11 @@ export function WorkspaceApiKeys() {
         value: 0,
       },
     };
+
+    // Adicionar fila se selecionada
+    if (selectedQueueId) {
+      payload.card.queue_id = selectedQueueId;
+    }
 
     // Adicionar tags se selecionadas
     if (selectedTagIds.length > 0) {
@@ -992,7 +1002,7 @@ X-API-Key: sua_api_key_aqui
                     </Select>
                   </div>
 
-                  {/* Column Select */}
+                    {/* Column Select */}
                   <div className="space-y-2">
                     <Label className="text-xs font-medium text-gray-700 dark:text-gray-300">Coluna</Label>
                     <Select
@@ -1027,6 +1037,46 @@ X-API-Key: sua_api_key_aqui
                         </SelectContent>
                       )}
                     </Select>
+                  </div>
+
+                  {/* Queue Select */}
+                  <div className="space-y-2">
+                    <Label className="text-xs font-medium text-gray-700 dark:text-gray-300">
+                      Fila (Opcional)
+                    </Label>
+                    <Select
+                      value={selectedQueueId}
+                      onValueChange={setSelectedQueueId}
+                      disabled={loadingQueues || !queues || queues.length === 0}
+                    >
+                      <SelectTrigger className="h-8 text-xs rounded-none border-[#d4d4d4] dark:border-gray-700 bg-white dark:bg-[#2d2d2d] text-gray-900 dark:text-gray-100">
+                        <SelectValue
+                          placeholder={
+                            loadingQueues
+                              ? "Carregando filas..."
+                              : !queues || queues.length === 0
+                              ? "Nenhuma fila disponível"
+                              : "Usar fila padrão da conexão"
+                          }
+                        />
+                      </SelectTrigger>
+                      {queues && queues.length > 0 && (
+                        <SelectContent className="dark:bg-[#2d2d2d] dark:border-gray-700">
+                          {queues.map((queue) => (
+                            <SelectItem
+                              key={queue.id}
+                              value={queue.id}
+                              className="text-xs dark:text-gray-200 dark:focus:bg-gray-700"
+                            >
+                              {queue.name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      )}
+                    </Select>
+                    <p className="text-[11px] text-gray-500 dark:text-gray-400">
+                      Se nenhuma fila for selecionada, será usada a fila padrão configurada na conexão (quando existir).
+                    </p>
                   </div>
 
                   {/* Tags Selection */}
