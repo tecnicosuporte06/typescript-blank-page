@@ -12,7 +12,6 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Badge } from "@/components/ui/badge";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
-import { sanitizeFileName } from "@/lib/sanitize-file-name";
 
 interface AIAgent {
   id: string;
@@ -194,9 +193,7 @@ export function EditarAgente({ agentId }: EditarAgenteProps) {
       return;
     }
 
-    // Sanitizar nome do arquivo para evitar problemas com caracteres especiais no storage
-    const sanitizedFileName = sanitizeFileName(file.name);
-    const fileName = `${agentId}/${Date.now()}-${sanitizedFileName}`;
+    const fileName = `${agentId}/${Date.now()}-${file.name}`;
     
     try {
       // 1. Extrair texto do arquivo usando edge function

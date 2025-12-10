@@ -84,6 +84,11 @@
   }
 
   .dark {
+    /* Sonner (toasts) */
+    --sonner-toast-bg: #1f1f1f;
+    --sonner-toast-fg: #e5e7eb;
+    --sonner-toast-border: #374151;
+
     --background: 220 15% 8%;
     --foreground: 210 40% 98%;
 
@@ -148,6 +153,17 @@
     --sidebar-accent: 220 15% 16%;
     --sidebar-accent-foreground: 210 40% 98%;
     --sidebar-ring: 217.2 91.2% 59.8%;
+  }
+
+  .dark [data-sonner-toast] {
+    background-color: var(--sonner-toast-bg) !important;
+    color: var(--sonner-toast-fg) !important;
+    border-color: var(--sonner-toast-border) !important;
+  }
+
+  .dark [data-sonner-toast] [data-title],
+  .dark [data-sonner-toast] [data-description] {
+    color: var(--sonner-toast-fg) !important;
   }
 
   .dark-blue {

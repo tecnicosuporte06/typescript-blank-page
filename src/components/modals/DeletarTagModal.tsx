@@ -70,27 +70,20 @@ export function DeletarTagModal({ isOpen, onClose, onTagDeleted, tag }: DeletarT
 
   return (
     <AlertDialog open={isOpen} onOpenChange={onClose}>
-      <AlertDialogContent className="bg-white text-gray-900 dark:bg-[#1f1f1f] dark:text-gray-100 dark:border-gray-700 rounded-none p-0 gap-0 overflow-hidden">
-        <AlertDialogHeader className="bg-primary text-primary-foreground dark:bg-primary dark:text-primary-foreground border-b border-[#d4d4d4] dark:border-gray-700 m-0 px-6 py-4">
-          <AlertDialogTitle className="dark:text-primary-foreground m-0">Deletar Tag</AlertDialogTitle>
-        </AlertDialogHeader>
-        <div className="px-6 py-6 bg-white dark:bg-[#1f1f1f]">
-          <AlertDialogDescription className="text-sm text-gray-700 dark:text-gray-300 m-0">
+      <AlertDialogContent className="bg-white text-gray-900 dark:bg-[#0b0b0b] dark:text-gray-100 dark:border-gray-700">
+        <AlertDialogHeader>
+          <AlertDialogTitle>Deletar Tag</AlertDialogTitle>
+          <AlertDialogDescription className="dark:text-gray-300">
             Tem certeza que deseja deletar a tag "{tag?.name}"? 
             Esta ação removerá a tag de todos os contatos associados e não poderá ser desfeita.
           </AlertDialogDescription>
-        </div>
-        <AlertDialogFooter className="bg-gray-50 dark:bg-[#2d2d2d] border-t border-[#d4d4d4] dark:border-gray-700 m-0 px-6 py-4 gap-2">
-          <AlertDialogCancel 
-            disabled={isLoading} 
-            className="rounded-none border border-[#d4d4d4] text-gray-800 bg-white hover:bg-gray-100 dark:border-gray-600 dark:text-gray-200 dark:bg-[#1f1f1f] dark:hover:bg-[#2d2d2d] m-0"
-          >
-            Cancelar
-          </AlertDialogCancel>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel disabled={isLoading} className="rounded-none border border-[#d4d4d4] text-gray-800 bg-white hover:bg-gray-100 dark:border-gray-600 dark:text-gray-200 dark:bg-transparent dark:hover:bg-[#1f1f1f]">Cancelar</AlertDialogCancel>
           <AlertDialogAction
             onClick={handleDelete}
             disabled={isLoading}
-            className="bg-red-600 hover:bg-red-700 text-white rounded-none dark:bg-red-600 dark:hover:bg-red-700 dark:text-white m-0"
+            className="bg-red-600 hover:bg-red-700 text-white rounded-none"
           >
             {isLoading ? "Deletando..." : "Deletar"}
           </AlertDialogAction>

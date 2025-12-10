@@ -21,7 +21,12 @@ export const useConversationAssignments = (conversationId?: string) => {
   return useQuery({
     queryKey: ['conversation-assignments', conversationId],
     queryFn: async () => {
-      if (!conversationId) return [];
+      if (!conversationId || conversationId.trim() === '') {
+        console.log('⚠️ useConversationAssignments: conversationId inválido');
+        return [];
+      }
+
+      console.log('🔍 useConversationAssignments: Buscando histórico para:', conversationId);
 
       const { data, error } = await supabase.functions.invoke('conversation-assignments-history', {
         body: { conversation_id: conversationId }
@@ -33,10 +38,11 @@ export const useConversationAssignments = (conversationId?: string) => {
       }
 
       if (!data?.success) {
+        console.error('❌ Falha ao carregar histórico de atribuições:', data?.error);
         throw new Error(data?.error || 'Falha ao carregar histórico de atribuições');
       }
 
-      return (data.items || []).map((entry: any) => ({
+      const items = (data.items || []).map((entry: any) => ({
         ...entry,
         from_user_name: entry.from_user_name ?? null,
         to_user_name: entry.to_user_name ?? null,
@@ -46,7 +52,10 @@ export const useConversationAssignments = (conversationId?: string) => {
         from_queue_name: entry.from_queue_name ?? null,
         to_queue_name: entry.to_queue_name ?? null,
       })) as AssignmentEntry[];
+
+      console.log('✅ useConversationAssignments: Encontrados', items.length, 'itens');
+      return items;
     },
-    enabled: !!conversationId,
+    enabled: !!conversationId && conversationId.trim() !== '',
   });
 };

@@ -15,7 +15,12 @@ export const useAgentHistory = (conversationId?: string) => {
   return useQuery({
     queryKey: ['agent-history', conversationId],
     queryFn: async () => {
-      if (!conversationId) return [];
+      if (!conversationId || conversationId.trim() === '') {
+        console.log('⚠️ useAgentHistory: conversationId inválido');
+        return [];
+      }
+
+      console.log('🔍 useAgentHistory: Buscando histórico para:', conversationId);
 
       const { data, error } = await supabase
         .from('conversation_agent_history' as any)
@@ -36,8 +41,10 @@ export const useAgentHistory = (conversationId?: string) => {
         throw error;
       }
 
-      return (data || []) as unknown as AgentHistoryEntry[];
+      const result = (data || []) as unknown as AgentHistoryEntry[];
+      console.log('✅ useAgentHistory: Encontrados', result.length, 'itens');
+      return result;
     },
-    enabled: !!conversationId,
+    enabled: !!conversationId && conversationId.trim() !== '',
   });
 };

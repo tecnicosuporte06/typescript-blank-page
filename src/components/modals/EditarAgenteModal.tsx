@@ -18,7 +18,6 @@ import { toast } from "sonner";
 import { useWorkspaces } from "@/hooks/useWorkspaces";
 import { PromptEditorModal } from "./PromptEditorModal";
 import { ActionPreviewDisplay } from "@/components/ui/action-preview-display";
-import { sanitizeFileName } from "@/lib/sanitize-file-name";
 import { useQueryClient } from '@tanstack/react-query';
 
 interface EditarAgenteModalProps {
@@ -278,9 +277,7 @@ Exemplo: [ENVIE PARA O TOOL \`info-adicionais\` (METODO POST) o id: campo-empres
           return;
         }
 
-        // Sanitizar nome do arquivo para evitar problemas com caracteres especiais no storage
-        const sanitizedFileName = sanitizeFileName(knowledgeFile.name);
-        const filePath = `${formData.workspace_id}/${agentId}/${sanitizedFileName}`;
+        const filePath = `${formData.workspace_id}/${agentId}/${knowledgeFile.name}`;
         
         // Extrair texto do arquivo usando edge function
         const uploadFormData = new FormData();
@@ -377,12 +374,12 @@ Exemplo: [ENVIE PARA O TOOL \`info-adicionais\` (METODO POST) o id: campo-empres
             <div className="space-y-1.5">
               <Label htmlFor="workspace" className="text-xs font-medium text-gray-700 dark:text-gray-300">Empresa</Label>
               <Select value={formData.workspace_id} onValueChange={(value) => setFormData({ ...formData, workspace_id: value })}>
-                <SelectTrigger className="h-8 text-xs rounded-none border-[#d4d4d4] dark:border-gray-700 bg-white dark:bg-[#2d2d2d]">
+                <SelectTrigger className="h-8 text-xs rounded-none border-[#d4d4d4] dark:border-gray-700 bg-white dark:bg-[#2d2d2d] text-gray-900 dark:text-gray-200">
                   <SelectValue placeholder="Selecione a empresa" />
                 </SelectTrigger>
-                <SelectContent className="rounded-none border-[#d4d4d4] dark:border-gray-700">
+                <SelectContent className="rounded-none border-[#d4d4d4] dark:border-gray-700 bg-white dark:bg-[#2d2d2d]">
                   {workspaces.map((workspace) => (
-                    <SelectItem key={workspace.workspace_id} value={workspace.workspace_id}>
+                    <SelectItem key={workspace.workspace_id} value={workspace.workspace_id} className="text-gray-900 dark:text-gray-200 dark:hover:bg-gray-700">
                       {workspace.name}
                     </SelectItem>
                   ))}
@@ -396,7 +393,7 @@ Exemplo: [ENVIE PARA O TOOL \`info-adicionais\` (METODO POST) o id: campo-empres
                 value={formData.name}
                 onChange={(e) => setFormData({ ...formData, name: e.target.value })}
                 placeholder="Nome do agente"
-                className="h-8 text-xs rounded-none border-[#d4d4d4] dark:border-gray-700 bg-white dark:bg-[#2d2d2d] focus-visible:ring-1 focus-visible:ring-primary"
+                className="h-8 text-xs rounded-none border-[#d4d4d4] dark:border-gray-700 !bg-white dark:!bg-[#2d2d2d] !text-gray-900 dark:!text-gray-200 focus-visible:ring-1 focus-visible:ring-primary placeholder:!text-gray-400 dark:placeholder:!text-gray-500"
               />
             </div>
           </div>
@@ -406,70 +403,70 @@ Exemplo: [ENVIE PARA O TOOL \`info-adicionais\` (METODO POST) o id: campo-empres
             <div className="space-y-1.5">
               <Label htmlFor="model" className="text-xs font-medium text-gray-700 dark:text-gray-300">Modelo OpenAI</Label>
               <Select value={formData.model} onValueChange={(value) => setFormData({ ...formData, model: value })}>
-                <SelectTrigger className="h-8 text-xs rounded-none border-[#d4d4d4] dark:border-gray-700 bg-white dark:bg-[#2d2d2d]">
+                <SelectTrigger className="h-8 text-xs rounded-none border-[#d4d4d4] dark:border-gray-700 bg-white dark:bg-[#2d2d2d] text-gray-900 dark:text-gray-200">
                   <SelectValue />
                 </SelectTrigger>
-                <SelectContent className="rounded-none border-[#d4d4d4] dark:border-gray-700">
-                  <SelectItem value="gpt-4.1-mini">gpt-4.1-mini</SelectItem>
-                  <SelectItem value="gpt-3.5-turbo">gpt-3.5-turbo</SelectItem>
-                  <SelectItem value="gpt-3.5-turbo-0125">gpt-3.5-turbo-0125</SelectItem>
-                  <SelectItem value="gpt-3.5-turbo-1106">gpt-3.5-turbo-1106</SelectItem>
-                  <SelectItem value="gpt-3.5-turbo-16k">gpt-3.5-turbo-16k</SelectItem>
-                  <SelectItem value="gpt-4.1">gpt-4.1</SelectItem>
-                  <SelectItem value="gpt-4.1-2025-04-14">gpt-4.1-2025-04-14</SelectItem>
-                  <SelectItem value="gpt-4.1-mini-2025-04-14">gpt-4.1-mini-2025-04-14</SelectItem>
-                  <SelectItem value="gpt-4.1-nano">gpt-4.1-nano</SelectItem>
-                  <SelectItem value="gpt-4.1-nano-2025-04-14">gpt-4.1-nano-2025-04-14</SelectItem>
-                  <SelectItem value="gpt-4o">gpt-4o</SelectItem>
-                  <SelectItem value="gpt-4o-2024-05-13">gpt-4o-2024-05-13</SelectItem>
-                  <SelectItem value="gpt-4o-2024-08-06">gpt-4o-2024-08-06</SelectItem>
-                  <SelectItem value="gpt-4o-2024-11-20">gpt-4o-2024-11-20</SelectItem>
-                  <SelectItem value="gpt-4o-audio-preview">gpt-4o-audio-preview</SelectItem>
-                  <SelectItem value="gpt-4o-audio-preview-2024-10-01">gpt-4o-audio-preview-2024-10-01</SelectItem>
-                  <SelectItem value="gpt-4o-audio-preview-2024-12-17">gpt-4o-audio-preview-2024-12-17</SelectItem>
-                  <SelectItem value="gpt-4o-audio-preview-2025-06-03">gpt-4o-audio-preview-2025-06-03</SelectItem>
-                  <SelectItem value="gpt-4o-mini">gpt-4o-mini</SelectItem>
-                  <SelectItem value="gpt-4o-mini-2024-07-18">gpt-4o-mini-2024-07-18</SelectItem>
-                  <SelectItem value="gpt-4o-mini-audio-preview">gpt-4o-mini-audio-preview</SelectItem>
-                  <SelectItem value="gpt-4o-mini-audio-preview-2024-12-17">gpt-4o-mini-audio-preview-2024-12-17</SelectItem>
-                  <SelectItem value="gpt-4o-mini-search-preview">gpt-4o-mini-search-preview</SelectItem>
-                  <SelectItem value="gpt-4o-mini-search-preview-2025-03-11">gpt-4o-mini-search-preview-2025-03-11</SelectItem>
-                  <SelectItem value="gpt-4o-mini-transcribe">gpt-4o-mini-transcribe</SelectItem>
-                  <SelectItem value="gpt-4o-mini-tts">gpt-4o-mini-tts</SelectItem>
-                  <SelectItem value="gpt-4o-search-preview">gpt-4o-search-preview</SelectItem>
-                  <SelectItem value="gpt-4o-search-preview-2025-03-11">gpt-4o-search-preview-2025-03-11</SelectItem>
-                  <SelectItem value="gpt-4o-transcribe">gpt-4o-transcribe</SelectItem>
-                  <SelectItem value="gpt-4o-transcribe-diarize">gpt-4o-transcribe-diarize</SelectItem>
-                  <SelectItem value="gpt-5">gpt-5</SelectItem>
-                  <SelectItem value="gpt-5-2025-08-07">gpt-5-2025-08-07</SelectItem>
-                  <SelectItem value="gpt-5-chat-latest">gpt-5-chat-latest</SelectItem>
-                  <SelectItem value="gpt-5-codex">gpt-5-codex</SelectItem>
-                  <SelectItem value="gpt-5-mini">gpt-5-mini</SelectItem>
-                  <SelectItem value="gpt-5-mini-2025-08-07">gpt-5-mini-2025-08-07</SelectItem>
-                  <SelectItem value="gpt-5-nano">gpt-5-nano</SelectItem>
-                  <SelectItem value="gpt-5-nano-2025-08-07">gpt-5-nano-2025-08-07</SelectItem>
-                  <SelectItem value="gpt-5-pro">gpt-5-pro</SelectItem>
-                  <SelectItem value="gpt-5-pro-2025-10-06">gpt-5-pro-2025-10-06</SelectItem>
-                  <SelectItem value="gpt-5-search-api">gpt-5-search-api</SelectItem>
-                  <SelectItem value="gpt-5-search-api-2025-10-14">gpt-5-search-api-2025-10-14</SelectItem>
-                  <SelectItem value="gpt-audio">gpt-audio</SelectItem>
-                  <SelectItem value="gpt-audio-2025-08-28">gpt-audio-2025-08-28</SelectItem>
-                  <SelectItem value="gpt-audio-mini">gpt-audio-mini</SelectItem>
-                  <SelectItem value="gpt-audio-mini-2025-10-06">gpt-audio-mini-2025-10-06</SelectItem>
-                  <SelectItem value="gpt-image-1">gpt-image-1</SelectItem>
-                  <SelectItem value="gpt-image-1-mini">gpt-image-1-mini</SelectItem>
-                  <SelectItem value="o1">o1</SelectItem>
-                  <SelectItem value="o1-2024-12-17">o1-2024-12-17</SelectItem>
-                  <SelectItem value="o1-mini">o1-mini</SelectItem>
-                  <SelectItem value="o1-mini-2024-09-12">o1-mini-2024-09-12</SelectItem>
-                  <SelectItem value="o3">o3</SelectItem>
-                  <SelectItem value="o3-2025-04-16">o3-2025-04-16</SelectItem>
-                  <SelectItem value="o3-mini">o3-mini</SelectItem>
-                  <SelectItem value="o3-mini-2025-01-31">o3-mini-2025-01-31</SelectItem>
-                  <SelectItem value="o4-mini">o4-mini</SelectItem>
-                  <SelectItem value="o4-mini-2025-04-16">o4-mini-2025-04-16</SelectItem>
-                  <SelectItem value="sora-2">sora-2</SelectItem>
-                  <SelectItem value="sora-2-pro">sora-2-pro</SelectItem>
+                <SelectContent className="rounded-none border-[#d4d4d4] dark:border-gray-700 bg-white dark:bg-[#2d2d2d]">
+                  <SelectItem value="gpt-4.1-mini" className="text-gray-900 dark:text-gray-200 dark:hover:bg-gray-700">gpt-4.1-mini</SelectItem>
+                  <SelectItem value="gpt-3.5-turbo" className="text-gray-900 dark:text-gray-200 dark:hover:bg-gray-700">gpt-3.5-turbo</SelectItem>
+                  <SelectItem value="gpt-3.5-turbo-0125" className="text-gray-900 dark:text-gray-200 dark:hover:bg-gray-700">gpt-3.5-turbo-0125</SelectItem>
+                  <SelectItem value="gpt-3.5-turbo-1106" className="text-gray-900 dark:text-gray-200 dark:hover:bg-gray-700">gpt-3.5-turbo-1106</SelectItem>
+                  <SelectItem value="gpt-3.5-turbo-16k" className="text-gray-900 dark:text-gray-200 dark:hover:bg-gray-700">gpt-3.5-turbo-16k</SelectItem>
+                  <SelectItem value="gpt-4.1" className="text-gray-900 dark:text-gray-200 dark:hover:bg-gray-700">gpt-4.1</SelectItem>
+                  <SelectItem value="gpt-4.1-2025-04-14" className="text-gray-900 dark:text-gray-200 dark:hover:bg-gray-700">gpt-4.1-2025-04-14</SelectItem>
+                  <SelectItem value="gpt-4.1-mini-2025-04-14" className="text-gray-900 dark:text-gray-200 dark:hover:bg-gray-700">gpt-4.1-mini-2025-04-14</SelectItem>
+                  <SelectItem value="gpt-4.1-nano" className="text-gray-900 dark:text-gray-200 dark:hover:bg-gray-700">gpt-4.1-nano</SelectItem>
+                  <SelectItem value="gpt-4.1-nano-2025-04-14" className="text-gray-900 dark:text-gray-200 dark:hover:bg-gray-700">gpt-4.1-nano-2025-04-14</SelectItem>
+                  <SelectItem value="gpt-4o" className="text-gray-900 dark:text-gray-200 dark:hover:bg-gray-700">gpt-4o</SelectItem>
+                  <SelectItem value="gpt-4o-2024-05-13" className="text-gray-900 dark:text-gray-200 dark:hover:bg-gray-700">gpt-4o-2024-05-13</SelectItem>
+                  <SelectItem value="gpt-4o-2024-08-06" className="text-gray-900 dark:text-gray-200 dark:hover:bg-gray-700">gpt-4o-2024-08-06</SelectItem>
+                  <SelectItem value="gpt-4o-2024-11-20" className="text-gray-900 dark:text-gray-200 dark:hover:bg-gray-700">gpt-4o-2024-11-20</SelectItem>
+                  <SelectItem value="gpt-4o-audio-preview" className="text-gray-900 dark:text-gray-200 dark:hover:bg-gray-700">gpt-4o-audio-preview</SelectItem>
+                  <SelectItem value="gpt-4o-audio-preview-2024-10-01" className="text-gray-900 dark:text-gray-200 dark:hover:bg-gray-700">gpt-4o-audio-preview-2024-10-01</SelectItem>
+                  <SelectItem value="gpt-4o-audio-preview-2024-12-17" className="text-gray-900 dark:text-gray-200 dark:hover:bg-gray-700">gpt-4o-audio-preview-2024-12-17</SelectItem>
+                  <SelectItem value="gpt-4o-audio-preview-2025-06-03" className="text-gray-900 dark:text-gray-200 dark:hover:bg-gray-700">gpt-4o-audio-preview-2025-06-03</SelectItem>
+                  <SelectItem value="gpt-4o-mini" className="text-gray-900 dark:text-gray-200 dark:hover:bg-gray-700">gpt-4o-mini</SelectItem>
+                  <SelectItem value="gpt-4o-mini-2024-07-18" className="text-gray-900 dark:text-gray-200 dark:hover:bg-gray-700">gpt-4o-mini-2024-07-18</SelectItem>
+                  <SelectItem value="gpt-4o-mini-audio-preview" className="text-gray-900 dark:text-gray-200 dark:hover:bg-gray-700">gpt-4o-mini-audio-preview</SelectItem>
+                  <SelectItem value="gpt-4o-mini-audio-preview-2024-12-17" className="text-gray-900 dark:text-gray-200 dark:hover:bg-gray-700">gpt-4o-mini-audio-preview-2024-12-17</SelectItem>
+                  <SelectItem value="gpt-4o-mini-search-preview" className="text-gray-900 dark:text-gray-200 dark:hover:bg-gray-700">gpt-4o-mini-search-preview</SelectItem>
+                  <SelectItem value="gpt-4o-mini-search-preview-2025-03-11" className="text-gray-900 dark:text-gray-200 dark:hover:bg-gray-700">gpt-4o-mini-search-preview-2025-03-11</SelectItem>
+                  <SelectItem value="gpt-4o-mini-transcribe" className="text-gray-900 dark:text-gray-200 dark:hover:bg-gray-700">gpt-4o-mini-transcribe</SelectItem>
+                  <SelectItem value="gpt-4o-mini-tts" className="text-gray-900 dark:text-gray-200 dark:hover:bg-gray-700">gpt-4o-mini-tts</SelectItem>
+                  <SelectItem value="gpt-4o-search-preview" className="text-gray-900 dark:text-gray-200 dark:hover:bg-gray-700">gpt-4o-search-preview</SelectItem>
+                  <SelectItem value="gpt-4o-search-preview-2025-03-11" className="text-gray-900 dark:text-gray-200 dark:hover:bg-gray-700">gpt-4o-search-preview-2025-03-11</SelectItem>
+                  <SelectItem value="gpt-4o-transcribe" className="text-gray-900 dark:text-gray-200 dark:hover:bg-gray-700">gpt-4o-transcribe</SelectItem>
+                  <SelectItem value="gpt-4o-transcribe-diarize" className="text-gray-900 dark:text-gray-200 dark:hover:bg-gray-700">gpt-4o-transcribe-diarize</SelectItem>
+                  <SelectItem value="gpt-5" className="text-gray-900 dark:text-gray-200 dark:hover:bg-gray-700">gpt-5</SelectItem>
+                  <SelectItem value="gpt-5-2025-08-07" className="text-gray-900 dark:text-gray-200 dark:hover:bg-gray-700">gpt-5-2025-08-07</SelectItem>
+                  <SelectItem value="gpt-5-chat-latest" className="text-gray-900 dark:text-gray-200 dark:hover:bg-gray-700">gpt-5-chat-latest</SelectItem>
+                  <SelectItem value="gpt-5-codex" className="text-gray-900 dark:text-gray-200 dark:hover:bg-gray-700">gpt-5-codex</SelectItem>
+                  <SelectItem value="gpt-5-mini" className="text-gray-900 dark:text-gray-200 dark:hover:bg-gray-700">gpt-5-mini</SelectItem>
+                  <SelectItem value="gpt-5-mini-2025-08-07" className="text-gray-900 dark:text-gray-200 dark:hover:bg-gray-700">gpt-5-mini-2025-08-07</SelectItem>
+                  <SelectItem value="gpt-5-nano" className="text-gray-900 dark:text-gray-200 dark:hover:bg-gray-700">gpt-5-nano</SelectItem>
+                  <SelectItem value="gpt-5-nano-2025-08-07" className="text-gray-900 dark:text-gray-200 dark:hover:bg-gray-700">gpt-5-nano-2025-08-07</SelectItem>
+                  <SelectItem value="gpt-5-pro" className="text-gray-900 dark:text-gray-200 dark:hover:bg-gray-700">gpt-5-pro</SelectItem>
+                  <SelectItem value="gpt-5-pro-2025-10-06" className="text-gray-900 dark:text-gray-200 dark:hover:bg-gray-700">gpt-5-pro-2025-10-06</SelectItem>
+                  <SelectItem value="gpt-5-search-api" className="text-gray-900 dark:text-gray-200 dark:hover:bg-gray-700">gpt-5-search-api</SelectItem>
+                  <SelectItem value="gpt-5-search-api-2025-10-14" className="text-gray-900 dark:text-gray-200 dark:hover:bg-gray-700">gpt-5-search-api-2025-10-14</SelectItem>
+                  <SelectItem value="gpt-audio" className="text-gray-900 dark:text-gray-200 dark:hover:bg-gray-700">gpt-audio</SelectItem>
+                  <SelectItem value="gpt-audio-2025-08-28" className="text-gray-900 dark:text-gray-200 dark:hover:bg-gray-700">gpt-audio-2025-08-28</SelectItem>
+                  <SelectItem value="gpt-audio-mini" className="text-gray-900 dark:text-gray-200 dark:hover:bg-gray-700">gpt-audio-mini</SelectItem>
+                  <SelectItem value="gpt-audio-mini-2025-10-06" className="text-gray-900 dark:text-gray-200 dark:hover:bg-gray-700">gpt-audio-mini-2025-10-06</SelectItem>
+                  <SelectItem value="gpt-image-1" className="text-gray-900 dark:text-gray-200 dark:hover:bg-gray-700">gpt-image-1</SelectItem>
+                  <SelectItem value="gpt-image-1-mini" className="text-gray-900 dark:text-gray-200 dark:hover:bg-gray-700">gpt-image-1-mini</SelectItem>
+                  <SelectItem value="o1" className="text-gray-900 dark:text-gray-200 dark:hover:bg-gray-700">o1</SelectItem>
+                  <SelectItem value="o1-2024-12-17" className="text-gray-900 dark:text-gray-200 dark:hover:bg-gray-700">o1-2024-12-17</SelectItem>
+                  <SelectItem value="o1-mini" className="text-gray-900 dark:text-gray-200 dark:hover:bg-gray-700">o1-mini</SelectItem>
+                  <SelectItem value="o1-mini-2024-09-12" className="text-gray-900 dark:text-gray-200 dark:hover:bg-gray-700">o1-mini-2024-09-12</SelectItem>
+                  <SelectItem value="o3" className="text-gray-900 dark:text-gray-200 dark:hover:bg-gray-700">o3</SelectItem>
+                  <SelectItem value="o3-2025-04-16" className="text-gray-900 dark:text-gray-200 dark:hover:bg-gray-700">o3-2025-04-16</SelectItem>
+                  <SelectItem value="o3-mini" className="text-gray-900 dark:text-gray-200 dark:hover:bg-gray-700">o3-mini</SelectItem>
+                  <SelectItem value="o3-mini-2025-01-31" className="text-gray-900 dark:text-gray-200 dark:hover:bg-gray-700">o3-mini-2025-01-31</SelectItem>
+                  <SelectItem value="o4-mini" className="text-gray-900 dark:text-gray-200 dark:hover:bg-gray-700">o4-mini</SelectItem>
+                  <SelectItem value="o4-mini-2025-04-16" className="text-gray-900 dark:text-gray-200 dark:hover:bg-gray-700">o4-mini-2025-04-16</SelectItem>
+                  <SelectItem value="sora-2" className="text-gray-900 dark:text-gray-200 dark:hover:bg-gray-700">sora-2</SelectItem>
+                  <SelectItem value="sora-2-pro" className="text-gray-900 dark:text-gray-200 dark:hover:bg-gray-700">sora-2-pro</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -480,7 +477,7 @@ Exemplo: [ENVIE PARA O TOOL \`info-adicionais\` (METODO POST) o id: campo-empres
             <Label htmlFor="system_instructions" className="text-xs font-medium text-gray-700 dark:text-gray-300">Instruções do Sistema (Prompt)</Label>
             <div 
               onClick={() => setShowPromptEditor(true)}
-              className="min-h-[100px] p-3 rounded-none border border-[#d4d4d4] dark:border-gray-700 bg-white dark:bg-[#2d2d2d] cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
+              className="min-h-[100px] p-3 rounded-none border border-[#d4d4d4] dark:border-gray-700 bg-white dark:bg-[#2d2d2d] text-gray-900 dark:text-gray-200 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
             >
               {formData.system_instructions ? (
                 <ActionPreviewDisplay value={formData.system_instructions} />
@@ -590,7 +587,7 @@ Exemplo: [ENVIE PARA O TOOL \`info-adicionais\` (METODO POST) o id: campo-empres
                   type="number"
                   value={formData.max_tokens}
                   onChange={(e) => setFormData({ ...formData, max_tokens: parseInt(e.target.value) })}
-                  className="h-8 text-xs rounded-none border-[#d4d4d4] dark:border-gray-700 bg-white dark:bg-[#2d2d2d] focus-visible:ring-1 focus-visible:ring-primary"
+                  className="h-8 text-xs rounded-none border-[#d4d4d4] dark:border-gray-700 !bg-white dark:!bg-[#2d2d2d] !text-gray-900 dark:!text-gray-200 focus-visible:ring-1 focus-visible:ring-primary placeholder:!text-gray-400 dark:placeholder:!text-gray-500"
                 />
               </div>
 
@@ -601,7 +598,7 @@ Exemplo: [ENVIE PARA O TOOL \`info-adicionais\` (METODO POST) o id: campo-empres
                   type="number"
                   value={formData.max_messages}
                   onChange={(e) => setFormData({ ...formData, max_messages: parseInt(e.target.value) })}
-                  className="h-8 text-xs rounded-none border-[#d4d4d4] dark:border-gray-700 bg-white dark:bg-[#2d2d2d] focus-visible:ring-1 focus-visible:ring-primary"
+                  className="h-8 text-xs rounded-none border-[#d4d4d4] dark:border-gray-700 !bg-white dark:!bg-[#2d2d2d] !text-gray-900 dark:!text-gray-200 focus-visible:ring-1 focus-visible:ring-primary placeholder:!text-gray-400 dark:placeholder:!text-gray-500"
                 />
               </div>
             </div>
@@ -614,7 +611,7 @@ Exemplo: [ENVIE PARA O TOOL \`info-adicionais\` (METODO POST) o id: campo-empres
                   type="number"
                   value={formData.response_delay}
                   onChange={(e) => setFormData({ ...formData, response_delay: parseInt(e.target.value) })}
-                  className="h-8 text-xs rounded-none border-[#d4d4d4] dark:border-gray-700 bg-white dark:bg-[#2d2d2d] focus-visible:ring-1 focus-visible:ring-primary"
+                  className="h-8 text-xs rounded-none border-[#d4d4d4] dark:border-gray-700 !bg-white dark:!bg-[#2d2d2d] !text-gray-900 dark:!text-gray-200 focus-visible:ring-1 focus-visible:ring-primary placeholder:!text-gray-400 dark:placeholder:!text-gray-500"
                 />
               </div>
 
@@ -625,7 +622,7 @@ Exemplo: [ENVIE PARA O TOOL \`info-adicionais\` (METODO POST) o id: campo-empres
                   type="number"
                   value={formData.ignore_interval}
                   onChange={(e) => setFormData({ ...formData, ignore_interval: parseInt(e.target.value) })}
-                  className="h-8 text-xs rounded-none border-[#d4d4d4] dark:border-gray-700 bg-white dark:bg-[#2d2d2d] focus-visible:ring-1 focus-visible:ring-primary"
+                  className="h-8 text-xs rounded-none border-[#d4d4d4] dark:border-gray-700 !bg-white dark:!bg-[#2d2d2d] !text-gray-900 dark:!text-gray-200 focus-visible:ring-1 focus-visible:ring-primary placeholder:!text-gray-400 dark:placeholder:!text-gray-500"
                 />
               </div>
             </div>

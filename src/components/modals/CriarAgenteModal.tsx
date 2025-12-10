@@ -18,7 +18,6 @@ import { toast } from "sonner";
 import { useWorkspaces } from "@/hooks/useWorkspaces";
 import { PromptEditorModal } from "./PromptEditorModal";
 import { ActionPreviewDisplay } from "@/components/ui/action-preview-display";
-import { sanitizeFileName } from "@/lib/sanitize-file-name";
 import { useQueryClient } from '@tanstack/react-query';
 import { generateRandomId } from "@/lib/generate-random-id";
 
@@ -167,9 +166,7 @@ Exemplo: [ENVIE PARA O TOOL \`info-adicionais\` (METODO POST) o id: campo-empres
           return;
         }
 
-        // Sanitizar nome do arquivo para evitar problemas com caracteres especiais no storage
-        const sanitizedFileName = sanitizeFileName(knowledgeFile.name);
-        const filePath = `${formData.workspace_id}/${agentId}/${sanitizedFileName}`;
+        const filePath = `${formData.workspace_id}/${agentId}/${knowledgeFile.name}`;
         
         // Extrair texto do arquivo usando edge function
         const uploadFormData = new FormData();
@@ -333,128 +330,126 @@ Exemplo: [ENVIE PARA O TOOL \`info-adicionais\` (METODO POST) o id: campo-empres
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto p-0 gap-0 border border-[#d4d4d4] bg-white dark:bg-[#1f1f1f] dark:border-gray-700 shadow-sm rounded-none">
-        <DialogHeader className="bg-primary p-4 rounded-none m-0 border-b border-[#d4d4d4] dark:border-gray-700">
-          <DialogTitle className="flex items-center gap-2 text-primary-foreground text-base font-bold">
-            Criar Agente de IA
-          </DialogTitle>
+      <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle className="text-2xl">Criar Agente de IA</DialogTitle>
         </DialogHeader>
 
-        <form className="space-y-4 p-6 bg-white dark:bg-[#1f1f1f]">
+        <form className="space-y-6">
           {/* Workspace e Nome */}
           <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-1.5">
-              <Label htmlFor="workspace" className="text-xs font-medium text-gray-700 dark:text-gray-300">Empresa</Label>
+            <div className="space-y-2">
+              <Label htmlFor="workspace">Empresa</Label>
               <Select value={formData.workspace_id} onValueChange={(value) => setFormData({ ...formData, workspace_id: value })}>
-                <SelectTrigger className="h-8 text-xs rounded-none border-[#d4d4d4] dark:border-gray-700 bg-white dark:bg-[#2d2d2d]">
+                <SelectTrigger className="h-8 text-xs rounded-none border-[#d4d4d4] dark:border-gray-700 !bg-white dark:!bg-[#2d2d2d] !text-gray-900 dark:!text-gray-200">
                   <SelectValue placeholder="Selecione a empresa" />
                 </SelectTrigger>
-                <SelectContent className="rounded-none border-[#d4d4d4] dark:border-gray-700">
+                <SelectContent className="rounded-none border-[#d4d4d4] dark:border-gray-700 bg-white dark:bg-[#2d2d2d]">
                   {workspaces.map((workspace) => (
-                    <SelectItem key={workspace.workspace_id} value={workspace.workspace_id}>
+                    <SelectItem key={workspace.workspace_id} value={workspace.workspace_id} className="text-gray-900 dark:text-gray-200 dark:hover:bg-gray-700">
                       {workspace.name}
                     </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
             </div>
-            <div className="space-y-1.5">
+            <div className="space-y-2">
               <Label htmlFor="name" className="text-xs font-medium text-gray-700 dark:text-gray-300">Nome do Agente</Label>
               <Input
                 id="name"
                 value={formData.name}
                 onChange={(e) => setFormData({ ...formData, name: e.target.value })}
                 placeholder="Nome do agente"
-                className="h-8 text-xs rounded-none border-[#d4d4d4] dark:border-gray-700 bg-white dark:bg-[#2d2d2d] focus-visible:ring-1 focus-visible:ring-primary"
+                className="h-8 text-xs rounded-none border-[#d4d4d4] dark:border-gray-700 !bg-white dark:!bg-[#2d2d2d] !text-gray-900 dark:!text-gray-200 focus-visible:ring-1 focus-visible:ring-primary placeholder:!text-gray-400 dark:placeholder:!text-gray-500"
               />
             </div>
           </div>
 
           {/* Modelo */}
           <div className="grid grid-cols-1 gap-4">
-            <div className="space-y-1.5">
-              <Label htmlFor="model" className="text-xs font-medium text-gray-700 dark:text-gray-300">Modelo OpenAI</Label>
+            <div className="space-y-2">
+              <Label htmlFor="model">Modelo OpenAI</Label>
               <Select value={formData.model} onValueChange={(value) => setFormData({ ...formData, model: value })}>
-                <SelectTrigger className="h-8 text-xs rounded-none border-[#d4d4d4] dark:border-gray-700 bg-white dark:bg-[#2d2d2d]">
+                <SelectTrigger className="h-8 text-xs rounded-none border-[#d4d4d4] dark:border-gray-700 !bg-white dark:!bg-[#2d2d2d] !text-gray-900 dark:!text-gray-200">
                   <SelectValue />
                 </SelectTrigger>
-                <SelectContent className="rounded-none border-[#d4d4d4] dark:border-gray-700">
-                  <SelectItem value="gpt-4.1-mini">gpt-4.1-mini</SelectItem>
-                  <SelectItem value="gpt-3.5-turbo">gpt-3.5-turbo</SelectItem>
-                  <SelectItem value="gpt-3.5-turbo-0125">gpt-3.5-turbo-0125</SelectItem>
-                  <SelectItem value="gpt-3.5-turbo-1106">gpt-3.5-turbo-1106</SelectItem>
-                  <SelectItem value="gpt-3.5-turbo-16k">gpt-3.5-turbo-16k</SelectItem>
-                  <SelectItem value="gpt-4.1">gpt-4.1</SelectItem>
-                  <SelectItem value="gpt-4.1-2025-04-14">gpt-4.1-2025-04-14</SelectItem>
-                  <SelectItem value="gpt-4.1-mini-2025-04-14">gpt-4.1-mini-2025-04-14</SelectItem>
-                  <SelectItem value="gpt-4.1-nano">gpt-4.1-nano</SelectItem>
-                  <SelectItem value="gpt-4.1-nano-2025-04-14">gpt-4.1-nano-2025-04-14</SelectItem>
-                  <SelectItem value="gpt-4o">gpt-4o</SelectItem>
-                  <SelectItem value="gpt-4o-2024-05-13">gpt-4o-2024-05-13</SelectItem>
-                  <SelectItem value="gpt-4o-2024-08-06">gpt-4o-2024-08-06</SelectItem>
-                  <SelectItem value="gpt-4o-2024-11-20">gpt-4o-2024-11-20</SelectItem>
-                  <SelectItem value="gpt-4o-audio-preview">gpt-4o-audio-preview</SelectItem>
-                  <SelectItem value="gpt-4o-audio-preview-2024-10-01">gpt-4o-audio-preview-2024-10-01</SelectItem>
-                  <SelectItem value="gpt-4o-audio-preview-2024-12-17">gpt-4o-audio-preview-2024-12-17</SelectItem>
-                  <SelectItem value="gpt-4o-audio-preview-2025-06-03">gpt-4o-audio-preview-2025-06-03</SelectItem>
-                  <SelectItem value="gpt-4o-mini">gpt-4o-mini</SelectItem>
-                  <SelectItem value="gpt-4o-mini-2024-07-18">gpt-4o-mini-2024-07-18</SelectItem>
-                  <SelectItem value="gpt-4o-mini-audio-preview">gpt-4o-mini-audio-preview</SelectItem>
-                  <SelectItem value="gpt-4o-mini-audio-preview-2024-12-17">gpt-4o-mini-audio-preview-2024-12-17</SelectItem>
-                  <SelectItem value="gpt-4o-mini-search-preview">gpt-4o-mini-search-preview</SelectItem>
-                  <SelectItem value="gpt-4o-mini-search-preview-2025-03-11">gpt-4o-mini-search-preview-2025-03-11</SelectItem>
-                  <SelectItem value="gpt-4o-mini-transcribe">gpt-4o-mini-transcribe</SelectItem>
-                  <SelectItem value="gpt-4o-mini-tts">gpt-4o-mini-tts</SelectItem>
-                  <SelectItem value="gpt-4o-search-preview">gpt-4o-search-preview</SelectItem>
-                  <SelectItem value="gpt-4o-search-preview-2025-03-11">gpt-4o-search-preview-2025-03-11</SelectItem>
-                  <SelectItem value="gpt-4o-transcribe">gpt-4o-transcribe</SelectItem>
-                  <SelectItem value="gpt-4o-transcribe-diarize">gpt-4o-transcribe-diarize</SelectItem>
-                  <SelectItem value="gpt-5">gpt-5</SelectItem>
-                  <SelectItem value="gpt-5-2025-08-07">gpt-5-2025-08-07</SelectItem>
-                  <SelectItem value="gpt-5-chat-latest">gpt-5-chat-latest</SelectItem>
-                  <SelectItem value="gpt-5-codex">gpt-5-codex</SelectItem>
-                  <SelectItem value="gpt-5-mini">gpt-5-mini</SelectItem>
-                  <SelectItem value="gpt-5-mini-2025-08-07">gpt-5-mini-2025-08-07</SelectItem>
-                  <SelectItem value="gpt-5-nano">gpt-5-nano</SelectItem>
-                  <SelectItem value="gpt-5-nano-2025-08-07">gpt-5-nano-2025-08-07</SelectItem>
-                  <SelectItem value="gpt-5-pro">gpt-5-pro</SelectItem>
-                  <SelectItem value="gpt-5-pro-2025-10-06">gpt-5-pro-2025-10-06</SelectItem>
-                  <SelectItem value="gpt-5-search-api">gpt-5-search-api</SelectItem>
-                  <SelectItem value="gpt-5-search-api-2025-10-14">gpt-5-search-api-2025-10-14</SelectItem>
-                  <SelectItem value="gpt-audio">gpt-audio</SelectItem>
-                  <SelectItem value="gpt-audio-2025-08-28">gpt-audio-2025-08-28</SelectItem>
-                  <SelectItem value="gpt-audio-mini">gpt-audio-mini</SelectItem>
-                  <SelectItem value="gpt-audio-mini-2025-10-06">gpt-audio-mini-2025-10-06</SelectItem>
-                  <SelectItem value="gpt-image-1">gpt-image-1</SelectItem>
-                  <SelectItem value="gpt-image-1-mini">gpt-image-1-mini</SelectItem>
-                  <SelectItem value="o1">o1</SelectItem>
-                  <SelectItem value="o1-2024-12-17">o1-2024-12-17</SelectItem>
-                  <SelectItem value="o1-mini">o1-mini</SelectItem>
-                  <SelectItem value="o1-mini-2024-09-12">o1-mini-2024-09-12</SelectItem>
-                  <SelectItem value="o3">o3</SelectItem>
-                  <SelectItem value="o3-2025-04-16">o3-2025-04-16</SelectItem>
-                  <SelectItem value="o3-mini">o3-mini</SelectItem>
-                  <SelectItem value="o3-mini-2025-01-31">o3-mini-2025-01-31</SelectItem>
-                  <SelectItem value="o4-mini">o4-mini</SelectItem>
-                  <SelectItem value="o4-mini-2025-04-16">o4-mini-2025-04-16</SelectItem>
-                  <SelectItem value="sora-2">sora-2</SelectItem>
-                  <SelectItem value="sora-2-pro">sora-2-pro</SelectItem>
+                <SelectContent className="rounded-none border-[#d4d4d4] dark:border-gray-700 bg-white dark:bg-[#2d2d2d]">
+                  <SelectItem value="gpt-4.1-mini" className="text-gray-900 dark:text-gray-200 dark:hover:bg-gray-700">gpt-4.1-mini</SelectItem>
+                  <SelectItem value="gpt-3.5-turbo" className="text-gray-900 dark:text-gray-200 dark:hover:bg-gray-700">gpt-3.5-turbo</SelectItem>
+                  <SelectItem value="gpt-3.5-turbo-0125" className="text-gray-900 dark:text-gray-200 dark:hover:bg-gray-700">gpt-3.5-turbo-0125</SelectItem>
+                  <SelectItem value="gpt-3.5-turbo-1106" className="text-gray-900 dark:text-gray-200 dark:hover:bg-gray-700">gpt-3.5-turbo-1106</SelectItem>
+                  <SelectItem value="gpt-3.5-turbo-16k" className="text-gray-900 dark:text-gray-200 dark:hover:bg-gray-700">gpt-3.5-turbo-16k</SelectItem>
+                  <SelectItem value="gpt-4.1" className="text-gray-900 dark:text-gray-200 dark:hover:bg-gray-700">gpt-4.1</SelectItem>
+                  <SelectItem value="gpt-4.1-2025-04-14" className="text-gray-900 dark:text-gray-200 dark:hover:bg-gray-700">gpt-4.1-2025-04-14</SelectItem>
+                  <SelectItem value="gpt-4.1-mini-2025-04-14" className="text-gray-900 dark:text-gray-200 dark:hover:bg-gray-700">gpt-4.1-mini-2025-04-14</SelectItem>
+                  <SelectItem value="gpt-4.1-nano" className="text-gray-900 dark:text-gray-200 dark:hover:bg-gray-700">gpt-4.1-nano</SelectItem>
+                  <SelectItem value="gpt-4.1-nano-2025-04-14" className="text-gray-900 dark:text-gray-200 dark:hover:bg-gray-700">gpt-4.1-nano-2025-04-14</SelectItem>
+                  <SelectItem value="gpt-4o" className="text-gray-900 dark:text-gray-200 dark:hover:bg-gray-700">gpt-4o</SelectItem>
+                  <SelectItem value="gpt-4o-2024-05-13" className="text-gray-900 dark:text-gray-200 dark:hover:bg-gray-700">gpt-4o-2024-05-13</SelectItem>
+                  <SelectItem value="gpt-4o-2024-08-06" className="text-gray-900 dark:text-gray-200 dark:hover:bg-gray-700">gpt-4o-2024-08-06</SelectItem>
+                  <SelectItem value="gpt-4o-2024-11-20" className="text-gray-900 dark:text-gray-200 dark:hover:bg-gray-700">gpt-4o-2024-11-20</SelectItem>
+                  <SelectItem value="gpt-4o-audio-preview" className="text-gray-900 dark:text-gray-200 dark:hover:bg-gray-700">gpt-4o-audio-preview</SelectItem>
+                  <SelectItem value="gpt-4o-audio-preview-2024-10-01" className="text-gray-900 dark:text-gray-200 dark:hover:bg-gray-700">gpt-4o-audio-preview-2024-10-01</SelectItem>
+                  <SelectItem value="gpt-4o-audio-preview-2024-12-17" className="text-gray-900 dark:text-gray-200 dark:hover:bg-gray-700">gpt-4o-audio-preview-2024-12-17</SelectItem>
+                  <SelectItem value="gpt-4o-audio-preview-2025-06-03" className="text-gray-900 dark:text-gray-200 dark:hover:bg-gray-700">gpt-4o-audio-preview-2025-06-03</SelectItem>
+                  <SelectItem value="gpt-4o-mini" className="text-gray-900 dark:text-gray-200 dark:hover:bg-gray-700">gpt-4o-mini</SelectItem>
+                  <SelectItem value="gpt-4o-mini-2024-07-18" className="text-gray-900 dark:text-gray-200 dark:hover:bg-gray-700">gpt-4o-mini-2024-07-18</SelectItem>
+                  <SelectItem value="gpt-4o-mini-audio-preview" className="text-gray-900 dark:text-gray-200 dark:hover:bg-gray-700">gpt-4o-mini-audio-preview</SelectItem>
+                  <SelectItem value="gpt-4o-mini-audio-preview-2024-12-17" className="text-gray-900 dark:text-gray-200 dark:hover:bg-gray-700">gpt-4o-mini-audio-preview-2024-12-17</SelectItem>
+                  <SelectItem value="gpt-4o-mini-search-preview" className="text-gray-900 dark:text-gray-200 dark:hover:bg-gray-700">gpt-4o-mini-search-preview</SelectItem>
+                  <SelectItem value="gpt-4o-mini-search-preview-2025-03-11" className="text-gray-900 dark:text-gray-200 dark:hover:bg-gray-700">gpt-4o-mini-search-preview-2025-03-11</SelectItem>
+                  <SelectItem value="gpt-4o-mini-transcribe" className="text-gray-900 dark:text-gray-200 dark:hover:bg-gray-700">gpt-4o-mini-transcribe</SelectItem>
+                  <SelectItem value="gpt-4o-mini-tts" className="text-gray-900 dark:text-gray-200 dark:hover:bg-gray-700">gpt-4o-mini-tts</SelectItem>
+                  <SelectItem value="gpt-4o-search-preview" className="text-gray-900 dark:text-gray-200 dark:hover:bg-gray-700">gpt-4o-search-preview</SelectItem>
+                  <SelectItem value="gpt-4o-search-preview-2025-03-11" className="text-gray-900 dark:text-gray-200 dark:hover:bg-gray-700">gpt-4o-search-preview-2025-03-11</SelectItem>
+                  <SelectItem value="gpt-4o-transcribe" className="text-gray-900 dark:text-gray-200 dark:hover:bg-gray-700">gpt-4o-transcribe</SelectItem>
+                  <SelectItem value="gpt-4o-transcribe-diarize" className="text-gray-900 dark:text-gray-200 dark:hover:bg-gray-700">gpt-4o-transcribe-diarize</SelectItem>
+                  <SelectItem value="gpt-5" className="text-gray-900 dark:text-gray-200 dark:hover:bg-gray-700">gpt-5</SelectItem>
+                  <SelectItem value="gpt-5-2025-08-07" className="text-gray-900 dark:text-gray-200 dark:hover:bg-gray-700">gpt-5-2025-08-07</SelectItem>
+                  <SelectItem value="gpt-5-chat-latest" className="text-gray-900 dark:text-gray-200 dark:hover:bg-gray-700">gpt-5-chat-latest</SelectItem>
+                  <SelectItem value="gpt-5-codex" className="text-gray-900 dark:text-gray-200 dark:hover:bg-gray-700">gpt-5-codex</SelectItem>
+                  <SelectItem value="gpt-5-mini" className="text-gray-900 dark:text-gray-200 dark:hover:bg-gray-700">gpt-5-mini</SelectItem>
+                  <SelectItem value="gpt-5-mini-2025-08-07" className="text-gray-900 dark:text-gray-200 dark:hover:bg-gray-700">gpt-5-mini-2025-08-07</SelectItem>
+                  <SelectItem value="gpt-5-nano" className="text-gray-900 dark:text-gray-200 dark:hover:bg-gray-700">gpt-5-nano</SelectItem>
+                  <SelectItem value="gpt-5-nano-2025-08-07" className="text-gray-900 dark:text-gray-200 dark:hover:bg-gray-700">gpt-5-nano-2025-08-07</SelectItem>
+                  <SelectItem value="gpt-5-pro" className="text-gray-900 dark:text-gray-200 dark:hover:bg-gray-700">gpt-5-pro</SelectItem>
+                  <SelectItem value="gpt-5-pro-2025-10-06" className="text-gray-900 dark:text-gray-200 dark:hover:bg-gray-700">gpt-5-pro-2025-10-06</SelectItem>
+                  <SelectItem value="gpt-5-search-api" className="text-gray-900 dark:text-gray-200 dark:hover:bg-gray-700">gpt-5-search-api</SelectItem>
+                  <SelectItem value="gpt-5-search-api-2025-10-14" className="text-gray-900 dark:text-gray-200 dark:hover:bg-gray-700">gpt-5-search-api-2025-10-14</SelectItem>
+                  <SelectItem value="gpt-audio" className="text-gray-900 dark:text-gray-200 dark:hover:bg-gray-700">gpt-audio</SelectItem>
+                  <SelectItem value="gpt-audio-2025-08-28" className="text-gray-900 dark:text-gray-200 dark:hover:bg-gray-700">gpt-audio-2025-08-28</SelectItem>
+                  <SelectItem value="gpt-audio-mini" className="text-gray-900 dark:text-gray-200 dark:hover:bg-gray-700">gpt-audio-mini</SelectItem>
+                  <SelectItem value="gpt-audio-mini-2025-10-06" className="text-gray-900 dark:text-gray-200 dark:hover:bg-gray-700">gpt-audio-mini-2025-10-06</SelectItem>
+                  <SelectItem value="gpt-image-1" className="text-gray-900 dark:text-gray-200 dark:hover:bg-gray-700">gpt-image-1</SelectItem>
+                  <SelectItem value="gpt-image-1-mini" className="text-gray-900 dark:text-gray-200 dark:hover:bg-gray-700">gpt-image-1-mini</SelectItem>
+                  <SelectItem value="o1" className="text-gray-900 dark:text-gray-200 dark:hover:bg-gray-700">o1</SelectItem>
+                  <SelectItem value="o1-2024-12-17" className="text-gray-900 dark:text-gray-200 dark:hover:bg-gray-700">o1-2024-12-17</SelectItem>
+                  <SelectItem value="o1-mini" className="text-gray-900 dark:text-gray-200 dark:hover:bg-gray-700">o1-mini</SelectItem>
+                  <SelectItem value="o1-mini-2024-09-12" className="text-gray-900 dark:text-gray-200 dark:hover:bg-gray-700">o1-mini-2024-09-12</SelectItem>
+                  <SelectItem value="o3" className="text-gray-900 dark:text-gray-200 dark:hover:bg-gray-700">o3</SelectItem>
+                  <SelectItem value="o3-2025-04-16" className="text-gray-900 dark:text-gray-200 dark:hover:bg-gray-700">o3-2025-04-16</SelectItem>
+                  <SelectItem value="o3-mini" className="text-gray-900 dark:text-gray-200 dark:hover:bg-gray-700">o3-mini</SelectItem>
+                  <SelectItem value="o3-mini-2025-01-31" className="text-gray-900 dark:text-gray-200 dark:hover:bg-gray-700">o3-mini-2025-01-31</SelectItem>
+                  <SelectItem value="o4-mini" className="text-gray-900 dark:text-gray-200 dark:hover:bg-gray-700">o4-mini</SelectItem>
+                  <SelectItem value="o4-mini-2025-04-16" className="text-gray-900 dark:text-gray-200 dark:hover:bg-gray-700">o4-mini-2025-04-16</SelectItem>
+                  <SelectItem value="sora-2" className="text-gray-900 dark:text-gray-200 dark:hover:bg-gray-700">sora-2</SelectItem>
+                  <SelectItem value="sora-2-pro" className="text-gray-900 dark:text-gray-200 dark:hover:bg-gray-700">sora-2-pro</SelectItem>
                 </SelectContent>
               </Select>
             </div>
           </div>
 
           {/* Instruções do Sistema */}
-          <div className="space-y-1.5">
+          <div className="space-y-2">
             <Label htmlFor="system_instructions" className="text-xs font-medium text-gray-700 dark:text-gray-300">Instruções do Sistema (Prompt)</Label>
             <div 
               onClick={() => setShowPromptEditor(true)}
-              className="min-h-[100px] p-3 rounded-none border border-[#d4d4d4] dark:border-gray-700 bg-white dark:bg-[#2d2d2d] cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
+              className="min-h-[100px] p-3 rounded-md border border-[#d4d4d4] dark:border-gray-700 !bg-white dark:!bg-[#2d2d2d] text-gray-900 dark:text-gray-200 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
             >
               {formData.system_instructions ? (
                 <ActionPreviewDisplay value={formData.system_instructions} />
               ) : (
-                <p className="text-sm text-muted-foreground">
+                <p className="text-sm text-gray-500 dark:text-gray-400">
                   Clique para editar o prompt com ações avançadas...
                 </p>
               )}
@@ -462,15 +457,15 @@ Exemplo: [ENVIE PARA O TOOL \`info-adicionais\` (METODO POST) o id: campo-empres
           </div>
 
           {/* Base de Conhecimento */}
-          <div className="space-y-1.5">
-            <Label className="text-xs font-medium text-gray-700 dark:text-gray-300">Base de Conhecimento</Label>
-            <p className="text-xs text-gray-500 dark:text-gray-400">
+          <div className="space-y-2">
+            <Label>Base de Conhecimento</Label>
+            <p className="text-sm text-muted-foreground">
               Adicione um arquivo (PDF, TXT, MD, etc.) para o agente usar como referência
             </p>
             
             <div className="space-y-3">
               {!knowledgeFile ? (
-                <div className="border-2 border-dashed border-[#d4d4d4] dark:border-gray-700 rounded-none p-4 bg-[#f0f0f0] dark:bg-[#2d2d2d]">
+                <div className="border-2 border-dashed rounded-lg p-4">
                   <input
                     type="file"
                     id="knowledge-file"
@@ -482,37 +477,36 @@ Exemplo: [ENVIE PARA O TOOL \`info-adicionais\` (METODO POST) o id: campo-empres
                     htmlFor="knowledge-file"
                     className="flex flex-col items-center justify-center cursor-pointer"
                   >
-                    <FileText className="h-8 w-8 text-gray-400 dark:text-gray-500 mb-2" />
-                    <span className="text-xs text-gray-500 dark:text-gray-400">Clique para adicionar arquivo</span>
+                    <FileText className="h-8 w-8 text-muted-foreground mb-2" />
+                    <span className="text-sm text-muted-foreground">Clique para adicionar arquivo</span>
                   </label>
                 </div>
               ) : (
-                <div className="flex items-center gap-2 p-3 border border-[#d4d4d4] dark:border-gray-700 rounded-none bg-white dark:bg-[#2d2d2d]">
+                <div className="flex items-center gap-2 p-3 border rounded-lg">
                   <FileText className="h-5 w-5 text-primary" />
-                  <span className="flex-1 text-xs truncate">{knowledgeFile.name}</span>
+                  <span className="flex-1 text-sm truncate">{knowledgeFile.name}</span>
                   <Button
                     type="button"
                     variant="ghost"
                     size="icon"
                     onClick={handleRemoveFile}
-                    className="h-6 w-6 rounded-none hover:bg-gray-200 dark:hover:bg-gray-700"
                   >
-                    <Trash className="h-3.5 w-3.5" />
+                    <Trash className="h-4 w-4" />
                   </Button>
                 </div>
               )}
             </div>
           </div>
 
-          <hr className="my-4 border-[#d4d4d4] dark:border-gray-700" />
+          <hr className="my-6" />
 
           {/* Configurações Avançadas */}
-          <div className="space-y-3">
-            <Label className="text-xs font-semibold text-gray-700 dark:text-gray-300 uppercase tracking-wide">Configurações Avançadas</Label>
+          <div className="space-y-4">
+            <Label className="text-lg font-semibold">Configurações Avançadas</Label>
             
             <div className="space-y-2">
               <div className="flex justify-between">
-                <Label className="text-xs font-medium text-gray-700 dark:text-gray-300">Temperatura ({formData.temperature})</Label>
+                <Label>Temperatura ({formData.temperature})</Label>
               </div>
               <Slider
                 value={[formData.temperature]}
@@ -524,86 +518,83 @@ Exemplo: [ENVIE PARA O TOOL \`info-adicionais\` (METODO POST) o id: campo-empres
             </div>
 
             <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-1.5">
-                <Label htmlFor="max_tokens" className="text-xs font-medium text-gray-700 dark:text-gray-300">Máximo de Tokens</Label>
+              <div className="space-y-2">
+                <Label htmlFor="max_tokens">Máximo de Tokens</Label>
                 <Input
                   id="max_tokens"
                   type="number"
                   value={formData.max_tokens}
                   onChange={(e) => setFormData({ ...formData, max_tokens: parseInt(e.target.value) })}
-                  className="h-8 text-xs rounded-none border-[#d4d4d4] dark:border-gray-700 bg-white dark:bg-[#2d2d2d] focus-visible:ring-1 focus-visible:ring-primary"
+                  className="h-8 text-xs rounded-none border-[#d4d4d4] dark:border-gray-700 !bg-white dark:!bg-[#2d2d2d] !text-gray-900 dark:!text-gray-200 focus-visible:ring-1 focus-visible:ring-primary placeholder:!text-gray-400 dark:placeholder:!text-gray-500"
                 />
               </div>
 
-              <div className="space-y-1.5">
-                <Label htmlFor="max_messages" className="text-xs font-medium text-gray-700 dark:text-gray-300">Máx. Mensagens no Histórico</Label>
+              <div className="space-y-2">
+                <Label htmlFor="max_messages">Máx. Mensagens no Histórico</Label>
                 <Input
                   id="max_messages"
                   type="number"
                   value={formData.max_messages}
                   onChange={(e) => setFormData({ ...formData, max_messages: parseInt(e.target.value) })}
-                  className="h-8 text-xs rounded-none border-[#d4d4d4] dark:border-gray-700 bg-white dark:bg-[#2d2d2d] focus-visible:ring-1 focus-visible:ring-primary"
+                  className="h-8 text-xs rounded-none border-[#d4d4d4] dark:border-gray-700 !bg-white dark:!bg-[#2d2d2d] !text-gray-900 dark:!text-gray-200 focus-visible:ring-1 focus-visible:ring-primary placeholder:!text-gray-400 dark:placeholder:!text-gray-500"
                 />
               </div>
             </div>
 
             <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-1.5">
-                <Label htmlFor="response_delay" className="text-xs font-medium text-gray-700 dark:text-gray-300">Delay para responder (segundos)</Label>
+              <div className="space-y-2">
+                <Label htmlFor="response_delay">Delay para responder (segundos)</Label>
                 <Input
                   id="response_delay"
                   type="number"
                   value={formData.response_delay}
                   onChange={(e) => setFormData({ ...formData, response_delay: parseInt(e.target.value) })}
-                  className="h-8 text-xs rounded-none border-[#d4d4d4] dark:border-gray-700 bg-white dark:bg-[#2d2d2d] focus-visible:ring-1 focus-visible:ring-primary"
+                  className="h-8 text-xs rounded-none border-[#d4d4d4] dark:border-gray-700 !bg-white dark:!bg-[#2d2d2d] !text-gray-900 dark:!text-gray-200 focus-visible:ring-1 focus-visible:ring-primary placeholder:!text-gray-400 dark:placeholder:!text-gray-500"
                 />
               </div>
 
-              <div className="space-y-1.5">
-                <Label htmlFor="ignore_interval" className="text-xs font-medium text-gray-700 dark:text-gray-300">Ignorar mensagens até X segundos</Label>
+              <div className="space-y-2">
+                <Label htmlFor="ignore_interval">Ignorar mensagens até X segundos</Label>
                 <Input
                   id="ignore_interval"
                   type="number"
                   value={formData.ignore_interval}
                   onChange={(e) => setFormData({ ...formData, ignore_interval: parseInt(e.target.value) })}
-                  className="h-8 text-xs rounded-none border-[#d4d4d4] dark:border-gray-700 bg-white dark:bg-[#2d2d2d] focus-visible:ring-1 focus-visible:ring-primary"
+                  className="h-8 text-xs rounded-none border-[#d4d4d4] dark:border-gray-700 !bg-white dark:!bg-[#2d2d2d] !text-gray-900 dark:!text-gray-200 focus-visible:ring-1 focus-visible:ring-primary placeholder:!text-gray-400 dark:placeholder:!text-gray-500"
                 />
               </div>
             </div>
 
-            <div className="flex items-center justify-between py-1">
-              <Label className="text-xs font-medium text-gray-700 dark:text-gray-300">Dividir respostas em blocos</Label>
+            <div className="flex items-center justify-between">
+              <Label>Dividir respostas em blocos</Label>
               <Switch
                 checked={formData.split_responses}
                 onCheckedChange={(checked) => setFormData({ ...formData, split_responses: checked })}
-                className="scale-75"
               />
             </div>
 
-            <div className="flex items-center justify-between py-1">
-              <Label className="text-xs font-medium text-gray-700 dark:text-gray-300">Desabilitar quando responder fora da plataforma</Label>
+            <div className="flex items-center justify-between">
+              <Label>Desabilitar quando responder fora da plataforma</Label>
               <Switch
                 checked={formData.disable_outside_platform}
                 onCheckedChange={(checked) => setFormData({ ...formData, disable_outside_platform: checked })}
-                className="scale-75"
               />
             </div>
 
-            <div className="flex items-center justify-between py-1">
-              <Label className="text-xs font-medium text-gray-700 dark:text-gray-300">Responder tickets com responsável</Label>
+            <div className="flex items-center justify-between">
+              <Label>Responder tickets com responsável</Label>
               <Switch
                 checked={formData.assign_responsible}
                 onCheckedChange={(checked) => setFormData({ ...formData, assign_responsible: checked })}
-                className="scale-75"
               />
             </div>
           </div>
 
-          <div className="flex justify-end gap-2 pt-4 border-t border-[#d4d4d4] dark:border-gray-700">
-            <Button type="button" variant="outline" onClick={() => onOpenChange(false)} className="h-7 px-4 text-xs rounded-none border-[#d4d4d4] dark:border-gray-700 hover:bg-gray-100 dark:hover:bg-gray-800">
+          <div className="flex justify-end gap-3 pt-4">
+            <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
               Cancelar
             </Button>
-            <Button type="button" onClick={handleSave} disabled={loading} className="h-7 px-4 text-xs rounded-none bg-primary hover:bg-primary/90">
+            <Button type="button" onClick={handleSave} disabled={loading}>
               {loading ? 'Salvando...' : 'Salvar Agente'}
             </Button>
           </div>

@@ -8,6 +8,7 @@ import { ptBR } from "date-fns/locale";
 import { UserCircle, ArrowRight, UserPlus, Clock, Bot, Power, PowerOff, ArrowRightLeft, User, UserMinus, GitBranch } from "lucide-react";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Badge } from "@/components/ui/badge";
+import { useQueryClient } from "@tanstack/react-query";
 
 interface AssignmentHistoryModalProps {
   isOpen: boolean;
@@ -92,14 +93,41 @@ export function AssignmentHistoryModal({
   onOpenChange,
   conversationId,
 }: AssignmentHistoryModalProps) {
-  const { data: assignments, isLoading: assignmentsLoading } = useConversationAssignments(conversationId);
-  const { data: agentHistory, isLoading: agentLoading } = useAgentHistory(conversationId);
+  const queryClient = useQueryClient();
+  
+  // Só buscar dados quando o modal estiver aberto e conversationId for válido
+  const shouldFetch = isOpen && conversationId && conversationId.trim() !== '';
+  
+  const { data: assignments, isLoading: assignmentsLoading, error: assignmentsError } = useConversationAssignments(shouldFetch ? conversationId : undefined);
+  const { data: agentHistory, isLoading: agentLoading, error: agentError } = useAgentHistory(shouldFetch ? conversationId : undefined);
+
+  // Invalidar queries quando o modal abrir para garantir dados atualizados
+  React.useEffect(() => {
+    if (isOpen && conversationId && conversationId.trim() !== '') {
+      queryClient.invalidateQueries({ queryKey: ['conversation-assignments', conversationId] });
+      queryClient.invalidateQueries({ queryKey: ['agent-history', conversationId] });
+    }
+  }, [isOpen, conversationId, queryClient]);
+
+  // Log para debug
+  React.useEffect(() => {
+    if (isOpen && conversationId) {
+      console.log('🔍 AssignmentHistoryModal - Buscando histórico:', {
+        conversationId,
+        assignmentsCount: assignments?.length ?? 0,
+        agentHistoryCount: agentHistory?.length ?? 0,
+        assignmentsError,
+        agentError,
+        shouldFetch
+      });
+    }
+  }, [isOpen, conversationId, assignments, agentHistory, assignmentsError, agentError, shouldFetch]);
 
   // Combinar e ordenar ambos os históricos por data
   const combinedHistory = React.useMemo(() => {
     const combined: Array<{ type: 'assignment' | 'agent', data: any, timestamp: string }> = [];
     
-    if (assignments) {
+    if (assignments && Array.isArray(assignments)) {
       assignments.forEach(a => combined.push({ 
         type: 'assignment', 
         data: a, 
@@ -107,7 +135,7 @@ export function AssignmentHistoryModal({
       }));
     }
     
-    if (agentHistory) {
+    if (agentHistory && Array.isArray(agentHistory)) {
       agentHistory.forEach(h => combined.push({ type: 'agent', data: h, timestamp: h.created_at }));
     }
     
@@ -115,6 +143,8 @@ export function AssignmentHistoryModal({
   }, [assignments, agentHistory]);
 
   const isLoading = assignmentsLoading || agentLoading;
+  const hasError = assignmentsError || agentError;
+  const isValidConversationId = conversationId && conversationId.trim() !== '';
 
   return (
     <Dialog open={isOpen} onOpenChange={onOpenChange}>
@@ -128,7 +158,23 @@ export function AssignmentHistoryModal({
 
         <ScrollArea className="h-[60vh] bg-white dark:bg-[#1f1f1f]">
           <div className="p-4">
-          {isLoading ? (
+          {!isValidConversationId ? (
+            <div className="flex flex-col items-center justify-center py-12 text-center">
+              <Clock className="h-12 w-12 text-gray-300 mb-4 dark:text-gray-600" />
+              <p className="text-gray-500 font-medium dark:text-gray-400">ID de conversa inválido</p>
+              <p className="text-xs text-gray-400 mt-1 dark:text-gray-500">
+                Não foi possível carregar o histórico sem um ID de conversa válido
+              </p>
+            </div>
+          ) : hasError ? (
+            <div className="flex flex-col items-center justify-center py-12 text-center">
+              <Clock className="h-12 w-12 text-red-300 mb-4 dark:text-red-600" />
+              <p className="text-red-500 font-medium dark:text-red-400">Erro ao carregar histórico</p>
+              <p className="text-xs text-red-400 mt-1 dark:text-red-500">
+                {assignmentsError?.message || agentError?.message || 'Ocorreu um erro ao buscar o histórico'}
+              </p>
+            </div>
+          ) : isLoading ? (
             <div className="space-y-4">
               {[1, 2, 3].map((i) => (
                 <div key={i} className="flex items-start gap-3 p-4 border border-[#d4d4d4] rounded-none bg-gray-50 dark:bg-[#2d2d2d] dark:border-gray-600">
