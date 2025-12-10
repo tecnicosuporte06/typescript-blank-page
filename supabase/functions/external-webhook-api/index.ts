@@ -101,42 +101,65 @@ function normalizePhone(phone: string | undefined): string | null {
   if (!digitsOnly) return null;
 
   // Adiciona 55 na frente se não tiver
-  const normalized = digitsOnly.startsWith("55") ? `55${digitsOnly}` : digitsOnly;
+  const normalized = digitsOnly.startsWith("55") ? digitsOnly : `55${digitsOnly}`;
   return normalized;
 }
 
 // Função para acionar a fila padrão ou uma fila específica para uma conversa
+// Retorna um objeto com sucesso/erro para que o caller possa decidir se é crítico ou não
 async function assignConversationToQueue(
   supabase: any,
   conversationId: string | null | undefined,
   queueId?: string | null
-): Promise<void> {
+): Promise<{ success: boolean; data?: any; error?: any }> {
   if (!conversationId) {
-    console.log('[assignConversationToQueue] Nenhuma conversationId fornecida, pulando atribuição de fila');
-    return;
+    console.log(
+      "[assignConversationToQueue] Nenhuma conversationId fornecida, pulando atribuição de fila"
+    );
+    return { success: false, error: "MISSING_CONVERSATION_ID" };
   }
 
   try {
-    console.log('[assignConversationToQueue] Iniciando atribuição de fila...', {
+    console.log("[assignConversationToQueue] Iniciando atribuição de fila...", {
       conversationId,
-      queueId: queueId || 'auto',
+      queueId: queueId || "auto",
     });
 
-    const { data, error } = await supabase.functions.invoke('assign-conversation-to-queue', {
-      body: {
-        conversation_id: conversationId,
-        queue_id: queueId || null, // Se não for fornecido, a função usará a fila padrão da conexão
-      },
-    });
+    const { data, error } = await supabase.functions.invoke(
+      "assign-conversation-to-queue",
+      {
+        body: {
+          conversation_id: conversationId,
+          queue_id: queueId || null, // Se não for fornecido, a função usará a fila padrão da conexão
+        },
+      }
+    );
 
     if (error) {
-      console.error('[assignConversationToQueue] Erro ao chamar assign-conversation-to-queue:', error);
-      return;
+      console.error(
+        "[assignConversationToQueue] Erro ao chamar assign-conversation-to-queue:",
+        error
+      );
+      return { success: false, error };
     }
 
-    console.log('[assignConversationToQueue] Resultado da fila:', data);
+    // A função de fila sempre retorna um JSON; se tiver "error" no payload, tratar como falha
+    if (data && (data as any).error) {
+      console.error(
+        "[assignConversationToQueue] Erro retornado pela função assign-conversation-to-queue:",
+        (data as any).error
+      );
+      return { success: false, data };
+    }
+
+    console.log("[assignConversationToQueue] Resultado da fila:", data);
+    return { success: true, data };
   } catch (err) {
-    console.error('[assignConversationToQueue] Exceção ao atribuir fila (não-bloqueante):', err);
+    console.error(
+      "[assignConversationToQueue] Exceção ao atribuir fila (não-bloqueante):",
+      err
+    );
+    return { success: false, error: err };
   }
 }
 
@@ -1699,10 +1722,31 @@ serve(async (req) => {
       console.log(`✅ [create_card] Card criado com sucesso: ${cardId}`);
 
       // Atribuir conversa à fila (se houver conversa) - usando queue_id opcional do payload.card
-      try {
-        await assignConversationToQueue(supabase, conversationId, payload.card.queue_id);
-      } catch (queueError) {
-        console.error('⚠️ [create_card] Erro ao atribuir conversa à fila (não-bloqueante):', queueError);
+      const queueResult = await assignConversationToQueue(
+        supabase,
+        conversationId,
+        payload.card.queue_id
+      );
+
+      // Se o cliente solicitou explicitamente uma fila (queue_id) e a atribuição falhar,
+      // considerar isso um erro crítico para que fique visível para quem está chamando a API
+      if (payload.card.queue_id && !queueResult.success) {
+        console.error(
+          "❌ [create_card] Falha ao atribuir conversa à fila solicitada:",
+          queueResult.error || queueResult.data
+        );
+        responseStatus = 500;
+        responseBody = {
+          success: false,
+          error: "QUEUE_ASSIGNMENT_FAILED",
+          message:
+            "Não foi possível atribuir a conversa à fila informada. Verifique se a fila existe, está ativa e possui usuários ativos.",
+          details: queueResult.error || queueResult.data,
+        };
+        return new Response(JSON.stringify(responseBody), {
+          status: responseStatus,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
       }
       
       // ✅ Acionar automações de coluna em background (não bloqueia resposta)
@@ -1771,7 +1815,7 @@ serve(async (req) => {
         });
       }
 
-      // Criar contato
+      // Criar contato (ou reutilizar se já existir pelo telefone)
       const contactResult = await createOrGetContact(supabase, payload.workspace_id, payload.contact);
       contactId = contactResult.id;
 
@@ -1815,9 +1859,11 @@ serve(async (req) => {
       console.log(`🔍 [create_contact_with_card] Resultado: needsConversation = ${needsConversation}`);
 
       let conversationId: string | null = null;
-      
-      // Se a coluna precisa de conversa OU se foi solicitado no payload, criar conversa
-      if (needsConversation || payload.conversation?.create) {
+      const queueRequested = !!payload.card.queue_id;
+
+      // Se a coluna precisa de conversa, foi solicitado no payload OU há fila definida,
+      // garantir que exista uma conversa antes de criar o card
+      if (needsConversation || payload.conversation?.create || queueRequested) {
         console.log(`📞 [create_contact_with_card] Conversa é necessária. Iniciando criação...`);
         try {
           // Se já foi solicitado no payload, usar a função createConversation
@@ -1920,15 +1966,16 @@ serve(async (req) => {
         console.log(`ℹ️ [create_contact_with_card] Coluna não precisa de conversation_id e não foi solicitado no payload`);
       }
 
-      // ✅ CRÍTICO: Se a coluna precisa de conversa mas não conseguimos criar, BLOQUEAR criação do card
-      if (needsConversation && !conversationId) {
-        console.error(`❌ [create_contact_with_card] ERRO CRÍTICO: Coluna precisa de conversation_id mas não foi possível criar conversa!`);
-        console.error(`❌ [create_contact_with_card] Bloqueando criação do card para evitar automações quebradas.`);
+      // ✅ CRÍTICO: se precisávamos de conversa (por fila ou automação) e não conseguimos criar, não podemos seguir
+      if ((needsConversation || payload.conversation?.create || queueRequested) && !conversationId) {
+        console.error(`❌ [create_contact_with_card] ERRO CRÍTICO: Era necessária uma conversa (por automação/fila), mas não foi possível criar ou localizar uma conversa válida.`);
+        console.error(`❌ [create_contact_with_card] Bloqueando criação do card para evitar inconsistências na fila/automação.`);
         responseStatus = 500;
         responseBody = {
           success: false,
           error: "CONVERSATION_REQUIRED",
-          message: "A coluna possui automações que requerem uma conversa, mas não foi possível criar a conversa. Verifique se o contato possui telefone e se há uma conexão WhatsApp ativa.",
+          message:
+            "Era necessário criar/usar uma conversa (por automação de coluna ou por configuração de fila), mas não foi possível criar/validar a conversa. Verifique se o contato possui telefone e se existe uma conexão WhatsApp ativa para o workspace.",
         };
         return new Response(JSON.stringify(responseBody), {
           status: responseStatus,
@@ -1942,10 +1989,29 @@ serve(async (req) => {
       console.log(`✅ [create_contact_with_card] Card criado com sucesso: ${cardId}`);
       
       // Atribuir conversa à fila (se houver conversa) - usando queue_id opcional do payload.card
-      try {
-        await assignConversationToQueue(supabase, conversationId, payload.card.queue_id);
-      } catch (queueError) {
-        console.error('⚠️ [create_contact_with_card] Erro ao atribuir conversa à fila (não-bloqueante):', queueError);
+      const queueResult = await assignConversationToQueue(
+        supabase,
+        conversationId,
+        payload.card.queue_id
+      );
+
+      if (queueRequested && !queueResult.success) {
+        console.error(
+          "❌ [create_contact_with_card] Falha ao atribuir conversa à fila solicitada:",
+          queueResult.error || queueResult.data
+        );
+        responseStatus = 500;
+        responseBody = {
+          success: false,
+          error: "QUEUE_ASSIGNMENT_FAILED",
+          message:
+            "Não foi possível atribuir a conversa à fila informada. Verifique se a fila existe, está ativa e possui usuários ativos.",
+          details: queueResult.error || queueResult.data,
+        };
+        return new Response(JSON.stringify(responseBody), {
+          status: responseStatus,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
       }
       
       // ✅ Acionar automações de coluna em background (não bloqueia resposta)
