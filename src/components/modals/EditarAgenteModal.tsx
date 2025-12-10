@@ -565,6 +565,18 @@ Exemplo: [ENVIE PARA O TOOL \`info-adicionais\` (METODO POST) o id: campo-empres
           {/* Configurações Avançadas */}
           <div className="space-y-3">
             <Label className="text-xs font-semibold text-gray-700 dark:text-gray-300 uppercase tracking-wide">Configurações Avançadas</Label>
+
+            <div className="space-y-1.5">
+              <Label htmlFor="api_key" className="text-xs font-medium text-gray-700 dark:text-gray-300">Token da API OpenAI</Label>
+              <Input
+                id="api_key"
+                type="password"
+                value={formData.api_key}
+                onChange={(e) => setFormData({ ...formData, api_key: e.target.value })}
+                placeholder="Insira o token da API"
+                className="h-8 text-xs rounded-none border-[#d4d4d4] dark:border-gray-700 !bg-white dark:!bg-[#2d2d2d] !text-gray-900 dark:!text-gray-200 focus-visible:ring-1 focus-visible:ring-primary placeholder:!text-gray-400 dark:placeholder:!text-gray-500"
+              />
+            </div>
             
             <div className="space-y-2">
               <div className="flex justify-between">

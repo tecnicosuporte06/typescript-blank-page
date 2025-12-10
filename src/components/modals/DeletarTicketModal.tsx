@@ -20,7 +20,7 @@ export function DeletarTicketModal({ isOpen, onClose, onConfirm }: DeletarTicket
         <DialogHeader className="px-4 py-2 bg-primary text-primary-foreground border-b border-[#d4d4d4] rounded-t-none dark:border-gray-700">
           <DialogTitle className="text-lg font-semibold flex items-center gap-2 text-primary-foreground">
             <AlertTriangle className="w-5 h-5 text-red-500" />
-            Deletar Ticket
+            Deletar Contato
           </DialogTitle>
         </DialogHeader>
 

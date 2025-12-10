@@ -30,6 +30,7 @@ interface CriarAgenteModalProps {
 interface FormData {
   workspace_id: string;
   name: string;
+  api_key: string;
   model: string;
   system_instructions: string;
   temperature: number;
@@ -57,6 +58,7 @@ export function CriarAgenteModal({
   const [formData, setFormData] = useState<FormData>({
     workspace_id: '',
     name: '',
+    api_key: '',
     model: 'gpt-4o-mini',
     system_instructions: '',
     temperature: 0.7,
@@ -145,7 +147,7 @@ Exemplo: [ENVIE PARA O TOOL \`info-adicionais\` (METODO POST) o id: campo-empres
   };
 
   const handleSave = async () => {
-    if (!formData.workspace_id || !formData.name) {
+    if (!formData.workspace_id || !formData.name || !formData.api_key) {
       toast.error('Por favor, preencha todos os campos obrigatórios');
       return;
     }
@@ -214,6 +216,7 @@ Exemplo: [ENVIE PARA O TOOL \`info-adicionais\` (METODO POST) o id: campo-empres
           id: agentId,
           workspace_id: formData.workspace_id,
           name: formData.name,
+          api_key_encrypted: formData.api_key,
           model: formData.model,
           system_instructions: formData.system_instructions,
           temperature: formData.temperature,
@@ -246,6 +249,7 @@ Exemplo: [ENVIE PARA O TOOL \`info-adicionais\` (METODO POST) o id: campo-empres
       setFormData({
         workspace_id: '',
         name: '',
+        api_key: '',
         model: 'gpt-4o-mini',
         system_instructions: '',
         temperature: 0.7,
@@ -503,6 +507,18 @@ Exemplo: [ENVIE PARA O TOOL \`info-adicionais\` (METODO POST) o id: campo-empres
           {/* Configurações Avançadas */}
           <div className="space-y-4">
             <Label className="text-lg font-semibold">Configurações Avançadas</Label>
+            
+            <div className="space-y-2">
+              <Label htmlFor="api_key" className="text-xs font-medium text-gray-700 dark:text-gray-300">Token da API OpenAI</Label>
+              <Input
+                id="api_key"
+                type="password"
+                value={formData.api_key}
+                onChange={(e) => setFormData({ ...formData, api_key: e.target.value })}
+                placeholder="Insira o token da API"
+                className="h-8 text-xs rounded-none border-[#d4d4d4] dark:border-gray-700 !bg-white dark:!bg-[#2d2d2d] !text-gray-900 dark:!text-gray-200 focus-visible:ring-1 focus-visible:ring-primary placeholder:!text-gray-400 dark:placeholder:!text-gray-500"
+              />
+            </div>
             
             <div className="space-y-2">
               <div className="flex justify-between">

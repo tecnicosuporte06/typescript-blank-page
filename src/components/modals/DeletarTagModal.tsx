@@ -11,6 +11,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
+import { AlertTriangle } from "lucide-react";
 
 interface Tag {
   id: string;
@@ -70,22 +71,36 @@ export function DeletarTagModal({ isOpen, onClose, onTagDeleted, tag }: DeletarT
 
   return (
     <AlertDialog open={isOpen} onOpenChange={onClose}>
-      <AlertDialogContent className="bg-white text-gray-900 dark:bg-[#0b0b0b] dark:text-gray-100 dark:border-gray-700">
-        <AlertDialogHeader>
-          <AlertDialogTitle>Deletar Tag</AlertDialogTitle>
-          <AlertDialogDescription className="dark:text-gray-300">
-            Tem certeza que deseja deletar a tag "{tag?.name}"? 
-            Esta ação removerá a tag de todos os contatos associados e não poderá ser desfeita.
-          </AlertDialogDescription>
+      <AlertDialogContent className="max-w-md bg-white text-gray-900 border border-[#d4d4d4] rounded-none shadow-lg dark:bg-[#0b0b0b] dark:text-gray-100 dark:border-gray-700">
+        <AlertDialogHeader className="px-4 py-2 bg-primary text-primary-foreground border-b border-[#d4d4d4] rounded-t-none dark:border-gray-700">
+          <AlertDialogTitle className="text-lg font-semibold flex items-center gap-2 text-primary-foreground">
+            <AlertTriangle className="w-5 h-5 text-red-500" />
+            Deletar Tag
+          </AlertDialogTitle>
         </AlertDialogHeader>
-        <AlertDialogFooter>
-          <AlertDialogCancel disabled={isLoading} className="rounded-none border border-[#d4d4d4] text-gray-800 bg-white hover:bg-gray-100 dark:border-gray-600 dark:text-gray-200 dark:bg-transparent dark:hover:bg-[#1f1f1f]">Cancelar</AlertDialogCancel>
+
+        <div className="py-4 px-4">
+          <AlertDialogDescription className="text-sm text-gray-600 dark:text-gray-300">
+            <strong>Atenção!</strong>{" "}
+            Tem certeza que deseja deletar a tag{" "}
+            <span className="font-semibold text-gray-900 dark:text-gray-100">"{tag?.name}"</span>? Esta ação
+            removerá a tag de todos os contatos associados e não poderá ser desfeita.
+          </AlertDialogDescription>
+        </div>
+
+        <AlertDialogFooter className="mt-0 flex justify-end gap-2 border-t border-[#d4d4d4] pt-4 bg-gray-50 dark:bg-[#050505] dark:border-gray-700">
+          <AlertDialogCancel
+            disabled={isLoading}
+            className="rounded-none border border-[#d4d4d4] text-gray-800 bg-white hover:bg-gray-100 dark:border-gray-600 dark:text-gray-200 dark:bg-transparent dark:hover:bg-[#1f1f1f]"
+          >
+            Cancelar
+          </AlertDialogCancel>
           <AlertDialogAction
             onClick={handleDelete}
             disabled={isLoading}
-            className="bg-red-600 hover:bg-red-700 text-white rounded-none"
+            className="rounded-none bg-red-600 hover:bg-red-700 text-white dark:bg-red-700 dark:hover:bg-red-800"
           >
-            {isLoading ? "Deletando..." : "Deletar"}
+            {isLoading ? "Deletando..." : "OK"}
           </AlertDialogAction>
         </AlertDialogFooter>
       </AlertDialogContent>
