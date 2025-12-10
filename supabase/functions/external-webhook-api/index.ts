@@ -626,6 +626,37 @@ async function createCard(
     throw new Error("Contato não encontrado");
   }
 
+  // ✅ Regra de negócio: evitar múltiplos cards ABERTOS para o mesmo contato + pipeline
+  // Antes havia um índice único no banco para isso; agora garantimos pela lógica da função.
+  try {
+    const { data: existingOpenCard, error: existingCardError } = await supabase
+      .from("pipeline_cards")
+      .select("id")
+      .eq("contact_id", contactId)
+      .eq("pipeline_id", cardData.pipeline_id)
+      .eq("status", "aberto")
+      .limit(1)
+      .maybeSingle();
+
+    if (existingCardError) {
+      console.error(
+        "⚠️ [createCard] Erro ao verificar cards abertos existentes (não-bloqueante):",
+        existingCardError
+      );
+    } else if (existingOpenCard) {
+      console.log(
+        `✅ [createCard] Card aberto existente encontrado para o contato ${contactId} no pipeline ${cardData.pipeline_id}. Reutilizando card ${existingOpenCard.id}`
+      );
+      // Em vez de criar um novo card duplicado, retornamos o existente.
+      return existingOpenCard.id;
+    }
+  } catch (dupCheckError) {
+    console.error(
+      "⚠️ [createCard] Exceção ao verificar duplicidade de cards (não-bloqueante):",
+      dupCheckError
+    );
+  }
+
   // Determinar description (obrigatório)
   // Aceita tanto 'title' quanto 'description' do payload para compatibilidade
   const description = cardData.title || cardData.description || "Novo Card";

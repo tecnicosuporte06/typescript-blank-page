@@ -106,15 +106,21 @@ serve(async (req) => {
       .eq('system_users.status', 'active')
       .order('order_position', { ascending: true });
 
-    if (usersError || !queueUsers || queueUsers.length === 0) {
-      console.error('❌ Nenhum usuário ativo encontrado na fila:', usersError);
-      return new Response(
-        JSON.stringify({ error: 'Nenhum usuário ativo na fila' }),
-        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
-    }
+    // Para filas configuradas como "nao_distribuir", permitimos zero usuários ativos:
+    // elas servem apenas para vincular a conversa à fila e (opcionalmente) ativar um agente de IA.
+    if (queue.distribution_type !== 'nao_distribuir') {
+      if (usersError || !queueUsers || queueUsers.length === 0) {
+        console.error('❌ Nenhum usuário ativo encontrado na fila:', usersError);
+        return new Response(
+          JSON.stringify({ error: 'Nenhum usuário ativo na fila' }),
+          { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
 
-    console.log(`👥 ${queueUsers.length} usuários ativos encontrados na fila`);
+      console.log(`👥 ${queueUsers.length} usuários ativos encontrados na fila`);
+    } else {
+      console.log('ℹ️ Fila com distribuição "nao_distribuir": permitindo zero usuários ativos');
+    }
 
     // 5️⃣ Selecionar usuário baseado no tipo de distribuição
     let selectedUserId: string;
