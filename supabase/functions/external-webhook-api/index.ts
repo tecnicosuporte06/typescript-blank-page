@@ -1,6 +1,13 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { corsHeaders } from "../_shared/cors.ts";
+
+// Definição local de CORS para evitar problemas de import na hora do bundle
+const corsHeaders = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Headers": "*",
+  "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
+  "Access-Control-Max-Age": "86400",
+};
 
 interface ApiKeyValidation {
   workspace_id: string;
@@ -1771,7 +1778,7 @@ serve(async (req) => {
           success: false,
           error: "QUEUE_ASSIGNMENT_FAILED",
           message:
-            "Não foi possível atribuir a conversa à fila informada. Verifique se a fila existe, está ativa e possui usuários ativos.",
+            "Não foi possível atribuir a conversa à fila informada. Verifique se a fila existe e está ativa. Consulte o campo 'details' para mais informações sobre o motivo da falha.",
           details: queueResult.error || queueResult.data,
         };
         return new Response(JSON.stringify(responseBody), {
@@ -2036,7 +2043,7 @@ serve(async (req) => {
           success: false,
           error: "QUEUE_ASSIGNMENT_FAILED",
           message:
-            "Não foi possível atribuir a conversa à fila informada. Verifique se a fila existe, está ativa e possui usuários ativos.",
+            "Não foi possível atribuir a conversa à fila informada. Verifique se a fila existe e está ativa. Consulte o campo 'details' para mais informações sobre o motivo da falha.",
           details: queueResult.error || queueResult.data,
         };
         return new Response(JSON.stringify(responseBody), {
