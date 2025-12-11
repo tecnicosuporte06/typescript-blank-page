@@ -288,12 +288,13 @@ const handleAuthUrl = async (
 
   console.log("🔐 [Google Calendar] Usando redirect URI configurado (dinâmico):", redirectUriEnv);
   const state = crypto.randomUUID();
+  console.log("🔐 [Google Calendar] State gerado:", state);
   const codeVerifier = generateCodeVerifier();
   const codeChallenge = await generateCodeChallenge(codeVerifier);
   const expiresAt = new Date(Date.now() + 10 * 60 * 1000).toISOString();
 
   const { error } = await client.from("google_calendar_oauth_states").insert({
-    state,
+    state: state.trim(),
     user_id: userId,
     workspace_id: workspaceId,
     code_verifier: codeVerifier,
@@ -376,24 +377,59 @@ const handleExchangeCode = async (
     throw new Error("Código de autorização ou state ausentes");
   }
 
+  // Validar formato do state (deve ser um UUID válido)
+  const trimmedState = state.trim();
+  const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  
+  console.log("🔐 [Google Calendar] State recebido (raw):", JSON.stringify(state));
+  console.log("🔐 [Google Calendar] State recebido (trimmed):", JSON.stringify(trimmedState));
+  console.log("🔐 [Google Calendar] State length:", trimmedState.length);
+  
+  if (!uuidRegex.test(trimmedState)) {
+    console.error("❌ State com formato inválido:", {
+      state: trimmedState,
+      length: trimmedState.length,
+      matches: uuidRegex.test(trimmedState)
+    });
+    throw new Error("Invalid state format");
+  }
+
   const globalSettings = await getGlobalGoogleSettings(client);
   const redirectUriEnv = globalSettings.redirect_uri;
   console.log("🔐 [Google Calendar] Finalizando OAuth com redirect URI (dinâmico):", redirectUriEnv);
+  console.log("🔐 [Google Calendar] Buscando state no banco:", trimmedState.substring(0, 8) + "...");
 
   const { data: oauthState, error: stateError } = await client
     .from("google_calendar_oauth_states")
     .select("*")
-    .eq("state", state)
+    .eq("state", trimmedState)
     .maybeSingle();
 
   if (stateError) {
-    console.error("❌ Erro ao validar state da integração Google", stateError);
+    console.error("❌ Erro ao validar state da integração Google", {
+      error: stateError,
+      state: trimmedState,
+      stateLength: trimmedState.length
+    });
     throw stateError;
   }
 
   if (!oauthState) {
+    console.error("❌ State não encontrado no banco:", {
+      state: trimmedState,
+      workspaceId,
+      userId
+    });
     throw new Error("State inválido ou expirado. Tente novamente.");
   }
+  
+  console.log("✅ State encontrado no banco:", {
+    state: oauthState.state,
+    userId: oauthState.user_id,
+    workspaceId: oauthState.workspace_id,
+    expiresAt: oauthState.expires_at,
+    usedAt: oauthState.used_at
+  });
 
   if (oauthState.user_id !== userId || oauthState.workspace_id !== workspaceId) {
     throw new Error("State não pertence a este usuário/workspace.");

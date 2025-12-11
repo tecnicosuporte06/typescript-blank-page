@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { useWorkspaceStructure } from "@/hooks/useWorkspaceStructure";
 import { useToast } from "@/hooks/use-toast";
-import { Copy, Check, Search, Code2, Layers, ListTree, Bot, Link2 } from "lucide-react";
+import { Copy, Check, Search, Code2, Layers, ListTree, Bot, Link2, MessageSquare, Music, FileText, Image, GitBranch } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 
 interface MasterBuscaIdsProps {
@@ -30,6 +30,16 @@ export function MasterBuscaIds({ workspaces }: MasterBuscaIdsProps) {
   >([]);
   const [loadingAgents, setLoadingAgents] = useState(false);
   const [loadingConnections, setLoadingConnections] = useState(false);
+  const [quickMessages, setQuickMessages] = useState<{ id: string; title: string; content: string }[]>([]);
+  const [quickAudios, setQuickAudios] = useState<{ id: string; title: string; file_name: string }[]>([]);
+  const [quickDocuments, setQuickDocuments] = useState<{ id: string; title: string; file_name: string }[]>([]);
+  const [quickMedia, setQuickMedia] = useState<{ id: string; title: string; file_name: string }[]>([]);
+  const [quickFunnels, setQuickFunnels] = useState<{ id: string; title: string }[]>([]);
+  const [loadingQuickMessages, setLoadingQuickMessages] = useState(false);
+  const [loadingQuickAudios, setLoadingQuickAudios] = useState(false);
+  const [loadingQuickDocuments, setLoadingQuickDocuments] = useState(false);
+  const [loadingQuickMedia, setLoadingQuickMedia] = useState(false);
+  const [loadingQuickFunnels, setLoadingQuickFunnels] = useState(false);
 
   const {
     pipelines,
@@ -137,6 +147,141 @@ export function MasterBuscaIds({ workspaces }: MasterBuscaIdsProps) {
   useEffect(() => {
     setSelectedPipelineId("");
     setSelectedColumnId("");
+  }, [selectedWorkspaceId]);
+
+  // Carregar mensagens rápidas
+  useEffect(() => {
+    const loadQuickMessages = async () => {
+      if (!selectedWorkspaceId) {
+        setQuickMessages([]);
+        return;
+      }
+      try {
+        setLoadingQuickMessages(true);
+        const { data, error } = await supabase
+          .from("quick_messages")
+          .select("id, title, content")
+          .eq("workspace_id", selectedWorkspaceId)
+          .order("title");
+
+        if (error) throw error;
+        setQuickMessages(data || []);
+      } catch (error) {
+        console.error("Erro ao carregar mensagens rápidas:", error);
+      } finally {
+        setLoadingQuickMessages(false);
+      }
+    };
+
+    loadQuickMessages();
+  }, [selectedWorkspaceId]);
+
+  // Carregar áudios rápidos
+  useEffect(() => {
+    const loadQuickAudios = async () => {
+      if (!selectedWorkspaceId) {
+        setQuickAudios([]);
+        return;
+      }
+      try {
+        setLoadingQuickAudios(true);
+        const { data, error } = await supabase
+          .from("quick_audios")
+          .select("id, title, file_name")
+          .eq("workspace_id", selectedWorkspaceId)
+          .order("title");
+
+        if (error) throw error;
+        setQuickAudios(data || []);
+      } catch (error) {
+        console.error("Erro ao carregar áudios rápidos:", error);
+      } finally {
+        setLoadingQuickAudios(false);
+      }
+    };
+
+    loadQuickAudios();
+  }, [selectedWorkspaceId]);
+
+  // Carregar documentos rápidos
+  useEffect(() => {
+    const loadQuickDocuments = async () => {
+      if (!selectedWorkspaceId) {
+        setQuickDocuments([]);
+        return;
+      }
+      try {
+        setLoadingQuickDocuments(true);
+        const { data, error } = await supabase
+          .from("quick_documents")
+          .select("id, title, file_name")
+          .eq("workspace_id", selectedWorkspaceId)
+          .order("title");
+
+        if (error) throw error;
+        setQuickDocuments(data || []);
+      } catch (error) {
+        console.error("Erro ao carregar documentos rápidos:", error);
+      } finally {
+        setLoadingQuickDocuments(false);
+      }
+    };
+
+    loadQuickDocuments();
+  }, [selectedWorkspaceId]);
+
+  // Carregar mídias rápidas
+  useEffect(() => {
+    const loadQuickMedia = async () => {
+      if (!selectedWorkspaceId) {
+        setQuickMedia([]);
+        return;
+      }
+      try {
+        setLoadingQuickMedia(true);
+        const { data, error } = await supabase
+          .from("quick_media")
+          .select("id, title, file_name")
+          .eq("workspace_id", selectedWorkspaceId)
+          .order("title");
+
+        if (error) throw error;
+        setQuickMedia(data || []);
+      } catch (error) {
+        console.error("Erro ao carregar mídias rápidas:", error);
+      } finally {
+        setLoadingQuickMedia(false);
+      }
+    };
+
+    loadQuickMedia();
+  }, [selectedWorkspaceId]);
+
+  // Carregar funis rápidos
+  useEffect(() => {
+    const loadQuickFunnels = async () => {
+      if (!selectedWorkspaceId) {
+        setQuickFunnels([]);
+        return;
+      }
+      try {
+        setLoadingQuickFunnels(true);
+        const { data, error } = await supabase
+          .from("quick_funnels")
+          .select("id, title")
+          .eq("workspace_id", selectedWorkspaceId)
+          .order("title");
+
+        if (error) throw error;
+        setQuickFunnels(data || []);
+      } catch (error) {
+        console.error("Erro ao carregar funis rápidos:", error);
+      } finally {
+        setLoadingQuickFunnels(false);
+      }
+    };
+
+    loadQuickFunnels();
   }, [selectedWorkspaceId]);
 
   const handleCopy = async (id: string) => {
@@ -327,7 +472,7 @@ export function MasterBuscaIds({ workspaces }: MasterBuscaIdsProps) {
         )}
 
         {selectedWorkspace && (
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-4">
             {/* Workspace + Pipelines */}
             <Card className="border-[#d4d4d4] dark:border-gray-700 bg-white dark:bg-[#141414]">
               <CardHeader className="bg-white dark:bg-[#141414]">
@@ -875,6 +1020,425 @@ export function MasterBuscaIds({ workspaces }: MasterBuscaIdsProps) {
                               className="px-2 py-3 text-center text-[11px] text-gray-500 dark:text-gray-400"
                             >
                               Carregando conexões...
+                            </td>
+                          </tr>
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Mensagens Rápidas e Recursos */}
+            <Card className="border-[#d4d4d4] dark:border-gray-700 bg-white dark:bg-[#141414]">
+              <CardHeader className="bg-white dark:bg-[#141414]">
+                <CardTitle className="text-sm text-gray-800 dark:text-gray-100 flex items-center gap-2">
+                  <MessageSquare className="w-4 h-4 text-gray-700 dark:text-gray-300" />
+                  Mensagens Rápidas e Recursos
+                </CardTitle>
+                <CardDescription className="text-xs text-gray-600 dark:text-gray-400">
+                  Mensagens rápidas, áudios, documentos, mídias e funis do workspace.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4 bg-white dark:bg-[#141414]">
+                {/* Mensagens Rápidas (Textos) */}
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <Label className="text-xs font-medium text-gray-700 dark:text-gray-300 flex items-center gap-1">
+                      <MessageSquare className="w-3 h-3" />
+                      Mensagens Rápidas (Textos)
+                    </Label>
+                    <Badge variant="outline" className="text-[10px] rounded-none">
+                      {quickMessages.length} mensagem(ns)
+                    </Badge>
+                  </div>
+                  <div className="max-h-32 overflow-auto border border-[#e5e5e5] dark:border-gray-700 rounded">
+                    <table className="w-full border-collapse text-xs">
+                      <thead className="bg-[#f3f3f3] dark:bg-[#1b1b1b]">
+                        <tr>
+                          <th className="text-left px-2 py-1 border-b border-[#e5e5e5] dark:border-gray-700">
+                            Título
+                          </th>
+                          <th className="text-left px-2 py-1 border-b border-[#e5e5e5] dark:border-gray-700">
+                            ID
+                          </th>
+                          <th className="w-10 px-2 py-1 border-b border-[#e5e5e5] dark:border-gray-700"></th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {quickMessages.map((msg) => (
+                          <tr
+                            key={msg.id}
+                            className="odd:bg-white even:bg-[#fafafa] dark:odd:bg-[#141414] dark:even:bg-[#161616]"
+                          >
+                            <td className="px-2 py-1 border-b border-[#f0f0f0] dark:border-gray-800">
+                              <span className="text-[11px] text-gray-900 dark:text-gray-100">
+                                {msg.title}
+                              </span>
+                            </td>
+                            <td className="px-2 py-1 border-b border-[#f0f0f0] dark:border-gray-800">
+                              <code className="text-[10px] font-mono bg-[#f5f5f5] dark:bg-[#1b1b1b] px-1.5 py-0.5 rounded text-gray-900 dark:text-gray-100">
+                                {msg.id}
+                              </code>
+                            </td>
+                            <td className="px-2 py-1 border-b border-[#f0f0f0] dark:border-gray-800 text-right">
+                              <Button
+                                size="icon"
+                                variant="ghost"
+                                className="h-6 w-6 rounded-none"
+                                onClick={() => handleCopy(msg.id)}
+                              >
+                                {copiedId === msg.id ? (
+                                  <Check className="w-3 h-3 text-green-500" />
+                                ) : (
+                                  <Copy className="w-3 h-3" />
+                                )}
+                              </Button>
+                            </td>
+                          </tr>
+                        ))}
+                        {quickMessages.length === 0 && !loadingQuickMessages && (
+                          <tr>
+                            <td
+                              colSpan={3}
+                              className="px-2 py-3 text-center text-[11px] text-gray-500 dark:text-gray-400"
+                            >
+                              Nenhuma mensagem rápida cadastrada.
+                            </td>
+                          </tr>
+                        )}
+                        {loadingQuickMessages && (
+                          <tr>
+                            <td
+                              colSpan={3}
+                              className="px-2 py-3 text-center text-[11px] text-gray-500 dark:text-gray-400"
+                            >
+                              Carregando mensagens...
+                            </td>
+                          </tr>
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+
+                {/* Áudios Rápidos */}
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <Label className="text-xs font-medium text-gray-700 dark:text-gray-300 flex items-center gap-1">
+                      <Music className="w-3 h-3" />
+                      Áudios Rápidos
+                    </Label>
+                    <Badge variant="outline" className="text-[10px] rounded-none">
+                      {quickAudios.length} áudio(s)
+                    </Badge>
+                  </div>
+                  <div className="max-h-32 overflow-auto border border-[#e5e5e5] dark:border-gray-700 rounded">
+                    <table className="w-full border-collapse text-xs">
+                      <thead className="bg-[#f3f3f3] dark:bg-[#1b1b1b]">
+                        <tr>
+                          <th className="text-left px-2 py-1 border-b border-[#e5e5e5] dark:border-gray-700">
+                            Título
+                          </th>
+                          <th className="text-left px-2 py-1 border-b border-[#e5e5e5] dark:border-gray-700">
+                            ID
+                          </th>
+                          <th className="w-10 px-2 py-1 border-b border-[#e5e5e5] dark:border-gray-700"></th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {quickAudios.map((audio) => (
+                          <tr
+                            key={audio.id}
+                            className="odd:bg-white even:bg-[#fafafa] dark:odd:bg-[#141414] dark:even:bg-[#161616]"
+                          >
+                            <td className="px-2 py-1 border-b border-[#f0f0f0] dark:border-gray-800">
+                              <span className="text-[11px] text-gray-900 dark:text-gray-100">
+                                {audio.title}
+                              </span>
+                            </td>
+                            <td className="px-2 py-1 border-b border-[#f0f0f0] dark:border-gray-800">
+                              <code className="text-[10px] font-mono bg-[#f5f5f5] dark:bg-[#1b1b1b] px-1.5 py-0.5 rounded text-gray-900 dark:text-gray-100">
+                                {audio.id}
+                              </code>
+                            </td>
+                            <td className="px-2 py-1 border-b border-[#f0f0f0] dark:border-gray-800 text-right">
+                              <Button
+                                size="icon"
+                                variant="ghost"
+                                className="h-6 w-6 rounded-none"
+                                onClick={() => handleCopy(audio.id)}
+                              >
+                                {copiedId === audio.id ? (
+                                  <Check className="w-3 h-3 text-green-500" />
+                                ) : (
+                                  <Copy className="w-3 h-3" />
+                                )}
+                              </Button>
+                            </td>
+                          </tr>
+                        ))}
+                        {quickAudios.length === 0 && !loadingQuickAudios && (
+                          <tr>
+                            <td
+                              colSpan={3}
+                              className="px-2 py-3 text-center text-[11px] text-gray-500 dark:text-gray-400"
+                            >
+                              Nenhum áudio rápido cadastrado.
+                            </td>
+                          </tr>
+                        )}
+                        {loadingQuickAudios && (
+                          <tr>
+                            <td
+                              colSpan={3}
+                              className="px-2 py-3 text-center text-[11px] text-gray-500 dark:text-gray-400"
+                            >
+                              Carregando áudios...
+                            </td>
+                          </tr>
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+
+                {/* Documentos Rápidos */}
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <Label className="text-xs font-medium text-gray-700 dark:text-gray-300 flex items-center gap-1">
+                      <FileText className="w-3 h-3" />
+                      Documentos Rápidos
+                    </Label>
+                    <Badge variant="outline" className="text-[10px] rounded-none">
+                      {quickDocuments.length} documento(s)
+                    </Badge>
+                  </div>
+                  <div className="max-h-32 overflow-auto border border-[#e5e5e5] dark:border-gray-700 rounded">
+                    <table className="w-full border-collapse text-xs">
+                      <thead className="bg-[#f3f3f3] dark:bg-[#1b1b1b]">
+                        <tr>
+                          <th className="text-left px-2 py-1 border-b border-[#e5e5e5] dark:border-gray-700">
+                            Título
+                          </th>
+                          <th className="text-left px-2 py-1 border-b border-[#e5e5e5] dark:border-gray-700">
+                            ID
+                          </th>
+                          <th className="w-10 px-2 py-1 border-b border-[#e5e5e5] dark:border-gray-700"></th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {quickDocuments.map((doc) => (
+                          <tr
+                            key={doc.id}
+                            className="odd:bg-white even:bg-[#fafafa] dark:odd:bg-[#141414] dark:even:bg-[#161616]"
+                          >
+                            <td className="px-2 py-1 border-b border-[#f0f0f0] dark:border-gray-800">
+                              <span className="text-[11px] text-gray-900 dark:text-gray-100">
+                                {doc.title}
+                              </span>
+                            </td>
+                            <td className="px-2 py-1 border-b border-[#f0f0f0] dark:border-gray-800">
+                              <code className="text-[10px] font-mono bg-[#f5f5f5] dark:bg-[#1b1b1b] px-1.5 py-0.5 rounded text-gray-900 dark:text-gray-100">
+                                {doc.id}
+                              </code>
+                            </td>
+                            <td className="px-2 py-1 border-b border-[#f0f0f0] dark:border-gray-800 text-right">
+                              <Button
+                                size="icon"
+                                variant="ghost"
+                                className="h-6 w-6 rounded-none"
+                                onClick={() => handleCopy(doc.id)}
+                              >
+                                {copiedId === doc.id ? (
+                                  <Check className="w-3 h-3 text-green-500" />
+                                ) : (
+                                  <Copy className="w-3 h-3" />
+                                )}
+                              </Button>
+                            </td>
+                          </tr>
+                        ))}
+                        {quickDocuments.length === 0 && !loadingQuickDocuments && (
+                          <tr>
+                            <td
+                              colSpan={3}
+                              className="px-2 py-3 text-center text-[11px] text-gray-500 dark:text-gray-400"
+                            >
+                              Nenhum documento rápido cadastrado.
+                            </td>
+                          </tr>
+                        )}
+                        {loadingQuickDocuments && (
+                          <tr>
+                            <td
+                              colSpan={3}
+                              className="px-2 py-3 text-center text-[11px] text-gray-500 dark:text-gray-400"
+                            >
+                              Carregando documentos...
+                            </td>
+                          </tr>
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+
+                {/* Mídias Rápidas (Imagens) */}
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <Label className="text-xs font-medium text-gray-700 dark:text-gray-300 flex items-center gap-1">
+                      <Image className="w-3 h-3" />
+                      Mídias Rápidas (Imagens)
+                    </Label>
+                    <Badge variant="outline" className="text-[10px] rounded-none">
+                      {quickMedia.length} mídia(s)
+                    </Badge>
+                  </div>
+                  <div className="max-h-32 overflow-auto border border-[#e5e5e5] dark:border-gray-700 rounded">
+                    <table className="w-full border-collapse text-xs">
+                      <thead className="bg-[#f3f3f3] dark:bg-[#1b1b1b]">
+                        <tr>
+                          <th className="text-left px-2 py-1 border-b border-[#e5e5e5] dark:border-gray-700">
+                            Título
+                          </th>
+                          <th className="text-left px-2 py-1 border-b border-[#e5e5e5] dark:border-gray-700">
+                            ID
+                          </th>
+                          <th className="w-10 px-2 py-1 border-b border-[#e5e5e5] dark:border-gray-700"></th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {quickMedia.map((media) => (
+                          <tr
+                            key={media.id}
+                            className="odd:bg-white even:bg-[#fafafa] dark:odd:bg-[#141414] dark:even:bg-[#161616]"
+                          >
+                            <td className="px-2 py-1 border-b border-[#f0f0f0] dark:border-gray-800">
+                              <span className="text-[11px] text-gray-900 dark:text-gray-100">
+                                {media.title}
+                              </span>
+                            </td>
+                            <td className="px-2 py-1 border-b border-[#f0f0f0] dark:border-gray-800">
+                              <code className="text-[10px] font-mono bg-[#f5f5f5] dark:bg-[#1b1b1b] px-1.5 py-0.5 rounded text-gray-900 dark:text-gray-100">
+                                {media.id}
+                              </code>
+                            </td>
+                            <td className="px-2 py-1 border-b border-[#f0f0f0] dark:border-gray-800 text-right">
+                              <Button
+                                size="icon"
+                                variant="ghost"
+                                className="h-6 w-6 rounded-none"
+                                onClick={() => handleCopy(media.id)}
+                              >
+                                {copiedId === media.id ? (
+                                  <Check className="w-3 h-3 text-green-500" />
+                                ) : (
+                                  <Copy className="w-3 h-3" />
+                                )}
+                              </Button>
+                            </td>
+                          </tr>
+                        ))}
+                        {quickMedia.length === 0 && !loadingQuickMedia && (
+                          <tr>
+                            <td
+                              colSpan={3}
+                              className="px-2 py-3 text-center text-[11px] text-gray-500 dark:text-gray-400"
+                            >
+                              Nenhuma mídia rápida cadastrada.
+                            </td>
+                          </tr>
+                        )}
+                        {loadingQuickMedia && (
+                          <tr>
+                            <td
+                              colSpan={3}
+                              className="px-2 py-3 text-center text-[11px] text-gray-500 dark:text-gray-400"
+                            >
+                              Carregando mídias...
+                            </td>
+                          </tr>
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+
+                {/* Funis Rápidos */}
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <Label className="text-xs font-medium text-gray-700 dark:text-gray-300 flex items-center gap-1">
+                      <GitBranch className="w-3 h-3" />
+                      Funis Rápidos
+                    </Label>
+                    <Badge variant="outline" className="text-[10px] rounded-none">
+                      {quickFunnels.length} funil(is)
+                    </Badge>
+                  </div>
+                  <div className="max-h-32 overflow-auto border border-[#e5e5e5] dark:border-gray-700 rounded">
+                    <table className="w-full border-collapse text-xs">
+                      <thead className="bg-[#f3f3f3] dark:bg-[#1b1b1b]">
+                        <tr>
+                          <th className="text-left px-2 py-1 border-b border-[#e5e5e5] dark:border-gray-700">
+                            Nome
+                          </th>
+                          <th className="text-left px-2 py-1 border-b border-[#e5e5e5] dark:border-gray-700">
+                            ID
+                          </th>
+                          <th className="w-10 px-2 py-1 border-b border-[#e5e5e5] dark:border-gray-700"></th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {quickFunnels.map((funnel) => (
+                          <tr
+                            key={funnel.id}
+                            className="odd:bg-white even:bg-[#fafafa] dark:odd:bg-[#141414] dark:even:bg-[#161616]"
+                          >
+                            <td className="px-2 py-1 border-b border-[#f0f0f0] dark:border-gray-800">
+                              <span className="text-[11px] text-gray-900 dark:text-gray-100">
+                                {funnel.title}
+                              </span>
+                            </td>
+                            <td className="px-2 py-1 border-b border-[#f0f0f0] dark:border-gray-800">
+                              <code className="text-[10px] font-mono bg-[#f5f5f5] dark:bg-[#1b1b1b] px-1.5 py-0.5 rounded text-gray-900 dark:text-gray-100">
+                                {funnel.id}
+                              </code>
+                            </td>
+                            <td className="px-2 py-1 border-b border-[#f0f0f0] dark:border-gray-800 text-right">
+                              <Button
+                                size="icon"
+                                variant="ghost"
+                                className="h-6 w-6 rounded-none"
+                                onClick={() => handleCopy(funnel.id)}
+                              >
+                                {copiedId === funnel.id ? (
+                                  <Check className="w-3 h-3 text-green-500" />
+                                ) : (
+                                  <Copy className="w-3 h-3" />
+                                )}
+                              </Button>
+                            </td>
+                          </tr>
+                        ))}
+                        {quickFunnels.length === 0 && !loadingQuickFunnels && (
+                          <tr>
+                            <td
+                              colSpan={3}
+                              className="px-2 py-3 text-center text-[11px] text-gray-500 dark:text-gray-400"
+                            >
+                              Nenhum funil rápido cadastrado.
+                            </td>
+                          </tr>
+                        )}
+                        {loadingQuickFunnels && (
+                          <tr>
+                            <td
+                              colSpan={3}
+                              className="px-2 py-3 text-center text-[11px] text-gray-500 dark:text-gray-400"
+                            >
+                              Carregando funis...
                             </td>
                           </tr>
                         )}

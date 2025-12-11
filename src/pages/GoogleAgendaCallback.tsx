@@ -26,7 +26,7 @@ const GoogleAgendaCallback = () => {
   useEffect(() => {
     const params = new URLSearchParams(location.search);
     const code = params.get("code");
-    const state = params.get("state");
+    const state = params.get("state")?.trim();
     const error = params.get("error");
     const errorDescription = params.get("error_description");
 
@@ -45,6 +45,20 @@ const GoogleAgendaCallback = () => {
       return;
     }
 
+    // Validar formato do state (deve ser um UUID válido)
+    const trimmedState = state.trim();
+    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    if (!uuidRegex.test(trimmedState)) {
+      console.error("❌ State com formato inválido recebido:", {
+        state: trimmedState,
+        length: trimmedState.length,
+        raw: state
+      });
+      setStatus("error");
+      setMessage("Formato de autenticação inválido. Por favor, inicie o processo novamente.");
+      return;
+    }
+
     if (!headers) {
       setStatus("error");
       setMessage("Não encontramos o workspace atual. Abra novamente a página de integração.");
@@ -56,21 +70,29 @@ const GoogleAgendaCallback = () => {
         setStatus("processing");
         setMessage("Confirmando as permissões junto ao Google. Aguarde alguns segundos...");
 
-        const { error: exchangeError } = await supabase.functions.invoke(
+        console.log("🔐 [Callback] Enviando code e state para exchange:", {
+          codeLength: code.length,
+          state: trimmedState.substring(0, 8) + "..."
+        });
+
+        const { error: exchangeError, data: exchangeData } = await supabase.functions.invoke(
           "google-calendar-integration",
           {
             headers,
             body: {
               action: "exchange-code",
               code,
-              state,
+              state: trimmedState,
             },
           }
         );
 
         if (exchangeError) {
+          console.error("❌ Erro ao fazer exchange:", exchangeError);
           throw exchangeError;
         }
+        
+        console.log("✅ Exchange concluído com sucesso:", exchangeData);
 
         setStatus("success");
         setMessage("Integração concluída com sucesso! Redirecionando para o painel...");
@@ -101,9 +123,20 @@ const GoogleAgendaCallback = () => {
       } catch (err: any) {
         console.error("❌ Falha ao finalizar o OAuth da Google Agenda", err);
         setStatus("error");
-        setMessage(
-          err?.message ?? "Não foi possível concluir a integração. Tente novamente mais tarde."
-        );
+        
+        let errorMessage = "Não foi possível concluir a integração. Tente novamente mais tarde.";
+        
+        if (err?.message) {
+          if (err.message.includes("Invalid state format")) {
+            errorMessage = "Erro no formato de autenticação. Por favor, feche esta janela e inicie o processo novamente.";
+          } else if (err.message.includes("State inválido") || err.message.includes("expirado")) {
+            errorMessage = "A sessão de autenticação expirou ou é inválida. Por favor, feche esta janela e inicie o processo novamente.";
+          } else {
+            errorMessage = err.message;
+          }
+        }
+        
+        setMessage(errorMessage);
 
         // Em caso de erro, também avisar o opener/parent se estivermos em um popup ou iframe
         if (window.opener) {
