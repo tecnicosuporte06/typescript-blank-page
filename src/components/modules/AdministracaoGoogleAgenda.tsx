@@ -65,7 +65,7 @@ export function AdministracaoGoogleAgenda() {
       const {
         data,
         error,
-      } = await supabase.functions.invoke<IntegrationStatus>(
+      } = await supabase.functions.invoke<any>(
         "google-calendar-integration",
         {
           headers,
@@ -74,7 +74,18 @@ export function AdministracaoGoogleAgenda() {
       );
 
       if (error) throw error;
-      setStatus(data);
+
+      // Se o backend sinalizar que as credenciais globais não estão configuradas
+      if (data?.error === "GOOGLE_SETTINGS_NOT_CONFIGURED") {
+        setStatus(null);
+        setLoading(false);
+        toast.error(
+          "As credenciais do aplicativo Google Agenda ainda não foram configuradas pelo painel MASTER."
+        );
+        return;
+      }
+
+      setStatus(data as IntegrationStatus);
     } catch (error: any) {
       console.error("❌ Erro ao carregar status da Google Agenda", error);
       toast.error(
@@ -100,13 +111,21 @@ export function AdministracaoGoogleAgenda() {
     setIsRedirecting(true);
     try {
       const { data, error } = await supabase.functions.invoke<{
-        authUrl: string;
+        authUrl?: string;
+        error?: string;
       }>("google-calendar-integration", {
         headers,
         body: { action: "auth-url" },
       });
 
       if (error) throw error;
+
+      if (data?.error === "GOOGLE_SETTINGS_NOT_CONFIGURED") {
+        throw new Error(
+          "As credenciais globais do aplicativo Google Agenda não estão configuradas. Peça ao usuário MASTER para configurá-las."
+        );
+      }
+
       if (!data?.authUrl) {
         throw new Error("Não recebemos o link de autenticação do Google.");
       }

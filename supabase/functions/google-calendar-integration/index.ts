@@ -18,6 +18,35 @@ const getEnvOrThrow = (key: string) => {
   return value;
 };
 
+interface GoogleGlobalSettings {
+  id: string;
+  client_id: string;
+  client_secret: string;
+  redirect_uri: string;
+}
+
+const getGlobalGoogleSettings = async (
+  client: SupabaseClient<any>,
+): Promise<GoogleGlobalSettings> => {
+  const { data, error } = await client
+    .from("system_google_calendar_settings")
+    .select("*")
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (error) {
+    console.error("❌ Erro ao buscar system_google_calendar_settings:", error);
+    throw new Error("GOOGLE_SETTINGS_DB_ERROR");
+  }
+
+  if (!data) {
+    throw new Error("GOOGLE_SETTINGS_NOT_CONFIGURED");
+  }
+
+  return data as GoogleGlobalSettings;
+};
+
 const base64UrlEncode = (input: ArrayBuffer | Uint8Array) => {
   const buffer = input instanceof Uint8Array ? input : new Uint8Array(input);
   const string = btoa(String.fromCharCode(...buffer));
@@ -57,9 +86,11 @@ const cleanupExpiredStates = async (client: SupabaseClient<any>) => {
   }
 };
 
-const tryRefreshAccessToken = async (refreshToken: string) => {
-  const clientId = getEnvOrThrow("GOOGLE_OAUTH_CLIENT_ID");
-  const clientSecret = getEnvOrThrow("GOOGLE_OAUTH_CLIENT_SECRET");
+const tryRefreshAccessToken = async (
+  refreshToken: string,
+  clientId: string,
+  clientSecret: string,
+) => {
 
   const params = new URLSearchParams({
     client_id: clientId,
@@ -92,9 +123,11 @@ const tryRefreshAccessToken = async (refreshToken: string) => {
   };
 };
 
-const revokeRefreshToken = async (refreshToken: string) => {
-  const clientId = getEnvOrThrow("GOOGLE_OAUTH_CLIENT_ID");
-  const clientSecret = getEnvOrThrow("GOOGLE_OAUTH_CLIENT_SECRET");
+const revokeRefreshToken = async (
+  refreshToken: string,
+  clientId: string,
+  clientSecret: string,
+) => {
 
   const params = new URLSearchParams({
     token: refreshToken,
@@ -140,6 +173,22 @@ const handleStatus = async (
   workspaceId: string,
   userId: string,
 ) => {
+  // Verificar se há credenciais globais configuradas; se não houver, retornar erro específico
+  try {
+    await getGlobalGoogleSettings(client);
+  } catch (settingsError) {
+    console.error("❌ Google settings não configuradas:", settingsError);
+    return respond({
+      connected: false,
+      requiresReconnect: false,
+      googleEmail: null,
+      authorizedAt: null,
+      scopes: [],
+      revokedAt: null,
+      error: "GOOGLE_SETTINGS_NOT_CONFIGURED",
+    });
+  }
+
   const { data, error } = await client
     .from("google_calendar_authorizations")
     .select("*")
@@ -174,8 +223,11 @@ const handleStatus = async (
     const now = Date.now();
 
     if (now - lastCheck > TOKEN_HEALTHCHECK_INTERVAL_MS) {
+      const globalSettings = await getGlobalGoogleSettings(client);
       const refreshResult = await tryRefreshAccessToken(
         authorization.refresh_token,
+        globalSettings.client_id,
+        globalSettings.client_secret,
       );
       if (!refreshResult.success) {
         requiresReconnect = true;
@@ -230,10 +282,11 @@ const handleAuthUrl = async (
   userId: string,
   body: Record<string, unknown>,
 ) => {
-  const redirectUriEnv = getEnvOrThrow("GOOGLE_OAUTH_REDIRECT_URI");
-  console.log("🔐 [Google Calendar] Usando redirect URI configurado:", redirectUriEnv);
+  const globalSettings = await getGlobalGoogleSettings(client);
+  const redirectUriEnv = globalSettings.redirect_uri;
+  const clientId = globalSettings.client_id;
 
-  const clientId = getEnvOrThrow("GOOGLE_OAUTH_CLIENT_ID");
+  console.log("🔐 [Google Calendar] Usando redirect URI configurado (dinâmico):", redirectUriEnv);
   const state = crypto.randomUUID();
   const codeVerifier = generateCodeVerifier();
   const codeChallenge = await generateCodeChallenge(codeVerifier);
@@ -279,10 +332,9 @@ const exchangeAuthorizationCode = async (
   code: string,
   codeVerifier: string,
   redirectUri: string,
+  clientId: string,
+  clientSecret: string,
 ) => {
-  const clientId = getEnvOrThrow("GOOGLE_OAUTH_CLIENT_ID");
-  const clientSecret = getEnvOrThrow("GOOGLE_OAUTH_CLIENT_SECRET");
-
   const params = new URLSearchParams({
     client_id: clientId,
     client_secret: clientSecret,
@@ -324,8 +376,9 @@ const handleExchangeCode = async (
     throw new Error("Código de autorização ou state ausentes");
   }
 
-  const redirectUriEnv = getEnvOrThrow("GOOGLE_OAUTH_REDIRECT_URI");
-  console.log("🔐 [Google Calendar] Finalizando OAuth com redirect URI:", redirectUriEnv);
+  const globalSettings = await getGlobalGoogleSettings(client);
+  const redirectUriEnv = globalSettings.redirect_uri;
+  console.log("🔐 [Google Calendar] Finalizando OAuth com redirect URI (dinâmico):", redirectUriEnv);
 
   const { data: oauthState, error: stateError } = await client
     .from("google_calendar_oauth_states")
@@ -358,6 +411,8 @@ const handleExchangeCode = async (
     code,
     oauthState.code_verifier,
     redirectUriEnv,
+    globalSettings.client_id,
+    globalSettings.client_secret,
   );
 
   if (!tokenPayload.refresh_token) {
@@ -445,7 +500,12 @@ const handleDisconnect = async (
     return respond({ success: true });
   }
 
-  await revokeRefreshToken(data.refresh_token);
+  const globalSettings = await getGlobalGoogleSettings(client);
+  await revokeRefreshToken(
+    data.refresh_token,
+    globalSettings.client_id,
+    globalSettings.client_secret,
+  );
 
   const { error: deleteError } = await client
     .from("google_calendar_authorizations")
