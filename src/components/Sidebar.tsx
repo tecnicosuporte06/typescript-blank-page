@@ -33,6 +33,7 @@ interface MenuItem {
   label: string;
   icon: React.ReactNode;
   children?: MenuItem[];
+  masterOnly?: boolean;
 }
 
 export function Sidebar({
@@ -163,6 +164,7 @@ export function Sidebar({
 
   const menuItems: (MenuItem & {
     group?: string;
+    masterOnly?: boolean;
   })[] = [{
     id: "dashboard",
     label: "Relatórios",
@@ -213,16 +215,24 @@ export function Sidebar({
     id: "administracao-google-agenda",
     label: "Google Agenda",
     icon: <Calendar className="w-5 h-5" />,
-    group: "administracao"
+    group: "administracao",
+    masterOnly: true
   }, {
     id: "administracao-acoes",
     label: "Configuração de Ações",
     icon: <Settings className="w-5 h-5" />,
     group: "administracao"
-  }];
+  }].filter(item => {
+    // Filtrar itens masterOnly se o usuário não for master
+    if (item.masterOnly && userRole !== 'master') {
+      return false;
+    }
+    return true;
+  });
 
   const renderMenuItem = (item: MenuItem & {
     group?: string;
+    masterOnly?: boolean;
   }) => {
     const isActive = activeModule === item.id;
 
