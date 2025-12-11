@@ -216,7 +216,7 @@ const App = () => (
             } />
             <Route path="/workspace/:workspaceId/workspace-api-keys" element={
               <ProtectedRoute>
-                <RoleProtectedRoute allowedRoles={['master', 'admin']}>
+                <RoleProtectedRoute allowedRoles={['master']}>
                   <TezeusCRM />
                 </RoleProtectedRoute>
               </ProtectedRoute>

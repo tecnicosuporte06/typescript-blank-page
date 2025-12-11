@@ -61,6 +61,11 @@ function AgentBadge({ conversationId }: { conversationId: string }) {
   
   if (isLoading) return null;
   if (!agent) return null;
+
+  const displayName =
+    agent.name && agent.name.length > 8
+      ? `${agent.name.slice(0, 8)}...`
+      : agent.name;
   
   return (
     <TooltipProvider>
@@ -68,7 +73,7 @@ function AgentBadge({ conversationId }: { conversationId: string }) {
         <TooltipTrigger asChild>
           <div className="flex items-center gap-0.5 px-1.5 py-0.5 rounded-md bg-purple-100 dark:bg-purple-900 text-purple-600 dark:text-purple-300 border border-purple-200 dark:border-purple-700">
             <Bot className="h-3 w-3" />
-            <span className="text-[10px] font-medium">{agent.name}</span>
+            <span className="text-[10px] font-medium">{displayName}</span>
           </div>
         </TooltipTrigger>
         <TooltipContent side="bottom">

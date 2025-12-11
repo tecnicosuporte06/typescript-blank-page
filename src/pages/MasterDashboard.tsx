@@ -32,6 +32,7 @@ import { CreateWorkspaceModal } from '@/components/modals/CreateWorkspaceModal';
 import { ImportNegociosContatosModal } from '@/components/modals/ImportNegociosContatosModal';
 import { supabase } from '@/integrations/supabase/client';
 import { RelatoriosAvancados } from '@/components/relatorios-avancados/RelatoriosAvancados';
+import { MasterBuscaIds } from '@/components/modules/master/MasterBuscaIds';
 import { Badge } from '@/components/ui/badge';
 import { formatDistanceToNow } from "date-fns";
 import { ptBR } from "date-fns/locale";
@@ -54,7 +55,9 @@ export default function MasterDashboard() {
     firstWorkspace: workspaces[0]
   });
   const [searchQuery, setSearchQuery] = useState('');
-  const [activePage, setActivePage] = useState<'home' | 'users' | 'workspaces' | 'reports' | 'settings' | 'ds-agent' | 'filas' | 'usuarios' | 'configuracoes'>('workspaces');
+  const [activePage, setActivePage] = useState<
+    'home' | 'users' | 'workspaces' | 'reports' | 'settings' | 'ds-agent' | 'filas' | 'usuarios' | 'configuracoes' | 'busca-ids'
+  >('workspaces');
   const [usersModalOpen, setUsersModalOpen] = useState(false);
   const [selectedWorkspaceForModal, setSelectedWorkspaceForModal] = useState<Workspace | null>(null);
   const [configModalOpen, setConfigModalOpen] = useState(false);
@@ -299,6 +302,24 @@ export default function MasterDashboard() {
               activePage === 'reports' ? "text-black dark:text-white" : "text-gray-500 group-hover:text-gray-700 dark:text-gray-400 dark:group-hover:text-gray-200"
             )} />
             <span className="truncate">Relatórios</span>
+          </button>
+          
+          <button
+            onClick={() => setActivePage('busca-ids')}
+            className={cn(
+              "w-full flex items-center transition-all relative group border border-transparent outline-none",
+              "gap-2 px-3 py-1.5",
+              "text-sm font-medium rounded-none",
+              activePage === 'busca-ids'
+                ? "bg-[#FEF3C7] border-gray-300 text-black font-bold shadow-sm z-10 dark:bg-gray-700 dark:border-gray-600 dark:text-white"
+                : "text-gray-700 hover:bg-[#e1e1e1] hover:border-gray-300 hover:z-10 dark:text-gray-300 dark:hover:bg-gray-800 dark:hover:border-gray-600"
+            )}
+          >
+            <Search className={cn(
+              "transition-all duration-300 w-3.5 h-3.5",
+              activePage === 'busca-ids' ? "text-black dark:text-white" : "text-gray-500 group-hover:text-gray-700 dark:text-gray-400 dark:group-hover:text-gray-200"
+            )} />
+            <span className="truncate">Busca por IDs</span>
           </button>
           
           <button
@@ -558,7 +579,18 @@ export default function MasterDashboard() {
         )}
 
         {/* Content Area */}
-        <main className={`flex-1 ${activePage === 'reports' ? 'overflow-hidden flex flex-col' : activePage === 'workspaces' || activePage === 'usuarios' || activePage === 'filas' || activePage === 'configuracoes' || activePage === 'ds-agent' ? 'overflow-hidden flex flex-col bg-white dark:bg-[#050505]' : 'p-6 overflow-auto'}`}>
+        <main className={`flex-1 ${
+          activePage === 'reports'
+            ? 'overflow-hidden flex flex-col'
+            : activePage === 'workspaces' ||
+              activePage === 'usuarios' ||
+              activePage === 'filas' ||
+              activePage === 'configuracoes' ||
+              activePage === 'ds-agent' ||
+              activePage === 'busca-ids'
+            ? 'overflow-hidden flex flex-col bg-white dark:bg-[#050505]'
+            : 'p-6 overflow-auto'
+        }`}>
           {activePage === 'workspaces' ? (
             <div className="h-full flex flex-col">
               {/* Excel-style Table */}
@@ -764,6 +796,10 @@ export default function MasterDashboard() {
             </div>
           ) : activePage === 'reports' ? (
             <RelatoriosAvancados workspaces={workspaces} />
+          ) : activePage === 'busca-ids' ? (
+            <div className="h-full flex flex-col">
+              <MasterBuscaIds workspaces={workspaces} />
+            </div>
           ) : activePage === 'ds-agent' ? (
             <div className="h-full flex flex-col">
               <DSAgenteMaster ref={agentesRef} />

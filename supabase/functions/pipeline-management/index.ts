@@ -1079,6 +1079,7 @@ serve(async (req) => {
       'x-system-user-id': req.headers.get('x-system-user-id'),
       'x-system-user-email': req.headers.get('x-system-user-email'),
       'x-workspace-id': req.headers.get('x-workspace-id'),
+      'x-force-column-automation': req.headers.get('x-force-column-automation'),
       'user-agent': req.headers.get('user-agent')
     });
 
@@ -2188,11 +2189,13 @@ serve(async (req) => {
 
           // ✅ EXECUTAR AUTOMAÇÕES quando card entra em nova coluna
           console.log('🔍 ========== VERIFICANDO SE DEVE ACIONAR AUTOMAÇÕES ==========');
+          const forceColumnAutomation = req.headers.get('x-force-column-automation') === 'true';
           console.log('🔍 Condições:');
           console.log('  - body.column_id !== undefined:', body.column_id !== undefined);
           console.log('  - previousColumnId:', previousColumnId);
           console.log('  - previousColumnId === null:', previousColumnId === null);
           console.log('  - previousColumnId !== body.column_id:', previousColumnId !== body.column_id);
+          console.log('  - forceColumnAutomation (header):', forceColumnAutomation);
           
           // Verificar: column_id foi atualizado E (houve mudança OU é a primeira vez que entra na coluna)
           const columnChanged = body.column_id !== undefined && 
@@ -2207,8 +2210,8 @@ serve(async (req) => {
             isDifferentColumn: previousColumnId !== null && previousColumnId !== body.column_id
           });
 
-          if (columnChanged) {
-            console.log(`🤖 ✅ COLUNA MUDOU - ACIONANDO AUTOMAÇÕES!`);
+          if (columnChanged || forceColumnAutomation) {
+            console.log(`🤖 ✅ CONDIÇÃO PARA AUTOMAÇÕES ATINGIDA (columnChanged=${columnChanged}, force=${forceColumnAutomation})`);
             console.log(`🤖 ========== AUTOMAÇÃO TRIGGERED ==========`);
             console.log(`🤖 Card entrou em nova coluna: ${previousColumnId} -> ${body.column_id}`);
             console.log(`📦 Dados do card:`, JSON.stringify({

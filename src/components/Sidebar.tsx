@@ -219,11 +219,6 @@ export function Sidebar({
     label: "Configuração de Ações",
     icon: <Settings className="w-5 h-5" />,
     group: "administracao"
-  }, {
-    id: "workspace-api-keys",
-    label: "API Keys",
-    icon: <Key className="w-5 h-5" />,
-    group: "administracao"
   }];
 
   const renderMenuItem = (item: MenuItem & {
