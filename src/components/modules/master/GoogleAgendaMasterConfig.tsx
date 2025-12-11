@@ -7,7 +7,7 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
-import { Lock, RefreshCcw, Save } from "lucide-react";
+import { Lock, RefreshCcw, Save, Calendar } from "lucide-react";
 
 interface GoogleSettings {
   id: string;
