@@ -17,14 +17,14 @@ interface RequestPayload {
   action: "create_contact_with_card";
   workspace_id: string;
   contact: {
-    name: string;
-    phone?: string;
-    email?: string;
+  name: string;
+  phone?: string;
+  email?: string;
   };
   card: {
-    pipeline_id: string;
-    column_id: string;
-    value?: number;
+  pipeline_id: string;
+  column_id: string;
+  value?: number;
     queue_id?: string;
   };
   conversation?: {
@@ -66,7 +66,7 @@ async function assignConversationToQueue(
   let parsed;
   try {
     parsed = JSON.parse(text);
-  } catch {
+    } catch {
     parsed = text;
   }
 
@@ -108,7 +108,7 @@ async function triggerColumnAutomationsForCard(
       // Forçar execução das automações de "entrada na coluna" mesmo para cards recém-criados
       "x-force-column-automation": "true",
     },
-    body: JSON.stringify({
+              body: JSON.stringify({
       column_id: columnId,
       pipeline_id: pipelineId,
     }),
@@ -144,14 +144,14 @@ serve(async (req) => {
        CREATE CONTACT
     ===================== */
     const { data: contact } = await supabase
-      .from("contacts")
+              .from("contacts")
       .insert({
         name: payload.contact.name,
         phone: payload.contact.phone,
         email: payload.contact.email ?? null,
         workspace_id: payload.workspace_id,
       })
-      .select("id")
+                .select("id")
       .single();
 
     /* =====================
@@ -164,12 +164,12 @@ serve(async (req) => {
         .from("conversations")
         .insert({
           contact_id: contact.id,
-          workspace_id: payload.workspace_id,
-          status: "open",
-          canal: "whatsapp",
+                  workspace_id: payload.workspace_id,
+                  status: "open",
+                  canal: "whatsapp",
         })
-        .select("id")
-        .single();
+                  .select("id")
+                  .single();
 
       conversationId = conv.id;
     }
@@ -203,7 +203,7 @@ serve(async (req) => {
       if (!queueResult.success) {
         return new Response(
           JSON.stringify({
-            success: false,
+          success: false,
             error: "QUEUE_ASSIGNMENT_FAILED",
             details: queueResult.error,
           }),
@@ -245,8 +245,8 @@ serve(async (req) => {
   } catch (err: any) {
     return new Response(
       JSON.stringify({
-        success: false,
-        error: "INTERNAL_ERROR",
+      success: false,
+      error: "INTERNAL_ERROR",
         message: err?.message ?? String(err),
       }),
       { status: 500, headers: corsHeaders }

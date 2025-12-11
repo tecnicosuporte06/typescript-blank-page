@@ -75,6 +75,26 @@ const GoogleAgendaCallback = () => {
         setStatus("success");
         setMessage("Integração concluída com sucesso! Redirecionando para o painel...");
 
+        // Se foi aberto em uma janela popup ou iframe, notificar o opener/parent
+        if (window.opener) {
+          window.opener.postMessage(
+            { type: "google-calendar-oauth-complete", status: "success" },
+            window.location.origin
+          );
+          window.close();
+          return;
+        }
+
+        // Se estiver dentro de um iframe, notificar a janela pai
+        if (window.parent && window.parent !== window) {
+          window.parent.postMessage(
+            { type: "google-calendar-oauth-complete", status: "success" },
+            window.location.origin
+          );
+          // Não fechar, apenas mostrar mensagem de sucesso
+          return;
+        }
+
         setTimeout(() => {
           navigate("/administracao-google-agenda", { replace: true });
         }, 2000);
@@ -84,6 +104,36 @@ const GoogleAgendaCallback = () => {
         setMessage(
           err?.message ?? "Não foi possível concluir a integração. Tente novamente mais tarde."
         );
+
+        // Em caso de erro, também avisar o opener/parent se estivermos em um popup ou iframe
+        if (window.opener) {
+          window.opener.postMessage(
+            {
+              type: "google-calendar-oauth-complete",
+              status: "error",
+              message:
+                err?.message ??
+                "Não foi possível concluir a integração. Tente novamente mais tarde.",
+            },
+            window.location.origin
+          );
+          window.close();
+          return;
+        }
+
+        // Se estiver dentro de um iframe, notificar a janela pai
+        if (window.parent && window.parent !== window) {
+          window.parent.postMessage(
+            {
+              type: "google-calendar-oauth-complete",
+              status: "error",
+              message:
+                err?.message ??
+                "Não foi possível concluir a integração. Tente novamente mais tarde.",
+            },
+            window.location.origin
+          );
+        }
       }
     };
 

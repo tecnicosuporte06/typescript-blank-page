@@ -1,10 +1,11 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState, useRef } from "react";
 import { Calendar, CheckCircle2, LogOut, ShieldCheck, RefreshCcw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { supabase } from "@/integrations/supabase/client";
 import { getWorkspaceHeaders } from "@/lib/workspaceHeaders";
 import { useWorkspace } from "@/contexts/WorkspaceContext";
@@ -38,6 +39,10 @@ export function AdministracaoGoogleAgenda() {
   const [loading, setLoading] = useState(true);
   const [isRedirecting, setIsRedirecting] = useState(false);
   const [isDisconnecting, setIsDisconnecting] = useState(false);
+  const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
+  const [authUrl, setAuthUrl] = useState<string | null>(null);
+  const [isDarkMode, setIsDarkMode] = useState(false);
+  const iframeRef = useRef<HTMLIFrameElement>(null);
 
   const redirectUri = useMemo(
     () => `${window.location.origin}/google-agenda/callback`,
@@ -102,6 +107,59 @@ export function AdministracaoGoogleAgenda() {
     loadStatus();
   }, [loadStatus]);
 
+  // Detectar modo escuro/claro
+  useEffect(() => {
+    const checkDarkMode = () => {
+      const isDark = document.documentElement.classList.contains('dark') ||
+        localStorage.getItem('theme') === 'dark' ||
+        (!localStorage.getItem('theme') && window.matchMedia('(prefers-color-scheme: dark)').matches);
+      setIsDarkMode(isDark);
+    };
+
+    checkDarkMode();
+
+    // Observar mudanças no tema
+    const observer = new MutationObserver(checkDarkMode);
+    observer.observe(document.documentElement, {
+      attributes: true,
+      attributeFilter: ['class']
+    });
+
+    // Observar mudanças no localStorage
+    const handleStorageChange = () => checkDarkMode();
+    window.addEventListener('storage', handleStorageChange);
+
+    return () => {
+      observer.disconnect();
+      window.removeEventListener('storage', handleStorageChange);
+    };
+  }, []);
+
+  // Listener para mensagens do callback
+  useEffect(() => {
+    const handleMessage = (event: MessageEvent) => {
+      // Verificar origem para segurança
+      if (event.origin !== window.location.origin) return;
+
+      if (event.data?.type === 'google-calendar-oauth-complete') {
+        setIsAuthModalOpen(false);
+        setAuthUrl(null);
+
+        if (event.data.status === 'success') {
+          toast.success('Integração com Google Agenda concluída com sucesso!');
+          loadStatus();
+        } else {
+          toast.error(
+            event.data.message || 'Não foi possível concluir a integração. Tente novamente.'
+          );
+        }
+      }
+    };
+
+    window.addEventListener('message', handleMessage);
+    return () => window.removeEventListener('message', handleMessage);
+  }, [loadStatus]);
+
   const handleConnect = async () => {
     if (!headers) {
       toast.error("Selecione um workspace antes de conectar sua agenda.");
@@ -130,7 +188,9 @@ export function AdministracaoGoogleAgenda() {
         throw new Error("Não recebemos o link de autenticação do Google.");
       }
 
-      window.location.href = data.authUrl;
+      // Abrir modal com iframe ao invés de redirecionar
+      setAuthUrl(data.authUrl);
+      setIsAuthModalOpen(true);
     } catch (error: any) {
       console.error("❌ Erro ao iniciar OAuth com Google", error);
       toast.error(
@@ -351,6 +411,28 @@ export function AdministracaoGoogleAgenda() {
           </ul>
         </AlertDescription>
       </Alert>
+
+      {/* Modal de Autenticação Google */}
+      <Dialog open={isAuthModalOpen} onOpenChange={setIsAuthModalOpen}>
+        <DialogContent className={`sm:max-w-2xl max-w-[90vw] w-full h-[85vh] p-0 gap-0 border border-[#d4d4d4] dark:border-gray-700 bg-white dark:bg-[#0f0f0f] shadow-lg rounded-none overflow-hidden flex flex-col ${isDarkMode ? 'dark' : ''}`}>
+          <DialogHeader className="bg-primary p-4 rounded-none m-0 flex-shrink-0 border-b border-[#d4d4d4] dark:border-gray-700">
+            <DialogTitle className="text-primary-foreground text-base font-bold">
+              Autenticação Google Agenda
+            </DialogTitle>
+          </DialogHeader>
+          <div className="flex-1 relative overflow-hidden">
+            {authUrl && (
+              <iframe
+                ref={iframeRef}
+                src={authUrl}
+                className="w-full h-full border-0"
+                title="Autenticação Google Agenda"
+                allow="popups"
+              />
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
