@@ -58,6 +58,7 @@ serve(async (req) => {
         client_secret?: string;
         redirect_uri?: string;
         project_id?: string | null;
+        webhook_url?: string | null;
       };
 
       if (!payload?.client_id || !payload?.redirect_uri) {
@@ -87,6 +88,7 @@ serve(async (req) => {
         client_id: payload.client_id,
         redirect_uri: payload.redirect_uri,
         project_id: payload.project_id ?? null,
+        webhook_url: payload.webhook_url ?? null,
       };
 
       if (payload.client_secret) {
@@ -127,6 +129,7 @@ serve(async (req) => {
             client_secret: payload.client_secret,
             redirect_uri: payload.redirect_uri,
             project_id: payload.project_id ?? null,
+            webhook_url: payload.webhook_url ?? null,
           })
           .select()
           .single();

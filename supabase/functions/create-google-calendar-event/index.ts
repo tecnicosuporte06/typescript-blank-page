@@ -42,6 +42,7 @@ const getWebhookUrl = async (
   client: SupabaseClient<any>,
   workspaceId: string,
 ): Promise<string | null> => {
+  // 1. Buscar webhook do workspace (específico ou padrão)
   const { data, error } = await client
     .from("workspace_webhook_settings")
     .select("webhook_url, google_calendar_webhook_url")
@@ -50,11 +51,29 @@ const getWebhookUrl = async (
 
   if (error) {
     console.error("❌ Erro ao buscar webhook settings:", error);
+  } else {
+    // Priorizar webhook específico do Google Calendar, senão usar o padrão do workspace
+    const workspaceWebhook = data?.google_calendar_webhook_url || data?.webhook_url;
+    if (workspaceWebhook) {
+      return workspaceWebhook;
+    }
+  }
+
+  // 2. Se não encontrou no workspace, buscar URL global do system_google_calendar_settings
+  const { data: globalSettings, error: globalError } = await client
+    .from("system_google_calendar_settings")
+    .select("webhook_url")
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (globalError) {
+    console.error("❌ Erro ao buscar webhook global do Google Calendar:", globalError);
     return null;
   }
 
-  // Priorizar webhook específico do Google Calendar, senão usar o padrão
-  return data?.google_calendar_webhook_url || data?.webhook_url || null;
+  // Retornar URL global como último fallback
+  return globalSettings?.webhook_url || null;
 };
 
 const getGoogleCalendarAuthorization = async (

@@ -15,6 +15,7 @@ interface GoogleSettings {
   client_secret: string;
   redirect_uri: string;
   project_id?: string | null;
+  webhook_url?: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -26,6 +27,7 @@ export function GoogleAgendaMasterConfig() {
   const [clientSecret, setClientSecret] = useState("");
   const [redirectUri, setRedirectUri] = useState("");
   const [projectId, setProjectId] = useState("");
+  const [webhookUrl, setWebhookUrl] = useState("");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
 
@@ -50,6 +52,7 @@ export function GoogleAgendaMasterConfig() {
         setClientId(data.client_id);
         setRedirectUri(data.redirect_uri);
         setProjectId(data.project_id || "");
+        setWebhookUrl(data.webhook_url || "");
         setClientSecret(""); // nunca preencher o secret completo no input
       } else {
         setSettings(null);
@@ -57,6 +60,7 @@ export function GoogleAgendaMasterConfig() {
         setClientSecret("");
         setRedirectUri("");
         setProjectId("");
+        setWebhookUrl("");
       }
     } catch (error: any) {
       console.error("❌ Erro ao carregar configurações do Google Agenda", error);
@@ -109,6 +113,7 @@ export function GoogleAgendaMasterConfig() {
               client_secret: clientSecret.trim() || undefined,
               redirect_uri: redirectUri.trim(),
               project_id: projectId.trim() || null,
+              webhook_url: webhookUrl.trim() || null,
             },
           },
         }
@@ -253,6 +258,21 @@ export function GoogleAgendaMasterConfig() {
                   className="h-8 text-xs rounded-none border-[#d4d4d4] dark:border-gray-700 bg-white dark:bg-[#1f1f1f] text-gray-900 dark:text-gray-100 placeholder:text-gray-500 dark:placeholder:text-gray-400"
                 />
               </div>
+            </div>
+
+            <div className="space-y-2">
+              <Label className="text-xs font-medium text-gray-700 dark:text-gray-300">
+                Webhook URL do N8N (opcional)
+              </Label>
+              <Input
+                value={webhookUrl}
+                onChange={(e) => setWebhookUrl(e.target.value)}
+                placeholder="Ex: https://seu-n8n.com/webhook/google-calendar-event"
+                className="h-8 text-xs rounded-none border-[#d4d4d4] dark:border-gray-700 bg-white dark:bg-[#1f1f1f] text-gray-900 dark:text-gray-100 placeholder:text-gray-500 dark:placeholder:text-gray-400"
+              />
+              <p className="text-[11px] text-gray-500 dark:text-gray-400">
+                URL do webhook N8N global para processar eventos do Google Calendar. Será usada como fallback quando o workspace não tiver webhook específico configurado.
+              </p>
             </div>
 
             <div className="flex items-center justify-between pt-2">
