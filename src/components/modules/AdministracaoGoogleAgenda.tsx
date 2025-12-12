@@ -239,18 +239,18 @@ export function AdministracaoGoogleAgenda() {
     if (loading) {
       return (
         <div className="space-y-4">
-          <Skeleton className="h-6 w-48" />
-          <Skeleton className="h-4 w-80" />
-          <Skeleton className="h-12 w-full" />
+          <Skeleton className="h-6 w-48 dark:bg-gray-800" />
+          <Skeleton className="h-4 w-80 dark:bg-gray-800" />
+          <Skeleton className="h-12 w-full dark:bg-gray-800" />
         </div>
       );
     }
 
     if (!headers) {
       return (
-        <Alert variant="destructive">
-          <AlertTitle>Selecione um workspace</AlertTitle>
-          <AlertDescription>
+        <Alert variant="destructive" className="dark:border-red-800 dark:bg-red-900/20">
+          <AlertTitle className="dark:text-red-200">Selecione um workspace</AlertTitle>
+          <AlertDescription className="dark:text-red-300">
             É necessário escolher um workspace antes de configurar a Google
             Agenda.
           </AlertDescription>
@@ -262,9 +262,9 @@ export function AdministracaoGoogleAgenda() {
       return (
         <div className="space-y-6">
           {status?.requiresReconnect && (
-            <Alert variant="destructive">
-              <AlertTitle>Conexão expirada</AlertTitle>
-              <AlertDescription>
+            <Alert variant="destructive" className="dark:border-red-800 dark:bg-red-900/20">
+              <AlertTitle className="dark:text-red-200">Conexão expirada</AlertTitle>
+              <AlertDescription className="dark:text-red-300">
                 Precisamos que você refaça o login com Google para continuar
                 criando eventos automaticamente.
               </AlertDescription>
@@ -272,11 +272,11 @@ export function AdministracaoGoogleAgenda() {
           )}
 
           <div className="space-y-2">
-            <p className="text-base text-muted-foreground">
+            <p className="text-base text-muted-foreground dark:text-gray-300">
               Conecte sua conta Google para permitir a criação automática de
               eventos no seu Google Agenda diretamente pelo sistema.
             </p>
-            <ul className="list-disc pl-5 text-sm text-muted-foreground space-y-1">
+            <ul className="list-disc pl-5 text-sm text-muted-foreground dark:text-gray-400 space-y-1">
               <li>Cada usuário conecta apenas o próprio calendário.</li>
               <li>Os eventos criados ficam visíveis somente para você.</li>
               <li>Nenhuma configuração técnica adicional é necessária.</li>
@@ -305,49 +305,51 @@ export function AdministracaoGoogleAgenda() {
         <div className="flex flex-wrap items-center gap-3">
           <Badge
             variant="secondary"
-            className="gap-2 px-3 py-1 border border-emerald-200 bg-emerald-50 text-emerald-800"
+            className="gap-2 px-3 py-1 border border-emerald-200 bg-emerald-50 text-emerald-800 dark:border-emerald-700 dark:bg-emerald-900/20 dark:text-emerald-200"
           >
             <CheckCircle2 className="w-4 h-4" />
             Conectado
           </Badge>
           {status.requiresReconnect && (
-            <Badge variant="destructive">Reconexão necessária</Badge>
+            <Badge variant="destructive" className="dark:bg-red-900/20 dark:text-red-200 dark:border-red-800">
+              Reconexão necessária
+            </Badge>
           )}
-          <span className="text-sm text-muted-foreground">
+          <span className="text-sm text-muted-foreground dark:text-gray-400">
             {status.googleEmail}
           </span>
         </div>
 
         <div className="grid md:grid-cols-2 gap-4">
-          <div className="rounded-lg border p-4 space-y-1">
-            <p className="text-sm text-muted-foreground">Última autorização</p>
-            <p className="font-medium">{formatDateTime(status.authorizedAt)}</p>
+          <div className="rounded-lg border p-4 space-y-1 dark:border-gray-700 dark:bg-[#111111]">
+            <p className="text-sm text-muted-foreground dark:text-gray-400">Última autorização</p>
+            <p className="font-medium dark:text-gray-200">{formatDateTime(status.authorizedAt)}</p>
           </div>
-          <div className="rounded-lg border p-4 space-y-1">
-            <p className="text-sm text-muted-foreground">Última verificação</p>
-            <p className="font-medium">{formatDateTime(status.lastTokenCheckAt)}</p>
+          <div className="rounded-lg border p-4 space-y-1 dark:border-gray-700 dark:bg-[#111111]">
+            <p className="text-sm text-muted-foreground dark:text-gray-400">Última verificação</p>
+            <p className="font-medium dark:text-gray-200">{formatDateTime(status.lastTokenCheckAt)}</p>
           </div>
         </div>
 
         <div className="space-y-2">
-          <p className="text-sm font-medium text-muted-foreground">Escopos autorizados</p>
+          <p className="text-sm font-medium text-muted-foreground dark:text-gray-400">Escopos autorizados</p>
           <div className="flex flex-wrap gap-2">
             {status.scopes?.length ? (
               status.scopes.map((scope) => (
-                <Badge key={scope} variant="outline" className="font-mono text-[11px]">
+                <Badge key={scope} variant="outline" className="font-mono text-[11px] dark:border-gray-700 dark:text-gray-300">
                   {scope}
                 </Badge>
               ))
             ) : (
-              <span className="text-sm text-muted-foreground">Nenhum escopo registrado.</span>
+              <span className="text-sm text-muted-foreground dark:text-gray-400">Nenhum escopo registrado.</span>
             )}
           </div>
         </div>
 
-        <Alert>
-          <ShieldCheck className="w-4 h-4" />
-          <AlertTitle>Tokens seguros e revogáveis</AlertTitle>
-          <AlertDescription>
+        <Alert className="dark:border-gray-700 dark:bg-[#111111]">
+          <ShieldCheck className="w-4 h-4 dark:text-gray-300" />
+          <AlertTitle className="dark:text-gray-100">Tokens seguros e revogáveis</AlertTitle>
+          <AlertDescription className="dark:text-gray-300">
             Armazenamos apenas o e-mail e o refresh token, sem persistir o access token.
             Sempre que precisarmos criar um evento, geramos um novo access token temporário. Se o token ficar inválido, ele é revogado automaticamente e você será orientado a reconectar.
           </AlertDescription>
@@ -382,36 +384,36 @@ export function AdministracaoGoogleAgenda() {
   };
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="p-6 space-y-6 bg-white dark:bg-[#050505]">
       <div className="space-y-1">
-        <h1 className="text-3xl font-bold">Google Agenda</h1>
-        <p className="text-muted-foreground">
+        <h1 className="text-3xl font-bold text-gray-900 dark:text-gray-100">Google Agenda</h1>
+        <p className="text-muted-foreground dark:text-gray-400">
           Configure a integração oficial com a Google Agenda para que o Tezeus
           crie eventos automaticamente no seu calendário pessoal.
         </p>
       </div>
 
-      <Card className="border-primary/20 shadow-lg">
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
+      <Card className="border-primary/20 shadow-lg dark:border-gray-700 dark:bg-[#0b0b0b]">
+        <CardHeader className="dark:bg-[#0b0b0b]">
+          <CardTitle className="flex items-center gap-2 text-gray-900 dark:text-gray-100">
             <Calendar className="w-5 h-5 text-primary" />
             Integração com Google Agenda
           </CardTitle>
-          <CardDescription>
+          <CardDescription className="dark:text-gray-400">
             Conecte sua conta Google para permitir a criação automática de eventos no seu Google Agenda diretamente pelo sistema.
           </CardDescription>
         </CardHeader>
-        <CardContent>{renderStatusSection()}</CardContent>
+        <CardContent className="dark:bg-[#0b0b0b]">{renderStatusSection()}</CardContent>
       </Card>
 
-      <Alert>
-        <AlertTitle>Como funciona?</AlertTitle>
-        <AlertDescription className="space-y-2">
+      <Alert className="dark:border-gray-700 dark:bg-[#111111]">
+        <AlertTitle className="dark:text-gray-100">Como funciona?</AlertTitle>
+        <AlertDescription className="space-y-2 dark:text-gray-300">
           <p>
             Assim que você autorizar o acesso, o sistema passa a criar eventos no seu próprio Google Agenda.
             Nenhum outro usuário consegue ver ou alterar os eventos gerados para você.
           </p>
-          <ul className="list-disc pl-5 text-sm text-muted-foreground space-y-1">
+          <ul className="list-disc pl-5 text-sm text-muted-foreground dark:text-gray-400 space-y-1">
             <li>Suporte nativo a múltiplos usuários dentro do mesmo workspace.</li>
             <li>O consentimento é solicitado diretamente pelo Google com escopo Calendar.</li>
             <li>Usamos acesso offline para manter os eventos funcionando continuamente.</li>
