@@ -214,9 +214,7 @@ export function Sidebar({
   }, {
     id: "administracao-google-agenda",
     label: "Google Agenda",
-    icon: <Calendar className="w-5 h-5" />,
-    group: "administracao",
-    masterOnly: true
+    icon: <Calendar className="w-5 h-5" />
   }, {
     id: "administracao-acoes",
     label: "Configuração de Ações",
@@ -378,6 +376,7 @@ export function Sidebar({
           if (item.id === 'crm-contatos') return canView('crm-contatos-item');
           if (item.id === 'crm-tags') return canView('crm-tags-item');
           if (item.id === 'crm-produtos') return canView('crm-produtos-item');
+          if (item.id === 'administracao-google-agenda') return true; // Visível para todos
           if (item.group === 'administracao') return hasRole(['master', 'admin']);
           return true;
         }).map(renderMenuItem)}

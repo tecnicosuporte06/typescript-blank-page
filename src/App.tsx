@@ -370,7 +370,7 @@ const App = () => (
             <Route path="/administracao-financeiro" element={<ProtectedRoute><RoleProtectedRoute allowedRoles={['master']}><TezeusCRM /></RoleProtectedRoute></ProtectedRoute>} />
             <Route path="/administracao-configuracoes" element={<ProtectedRoute><RoleProtectedRoute allowedRoles={['master']}><TezeusCRM /></RoleProtectedRoute></ProtectedRoute>} />
             <Route path="/administracao-dashboard" element={<ProtectedRoute><RoleProtectedRoute allowedRoles={['master']}><TezeusCRM /></RoleProtectedRoute></ProtectedRoute>} />
-            <Route path="/administracao-google-agenda" element={<ProtectedRoute><RoleProtectedRoute allowedRoles={['master','admin']}><TezeusCRM /></RoleProtectedRoute></ProtectedRoute>} />
+            <Route path="/administracao-google-agenda" element={<ProtectedRoute><TezeusCRM /></ProtectedRoute>} />
             <Route path="/administracao-acoes" element={<ProtectedRoute><RoleProtectedRoute allowedRoles={['master','admin']}><TezeusCRM /></RoleProtectedRoute></ProtectedRoute>} />
             <Route path="/workspace-empresas" element={<ProtectedRoute><RoleProtectedRoute allowedRoles={['master', 'admin']}><TezeusCRM /></RoleProtectedRoute></ProtectedRoute>} />
             <Route path="/workspace-empresas/:workspaceId/usuarios" element={<ProtectedRoute><RoleProtectedRoute allowedRoles={['master', 'admin']}><TezeusCRM /></RoleProtectedRoute></ProtectedRoute>} />
