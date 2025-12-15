@@ -32,7 +32,52 @@ serve(async (req) => {
     const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-    const { contactId, conversationId, workspaceId, phoneNumber } = await req.json();
+    const body = await req.json();
+    let { contactId, conversationId, workspaceId, phoneNumber } = body;
+
+    console.log('🔍 [Message Automations] Request recebido:', JSON.stringify(body, null, 2));
+
+    // Se phoneNumber não foi fornecido, buscar do contato
+    if (!phoneNumber && contactId) {
+      const { data: contact } = await supabase
+        .from('contacts')
+        .select('phone')
+        .eq('id', contactId)
+        .maybeSingle();
+      
+      if (contact) {
+        phoneNumber = contact.phone;
+        console.log(`📞 [Message Automations] PhoneNumber buscado do contato: ${phoneNumber}`);
+      }
+    }
+
+    // Se contactId não foi fornecido mas temos conversationId, buscar do conversation
+    if (!contactId && conversationId) {
+      const { data: conversation } = await supabase
+        .from('conversations')
+        .select('contact_id')
+        .eq('id', conversationId)
+        .maybeSingle();
+      
+      if (conversation?.contact_id) {
+        contactId = conversation.contact_id;
+        console.log(`👤 [Message Automations] ContactId buscado da conversa: ${contactId}`);
+      }
+    }
+
+    // Se workspaceId não foi fornecido mas temos conversationId, buscar do conversation
+    if (!workspaceId && conversationId) {
+      const { data: conversation } = await supabase
+        .from('conversations')
+        .select('workspace_id')
+        .eq('id', conversationId)
+        .maybeSingle();
+      
+      if (conversation?.workspace_id) {
+        workspaceId = conversation.workspace_id;
+        console.log(`🏢 [Message Automations] WorkspaceId buscado da conversa: ${workspaceId}`);
+      }
+    }
 
     console.log('🔍 [Message Automations] Verificando automações de mensagens recebidas:', {
       contactId,
@@ -40,6 +85,18 @@ serve(async (req) => {
       workspaceId,
       phoneNumber
     });
+
+    // Validação: precisamos de pelo menos contactId ou conversationId
+    if (!contactId && !conversationId) {
+      console.error('❌ [Message Automations] Erro: contactId e conversationId não fornecidos');
+      return new Response(JSON.stringify({ 
+        success: false, 
+        error: 'contactId or conversationId is required' 
+      }), {
+        status: 400,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+      });
+    }
 
     // 1. Buscar card ativo do contato
     const { data: cards, error: cardsError } = await supabase

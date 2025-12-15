@@ -287,7 +287,7 @@ export function WorkspaceEmpresas({ onNavigateToUsers, onNavigateToConfig }: Wor
                         onClick={() => handleConfigClick(workspace)}
                       >
                         <Cable className="w-4 h-4" />
-                        Conexões
+                        Configurações
                       </Button>
                     </div>
                   )}

@@ -116,9 +116,19 @@ export function WorkspaceConfigModal({
 
         <div className="space-y-6">
           <Tabs defaultValue="connections" className="w-full">
-            <TabsList className="grid w-full grid-cols-2">
-              <TabsTrigger value="connections">Conexões WhatsApp</TabsTrigger>
-              <TabsTrigger value="business-hours">Horários de Funcionamento</TabsTrigger>
+            <TabsList className="grid w-full grid-cols-2 bg-[#f3f3f3] dark:bg-[#2d2d2d] rounded-none h-auto p-0 border-b border-[#d4d4d4] dark:border-gray-700">
+              <TabsTrigger 
+                value="connections"
+                className="rounded-none py-3 px-6 text-xs font-semibold uppercase tracking-wide data-[state=active]:bg-[#FEF3C7] dark:data-[state=active]:bg-gray-700 data-[state=active]:text-black dark:data-[state=active]:text-white data-[state=active]:border-b-2 data-[state=active]:border-gray-300 dark:data-[state=active]:border-gray-600 data-[state=active]:shadow-none text-gray-700 dark:text-gray-300"
+              >
+                Configurações
+              </TabsTrigger>
+              <TabsTrigger 
+                value="business-hours"
+                className="rounded-none py-3 px-6 text-xs font-semibold uppercase tracking-wide data-[state=active]:bg-[#FEF3C7] dark:data-[state=active]:bg-gray-700 data-[state=active]:text-black dark:data-[state=active]:text-white data-[state=active]:border-b-2 data-[state=active]:border-gray-300 dark:data-[state=active]:border-gray-600 data-[state=active]:shadow-none text-gray-700 dark:text-gray-300"
+              >
+                Horários de Funcionamento
+              </TabsTrigger>
             </TabsList>
             
             <TabsContent value="connections" className="mt-6">

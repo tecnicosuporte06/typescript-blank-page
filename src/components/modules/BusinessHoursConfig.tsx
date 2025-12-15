@@ -1,10 +1,7 @@
 import { useState, useEffect } from 'react';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
@@ -185,111 +182,138 @@ export function BusinessHoursConfig({ workspaceId }: BusinessHoursConfigProps) {
 
   if (loading) {
     return (
-      <Card>
-        <CardContent className="flex items-center justify-center py-8">
-          <Loader2 className="h-6 w-6 animate-spin" />
-        </CardContent>
-      </Card>
+      <div className="flex items-center justify-center py-8 bg-white dark:bg-[#111111] border border-[#d4d4d4] dark:border-gray-700 rounded-none">
+        <Loader2 className="h-6 w-6 animate-spin text-gray-600 dark:text-gray-400" />
+      </div>
     );
   }
 
   return (
     <div className="space-y-4">
-      <Alert>
-        <Info className="h-4 w-4" />
-        <AlertDescription>
+      <Alert className="border border-[#d4d4d4] dark:border-gray-700 bg-white dark:bg-[#111111] rounded-none">
+        <Info className="h-4 w-4 text-gray-600 dark:text-gray-400" />
+        <AlertDescription className="text-gray-700 dark:text-gray-300 text-xs">
           {hasAnyConfig
             ? 'Configure os horários de funcionamento para cada dia da semana. Mensagens automáticas serão bloqueadas fora desses horários.'
             : 'Nenhum horário configurado. Mensagens automáticas serão enviadas em qualquer horário. Configure os horários abaixo para ativar a restrição.'}
         </AlertDescription>
       </Alert>
 
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Clock className="h-5 w-5" />
-            Horários de Funcionamento
-          </CardTitle>
-          <CardDescription>
-            Configure os dias e horários em que as automações podem enviar mensagens.
-            Fuso horário: America/Sao_Paulo (UTC-3)
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="space-y-4">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead className="w-[200px]">Dia da Semana</TableHead>
-                  <TableHead className="w-[120px]">Ativo</TableHead>
-                  <TableHead className="w-[150px]">Horário Início</TableHead>
-                  <TableHead className="w-[150px]">Horário Fim</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {businessHours.map((bh) => {
-                  const dayInfo = DAYS_OF_WEEK.find(d => d.value === bh.day_of_week);
-                  const isValid = !bh.is_enabled || validateTime(bh.start_time, bh.end_time);
-                  
-                  return (
-                    <TableRow key={bh.day_of_week}>
-                      <TableCell className="font-medium">
-                        {dayInfo?.label}
-                      </TableCell>
-                      <TableCell>
-                        <Switch
-                          checked={bh.is_enabled}
-                          onCheckedChange={(checked) =>
-                            updateDay(bh.day_of_week, 'is_enabled', checked)
-                          }
-                        />
-                      </TableCell>
-                      <TableCell>
-                        <Input
-                          type="time"
-                          value={bh.start_time}
-                          onChange={(e) =>
-                            updateDay(bh.day_of_week, 'start_time', e.target.value)
-                          }
-                          disabled={!bh.is_enabled}
-                          className={!isValid ? 'border-red-500' : ''}
-                        />
-                      </TableCell>
-                      <TableCell>
-                        <Input
-                          type="time"
-                          value={bh.end_time}
-                          onChange={(e) =>
-                            updateDay(bh.day_of_week, 'end_time', e.target.value)
-                          }
-                          disabled={!bh.is_enabled}
-                          className={!isValid ? 'border-red-500' : ''}
-                        />
-                      </TableCell>
-                    </TableRow>
-                  );
-                })}
-              </TableBody>
-            </Table>
+      <div className="border border-[#d4d4d4] dark:border-gray-700 bg-white dark:bg-[#111111] rounded-none">
+        <div className="bg-[#f0f0f0] dark:bg-[#1f1f1f] border-b border-[#d4d4d4] dark:border-gray-700 px-4 py-3 rounded-none">
+          <div className="flex items-center gap-2">
+            <Clock className="h-4 w-4 text-gray-700 dark:text-gray-300" />
+            <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100">Horários de Funcionamento</h3>
+          </div>
+          <p className="text-xs text-gray-600 dark:text-gray-400 mt-1">
+            Configure os dias e horários em que as automações podem enviar mensagens. Fuso horário: America/Sao_Paulo (UTC-3)
+          </p>
+        </div>
 
-            <div className="flex justify-end pt-4">
-              <Button onClick={handleSave} disabled={saving}>
-                {saving ? (
-                  <>
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    Salvando...
-                  </>
-                ) : (
-                  <>
-                    <Save className="mr-2 h-4 w-4" />
-                    Salvar Horários
-                  </>
-                )}
-              </Button>
+        <div className="p-4">
+          {/* Excel Grid Table */}
+          <div className="overflow-auto bg-[#e6e6e6] dark:bg-[#050505]">
+            <div className="inline-block min-w-full align-middle bg-white dark:bg-[#111111]">
+              <table className="min-w-full border-collapse bg-white text-xs font-sans dark:bg-[#111111] dark:text-gray-100">
+                <thead className="bg-[#f3f3f3] sticky top-0 z-10 dark:bg-[#1f1f1f]">
+                  <tr>
+                    <th className="border border-[#d4d4d4] px-2 py-1 text-left font-semibold text-gray-700 min-w-[200px] group hover:bg-[#e1e1e1] cursor-pointer dark:border-gray-700 dark:text-gray-200 dark:hover:bg-[#2a2a2a]">
+                      <div className="flex items-center justify-between">
+                        <span>Dia da Semana</span>
+                        <div className="w-[1px] h-3 bg-gray-400 mx-1 dark:bg-gray-600" />
+                      </div>
+                    </th>
+                    <th className="border border-[#d4d4d4] px-2 py-1 text-center font-semibold text-gray-700 min-w-[120px] group hover:bg-[#e1e1e1] cursor-pointer dark:border-gray-700 dark:text-gray-200 dark:hover:bg-[#2a2a2a]">
+                      <div className="flex items-center justify-between">
+                        <span>Ativo</span>
+                        <div className="w-[1px] h-3 bg-gray-400 mx-1 dark:bg-gray-600" />
+                      </div>
+                    </th>
+                    <th className="border border-[#d4d4d4] px-2 py-1 text-center font-semibold text-gray-700 min-w-[150px] group hover:bg-[#e1e1e1] cursor-pointer dark:border-gray-700 dark:text-gray-200 dark:hover:bg-[#2a2a2a]">
+                      <div className="flex items-center justify-between">
+                        <span>Horário Início</span>
+                        <div className="w-[1px] h-3 bg-gray-400 mx-1 dark:bg-gray-600" />
+                      </div>
+                    </th>
+                    <th className="border border-[#d4d4d4] px-2 py-1 text-center font-semibold text-gray-700 min-w-[150px] dark:border-gray-700 dark:text-gray-200">
+                      <div className="flex items-center justify-between">
+                        <span>Horário Fim</span>
+                        <div className="w-[1px] h-3 bg-gray-400 mx-1 dark:bg-gray-600" />
+                      </div>
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {businessHours.map((bh) => {
+                    const dayInfo = DAYS_OF_WEEK.find(d => d.value === bh.day_of_week);
+                    const isValid = !bh.is_enabled || validateTime(bh.start_time, bh.end_time);
+                    
+                    return (
+                      <tr key={bh.day_of_week} className="hover:bg-blue-50 group h-[32px] dark:hover:bg-[#1f2937]">
+                        <td className="border border-[#e0e0e0] px-2 py-0 font-medium align-middle text-gray-800 dark:border-gray-700 dark:text-gray-200">
+                          {dayInfo?.label}
+                        </td>
+                        <td className="border border-[#e0e0e0] px-2 py-0 text-center align-middle dark:border-gray-700">
+                          <div className="flex items-center justify-center h-full">
+                            <Switch
+                              checked={bh.is_enabled}
+                              onCheckedChange={(checked) =>
+                                updateDay(bh.day_of_week, 'is_enabled', checked)
+                              }
+                              className="rounded-none border border-[#d4d4d4] dark:border-gray-700 data-[state=checked]:bg-[#4a9eff] data-[state=unchecked]:bg-[#e0e0e0] dark:data-[state=unchecked]:bg-[#2a2a2a] h-5 w-9"
+                              thumbClassName="rounded-none bg-white dark:bg-gray-300 border border-[#d4d4d4] dark:border-gray-600 shadow-none h-4 w-4 data-[state=checked]:translate-x-4 data-[state=unchecked]:translate-x-0"
+                            />
+                          </div>
+                        </td>
+                        <td className="border border-[#e0e0e0] px-2 py-0 text-center align-middle dark:border-gray-700">
+                          <Input
+                            type="time"
+                            value={bh.start_time}
+                            onChange={(e) =>
+                              updateDay(bh.day_of_week, 'start_time', e.target.value)
+                            }
+                            className={`${!isValid ? 'border-red-500' : ''} h-7 text-xs rounded-none border-[#d4d4d4] dark:border-gray-700 bg-white dark:bg-[#0b0b0b] text-gray-900 dark:text-gray-100`}
+                          />
+                        </td>
+                        <td className="border border-[#e0e0e0] px-2 py-0 text-center align-middle dark:border-gray-700">
+                          <Input
+                            type="time"
+                            value={bh.end_time}
+                            onChange={(e) =>
+                              updateDay(bh.day_of_week, 'end_time', e.target.value)
+                            }
+                            className={`${!isValid ? 'border-red-500' : ''} h-7 text-xs rounded-none border-[#d4d4d4] dark:border-gray-700 bg-white dark:bg-[#0b0b0b] text-gray-900 dark:text-gray-100`}
+                          />
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
             </div>
           </div>
-        </CardContent>
-      </Card>
+
+          <div className="flex justify-end pt-4 mt-4 border-t border-[#d4d4d4] dark:border-gray-700">
+            <Button 
+              onClick={handleSave} 
+              disabled={saving}
+              className="rounded-none border border-[#d4d4d4] dark:border-gray-700 bg-white dark:bg-[#1f1f1f] text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-[#2a2a2a] h-8 px-4 text-xs font-semibold"
+            >
+              {saving ? (
+                <>
+                  <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" />
+                  Salvando...
+                </>
+              ) : (
+                <>
+                  <Save className="mr-2 h-3.5 w-3.5" />
+                  Salvar Horários
+                </>
+              )}
+            </Button>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }

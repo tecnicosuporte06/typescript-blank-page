@@ -30,13 +30,20 @@ serve(async (req) => {
   }
 
   try {
-    console.log('⏰ [Time Automations] Starting check...');
+    const requestBody = await req.json().catch(() => ({}));
+    console.log('⏰ [Time Automations] ========== INICIANDO VERIFICAÇÃO ==========');
+    console.log('⏰ [Time Automations] Request body:', JSON.stringify(requestBody, null, 2));
+    console.log('⏰ [Time Automations] Timestamp:', new Date().toISOString());
     
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
     const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
     const supabase = createClient(supabaseUrl, supabaseKey);
+    
+    console.log('⏰ [Time Automations] Supabase client criado');
 
     // Buscar todas as automações ativas com trigger de tempo
+    console.log('🔍 [Time Automations] Buscando automações ativas com trigger de tempo...');
+    
     const { data: automations, error: automationsError } = await supabase
       .from('crm_column_automations')
       .select(`
@@ -44,6 +51,7 @@ serve(async (req) => {
         column_id,
         workspace_id,
         name,
+        is_active,
         triggers:crm_column_automation_triggers!inner(
           trigger_type,
           trigger_config
@@ -59,18 +67,29 @@ serve(async (req) => {
 
     if (automationsError) {
       console.error('❌ [Time Automations] Error fetching automations:', automationsError);
+      console.error('❌ [Time Automations] Error details:', JSON.stringify(automationsError, null, 2));
       throw automationsError;
     }
 
+    console.log(`📊 [Time Automations] Query executada. Resultado: ${automations?.length || 0} automações encontradas`);
+
     if (!automations || automations.length === 0) {
-      console.log('✅ [Time Automations] No active time-based automations found');
+      console.log('✅ [Time Automations] Nenhuma automação de tempo ativa encontrada');
+      console.log('💡 [Time Automations] Verifique se há automações criadas e se estão ativas');
       return new Response(
-        JSON.stringify({ message: 'No automations to process', processed: 0 }),
+        JSON.stringify({ 
+          message: 'No automations to process', 
+          processed: 0,
+          timestamp: new Date().toISOString()
+        }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
-    console.log(`📋 [Time Automations] Found ${automations.length} time-based automations`);
+    console.log(`📋 [Time Automations] ========== ${automations.length} AUTOMAÇÃO(ÕES) ENCONTRADA(S) ==========`);
+    automations.forEach((auto, idx) => {
+      console.log(`   ${idx + 1}. "${auto.name}" (ID: ${auto.id}, Coluna: ${auto.column_id}, Workspace: ${auto.workspace_id})`);
+    });
 
     let totalProcessed = 0;
 
@@ -122,11 +141,13 @@ serve(async (req) => {
 
         // Buscar cards que estão na coluna há mais tempo que o configurado
         // e que ainda não tiveram essa automação executada
-        const timeThreshold = new Date();
-        timeThreshold.setMinutes(timeThreshold.getMinutes() - timeInMinutes);
+        const now = new Date();
+        const timeThreshold = new Date(now.getTime() - (timeInMinutes * 60 * 1000));
 
+        console.log(`🔍 [Time Automations] Current time: ${now.toISOString()}`);
         console.log(`🔍 [Time Automations] Time threshold: ${timeThreshold.toISOString()} (NOW - ${timeInMinutes.toFixed(4)} min)`);
         console.log(`🔍 [Time Automations] Looking for cards in column ${automation.column_id} moved before ${timeThreshold.toISOString()}`);
+        console.log(`🔍 [Time Automations] Automation config: ${originalValue} ${originalUnit} = ${timeInMinutes.toFixed(4)} minutes`);
 
         const { data: eligibleCards, error: cardsError } = await supabase
           .from('pipeline_cards')
@@ -140,6 +161,7 @@ serve(async (req) => {
             pipelines!inner(workspace_id)
           `)
           .eq('column_id', automation.column_id)
+          .not('moved_to_column_at', 'is', null) // Garantir que moved_to_column_at não é NULL
           .lt('moved_to_column_at', timeThreshold.toISOString());
 
         console.log(`🔍 [Time Automations] Query result: ${eligibleCards?.length || 0} cards found, error: ${cardsError ? JSON.stringify(cardsError) : 'none'}`);
@@ -158,22 +180,36 @@ serve(async (req) => {
 
         // Processar cada card elegível
         for (const card of eligibleCards) {
+          console.log(`🔍 [Time Automations] Checking card ${card.id}:`);
+          console.log(`   - moved_to_column_at: ${card.moved_to_column_at}`);
+          console.log(`   - column_id: ${card.column_id}`);
+          
+          // Calcular tempo decorrido
+          const movedAt = new Date(card.moved_to_column_at);
+          const now = new Date();
+          const elapsedMinutes = (now.getTime() - movedAt.getTime()) / (1000 * 60);
+          console.log(`   - Tempo decorrido: ${elapsedMinutes.toFixed(2)} minutos (requerido: ${timeInMinutes.toFixed(2)})`);
+          
           // Verificar se já executou essa automação para esse card neste período
-          const { data: existingExecution } = await supabase
+          const { data: existingExecution, error: executionCheckError } = await supabase
             .from('crm_automation_executions')
-            .select('id')
+            .select('id, executed_at')
             .eq('automation_id', automation.id)
             .eq('card_id', card.id)
             .eq('column_id', automation.column_id)
             .gte('executed_at', card.moved_to_column_at)
             .maybeSingle();
 
+          if (executionCheckError) {
+            console.error(`❌ [Time Automations] Error checking executions for card ${card.id}:`, executionCheckError);
+          }
+
           if (existingExecution) {
-            console.log(`⏭️ [Time Automations] Automation already executed for card ${card.id}`);
+            console.log(`⏭️ [Time Automations] Automation already executed for card ${card.id} at ${existingExecution.executed_at}`);
             continue;
           }
 
-          console.log(`🎬 [Time Automations] Executing automation for card ${card.id}`);
+          console.log(`🎬 [Time Automations] Executing automation "${automation.name}" for card ${card.id}`);
 
           // Executar as ações diretamente
           try {
@@ -633,7 +669,7 @@ serve(async (req) => {
 
             if (actionSuccess) {
               // Registrar execução
-              await supabase
+              const { error: execInsertError } = await supabase
                 .from('crm_automation_executions')
                 .insert({
                   automation_id: automation.id,
@@ -647,6 +683,12 @@ serve(async (req) => {
                     moved_to_column_at: card.moved_to_column_at
                   }
                 });
+
+              if (execInsertError) {
+                console.error(`❌ [Time Automations] Erro ao registrar execução:`, execInsertError);
+              } else {
+                console.log(`📝 [Time Automations] Execução registrada com sucesso`);
+              }
 
               totalProcessed++;
               console.log(`✅ [Time Automations] Automation executed successfully for card ${card.id}`);
