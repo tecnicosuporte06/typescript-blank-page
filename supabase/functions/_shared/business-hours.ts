@@ -76,10 +76,12 @@ export async function isWithinBusinessHours(
     // Buscar configuração para o dia da semana atual
     const todayConfig = businessHours.find((bh: any) => bh.day_of_week === dayOfWeekNum);
 
-    // Se não houver configuração para o dia atual, bloquear envio
+    // ✅ CORREÇÃO: Se não houver configuração para o dia atual, PERMITIR envio
+    // Requisito: "Ao não definir horário de funcionamento, entende-se que é qualquer horário"
+    // Se o dia não está configurado, significa que não há restrição para esse dia
     if (!todayConfig) {
-      console.log(`🚫 Dia da semana ${dayOfWeekNum} (${dayName}) não está configurado ou está desabilitado - bloqueando envio`);
-      return false;
+      console.log(`✅ Dia da semana ${dayOfWeekNum} (${dayName}) não está configurado - permitindo envio (sem restrição para este dia)`);
+      return true;
     }
 
     // Extrair hora e minuto do start_time e end_time
