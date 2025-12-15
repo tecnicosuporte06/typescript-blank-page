@@ -6,6 +6,7 @@ const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-workspace-id, x-system-user-id, x-system-user-email',
   'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
+  'Access-Control-Max-Age': '86400',
 };
 
 interface Database {
@@ -1101,8 +1102,13 @@ const realtimeClient = SUPABASE_URL && SUPABASE_SERVICE_ROLE_KEY
   : null;
 
 serve(async (req) => {
+  // Handle CORS preflight requests first
   if (req.method === 'OPTIONS') {
-    return new Response('ok', { headers: corsHeaders });
+    console.log('⚡ CORS preflight request received');
+    return new Response(null, { 
+      status: 200,
+      headers: corsHeaders 
+    });
   }
 
   try {
