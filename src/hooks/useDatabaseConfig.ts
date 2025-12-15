@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/hooks/useAuth';
+import { DEFAULT_CONFIG, clearConfigCache } from '@/lib/config';
 
 export interface DatabaseConfig {
   id: string;
@@ -33,6 +34,73 @@ export function useDatabaseConfig(): UseDatabaseConfigReturn {
   const { toast } = useToast();
   const { user } = useAuth();
   const hasLoadedRef = useRef(false);
+
+  /**
+   * Busca a configuração do banco na tabela database_configs
+   */
+  const getDatabaseConfig = async (): Promise<DatabaseConfig | null> => {
+    try {
+      const { data, error } = await (supabase as any)
+        .from('database_configs')
+        .select('*')
+        .limit(1)
+        .maybeSingle();
+      
+      if (error) {
+        console.error('❌ [getDatabaseConfig] Erro:', error);
+        return null;
+      }
+      
+      if (data) {
+        return {
+          id: data.id,
+          name: data.name || 'Configuração Principal',
+          url: data.url,
+          projectId: data.project_id,
+          anonKey: data.anon_key,
+        };
+      }
+      
+      return null;
+    } catch (err) {
+      console.error('❌ [getDatabaseConfig] Exceção:', err);
+      return null;
+    }
+  };
+
+  /**
+   * Cria uma nova configuração de banco
+   */
+  const createDatabaseConfig = async (configData: Omit<DatabaseConfig, 'id'>): Promise<DatabaseConfig | null> => {
+    try {
+      const { data, error } = await (supabase as any)
+        .from('database_configs')
+        .insert({
+          name: configData.name,
+          url: configData.url,
+          project_id: configData.projectId,
+          anon_key: configData.anonKey,
+        })
+        .select()
+        .single();
+      
+      if (error) {
+        console.error('❌ [createDatabaseConfig] Erro:', error);
+        return null;
+      }
+      
+      return {
+        id: data.id,
+        name: data.name,
+        url: data.url,
+        projectId: data.project_id,
+        anonKey: data.anon_key,
+      };
+    } catch (err) {
+      console.error('❌ [createDatabaseConfig] Exceção:', err);
+      return null;
+    }
+  };
 
   /**
    * Busca a configuração única do banco
@@ -88,12 +156,6 @@ export function useDatabaseConfig(): UseDatabaseConfigReturn {
     try {
       setError(null);
 
-      // Verificar se há sessão ativa antes de tentar atualizar
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session) {
-        console.warn('⚠️ [updateConfig] Sem sessão ativa, tentando continuar mesmo assim...');
-      }
-
       const updateData: any = {
         updated_at: new Date().toISOString()
       };
@@ -112,45 +174,17 @@ export function useDatabaseConfig(): UseDatabaseConfigReturn {
 
       if (updateError) {
         console.error('❌ [updateConfig] Erro ao atualizar:', updateError);
-        
-        // Se o erro for de permissão ou RLS, tentar recriar cliente e tentar novamente
-        if (updateError.message?.includes('permission') || updateError.message?.includes('row-level security')) {
-          console.warn('⚠️ [updateConfig] Erro de permissão detectado. Tentando recriar cliente e tentar novamente...');
-          
-          await recreateSupabaseClient();
-          await new Promise(resolve => setTimeout(resolve, 500));
-          
-          const { error: retryError } = await (supabase as any)
-            .from('database_configs')
-            .update(updateData)
-            .eq('id', id);
-          
-          if (retryError) {
-            throw retryError;
-          }
-        } else {
-          throw updateError;
-        }
+        throw updateError;
       }
 
       console.log('✅ [updateConfig] Configuração atualizada com sucesso');
 
       // Limpar cache para forçar busca da nova configuração
-      const { clearConfigCache } = await import('@/lib/config');
       clearConfigCache();
 
-      // Atualizar configuração local e recriar cliente Supabase
+      // Atualizar configuração local
       const updatedConfig = { ...config!, ...updates };
       setConfig(updatedConfig);
-
-      // Recriar cliente Supabase com nova configuração
-      await recreateSupabaseClient();
-
-      // Buscar configuração atualizada do banco (forçar refresh)
-      const activeConfigData = await fetchActiveDatabaseConfig(true);
-      if (activeConfigData) {
-        updateDatabaseConfig(activeConfigData);
-      }
 
       toast({
         title: 'Sucesso',

@@ -159,7 +159,7 @@ serve(async (req) => {
     ===================== */
     let conversationId: string | null = null;
 
-    if (payload.conversation?.create) {
+    if (payload.conversation?.create && contact) {
       const { data: conv } = await supabase
         .from("conversations")
         .insert({
@@ -171,12 +171,19 @@ serve(async (req) => {
                   .select("id")
                   .single();
 
-      conversationId = conv.id;
+      conversationId = conv?.id || null;
     }
 
     /* =====================
        CREATE CARD
     ===================== */
+    if (!contact) {
+      return new Response(
+        JSON.stringify({ success: false, error: "CONTACT_NOT_FOUND" }),
+        { status: 400, headers: corsHeaders }
+      );
+    }
+    
     const { data: card } = await supabase
       .from("pipeline_cards")
       .insert({
@@ -216,19 +223,21 @@ serve(async (req) => {
        COLUMN AUTOMATIONS ✅
        Disparar automações "ao entrar na coluna"
     ===================== */
-    try {
-      await triggerColumnAutomationsForCard(
-        card.id,
-        payload.workspace_id,
-        payload.card.column_id,
-        payload.card.pipeline_id
-      );
-    } catch (automationError) {
-      console.error(
-        "[external-webhook-api] Erro ao disparar automações de coluna para card criado via webhook:",
-        automationError
-      );
-      // Não bloqueia a resposta da webhook
+    if (card) {
+      try {
+        await triggerColumnAutomationsForCard(
+          card.id,
+          payload.workspace_id,
+          payload.card.column_id,
+          payload.card.pipeline_id
+        );
+      } catch (automationError) {
+        console.error(
+          "[external-webhook-api] Erro ao disparar automações de coluna para card criado via webhook:",
+          automationError
+        );
+        // Não bloqueia a resposta da webhook
+      }
     }
 
     return new Response(
@@ -237,7 +246,7 @@ serve(async (req) => {
         data: {
           contact_id: contact.id,
           conversation_id: conversationId,
-          card_id: card.id,
+          card_id: card?.id || null,
         },
       }),
       { status: 200, headers: corsHeaders }

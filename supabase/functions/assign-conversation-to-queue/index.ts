@@ -130,9 +130,9 @@ serve(async (req) => {
       case 'sequencial':
         // Distribuição sequencial (round-robin)
         const currentIndex = queue.last_assigned_user_index || 0;
-        const nextIndex = (currentIndex + 1) % queueUsers.length;
-        selectedUserId = queueUsers[nextIndex].user_id;
-        selectionReason = `Sequencial (índice ${nextIndex + 1}/${queueUsers.length})`;
+        const nextIndex = (currentIndex + 1) % (queueUsers?.length || 1);
+        selectedUserId = queueUsers?.[nextIndex]?.user_id || '';
+        selectionReason = `Sequencial (índice ${nextIndex + 1}/${queueUsers?.length || 0})`;
         
         // Atualizar índice para próxima distribuição
         await supabase
@@ -140,20 +140,20 @@ serve(async (req) => {
           .update({ last_assigned_user_index: nextIndex })
           .eq('id', targetQueueId);
         
-        console.log(`🔄 Distribuição sequencial: usuário ${nextIndex + 1} de ${queueUsers.length}`);
+        console.log(`🔄 Distribuição sequencial: usuário ${nextIndex + 1} de ${queueUsers?.length || 0}`);
         break;
 
       case 'aleatoria':
         // Distribuição aleatória
-        const randomIndex = Math.floor(Math.random() * queueUsers.length);
-        selectedUserId = queueUsers[randomIndex].user_id;
-        selectionReason = `Aleatória (usuário ${randomIndex + 1}/${queueUsers.length})`;
-        console.log(`🎲 Distribuição aleatória: usuário ${randomIndex + 1} de ${queueUsers.length}`);
+        const randomIndex = Math.floor(Math.random() * (queueUsers?.length || 1));
+        selectedUserId = queueUsers?.[randomIndex]?.user_id || '';
+        selectionReason = `Aleatória (usuário ${randomIndex + 1}/${queueUsers?.length || 0})`;
+        console.log(`🎲 Distribuição aleatória: usuário ${randomIndex + 1} de ${queueUsers?.length || 0}`);
         break;
 
       case 'ordenada':
         // Sempre o primeiro da ordem
-        selectedUserId = queueUsers[0].user_id;
+        selectedUserId = queueUsers?.[0]?.user_id || '';
         selectionReason = 'Ordenada (sempre o primeiro)';
         console.log(`📋 Distribuição ordenada: sempre primeiro usuário`);
         break;
@@ -225,7 +225,7 @@ serve(async (req) => {
 
       default:
         // Fallback: primeiro usuário
-        selectedUserId = queueUsers[0].user_id;
+        selectedUserId = queueUsers?.[0]?.user_id || '';
         selectionReason = 'Padrão (primeiro da lista)';
         console.log(`⚠️ Tipo de distribuição desconhecido, usando primeiro usuário`);
     }

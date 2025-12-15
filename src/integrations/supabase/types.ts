@@ -4243,6 +4243,7 @@ export type Database = {
             Args: { p_automation_id: string; p_user_id?: string }
             Returns: boolean
           }
+      trigger_time_based_automations: { Args: never; Returns: undefined }
       update_column_automation:
         | {
             Args: {
