@@ -1,7 +1,9 @@
 import { Settings } from "lucide-react";
 import { useState, useEffect } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ConexoesNova } from "@/components/modules/ConexoesNova";
+import { BusinessHoursConfig } from "@/components/modules/BusinessHoursConfig";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
@@ -113,9 +115,20 @@ export function WorkspaceConfigModal({
         </DialogHeader>
 
         <div className="space-y-6">
-          <div className="mt-6">
-            <ConexoesNova workspaceId={workspaceId} />
-          </div>
+          <Tabs defaultValue="connections" className="w-full">
+            <TabsList className="grid w-full grid-cols-2">
+              <TabsTrigger value="connections">Conexões WhatsApp</TabsTrigger>
+              <TabsTrigger value="business-hours">Horários de Funcionamento</TabsTrigger>
+            </TabsList>
+            
+            <TabsContent value="connections" className="mt-6">
+              <ConexoesNova workspaceId={workspaceId} />
+            </TabsContent>
+            
+            <TabsContent value="business-hours" className="mt-6">
+              <BusinessHoursConfig workspaceId={workspaceId} />
+            </TabsContent>
+          </Tabs>
         </div>
       </DialogContent>
     </Dialog>

@@ -160,47 +160,76 @@ serve(async (req) => {
     // 🆕 Buscar provider ESPECÍFICO escolhido pelo usuário (não apenas o ativo)
     console.log(`🔍 Buscando configuração do provider: ${provider} para workspace: ${workspaceId}`);
     
-    const { data: selectedProvider, error: providerError } = await supabase
-      .from("whatsapp_providers")
-      .select("*")
-      .eq("workspace_id", workspaceId)
-      .eq("provider", provider)
-      .maybeSingle();
+    let selectedProvider;
+    try {
+      const { data, error: providerError } = await supabase
+        .from("whatsapp_providers")
+        .select("*")
+        .eq("workspace_id", workspaceId)
+        .eq("provider", provider)
+        .maybeSingle();
 
-    if (providerError || !selectedProvider) {
-      console.error("❌ Provider not found:", providerError);
-      console.error("❌ Workspace ID:", workspaceId);
-      console.error("❌ Provider requested:", provider);
-      
-      const providerName = provider === 'evolution' ? 'Evolution API' : 'Z-API';
-      let errorMessage = `Provider ${providerName} não está configurado para este workspace.`;
-      
-      // Verificar se existe algum provider configurado para este workspace (com tratamento de erro)
-      try {
-        const { data: anyProvider, error: anyProviderError } = await supabase
-          .from("whatsapp_providers")
-          .select("provider, is_active")
-          .eq("workspace_id", workspaceId);
-        
-        if (!anyProviderError && anyProvider && anyProvider.length > 0) {
-          console.log("📋 Providers existentes neste workspace:", anyProvider);
-          const providersList = anyProvider.map(p => `${p.provider}${p.is_active ? ' (ativo)' : ' (inativo)'}`).join(', ');
-          errorMessage += ` Providers encontrados: ${providersList}. Configure o ${providerName} em Configurações > Providers WhatsApp.`;
-        } else {
-          errorMessage += ` Nenhum provider configurado para este workspace. Configure em Configurações > Providers WhatsApp.`;
-        }
-      } catch (queryError) {
-        console.error("❌ Erro ao verificar providers existentes:", queryError);
-        // Continuar com mensagem de erro básica se a query falhar
-        errorMessage += ` Configure em Configurações > Providers WhatsApp.`;
+      if (providerError) {
+        console.error("❌ Database error fetching provider:", providerError);
+        console.error("❌ Provider error details:", JSON.stringify(providerError, null, 2));
+        return new Response(
+          JSON.stringify({ 
+            success: false, 
+            error: `Erro ao buscar provider: ${providerError.message || 'Erro desconhecido'}`,
+            details: providerError.code || 'UNKNOWN'
+          }),
+          { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
       }
-      
+
+      if (!data) {
+        console.error("❌ Provider not found");
+        console.error("❌ Workspace ID:", workspaceId);
+        console.error("❌ Provider requested:", provider);
+        
+        const providerName = provider === 'evolution' ? 'Evolution API' : 'Z-API';
+        let errorMessage = `Provider ${providerName} não está configurado para este workspace.`;
+        
+        // Verificar se existe algum provider configurado para este workspace (com tratamento de erro)
+        try {
+          const { data: anyProvider, error: anyProviderError } = await supabase
+            .from("whatsapp_providers")
+            .select("provider, is_active")
+            .eq("workspace_id", workspaceId);
+          
+          if (!anyProviderError && anyProvider && anyProvider.length > 0) {
+            console.log("📋 Providers existentes neste workspace:", anyProvider);
+            const providersList = anyProvider.map(p => `${p.provider}${p.is_active ? ' (ativo)' : ' (inativo)'}`).join(', ');
+            errorMessage += ` Providers encontrados: ${providersList}. Configure o ${providerName} em Configurações > Providers WhatsApp.`;
+          } else {
+            errorMessage += ` Nenhum provider configurado para este workspace. Configure em Configurações > Providers WhatsApp.`;
+          }
+        } catch (queryError) {
+          console.error("❌ Erro ao verificar providers existentes:", queryError);
+          // Continuar com mensagem de erro básica se a query falhar
+          errorMessage += ` Configure em Configurações > Providers WhatsApp.`;
+        }
+        
+        return new Response(
+          JSON.stringify({ 
+            success: false, 
+            error: errorMessage
+          }),
+          { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+
+      selectedProvider = data;
+    } catch (providerException) {
+      console.error("❌ Exception fetching provider:", providerException);
+      console.error("❌ Exception details:", JSON.stringify(providerException, Object.getOwnPropertyNames(providerException)));
       return new Response(
         JSON.stringify({ 
           success: false, 
-          error: errorMessage
+          error: "Exceção ao buscar provider",
+          details: providerException instanceof Error ? providerException.message : String(providerException)
         }),
-        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
     
@@ -357,15 +386,37 @@ serve(async (req) => {
 
     console.log("💾 Inserting connection data:", JSON.stringify(connectionDataToInsert, null, 2));
 
-    const { data: connectionData, error: insertError } = await supabase
-      .from("connections")
-      .insert(connectionDataToInsert)
-      .select()
-      .single();
+    let connectionData;
+    try {
+      const { data, error: insertError } = await supabase
+        .from("connections")
+        .insert(connectionDataToInsert)
+        .select()
+        .single();
 
-    if (insertError) {
-      console.error("Error creating connection record:", insertError);
-      return new Response(JSON.stringify({ success: false, error: "Error creating connection record" }), {
+      if (insertError) {
+        console.error("❌ Error creating connection record:", insertError);
+        console.error("❌ Insert error details:", JSON.stringify(insertError, null, 2));
+        return new Response(JSON.stringify({ 
+          success: false, 
+          error: "Erro ao criar registro de conexão",
+          details: insertError.message || String(insertError),
+          code: insertError.code || 'UNKNOWN'
+        }), {
+          status: 500,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
+      connectionData = data;
+    } catch (insertException) {
+      console.error("❌ Exception creating connection record:", insertException);
+      console.error("❌ Exception details:", JSON.stringify(insertException, Object.getOwnPropertyNames(insertException)));
+      return new Response(JSON.stringify({ 
+        success: false, 
+        error: "Exceção ao criar registro de conexão",
+        details: insertException instanceof Error ? insertException.message : String(insertException)
+      }), {
         status: 500,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
@@ -380,17 +431,67 @@ serve(async (req) => {
       ? activeProvider.evolution_url 
       : activeProvider.zapi_url;
 
-    const { error: secretError } = await supabase.from("connection_secrets").insert({
-      connection_id: connectionData.id,
-      token: token,
-      evolution_url: providerUrl,
-    });
-
-    if (secretError) {
-      console.error("Error storing connection secrets:", secretError);
+    // Validate provider URL before proceeding
+    if (!providerUrl) {
+      console.error("❌ Provider URL is missing:", {
+        provider: activeProvider.provider,
+        hasEvolutionUrl: !!activeProvider.evolution_url,
+        hasZapiUrl: !!activeProvider.zapi_url
+      });
+      
       // Clean up connection record
       await supabase.from("connections").delete().eq("id", connectionData.id);
-      return new Response(JSON.stringify({ success: false, error: "Error storing connection secrets" }), {
+      
+      const providerName = activeProvider.provider === 'evolution' ? 'Evolution API' : 'Z-API';
+      return new Response(JSON.stringify({ 
+        success: false, 
+        error: `URL do ${providerName} não está configurada. Configure a URL em Configurações > Providers WhatsApp.`
+      }), {
+        status: 400,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    console.log("💾 Storing connection secrets:", {
+      connection_id: connectionData.id,
+      hasToken: !!token,
+      providerUrl: providerUrl.substring(0, 50) + '...',
+      provider: activeProvider.provider
+    });
+
+    try {
+      const { error: secretError, data: secretData } = await supabase.from("connection_secrets").insert({
+        connection_id: connectionData.id,
+        token: token,
+        evolution_url: providerUrl,
+      }).select();
+
+      if (secretError) {
+        console.error("❌ Error storing connection secrets:", secretError);
+        console.error("❌ Secret error details:", JSON.stringify(secretError, null, 2));
+        // Clean up connection record
+        await supabase.from("connections").delete().eq("id", connectionData.id);
+        return new Response(JSON.stringify({ 
+          success: false, 
+          error: "Erro ao salvar segredos da conexão",
+          details: secretError.message || String(secretError)
+        }), {
+          status: 500,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+      
+      console.log("✅ Connection secrets stored successfully:", secretData);
+    } catch (secretException) {
+      console.error("❌ Exception storing connection secrets:", secretException);
+      console.error("❌ Exception details:", JSON.stringify(secretException, Object.getOwnPropertyNames(secretException)));
+      // Clean up connection record
+      await supabase.from("connections").delete().eq("id", connectionData.id);
+      return new Response(JSON.stringify({ 
+        success: false, 
+        error: "Exceção ao salvar segredos da conexão",
+        details: secretException instanceof Error ? secretException.message : String(secretException)
+      }), {
         status: 500,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
@@ -899,20 +1000,43 @@ serve(async (req) => {
     console.error("❌ Error name:", (error as any)?.name);
     console.error("❌ Error message:", (error as Error)?.message);
     console.error("❌ Error stack:", (error as Error)?.stack);
-    console.error("❌ Full error object:", JSON.stringify(error, Object.getOwnPropertyNames(error)));
+    
+    // Try to get more error details
+    let errorDetails: any = {};
+    try {
+      errorDetails = JSON.stringify(error, Object.getOwnPropertyNames(error));
+    } catch {
+      errorDetails = String(error);
+    }
+    console.error("❌ Full error object:", errorDetails);
 
     const errorMessage = (error as Error)?.message || "Erro desconhecido";
     const errorName = (error as any)?.name || "UnknownError";
+    
+    // Extract more context if available
+    let contextInfo = '';
+    if (error instanceof TypeError) {
+      contextInfo = ' (TypeError - possível problema de tipo ou valor)';
+    } else if (error instanceof ReferenceError) {
+      contextInfo = ' (ReferenceError - variável ou função não encontrada)';
+    } else if (error instanceof SyntaxError) {
+      contextInfo = ' (SyntaxError - erro de sintaxe)';
+    }
 
     return new Response(
       JSON.stringify({
         success: false,
-        error: `Erro interno: ${errorMessage}`,
+        error: `Erro interno: ${errorMessage}${contextInfo}`,
         errorType: errorName,
-        details: process.env.DENO_ENV === 'development' ? {
+        details: Deno.env.get("DENO_ENV") === 'development' ? {
           stack: (error as Error)?.stack,
-          name: errorName
-        } : undefined
+          name: errorName,
+          message: errorMessage,
+          rawError: errorDetails
+        } : {
+          message: errorMessage,
+          type: errorName
+        }
       }),
       { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } },
     );

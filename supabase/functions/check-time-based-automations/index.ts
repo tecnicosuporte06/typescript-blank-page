@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { isWithinBusinessHours } from "../_shared/business-hours.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -344,6 +345,23 @@ serve(async (req) => {
                       break;
                     }
 
+                    // ✅ Verificar horário de funcionamento antes de enviar
+                    const workspaceId = (card as any).pipelines?.workspace_id;
+                    if (workspaceId) {
+                      const withinBusinessHours = await isWithinBusinessHours(workspaceId, supabase);
+                      if (!withinBusinessHours) {
+                        console.log(`🚫 [Time Automations] Mensagem bloqueada: fora do horário de funcionamento`);
+                        console.log(`   Workspace ID: ${workspaceId}`);
+                        console.log(`   Card ID: ${card.id}`);
+                        console.log(`   Mensagem não será enviada para evitar violação legal`);
+                        actionSuccess = false;
+                        break; // Sair do switch sem enviar
+                      }
+                      console.log(`✅ [Time Automations] Dentro do horário de funcionamento - prosseguindo com envio`);
+                    } else {
+                      console.warn(`⚠️ [Time Automations] Workspace ID não encontrado - não é possível verificar horário de funcionamento`);
+                    }
+
                     console.log(`📤 [Time Automations] Enviando mensagem para conversa ${card.conversation_id}`);
                     console.log(`📤 [Time Automations] Conteúdo da mensagem: "${messageText}"`);
 
@@ -441,6 +459,23 @@ serve(async (req) => {
                     const sortedSteps = [...funnel.steps].sort((a: any, b: any) => (a.order || 0) - (b.order || 0));
                     
                     console.log(`📤 [Time Automations] Iniciando envio de ${sortedSteps.length} mensagens do funil...`);
+                    
+                    // ✅ Verificar horário de funcionamento antes de enviar funil
+                    const workspaceId = (card as any).pipelines?.workspace_id;
+                    if (workspaceId) {
+                      const withinBusinessHours = await isWithinBusinessHours(workspaceId, supabase);
+                      if (!withinBusinessHours) {
+                        console.log(`🚫 [Time Automations] Funil bloqueado: fora do horário de funcionamento`);
+                        console.log(`   Workspace ID: ${workspaceId}`);
+                        console.log(`   Card ID: ${card.id}`);
+                        console.log(`   Funil não será enviado para evitar violação legal`);
+                        actionSuccess = false;
+                        break; // Sair do switch sem enviar
+                      }
+                      console.log(`✅ [Time Automations] Dentro do horário de funcionamento - prosseguindo com envio do funil`);
+                    } else {
+                      console.warn(`⚠️ [Time Automations] Workspace ID não encontrado - não é possível verificar horário de funcionamento`);
+                    }
                     
                     // Processar cada step
                     for (let i = 0; i < sortedSteps.length; i++) {

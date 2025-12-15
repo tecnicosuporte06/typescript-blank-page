@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { isWithinBusinessHours } from "../_shared/business-hours.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -98,7 +99,12 @@ serve(async (req) => {
       console.log(`✅ ${automations.length} automação(ões) encontrada(s)`);
 
       // 3. Filtrar automações com trigger "message_received"
-      for (const automation of automations) {
+      // ✅ ANTI-SPAM: Rastrear última vez que enviamos mensagem para adicionar delay entre automações
+      let lastAutomationMessageTime = 0;
+      const MIN_DELAY_BETWEEN_AUTOMATIONS = 3000; // 3 segundos mínimo entre automações que enviam mensagens
+      
+      for (let automationIndex = 0; automationIndex < automations.length; automationIndex++) {
+        const automation = automations[automationIndex];
         if (!automation.is_active) {
           console.log(`⏭️ Automação "${automation.name}" está inativa`);
           continue;
@@ -214,13 +220,68 @@ serve(async (req) => {
         console.log(`📝 Execução registrada para automação "${automation.name}"`);
         console.log(`🎬 Executando ${actions?.length || 0} ação(ões)...`);
 
+        // ✅ ANTI-SPAM: Verificar se esta automação envia mensagens
+        const messageActions = ['send_message', 'send_funnel'];
+        const automationHasMessageActions = actions?.some((a: any) => messageActions.includes(a.action_type)) || false;
+        
+        // Se esta automação envia mensagens e não é a primeira, aguardar delay
+        if (automationHasMessageActions && automationIndex > 0 && lastAutomationMessageTime > 0) {
+          const timeSinceLastMessage = Date.now() - lastAutomationMessageTime;
+          if (timeSinceLastMessage < MIN_DELAY_BETWEEN_AUTOMATIONS) {
+            const delayNeeded = MIN_DELAY_BETWEEN_AUTOMATIONS - timeSinceLastMessage;
+            console.log(`⏳ Aguardando ${delayNeeded}ms antes de executar próxima automação com mensagens (anti-spam)...`);
+            await new Promise(resolve => setTimeout(resolve, delayNeeded));
+          }
+        }
+
         // 4. Executar ações
         if (actions && actions.length > 0) {
-          for (const action of actions) {
-            try {
-              await executeAction(action, card, supabase, workspaceId);
-            } catch (actionError) {
-              console.error(`❌ Erro ao executar ação:`, actionError);
+          // ✅ ANTI-SPAM: Executar ações sequencialmente se houver envio de mensagens
+          if (automationHasMessageActions) {
+            console.log(`⏳ Executando ações sequencialmente (com delay anti-spam) devido a envio de mensagens`);
+            
+            let lastMessageActionTime = 0;
+            const MIN_DELAY_BETWEEN_MESSAGES = 2000; // 2 segundos mínimo entre mensagens
+            const messageActionTypes = ['send_message', 'send_funnel'];
+            
+            for (let i = 0; i < actions.length; i++) {
+              const action = actions[i];
+              const isMessageAction = messageActionTypes.includes(action.action_type);
+              
+              // Se é ação de mensagem e não é a primeira, aguardar delay
+              if (isMessageAction && i > 0) {
+                const timeSinceLastMessage = Date.now() - lastMessageActionTime;
+                if (timeSinceLastMessage < MIN_DELAY_BETWEEN_MESSAGES) {
+                  const delayNeeded = MIN_DELAY_BETWEEN_MESSAGES - timeSinceLastMessage;
+                  console.log(`⏳ Aguardando ${delayNeeded}ms antes de enviar próxima mensagem (anti-spam)...`);
+                  await new Promise(resolve => setTimeout(resolve, delayNeeded));
+                }
+              }
+              
+              try {
+                await executeAction(action, card, supabase, workspaceId);
+                
+                // Atualizar timestamp se for ação de mensagem
+                if (isMessageAction) {
+                  lastMessageActionTime = Date.now();
+                }
+              } catch (actionError) {
+                console.error(`❌ Erro ao executar ação:`, actionError);
+              }
+            }
+            
+            // Atualizar timestamp global se automação enviou mensagens
+            if (automationHasMessageActions) {
+              lastAutomationMessageTime = Date.now();
+            }
+          } else {
+            // Para ações que não enviam mensagens, executar normalmente
+            for (const action of actions) {
+              try {
+                await executeAction(action, card, supabase, workspaceId);
+              } catch (actionError) {
+                console.error(`❌ Erro ao executar ação:`, actionError);
+              }
             }
           }
         }
@@ -293,6 +354,22 @@ async function executeAction(action: any, card: any, supabaseClient: any, worksp
       if (!conversation) {
         console.error('❌ Conversa não encontrada');
         return;
+      }
+
+      // ✅ Verificar horário de funcionamento antes de enviar
+      const workspaceId = conversation.workspace_id;
+      if (workspaceId) {
+        const withinBusinessHours = await isWithinBusinessHours(workspaceId, supabaseClient);
+        if (!withinBusinessHours) {
+          console.log(`🚫 Mensagem bloqueada: fora do horário de funcionamento`);
+          console.log(`   Workspace ID: ${workspaceId}`);
+          console.log(`   Card ID: ${card.id}`);
+          console.log(`   Mensagem não será enviada para evitar violação legal`);
+          return; // Retornar sem enviar
+        }
+        console.log(`✅ Dentro do horário de funcionamento - prosseguindo com envio`);
+      } else {
+        console.warn(`⚠️ Workspace ID não encontrado - não é possível verificar horário de funcionamento`);
       }
 
       const connectionMode = actionConfig.connection_mode || 'last';
@@ -450,6 +527,28 @@ async function executeAction(action: any, card: any, supabaseClient: any, worksp
       if (!contact || !conversation?.connection_id) {
         console.error('❌ Dados insuficientes para enviar funil');
         return;
+      }
+
+      // ✅ Verificar horário de funcionamento antes de enviar funil
+      const { data: conversationFull } = await supabaseClient
+        .from('conversations')
+        .select('workspace_id')
+        .eq('id', card.conversation_id)
+        .single();
+
+      const workspaceId = conversationFull?.workspace_id;
+      if (workspaceId) {
+        const withinBusinessHours = await isWithinBusinessHours(workspaceId, supabaseClient);
+        if (!withinBusinessHours) {
+          console.log(`🚫 Funil bloqueado: fora do horário de funcionamento`);
+          console.log(`   Workspace ID: ${workspaceId}`);
+          console.log(`   Card ID: ${card.id}`);
+          console.log(`   Funil não será enviado para evitar violação legal`);
+          return; // Retornar sem enviar
+        }
+        console.log(`✅ Dentro do horário de funcionamento - prosseguindo com envio do funil`);
+      } else {
+        console.warn(`⚠️ Workspace ID não encontrado - não é possível verificar horário de funcionamento`);
       }
 
       // Processar steps do funil

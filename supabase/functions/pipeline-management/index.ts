@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { isWithinBusinessHours } from "../_shared/business-hours.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -384,6 +385,22 @@ async function executeAutomationAction(
       
       console.log(`📝 Mensagem a ser enviada (${messageContent.length} caracteres):`, 
         messageContent.length > 100 ? messageContent.substring(0, 100) + '...' : messageContent);
+      
+      // ✅ Verificar horário de funcionamento antes de enviar
+      const workspaceId = conversation.workspace_id || card.pipelines?.workspace_id;
+      if (workspaceId) {
+        const withinBusinessHours = await isWithinBusinessHours(workspaceId, supabaseClient);
+        if (!withinBusinessHours) {
+          console.log(`🚫 Mensagem bloqueada: fora do horário de funcionamento`);
+          console.log(`   Workspace ID: ${workspaceId}`);
+          console.log(`   Card ID: ${card.id}`);
+          console.log(`   Mensagem não será enviada para evitar violação legal`);
+          return; // Retornar sem enviar
+        }
+        console.log(`✅ Dentro do horário de funcionamento - prosseguindo com envio`);
+      } else {
+        console.warn(`⚠️ Workspace ID não encontrado - não é possível verificar horário de funcionamento`);
+      }
       
       // Chamar função test-send-msg que já busca automaticamente:
       // 1. Webhook URL do N8N (workspace_webhook_settings ou workspace_webhook_secrets)
@@ -862,6 +879,22 @@ async function executeAutomationAction(
       const sortedSteps = [...funnel.steps].sort((a, b) => (a.order || 0) - (b.order || 0));
       
       console.log(`📤 Iniciando envio de ${sortedSteps.length} mensagens do funil...`);
+      
+      // ✅ Verificar horário de funcionamento antes de enviar funil
+      const workspaceId = conversation.workspace_id || card.pipelines?.workspace_id;
+      if (workspaceId) {
+        const withinBusinessHours = await isWithinBusinessHours(workspaceId, supabaseClient);
+        if (!withinBusinessHours) {
+          console.log(`🚫 Funil bloqueado: fora do horário de funcionamento`);
+          console.log(`   Workspace ID: ${workspaceId}`);
+          console.log(`   Card ID: ${card.id}`);
+          console.log(`   Funil não será enviado para evitar violação legal`);
+          return; // Retornar sem enviar
+        }
+        console.log(`✅ Dentro do horário de funcionamento - prosseguindo com envio do funil`);
+      } else {
+        console.warn(`⚠️ Workspace ID não encontrado - não é possível verificar horário de funcionamento`);
+      }
       
       // Preparar URL do test-send-msg
       const supabaseUrl = Deno.env.get('SUPABASE_URL') || '';
@@ -2300,9 +2333,15 @@ serve(async (req) => {
                 console.log(`ℹ️ Nenhuma automação ativa encontrada para processar`);
               } else {
                 // 3️⃣ Processar cada automação
-                for (const { automation, triggerType } of automationsToProcess) {
+                // ✅ ANTI-SPAM: Rastrear última vez que enviamos mensagem para adicionar delay entre automações
+                let lastAutomationMessageTime = 0;
+                const MIN_DELAY_BETWEEN_AUTOMATIONS = 3000; // 3 segundos mínimo entre automações que enviam mensagens
+                
+                for (let automationIndex = 0; automationIndex < automationsToProcess.length; automationIndex++) {
+                  const { automation, triggerType } = automationsToProcess[automationIndex];
+                  
                   try {
-                    console.log(`\n🔍 ========== PROCESSANDO AUTOMAÇÃO ==========`);
+                    console.log(`\n🔍 ========== PROCESSANDO AUTOMAÇÃO ${automationIndex + 1}/${automationsToProcess.length} ==========`);
                     console.log(`🔍 Nome: "${automation.name}"`);
                     console.log(`🔍 ID: ${automation.id}`);
                     console.log(`🔍 Coluna: ${automation.column_id}`);
@@ -2359,9 +2398,24 @@ serve(async (req) => {
                       continue;
                     }
                     
+                    // ✅ ANTI-SPAM: Verificar se esta automação envia mensagens
+                    const messageActionTypesCheck = ['send_message', 'send_funnel'];
+                    const automationHasMessageActions = actions.some((a: any) => messageActionTypesCheck.includes(a.action_type));
+                    
+                    // Se esta automação envia mensagens e não é a primeira, aguardar delay
+                    if (automationHasMessageActions && automationIndex > 0 && lastAutomationMessageTime > 0) {
+                      const timeSinceLastMessage = Date.now() - lastAutomationMessageTime;
+                      if (timeSinceLastMessage < MIN_DELAY_BETWEEN_AUTOMATIONS) {
+                        const delayNeeded = MIN_DELAY_BETWEEN_AUTOMATIONS - timeSinceLastMessage;
+                        console.log(`⏳ Aguardando ${delayNeeded}ms antes de executar próxima automação com mensagens (anti-spam)...`);
+                        await new Promise(resolve => setTimeout(resolve, delayNeeded));
+                      }
+                    }
+                    
                     console.log(`🚀 ========== EXECUTANDO AUTOMAÇÃO ==========`);
                     console.log(`🚀 Nome: "${automation.name}" (${automation.id})`);
                     console.log(`🚀 Trigger: ${triggerType}`);
+                    console.log(`🚀 Envia mensagens: ${automationHasMessageActions ? 'SIM' : 'NÃO'}`);
                     
                     // Executar ações em ordem
                     const sortedActions = [...actions].sort((a: any, b: any) => (a.action_order || 0) - (b.action_order || 0));
@@ -2395,52 +2449,131 @@ serve(async (req) => {
                         .map((a: any) => ({ type: a.action_type, config: a.action_config })));
                     }
                     
-                    // Executar ações em background (não bloqueante)
-                    // Usar Promise.allSettled para garantir que todos executem mesmo se alguns falharem
-                    const actionPromises = sortedActions.map(async (action: any) => {
-                      try {
-                        console.log(`\n🎬 ========== EXECUTANDO AÇÃO ==========`);
-                        console.log(`🎬 Tipo: ${action.action_type}`);
-                        console.log(`🎬 Ordem: ${action.action_order || 0}`);
-                        console.log(`🎬 Config:`, JSON.stringify(action.action_config, null, 2));
-                        console.log(`🎬 Card ID: ${card.id}, Conversation ID: ${card.conversation_id || card.conversation?.id || 'NÃO ENCONTRADO'}`);
+                    // ✅ ANTI-SPAM: Identificar ações que enviam mensagens
+                    const messageActionTypes = ['send_message', 'send_funnel'];
+                    const hasMessageActions = sortedActions.some((a: any) => messageActionTypes.includes(a.action_type));
+                    
+                    // Se há ações de envio de mensagem, executar sequencialmente com delay
+                    // Caso contrário, executar em paralelo para melhor performance
+                    if (hasMessageActions) {
+                      console.log(`⏳ Executando ações sequencialmente (com delay anti-spam) devido a envio de mensagens`);
+                      
+                      let successful = 0;
+                      let failed = 0;
+                      let lastMessageActionTime = 0;
+                      const MIN_DELAY_BETWEEN_MESSAGES = 2000; // 2 segundos mínimo entre mensagens
+                      
+                      for (let i = 0; i < sortedActions.length; i++) {
+                          const action = sortedActions[i];
+                          const isMessageAction = messageActionTypes.includes(action.action_type);
                         
-                        // ✅ CRÍTICO: Para remove_agent, garantir que temos conversation_id
-                        if (action.action_type === 'remove_agent') {
-                          const finalConversationId = card.conversation_id || card.conversation?.id;
-                          if (!finalConversationId) {
-                            console.error(`❌ ERRO: Ação remove_agent requer conversation_id mas card não tem!`);
-                            console.error(`❌ Card:`, JSON.stringify({
-                              id: card.id,
-                              conversation_id: card.conversation_id,
-                              conversation: card.conversation
-                            }, null, 2));
-                            throw new Error(`Card ${card.id} não tem conversation_id. Ação remove_agent não pode ser executada.`);
+                        try {
+                          // Se é ação de mensagem e não é a primeira, aguardar delay
+                          if (isMessageAction && i > 0) {
+                            const timeSinceLastMessage = Date.now() - lastMessageActionTime;
+                            if (timeSinceLastMessage < MIN_DELAY_BETWEEN_MESSAGES) {
+                              const delayNeeded = MIN_DELAY_BETWEEN_MESSAGES - timeSinceLastMessage;
+                              console.log(`⏳ Aguardando ${delayNeeded}ms antes de enviar próxima mensagem (anti-spam)...`);
+                              await new Promise(resolve => setTimeout(resolve, delayNeeded));
+                            }
                           }
-                          console.log(`✅ [remove_agent] conversation_id confirmado: ${finalConversationId}`);
+                          
+                          console.log(`\n🎬 ========== EXECUTANDO AÇÃO ${i + 1}/${sortedActions.length} ==========`);
+                          console.log(`🎬 Tipo: ${action.action_type}`);
+                          console.log(`🎬 Ordem: ${action.action_order || 0}`);
+                          console.log(`🎬 Config:`, JSON.stringify(action.action_config, null, 2));
+                          console.log(`🎬 Card ID: ${card.id}, Conversation ID: ${card.conversation_id || card.conversation?.id || 'NÃO ENCONTRADO'}`);
+                          
+                          // ✅ CRÍTICO: Para remove_agent, garantir que temos conversation_id
+                          if (action.action_type === 'remove_agent') {
+                            const finalConversationId = card.conversation_id || card.conversation?.id;
+                            if (!finalConversationId) {
+                              console.error(`❌ ERRO: Ação remove_agent requer conversation_id mas card não tem!`);
+                              console.error(`❌ Card:`, JSON.stringify({
+                                id: card.id,
+                                conversation_id: card.conversation_id,
+                                conversation: card.conversation
+                              }, null, 2));
+                              throw new Error(`Card ${card.id} não tem conversation_id. Ação remove_agent não pode ser executada.`);
+                            }
+                            console.log(`✅ [remove_agent] conversation_id confirmado: ${finalConversationId}`);
+                          }
+                          
+                          await executeAutomationAction(action, card, supabaseClient);
+                          
+                          // Atualizar timestamp se for ação de mensagem
+                          if (isMessageAction) {
+                            lastMessageActionTime = Date.now();
+                          }
+                          
+                          console.log(`✅ Ação ${action.action_type} executada com sucesso`);
+                          successful++;
+                        } catch (actionError) {
+                          console.error(`❌ Erro ao executar ação ${action.action_type}:`, {
+                            error: actionError,
+                            message: actionError instanceof Error ? actionError.message : String(actionError),
+                            stack: actionError instanceof Error ? actionError.stack : undefined
+                          });
+                          failed++;
+                          // Continuar com próxima ação mesmo se uma falhar
                         }
-                        
-                        await executeAutomationAction(action, card, supabaseClient);
-                        
-                        console.log(`✅ Ação ${action.action_type} executada com sucesso`);
-                        return { success: true, action: action.action_type };
-                      } catch (actionError) {
-                        console.error(`❌ Erro ao executar ação ${action.action_type}:`, {
-                          error: actionError,
-                          message: actionError instanceof Error ? actionError.message : String(actionError),
-                          stack: actionError instanceof Error ? actionError.stack : undefined
-                        });
-                        return { success: false, action: action.action_type, error: actionError };
                       }
-                    });
-                    
-                    // Aguardar todas as ações (mas não bloquear se alguma falhar)
-                    const actionResults = await Promise.allSettled(actionPromises);
-                    
-                    const successful = actionResults.filter(r => r.status === 'fulfilled' && r.value?.success).length;
-                    const failed = actionResults.filter(r => r.status === 'rejected' || (r.status === 'fulfilled' && !r.value?.success)).length;
-                    
-                    console.log(`✅ Automação "${automation.name}" executada: ${successful} sucesso(s), ${failed} falha(s)\n`);
+                      
+                      console.log(`✅ Automação "${automation.name}" executada: ${successful} sucesso(s), ${failed} falha(s)\n`);
+                      
+                      // Atualizar timestamp se automação enviou mensagens
+                      if (automationHasMessageActions && successful > 0) {
+                        lastAutomationMessageTime = Date.now();
+                      }
+                    } else {
+                      // Para ações que não enviam mensagens, executar em paralelo (melhor performance)
+                      console.log(`⚡ Executando ações em paralelo (nenhuma ação de envio de mensagem)`);
+                      
+                      const actionPromises = sortedActions.map(async (action: any) => {
+                        try {
+                          console.log(`\n🎬 ========== EXECUTANDO AÇÃO ==========`);
+                          console.log(`🎬 Tipo: ${action.action_type}`);
+                          console.log(`🎬 Ordem: ${action.action_order || 0}`);
+                          console.log(`🎬 Config:`, JSON.stringify(action.action_config, null, 2));
+                          console.log(`🎬 Card ID: ${card.id}, Conversation ID: ${card.conversation_id || card.conversation?.id || 'NÃO ENCONTRADO'}`);
+                          
+                          // ✅ CRÍTICO: Para remove_agent, garantir que temos conversation_id
+                          if (action.action_type === 'remove_agent') {
+                            const finalConversationId = card.conversation_id || card.conversation?.id;
+                            if (!finalConversationId) {
+                              console.error(`❌ ERRO: Ação remove_agent requer conversation_id mas card não tem!`);
+                              console.error(`❌ Card:`, JSON.stringify({
+                                id: card.id,
+                                conversation_id: card.conversation_id,
+                                conversation: card.conversation
+                              }, null, 2));
+                              throw new Error(`Card ${card.id} não tem conversation_id. Ação remove_agent não pode ser executada.`);
+                            }
+                            console.log(`✅ [remove_agent] conversation_id confirmado: ${finalConversationId}`);
+                          }
+                          
+                          await executeAutomationAction(action, card, supabaseClient);
+                          
+                          console.log(`✅ Ação ${action.action_type} executada com sucesso`);
+                          return { success: true, action: action.action_type };
+                        } catch (actionError) {
+                          console.error(`❌ Erro ao executar ação ${action.action_type}:`, {
+                            error: actionError,
+                            message: actionError instanceof Error ? actionError.message : String(actionError),
+                            stack: actionError instanceof Error ? actionError.stack : undefined
+                          });
+                          return { success: false, action: action.action_type, error: actionError };
+                        }
+                      });
+                      
+                      // Aguardar todas as ações (mas não bloquear se alguma falhar)
+                      const actionResults = await Promise.allSettled(actionPromises);
+                      
+                      const successful = actionResults.filter(r => r.status === 'fulfilled' && r.value?.success).length;
+                      const failed = actionResults.filter(r => r.status === 'rejected' || (r.status === 'fulfilled' && !r.value?.success)).length;
+                      
+                      console.log(`✅ Automação "${automation.name}" executada: ${successful} sucesso(s), ${failed} falha(s)\n`);
+                    }
                   } catch (automationError) {
                     console.error(`❌ Erro ao processar automação ${automation.id}:`, {
                       error: automationError,
