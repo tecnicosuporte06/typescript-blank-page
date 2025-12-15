@@ -78,6 +78,13 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "activities_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "contacts_safe"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "activities_pipeline_card_id_fkey"
             columns: ["pipeline_card_id"]
             isOneToOne: false
@@ -651,6 +658,13 @@ export type Database = {
             referencedRelation: "contacts"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "contact_extra_info_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "contacts_safe"
+            referencedColumns: ["id"]
+          },
         ]
       }
       contact_observations: {
@@ -720,6 +734,13 @@ export type Database = {
             columns: ["contact_id"]
             isOneToOne: false
             referencedRelation: "contacts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "contact_tags_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "contacts_safe"
             referencedColumns: ["id"]
           },
           {
@@ -1111,6 +1132,13 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "fk_conversations_contact_id"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "contacts_safe"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "fk_conversations_queue_id"
             columns: ["queue_id"]
             isOneToOne: false
@@ -1403,6 +1431,139 @@ export type Database = {
           },
           {
             foreignKeyName: "evolution_instance_tokens_workspace_fk"
+            columns: ["workspace_id"]
+            isOneToOne: false
+            referencedRelation: "workspaces_view"
+            referencedColumns: ["workspace_id"]
+          },
+        ]
+      }
+      google_calendar_authorizations: {
+        Row: {
+          authorized_at: string
+          created_at: string
+          google_email: string
+          google_user_id: string | null
+          id: string
+          last_token_check_at: string | null
+          refresh_token: string
+          revoked_at: string | null
+          scopes: string[]
+          updated_at: string
+          user_id: string
+          workspace_id: string
+        }
+        Insert: {
+          authorized_at?: string
+          created_at?: string
+          google_email: string
+          google_user_id?: string | null
+          id?: string
+          last_token_check_at?: string | null
+          refresh_token: string
+          revoked_at?: string | null
+          scopes?: string[]
+          updated_at?: string
+          user_id: string
+          workspace_id: string
+        }
+        Update: {
+          authorized_at?: string
+          created_at?: string
+          google_email?: string
+          google_user_id?: string | null
+          id?: string
+          last_token_check_at?: string | null
+          refresh_token?: string
+          revoked_at?: string | null
+          scopes?: string[]
+          updated_at?: string
+          user_id?: string
+          workspace_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "google_calendar_authorizations_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "system_users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "google_calendar_authorizations_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "system_users_view"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "google_calendar_authorizations_workspace_id_fkey"
+            columns: ["workspace_id"]
+            isOneToOne: false
+            referencedRelation: "workspaces"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "google_calendar_authorizations_workspace_id_fkey"
+            columns: ["workspace_id"]
+            isOneToOne: false
+            referencedRelation: "workspaces_view"
+            referencedColumns: ["workspace_id"]
+          },
+        ]
+      }
+      google_calendar_oauth_states: {
+        Row: {
+          code_verifier: string
+          created_at: string
+          expires_at: string
+          state: string
+          used_at: string | null
+          user_id: string
+          workspace_id: string
+        }
+        Insert: {
+          code_verifier: string
+          created_at?: string
+          expires_at: string
+          state: string
+          used_at?: string | null
+          user_id: string
+          workspace_id: string
+        }
+        Update: {
+          code_verifier?: string
+          created_at?: string
+          expires_at?: string
+          state?: string
+          used_at?: string | null
+          user_id?: string
+          workspace_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "google_calendar_oauth_states_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "system_users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "google_calendar_oauth_states_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "system_users_view"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "google_calendar_oauth_states_workspace_id_fkey"
+            columns: ["workspace_id"]
+            isOneToOne: false
+            referencedRelation: "workspaces"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "google_calendar_oauth_states_workspace_id_fkey"
             columns: ["workspace_id"]
             isOneToOne: false
             referencedRelation: "workspaces_view"
@@ -1805,6 +1966,13 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "notifications_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "contacts_safe"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "notifications_conversation_id_fkey"
             columns: ["conversation_id"]
             isOneToOne: false
@@ -2026,6 +2194,13 @@ export type Database = {
             columns: ["contact_id"]
             isOneToOne: false
             referencedRelation: "contacts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "pipeline_cards_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "contacts_safe"
             referencedColumns: ["id"]
           },
           {
@@ -2895,6 +3070,42 @@ export type Database = {
         }
         Relationships: []
       }
+      system_google_calendar_settings: {
+        Row: {
+          client_id: string
+          client_secret: string
+          created_at: string
+          created_by: string | null
+          id: string
+          project_id: string | null
+          redirect_uri: string
+          updated_at: string
+          webhook_url: string | null
+        }
+        Insert: {
+          client_id: string
+          client_secret: string
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          project_id?: string | null
+          redirect_uri: string
+          updated_at?: string
+          webhook_url?: string | null
+        }
+        Update: {
+          client_id?: string
+          client_secret?: string
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          project_id?: string | null
+          redirect_uri?: string
+          updated_at?: string
+          webhook_url?: string | null
+        }
+        Relationships: []
+      }
       system_user_cargos: {
         Row: {
           cargo_id: string
@@ -3312,6 +3523,102 @@ export type Database = {
           },
         ]
       }
+      workspace_api_keys: {
+        Row: {
+          api_key: string
+          created_at: string
+          id: string
+          is_active: boolean
+          last_used_at: string | null
+          name: string
+          updated_at: string
+          workspace_id: string
+        }
+        Insert: {
+          api_key: string
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          last_used_at?: string | null
+          name: string
+          updated_at?: string
+          workspace_id: string
+        }
+        Update: {
+          api_key?: string
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          last_used_at?: string | null
+          name?: string
+          updated_at?: string
+          workspace_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "workspace_api_keys_workspace_id_fkey"
+            columns: ["workspace_id"]
+            isOneToOne: false
+            referencedRelation: "workspaces"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "workspace_api_keys_workspace_id_fkey"
+            columns: ["workspace_id"]
+            isOneToOne: false
+            referencedRelation: "workspaces_view"
+            referencedColumns: ["workspace_id"]
+          },
+        ]
+      }
+      workspace_business_hours: {
+        Row: {
+          created_at: string
+          day_of_week: number
+          end_time: string
+          id: string
+          is_enabled: boolean
+          start_time: string
+          updated_at: string
+          workspace_id: string
+        }
+        Insert: {
+          created_at?: string
+          day_of_week: number
+          end_time: string
+          id?: string
+          is_enabled?: boolean
+          start_time: string
+          updated_at?: string
+          workspace_id: string
+        }
+        Update: {
+          created_at?: string
+          day_of_week?: number
+          end_time?: string
+          id?: string
+          is_enabled?: boolean
+          start_time?: string
+          updated_at?: string
+          workspace_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "workspace_business_hours_workspace_id_fkey"
+            columns: ["workspace_id"]
+            isOneToOne: false
+            referencedRelation: "workspaces"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "workspace_business_hours_workspace_id_fkey"
+            columns: ["workspace_id"]
+            isOneToOne: false
+            referencedRelation: "workspaces_view"
+            referencedColumns: ["workspace_id"]
+          },
+        ]
+      }
       workspace_configurations: {
         Row: {
           background_solid_color: string | null
@@ -3615,6 +3922,27 @@ export type Database = {
       }
     }
     Views: {
+      contacts_safe: {
+        Row: {
+          id: string | null
+          name: string | null
+          phone: string | null
+          workspace_id: string | null
+        }
+        Insert: {
+          id?: string | null
+          name?: string | null
+          phone?: string | null
+          workspace_id?: never
+        }
+        Update: {
+          id?: string | null
+          name?: string | null
+          phone?: string | null
+          workspace_id?: never
+        }
+        Relationships: []
+      }
       fact_activities_monthly_view: {
         Row: {
           activity_type: string | null
@@ -3810,6 +4138,29 @@ export type Database = {
           name: string
           updated_at: string
         }[]
+      }
+      get_contact_by_workspace_and_phone: {
+        Args: { p_phone: string; p_workspace_id: string }
+        Returns: {
+          created_at: string
+          email: string | null
+          extra_info: Json | null
+          id: string
+          name: string
+          phone: string | null
+          profile_fetch_attempts: number | null
+          profile_fetch_last_attempt: string | null
+          profile_image_updated_at: string | null
+          profile_image_url: string | null
+          updated_at: string
+          workspace_id: string
+        }[]
+        SetofOptions: {
+          from: "*"
+          to: "contacts"
+          isOneToOne: false
+          isSetofReturn: true
+        }
       }
       get_current_user_profile: { Args: never; Returns: string }
       get_system_user: {
