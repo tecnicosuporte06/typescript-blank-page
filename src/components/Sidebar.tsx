@@ -166,60 +166,61 @@ export function Sidebar({
     group?: string;
     masterOnly?: boolean;
   })[] = [{
-    id: "dashboard",
+    id: "dashboard" as ModuleType,
     label: "Relatórios",
     icon: <LayoutDashboard className="w-5 h-5" />
   }, {
-    id: "conversas",
+    id: "conversas" as ModuleType,
     label: "Conversas",
     icon: <MessageCircle className="w-5 h-5" />
   }, {
-    id: "ds-voice",
+    id: "ds-voice" as ModuleType,
     label: "Mensagens Rápidas",
     icon: <AudioLines className="w-5 h-5" />
   }, {
-    id: "workspace-empresas",
+    id: "workspace-empresas" as ModuleType,
     label: "Minha Empresa",
     icon: <Building2 className="w-5 h-5" />
   }, {
-    id: "crm-negocios",
+    id: "crm-negocios" as ModuleType,
     label: "Pipeline",
     icon: <DollarSign className="w-5 h-5" />,
     group: "crm"
   }, {
-    id: "crm-atividades",
+    id: "crm-atividades" as ModuleType,
     label: "Atividades",
     icon: <CheckSquare className="w-5 h-5" />,
     group: "crm"
   }, {
-    id: "crm-contatos",
+    id: "crm-contatos" as ModuleType,
     label: "Contatos",
     icon: <Users className="w-5 h-5" />,
     group: "crm"
   }, {
-    id: "crm-tags",
+    id: "crm-tags" as ModuleType,
     label: "Tags",
     icon: <Target className="w-5 h-5" />,
     group: "crm"
   }, {
-    id: "crm-produtos",
+    id: "crm-produtos" as ModuleType,
     label: "Produtos",
     icon: <Package className="w-5 h-5" />,
     group: "crm"
   }, {
-    id: "automacoes-filas",
+    id: "automacoes-filas" as ModuleType,
     label: "Filas",
     icon: <Users className="w-5 h-5" />,
     group: "administracao"
   }, {
-    id: "administracao-google-agenda",
+    id: "administracao-google-agenda" as ModuleType,
     label: "Google Agenda",
     icon: <Calendar className="w-5 h-5" />
   }, {
-    id: "administracao-acoes",
+    id: "administracao-acoes" as ModuleType,
     label: "Configuração de Ações",
     icon: <Settings className="w-5 h-5" />,
-    group: "administracao"
+    group: "administracao",
+    masterOnly: false
   }].filter(item => {
     // Filtrar itens masterOnly se o usuário não for master
     if (item.masterOnly && userRole !== 'master') {

@@ -65,21 +65,13 @@ export function DatabaseConfigManager() {
           }, 1000);
         }
       } else {
-        // Criar nova configuração
-        const { createDatabaseConfig } = await import('@/lib/config');
-        const newConfig = await createDatabaseConfig({
-          name: editForm.name || 'Configuração Principal',
-          url: editForm.url!,
-          anonKey: editForm.anonKey!,
-          projectId: editForm.projectId!,
-        });
-        
-        if (newConfig) {
-          // Recarregar página após criar para aplicar mudanças
-          setTimeout(() => {
-            window.location.reload();
-          }, 1000);
-        }
+        // Criar nova configuração via hook
+        // A criação será feita pelo refreshConfig que cria automaticamente se não existir
+        await refreshConfig();
+        // Recarregar página após criar para aplicar mudanças
+        setTimeout(() => {
+          window.location.reload();
+        }, 1000);
       }
     } catch (error) {
       console.error('Erro ao salvar configuração:', error);

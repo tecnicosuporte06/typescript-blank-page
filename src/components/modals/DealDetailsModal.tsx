@@ -1615,34 +1615,11 @@ export function DealDetailsModal({
       
       // Verificar se evento foi criado no Google Calendar (opcional, não bloqueia)
       if (activityForm.responsibleId) {
-        try {
-          // Aguardar um pouco para o trigger processar
-          await new Promise(resolve => setTimeout(resolve, 1000));
-          
-          const { data: updatedActivity } = await supabase
-            .from('activities')
-            .select('google_calendar_event_id')
-            .eq('id', activity.id)
-            .single();
-          
-          if (updatedActivity?.google_calendar_event_id) {
-            toast({
-              title: "Atividade criada com sucesso!",
-              description: `A atividade "${activityForm.subject}" foi agendada e adicionada ao Google Calendar.`,
-            });
-          } else {
-            toast({
-              title: "Atividade criada com sucesso!",
-              description: `A atividade "${activityForm.subject}" foi agendada.`,
-            });
-          }
-        } catch (err) {
-          // Ignorar erros de verificação do Google Calendar
-          toast({
-            title: "Atividade criada com sucesso!",
-            description: `A atividade "${activityForm.subject}" foi agendada.`,
-          });
-        }
+        // A integração com Google Calendar é assíncrona via trigger
+        toast({
+          title: "Atividade criada com sucesso!",
+          description: `A atividade "${activityForm.subject}" foi agendada.`,
+        });
       } else {
         toast({
           title: "Atividade criada com sucesso!",

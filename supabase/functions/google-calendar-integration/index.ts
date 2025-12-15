@@ -231,7 +231,7 @@ const handleStatus = async (
       );
       if (!refreshResult.success) {
         requiresReconnect = true;
-        await revokeRefreshToken(authorization.refresh_token);
+        await revokeRefreshToken(authorization.refresh_token, globalSettings.client_id, globalSettings.client_secret);
         const { error: revokeError } = await client
           .from("google_calendar_authorizations")
           .update({
