@@ -40,22 +40,47 @@ export const PromptEditor = forwardRef<PromptEditorRef, PromptEditorProps>(({
     if (!containerRef.current) return "";
     
     let result = "";
+    
     const processNode = (node: Node): void => {
       if (node.nodeType === Node.TEXT_NODE) {
-        result += node.textContent || "";
+        const text = node.textContent || "";
+        result += text;
       } else if (node.nodeType === Node.ELEMENT_NODE) {
         const el = node as HTMLElement;
+        const tagName = el.tagName.toLowerCase();
+        
         if (el.hasAttribute('data-action')) {
           // Se é um badge, adicionar o texto da ação
           result += el.getAttribute('data-action') || "";
+        } else if (tagName === 'br') {
+          // Elemento <br> representa uma quebra de linha
+          result += '\n';
+        } else if (tagName === 'div' || tagName === 'p') {
+          // Para elementos de bloco, verificar se está vazio
+          const isEmpty = el.textContent?.trim() === '' && el.children.length === 0;
+          const hasOnlyBr = el.children.length === 1 && el.children[0].tagName.toLowerCase() === 'br';
+          
+          if (isEmpty || hasOnlyBr) {
+            // Div vazio ou só com br = quebra de linha
+            result += '\n';
+          } else {
+            // Processar filhos recursivamente
+            Array.from(el.childNodes).forEach(processNode);
+            // Se há próximo irmão, adiciona quebra de linha
+            if (el.nextSibling) {
+              result += '\n';
+            }
+          }
         } else {
-          // Processar filhos recursivamente
+          // Outros elementos: processar filhos recursivamente
           Array.from(node.childNodes).forEach(processNode);
         }
       }
     };
 
+    // Processar todos os nós filhos do container
     Array.from(containerRef.current.childNodes).forEach(processNode);
+    
     return result;
   };
 
@@ -110,6 +135,28 @@ export const PromptEditor = forwardRef<PromptEditorRef, PromptEditorProps>(({
       }
     }
 
+    // Função auxiliar para renderizar texto com quebras de linha
+    const renderTextWithLineBreaks = (textContent: string, container: HTMLElement) => {
+      if (!textContent) return;
+      
+      // Dividir por quebras de linha
+      const lines = textContent.split('\n');
+      
+      lines.forEach((line, lineIndex) => {
+        // Adicionar o texto da linha
+        if (line) {
+          const textNode = document.createTextNode(line);
+          container.appendChild(textNode);
+        }
+        
+        // Adicionar <br> após cada linha, exceto a última
+        if (lineIndex < lines.length - 1) {
+          const br = document.createElement('br');
+          container.appendChild(br);
+        }
+      });
+    };
+
     // Parsear ações do texto
     const actions = parseActionText(text);
     let lastIndex = 0;
@@ -119,8 +166,7 @@ export const PromptEditor = forwardRef<PromptEditorRef, PromptEditorProps>(({
       if (action.position > lastIndex) {
         const textContent = text.substring(lastIndex, action.position);
         if (textContent) {
-          const textNode = document.createTextNode(textContent);
-          containerRef.current!.appendChild(textNode);
+          renderTextWithLineBreaks(textContent, containerRef.current!);
         }
       }
 
@@ -183,8 +229,7 @@ export const PromptEditor = forwardRef<PromptEditorRef, PromptEditorProps>(({
     if (lastIndex < text.length) {
       const textContent = text.substring(lastIndex);
       if (textContent) {
-        const textNode = document.createTextNode(textContent);
-        containerRef.current!.appendChild(textNode);
+        renderTextWithLineBreaks(textContent, containerRef.current!);
       }
     }
 
