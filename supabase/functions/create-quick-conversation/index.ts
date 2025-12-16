@@ -136,8 +136,7 @@ serve(async (req) => {
       .select('id, instance_name')
       .eq('workspace_id', workspaceId)
       .eq('status', 'connected')
-      .order('is_default', { ascending: false })
-      .limit(1)
+      .eq('is_default', true)
       .maybeSingle();
 
     // Buscar conversas existentes do contato no workspace

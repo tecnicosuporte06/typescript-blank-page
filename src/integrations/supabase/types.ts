@@ -514,6 +514,7 @@ export type Database = {
           history_sync_status: string | null
           id: string
           instance_name: string
+          is_default: boolean | null
           last_activity_at: string | null
           metadata: Json | null
           phone_number: string | null
@@ -540,6 +541,7 @@ export type Database = {
           history_sync_status?: string | null
           id?: string
           instance_name: string
+          is_default?: boolean | null
           last_activity_at?: string | null
           metadata?: Json | null
           phone_number?: string | null
@@ -566,6 +568,7 @@ export type Database = {
           history_sync_status?: string | null
           id?: string
           instance_name?: string
+          is_default?: boolean | null
           last_activity_at?: string | null
           metadata?: Json | null
           phone_number?: string | null

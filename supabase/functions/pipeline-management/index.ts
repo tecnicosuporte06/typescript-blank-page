@@ -443,15 +443,14 @@ async function executeAutomationAction(
           console.log(`⚠️ Nenhuma última conexão encontrada, usando conversa atual: ${finalConnectionId}`);
         }
       } else if (connectionMode === 'default') {
-        // Modo "Conexão padrão" - buscar a primeira conexão ativa do workspace
+        // Modo "Conexão padrão" - buscar conexão marcada como padrão no workspace
         console.log(`🔍 Buscando conexão padrão do workspace...`);
         const { data: defaultConnection } = await supabaseClient
           .from('connections')
           .select('id')
           .eq('workspace_id', conversation.workspace_id)
           .eq('status', 'connected')
-          .order('created_at', { ascending: true })
-          .limit(1)
+          .eq('is_default', true)
           .single();
         
         if (defaultConnection?.id) {
@@ -2023,8 +2022,7 @@ serve(async (req) => {
                         .select('id, instance_name')
                         .eq('workspace_id', effectiveWorkspaceId)
                         .eq('status', 'connected')
-                        .order('is_default', { ascending: false })
-                        .limit(1)
+                        .eq('is_default', true)
                         .maybeSingle() as any;
 
                       if (connectionError) {

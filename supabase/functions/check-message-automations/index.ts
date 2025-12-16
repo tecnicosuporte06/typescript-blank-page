@@ -592,8 +592,7 @@ async function executeAction(action: any, card: any, supabaseClient: any, worksp
           .select('id')
           .eq('workspace_id', conversation.workspace_id)
           .eq('status', 'connected')
-          .order('created_at', { ascending: true })
-          .limit(1)
+          .eq('is_default', true)
           .single();
 
         if (defaultConnection?.id) {

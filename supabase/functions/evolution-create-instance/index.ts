@@ -304,9 +304,17 @@ serve(async (req) => {
     const currentConnectionCount = existingConnections?.length || 0;
     console.log("Current connection count:", currentConnectionCount, "Limit:", connectionLimit);
 
-    // 1. Default Connection Logic: First instance is default
-    const isDefault = currentConnectionCount === 0;
-    console.log(`🌟 Instance will be default? ${isDefault} (Current count: ${currentConnectionCount})`);
+    // 1. Default Connection Logic: Check if there's already a default connection
+    // If no default exists, this will be the default
+    const { data: existingDefaultConnection } = await supabase
+      .from("connections")
+      .select("id")
+      .eq("workspace_id", workspaceId)
+      .eq("is_default", true)
+      .maybeSingle();
+    
+    const isDefault = !existingDefaultConnection;
+    console.log(`🌟 Instance will be default? ${isDefault} (Current count: ${currentConnectionCount}, Existing default: ${!!existingDefaultConnection})`);
 
     if (currentConnectionCount >= connectionLimit) {
       console.error("Connection limit reached:", currentConnectionCount, ">=", connectionLimit);
@@ -361,8 +369,8 @@ serve(async (req) => {
       phone_number: phoneNumber || null,
       auto_create_crm_card: autoCreateCrmCard || false,
       queue_id: queueId || null,
-      metadata: metadata || null
-      // Nota: is_default foi removido pois a coluna não existe na tabela connections
+      metadata: metadata || null,
+      is_default: isDefault
     };
 
     // Handle pipeline and column fields - ensure they're saved when provided

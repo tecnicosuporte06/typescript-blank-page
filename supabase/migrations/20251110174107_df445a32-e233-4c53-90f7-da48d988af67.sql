@@ -6,6 +6,7 @@ RETURNS TABLE (
   id uuid,
   column_id uuid,
   name text,
+  description text,
   is_active boolean,
   created_at timestamp with time zone,
   updated_at timestamp with time zone
@@ -20,6 +21,7 @@ BEGIN
     ca.id,
     ca.column_id,
     ca.name,
+    ca.description,
     ca.is_active,
     ca.created_at,
     ca.updated_at
