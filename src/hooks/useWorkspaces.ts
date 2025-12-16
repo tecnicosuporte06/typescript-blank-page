@@ -136,31 +136,46 @@ export function useWorkspaces() {
         }
       }
 
-      // Fallback: buscar connections_count diretamente se não veio da Edge function
-      if (workspaceData.some((w: any) => !w.connections_count && w.connections_count !== 0)) {
-        // Fetching connections count as fallback
-        try {
-          const { data: connectionsData } = await supabase
+      // Sempre buscar connections_count diretamente para garantir que está atualizado
+      // (a edge function pode retornar 0 hardcoded ou valores desatualizados)
+      try {
+        const workspaceIds = workspaceData.map((w: any) => w.workspace_id);
+        
+        if (workspaceIds.length > 0) {
+          const { data: connectionsData, error: connectionsError } = await supabase
             .from('connections')
             .select('workspace_id')
-            .in('workspace_id', workspaceData.map((w: any) => w.workspace_id));
+            .in('workspace_id', workspaceIds);
           
-          const connectionCounts = connectionsData?.reduce((acc: any, conn: any) => {
-            acc[conn.workspace_id] = (acc[conn.workspace_id] || 0) + 1;
-            return acc;
-          }, {}) || {};
+          if (connectionsError) {
+            console.error('Error fetching connections count:', connectionsError);
+          } else {
+            const connectionCounts = connectionsData?.reduce((acc: any, conn: any) => {
+              acc[conn.workspace_id] = (acc[conn.workspace_id] || 0) + 1;
+              return acc;
+            }, {}) || {};
 
-          const updatedWorkspaces = workspaceData.map((w: any) => ({
-            ...w,
-            connections_count: connectionCounts[w.workspace_id] || 0
-          }));
-          
-          setWorkspaces(updatedWorkspaces);
-          setContextWorkspaces(updatedWorkspaces);
-        } catch (fallbackError) {
-          // Fallback connections count failed
-          // Não mostrar erro para fallback, apenas usar os workspaces sem connection count
+            // Atualizar workspaces com connections_count correto
+            // Preservar deals_count se já foi calculado (usar workspaceData que já foi atualizado acima)
+            const updatedWorkspaces = workspaceData.map((w: any) => ({
+              ...w,
+              connections_count: connectionCounts[w.workspace_id] || 0
+            }));
+            
+            setWorkspaces(updatedWorkspaces);
+            setContextWorkspaces(updatedWorkspaces);
+            setCache(updatedWorkspaces);
+            
+            console.log('✅ Connections count updated:', updatedWorkspaces.map((w: any) => ({
+              name: w.name,
+              connections: w.connections_count,
+              deals: w.deals_count
+            })));
+          }
         }
+      } catch (fallbackError) {
+        console.error('Error in connections count fallback:', fallbackError);
+        // Não mostrar erro para fallback, apenas usar os workspaces sem connection count atualizado
       }
     } catch (error) {
       console.error('Error fetching workspaces:', error);
