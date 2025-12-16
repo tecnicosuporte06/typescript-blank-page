@@ -1114,12 +1114,26 @@ serve(async (req) => {
   try {
     // Detailed logging for debugging
     console.log('🚀 Pipeline Management Function Started');
+    
+    // Ler header de forma mais robusta (case-insensitive)
+    const forceHeaderRaw = req.headers.get('x-force-column-automation') || 
+                          req.headers.get('X-Force-Column-Automation') ||
+                          req.headers.get('X-FORCE-COLUMN-AUTOMATION');
+    
     console.log('📋 Headers received:', {
       'x-system-user-id': req.headers.get('x-system-user-id'),
       'x-system-user-email': req.headers.get('x-system-user-email'),
       'x-workspace-id': req.headers.get('x-workspace-id'),
-      'x-force-column-automation': req.headers.get('x-force-column-automation'),
+      'x-force-column-automation': forceHeaderRaw,
       'user-agent': req.headers.get('user-agent')
+    });
+    
+    // Log detalhado do header de automação
+    console.log('🔍 Debug header x-force-column-automation:', {
+      raw: forceHeaderRaw,
+      parsed: forceHeaderRaw === 'true' || forceHeaderRaw === 'True' || forceHeaderRaw === 'TRUE',
+      isNull: forceHeaderRaw === null,
+      isUndefined: forceHeaderRaw === undefined
     });
 
     const supabaseClient = createClient<Database>(
@@ -2228,13 +2242,28 @@ serve(async (req) => {
 
           // ✅ EXECUTAR AUTOMAÇÕES quando card entra em nova coluna
           console.log('🔍 ========== VERIFICANDO SE DEVE ACIONAR AUTOMAÇÕES ==========');
-          const forceColumnAutomation = req.headers.get('x-force-column-automation') === 'true';
+          
+          // Ler header de forma mais robusta (tentar diferentes variações e case-insensitive)
+          const forceHeaderRaw = req.headers.get('x-force-column-automation') || 
+                                req.headers.get('X-Force-Column-Automation') ||
+                                req.headers.get('X-FORCE-COLUMN-AUTOMATION');
+          const forceColumnAutomation = forceHeaderRaw === 'true' || forceHeaderRaw === 'True' || forceHeaderRaw === 'TRUE';
+          
+          // Verificar também se há parâmetro no body para forçar automação
+          const forceFromBody = (body as any).force_automation === true || (body as any).force_automation === 'true';
+          const shouldForceAutomation = forceColumnAutomation || forceFromBody;
+          
+          console.log('🔍 Debug headers e body:');
+          console.log('  - x-force-column-automation (raw):', forceHeaderRaw);
+          console.log('  - x-force-column-automation (parsed):', forceColumnAutomation);
+          console.log('  - body.force_automation:', (body as any).force_automation);
+          console.log('  - forceFromBody:', forceFromBody);
+          console.log('  - shouldForceAutomation (final):', shouldForceAutomation);
           console.log('🔍 Condições:');
           console.log('  - body.column_id !== undefined:', body.column_id !== undefined);
           console.log('  - previousColumnId:', previousColumnId);
           console.log('  - previousColumnId === null:', previousColumnId === null);
           console.log('  - previousColumnId !== body.column_id:', previousColumnId !== body.column_id);
-          console.log('  - forceColumnAutomation (header):', forceColumnAutomation);
           
           // Verificar: column_id foi atualizado E (houve mudança OU é a primeira vez que entra na coluna)
           const columnChanged = body.column_id !== undefined && 
@@ -2245,12 +2274,15 @@ serve(async (req) => {
             previousColumnId: previousColumnId,
             newColumnId: body.column_id,
             columnChanged: columnChanged,
+            forceColumnAutomation: forceColumnAutomation,
+            forceFromBody: forceFromBody,
+            shouldForceAutomation: shouldForceAutomation,
             isFirstTime: previousColumnId === null,
             isDifferentColumn: previousColumnId !== null && previousColumnId !== body.column_id
           });
 
-          if (columnChanged || forceColumnAutomation) {
-            console.log(`🤖 ✅ CONDIÇÃO PARA AUTOMAÇÕES ATINGIDA (columnChanged=${columnChanged}, force=${forceColumnAutomation})`);
+          if (columnChanged || shouldForceAutomation) {
+            console.log(`🤖 ✅ CONDIÇÃO PARA AUTOMAÇÕES ATINGIDA (columnChanged=${columnChanged}, forceHeader=${forceColumnAutomation}, forceBody=${forceFromBody}, shouldForce=${shouldForceAutomation})`);
             console.log(`🤖 ========== AUTOMAÇÃO TRIGGERED ==========`);
             console.log(`🤖 Card entrou em nova coluna: ${previousColumnId} -> ${body.column_id}`);
             console.log(`📦 Dados do card:`, JSON.stringify({
