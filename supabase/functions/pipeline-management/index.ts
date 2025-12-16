@@ -2634,7 +2634,14 @@ serve(async (req) => {
             } finally {
               console.log(`🤖 ========== FIM DA EXECUÇÃO DE AUTOMAÇÕES ==========\n`);
             }
-            }
+          } else {
+            console.log(`⚠️ ❌ AUTOMAÇÃO NÃO ACIONADA - Razões:`);
+            console.log(`   - columnChanged: ${columnChanged} (precisa ser true)`);
+            console.log(`   - forceColumnAutomation (header): ${forceColumnAutomation} (precisa ser true ou header 'x-force-column-automation: true' precisa ser enviado)`);
+            console.log(`   - forceFromBody: ${forceFromBody} (precisa ser true ou body.force_automation precisa ser true)`);
+            console.log(`   - shouldForceAutomation: ${shouldForceAutomation} (precisa ser true)`);
+            console.log(`   - Para forçar automação, envie header 'x-force-column-automation: true' ou body.force_automation: true`);
+          }
 
             // 🔄 Buscar card final APÓS automações para retornar estado atualizado
             let finalCardForResponse = card;
