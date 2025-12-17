@@ -514,7 +514,7 @@ export type Database = {
           history_sync_status: string | null
           id: string
           instance_name: string
-          is_default: boolean | null
+          is_default: boolean
           last_activity_at: string | null
           metadata: Json | null
           phone_number: string | null
@@ -541,7 +541,7 @@ export type Database = {
           history_sync_status?: string | null
           id?: string
           instance_name: string
-          is_default?: boolean | null
+          is_default?: boolean
           last_activity_at?: string | null
           metadata?: Json | null
           phone_number?: string | null
@@ -568,7 +568,7 @@ export type Database = {
           history_sync_status?: string | null
           id?: string
           instance_name?: string
-          is_default?: boolean | null
+          is_default?: boolean
           last_activity_at?: string | null
           metadata?: Json | null
           phone_number?: string | null
@@ -4081,6 +4081,19 @@ export type Database = {
             }
             Returns: string
           }
+        | {
+            Args: {
+              p_actions: Json
+              p_column_id: string
+              p_description: string
+              p_ignore_business_hours?: boolean
+              p_name: string
+              p_triggers: Json
+              p_user_id?: string
+              p_workspace_id: string
+            }
+            Returns: string
+          }
       create_connection_anon: {
         Args: {
           p_history_recovery: string
@@ -4139,7 +4152,9 @@ export type Database = {
         Returns: {
           column_id: string
           created_at: string
+          description: string
           id: string
+          ignore_business_hours: boolean
           is_active: boolean
           name: string
           updated_at: string
@@ -4266,6 +4281,18 @@ export type Database = {
               p_actions: Json
               p_automation_id: string
               p_description: string
+              p_name: string
+              p_triggers: Json
+              p_user_id?: string
+            }
+            Returns: undefined
+          }
+        | {
+            Args: {
+              p_actions: Json
+              p_automation_id: string
+              p_description: string
+              p_ignore_business_hours?: boolean
               p_name: string
               p_triggers: Json
               p_user_id?: string

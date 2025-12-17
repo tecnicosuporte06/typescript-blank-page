@@ -472,7 +472,7 @@ export function AutomationModal({
           console.log('🔍 [AutomationModal] Salvando ações remove_agent (UPDATE):', JSON.stringify(removeAgentActions, null, 2));
         }
 
-        // Usar a função RPC original (sem o novo parâmetro) para compatibilidade
+        // Atualizar automação com todos os parâmetros incluindo ignore_business_hours
         const { error: updateError } = await supabase.rpc('update_column_automation', {
           p_automation_id: automation.id,
           p_name: name.trim(),
@@ -480,19 +480,10 @@ export function AutomationModal({
           p_triggers: triggersJson as any,
           p_actions: actionsJson as any,
           p_user_id: currentUserId,
+          p_ignore_business_hours: ignoreBusinessHours,
         });
 
         if (updateError) throw updateError;
-
-        // Atualizar ignore_business_hours diretamente na tabela
-        const { error: ignoreHoursError } = await supabase
-          .from('crm_column_automations')
-          .update({ ignore_business_hours: ignoreBusinessHours })
-          .eq('id', automation.id);
-
-        if (ignoreHoursError) {
-          console.warn('Erro ao atualizar ignore_business_hours:', ignoreHoursError);
-        }
       } else {
         // Criar nova automação usando função SQL
         if (!selectedWorkspace?.workspace_id) {
