@@ -1,4 +1,7 @@
 -- Atualizar função get_column_automations para incluir ignore_business_hours
+-- Primeiro, dropar a função existente pois o tipo de retorno mudou
+DROP FUNCTION IF EXISTS public.get_column_automations(uuid);
+
 CREATE OR REPLACE FUNCTION public.get_column_automations(p_column_id uuid)
 RETURNS TABLE (
   id uuid,

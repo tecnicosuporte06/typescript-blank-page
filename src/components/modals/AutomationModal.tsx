@@ -472,12 +472,12 @@ export function AutomationModal({
           console.log('🔍 [AutomationModal] Salvando ações remove_agent (UPDATE):', JSON.stringify(removeAgentActions, null, 2));
         }
 
-        const { error: updateError } = await supabase.rpc('update_column_automation', {
+        const { error: updateError } = await (supabase.rpc as any)('update_column_automation', {
           p_automation_id: automation.id,
           p_name: name.trim(),
           p_description: description.trim() || null,
-          p_triggers: triggersJson as any,
-          p_actions: actionsJson as any,
+          p_triggers: triggersJson,
+          p_actions: actionsJson,
           p_user_id: currentUserId,
           p_ignore_business_hours: ignoreBusinessHours,
         });
@@ -505,13 +505,13 @@ export function AutomationModal({
           console.log('🔍 [AutomationModal] Salvando ações remove_agent:', JSON.stringify(removeAgentActions, null, 2));
         }
 
-        const { data: automationId, error: createError } = await supabase.rpc('create_column_automation', {
+        const { data: automationId, error: createError } = await (supabase.rpc as any)('create_column_automation', {
           p_column_id: columnId,
           p_workspace_id: selectedWorkspace.workspace_id,
           p_name: name.trim(),
           p_description: description.trim() || null,
-          p_triggers: triggersJson as any,
-          p_actions: actionsJson as any,
+          p_triggers: triggersJson,
+          p_actions: actionsJson,
           p_user_id: currentUserId,
           p_ignore_business_hours: ignoreBusinessHours,
         });
