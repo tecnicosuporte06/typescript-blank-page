@@ -472,17 +472,27 @@ export function AutomationModal({
           console.log('🔍 [AutomationModal] Salvando ações remove_agent (UPDATE):', JSON.stringify(removeAgentActions, null, 2));
         }
 
-        const { error: updateError } = await (supabase.rpc as any)('update_column_automation', {
+        // Usar a função RPC original (sem o novo parâmetro) para compatibilidade
+        const { error: updateError } = await supabase.rpc('update_column_automation', {
           p_automation_id: automation.id,
           p_name: name.trim(),
           p_description: description.trim() || null,
-          p_triggers: triggersJson,
-          p_actions: actionsJson,
+          p_triggers: triggersJson as any,
+          p_actions: actionsJson as any,
           p_user_id: currentUserId,
-          p_ignore_business_hours: ignoreBusinessHours,
         });
 
         if (updateError) throw updateError;
+
+        // Atualizar ignore_business_hours diretamente na tabela
+        const { error: ignoreHoursError } = await supabase
+          .from('crm_column_automations')
+          .update({ ignore_business_hours: ignoreBusinessHours })
+          .eq('id', automation.id);
+
+        if (ignoreHoursError) {
+          console.warn('Erro ao atualizar ignore_business_hours:', ignoreHoursError);
+        }
       } else {
         // Criar nova automação usando função SQL
         if (!selectedWorkspace?.workspace_id) {
@@ -505,18 +515,30 @@ export function AutomationModal({
           console.log('🔍 [AutomationModal] Salvando ações remove_agent:', JSON.stringify(removeAgentActions, null, 2));
         }
 
-        const { data: automationId, error: createError } = await (supabase.rpc as any)('create_column_automation', {
+        // Usar a função RPC original (sem o novo parâmetro) para compatibilidade
+        const { data: automationId, error: createError } = await supabase.rpc('create_column_automation', {
           p_column_id: columnId,
           p_workspace_id: selectedWorkspace.workspace_id,
           p_name: name.trim(),
           p_description: description.trim() || null,
-          p_triggers: triggersJson,
-          p_actions: actionsJson,
+          p_triggers: triggersJson as any,
+          p_actions: actionsJson as any,
           p_user_id: currentUserId,
-          p_ignore_business_hours: ignoreBusinessHours,
         });
 
         if (createError) throw createError;
+
+        // Atualizar ignore_business_hours diretamente na tabela se foi marcado
+        if (ignoreBusinessHours && automationId) {
+          const { error: ignoreHoursError } = await supabase
+            .from('crm_column_automations')
+            .update({ ignore_business_hours: true })
+            .eq('id', automationId);
+
+          if (ignoreHoursError) {
+            console.warn('Erro ao atualizar ignore_business_hours:', ignoreHoursError);
+          }
+        }
       }
 
       toast({
