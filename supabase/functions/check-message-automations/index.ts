@@ -449,7 +449,7 @@ serve(async (req) => {
               }
               
               try {
-                await executeAction(action, card, supabase, workspaceId);
+                await executeAction(action, card, supabase, workspaceId, automation.ignore_business_hours === true);
                 
                 // Atualizar timestamp se for ação de mensagem
                 if (isMessageAction) {
@@ -468,7 +468,7 @@ serve(async (req) => {
             // Para ações que não enviam mensagens, executar normalmente
             for (const action of actions) {
               try {
-                await executeAction(action, card, supabase, workspaceId);
+                await executeAction(action, card, supabase, workspaceId, automation.ignore_business_hours === true);
               } catch (actionError) {
                 console.error(`❌ Erro ao executar ação:`, actionError);
               }
@@ -495,7 +495,7 @@ serve(async (req) => {
   }
 });
 
-async function executeAction(action: any, card: any, supabaseClient: any, workspaceId: string) {
+async function executeAction(action: any, card: any, supabaseClient: any, workspaceId: string, ignoreBusinessHours: boolean = false) {
   console.log(`🎬 Executando ação: ${action.action_type}`);
 
   // Normalizar action_config
@@ -547,8 +547,7 @@ async function executeAction(action: any, card: any, supabaseClient: any, worksp
       }
 
       // ✅ Verificar horário de funcionamento antes de enviar (a menos que ignore_business_hours esteja ativo)
-      const workspaceId = conversation.workspace_id;
-      const ignoreBusinessHours = automation.ignore_business_hours === true;
+      const workspaceIdForCheck = conversation.workspace_id;
       
       if (workspaceId && !ignoreBusinessHours) {
         const withinBusinessHours = await isWithinBusinessHours(workspaceId, supabaseClient);
@@ -730,9 +729,8 @@ async function executeAction(action: any, card: any, supabaseClient: any, worksp
         .single();
 
       const funnelWorkspaceId = conversationFull?.workspace_id;
-      const ignoreFunnelBusinessHours = automation.ignore_business_hours === true;
       
-      if (funnelWorkspaceId && !ignoreFunnelBusinessHours) {
+      if (funnelWorkspaceId && !ignoreBusinessHours) {
         const withinBusinessHours = await isWithinBusinessHours(funnelWorkspaceId, supabaseClient);
         if (!withinBusinessHours) {
           console.log(`🚫 Funil bloqueado: fora do horário de funcionamento`);
@@ -742,7 +740,7 @@ async function executeAction(action: any, card: any, supabaseClient: any, worksp
           return; // Retornar sem enviar
         }
         console.log(`✅ Dentro do horário de funcionamento - prosseguindo com envio do funil`);
-      } else if (ignoreFunnelBusinessHours) {
+      } else if (ignoreBusinessHours) {
         console.log(`⏰ Automação configurada para ignorar horário de funcionamento - prosseguindo com envio do funil`);
       } else {
         console.warn(`⚠️ Workspace ID não encontrado - não é possível verificar horário de funcionamento`);
