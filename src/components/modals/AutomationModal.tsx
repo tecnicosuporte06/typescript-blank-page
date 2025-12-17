@@ -485,12 +485,31 @@ export function AutomationModal({
 
         if (updateError) throw updateError;
 
-        const { error: ignoreHoursError } = await supabase
-          .from('crm_column_automations')
-          .update({ ignore_business_hours: ignoreBusinessHours })
-          .eq('id', automation.id);
+        // Atualizar ignore_business_hours via RPC (bypass RLS)
+        console.log('🔄 Atualizando ignore_business_hours:', { 
+          automationId: automation.id, 
+          ignoreBusinessHours 
+        });
+        
+        const { data: updateResult, error: ignoreHoursError } = await (supabase.rpc as any)(
+          'update_automation_ignore_business_hours', 
+          {
+            p_automation_id: automation.id,
+            p_ignore_business_hours: ignoreBusinessHours
+          }
+        );
 
-        if (ignoreHoursError) throw ignoreHoursError;
+        console.log('🔄 Resultado do update:', { updateResult, ignoreHoursError });
+
+        if (ignoreHoursError) {
+          console.error('❌ Erro ao salvar ignore_business_hours:', ignoreHoursError);
+          // Não fazer throw - a automação já foi salva, só o ignore_business_hours falhou
+          toast({
+            title: "Atenção",
+            description: "Automação salva, mas não foi possível atualizar a opção de ignorar horário.",
+            variant: "destructive",
+          });
+        }
       } else {
         // Criar nova automação usando função SQL
         if (!selectedWorkspace?.workspace_id) {
@@ -526,15 +545,25 @@ export function AutomationModal({
 
         if (createError) throw createError;
 
-        // Persistir ignore_business_hours diretamente na tabela
+        // Persistir ignore_business_hours via RPC (bypass RLS)
         if (automationId) {
-          const { error: ignoreHoursError } = await supabase
-            .from('crm_column_automations')
-            .update({ ignore_business_hours: ignoreBusinessHours })
-            .eq('id', automationId);
+          console.log('🔄 Salvando ignore_business_hours para nova automação:', { 
+            automationId, 
+            ignoreBusinessHours 
+          });
+          
+          const { data: updateResult, error: ignoreHoursError } = await (supabase.rpc as any)(
+            'update_automation_ignore_business_hours', 
+            {
+              p_automation_id: automationId,
+              p_ignore_business_hours: ignoreBusinessHours
+            }
+          );
+
+          console.log('🔄 Resultado do update (nova automação):', { updateResult, ignoreHoursError });
 
           if (ignoreHoursError) {
-            console.warn('Erro ao atualizar ignore_business_hours:', ignoreHoursError);
+            console.error('❌ Erro ao salvar ignore_business_hours:', ignoreHoursError);
             toast({
               title: "Atenção",
               description: "Automação criada, mas não foi possível salvar a opção de ignorar horário de funcionamento.",

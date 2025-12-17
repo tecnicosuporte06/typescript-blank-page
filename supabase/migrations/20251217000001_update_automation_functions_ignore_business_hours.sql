@@ -1,3 +1,24 @@
+-- Função auxiliar para atualizar apenas ignore_business_hours (bypass RLS com SECURITY DEFINER)
+CREATE OR REPLACE FUNCTION public.update_automation_ignore_business_hours(
+  p_automation_id uuid,
+  p_ignore_business_hours boolean
+)
+RETURNS boolean
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+BEGIN
+  UPDATE crm_column_automations
+  SET 
+    ignore_business_hours = p_ignore_business_hours,
+    updated_at = now()
+  WHERE id = p_automation_id;
+  
+  RETURN FOUND;
+END;
+$$;
+
 -- Atualizar função get_column_automations para incluir ignore_business_hours
 -- Primeiro, dropar a função existente pois o tipo de retorno mudou
 DROP FUNCTION IF EXISTS public.get_column_automations(uuid);
