@@ -17,6 +17,7 @@ interface ColumnAutomation {
   name: string;
   description: string | null;
   is_active: boolean;
+  ignore_business_hours?: boolean;
   created_at: string;
   updated_at: string;
   triggers?: AutomationTrigger[];
@@ -404,10 +405,18 @@ export function ColumnAutomationsTab({
       return;
     }
 
+    // ✅ Buscar ignore_business_hours diretamente da tabela (workaround para schema cache)
+    const { data: automationData } = await supabase
+      .from('crm_column_automations')
+      .select('ignore_business_hours')
+      .eq('id', automation.id)
+      .single();
+
     const details = automationDetails as any;
 
     setEditingAutomation({
       ...automation,
+      ignore_business_hours: automationData?.ignore_business_hours ?? automation.ignore_business_hours ?? false,
       triggers: details?.triggers || [],
       actions: details?.actions || []
     });
