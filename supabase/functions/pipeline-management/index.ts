@@ -225,7 +225,8 @@ async function isWithinBusinessHours(
 async function executeAutomationAction(
   action: any,
   card: any,
-  supabaseClient: any
+  supabaseClient: any,
+  automation?: any
 ): Promise<void> {
   console.log(`🎬 Executando ação: ${action.action_type}`, action.action_config);
   
@@ -519,9 +520,11 @@ async function executeAutomationAction(
       console.log(`📝 Mensagem a ser enviada (${messageContent.length} caracteres):`, 
         messageContent.length > 100 ? messageContent.substring(0, 100) + '...' : messageContent);
       
-      // ✅ Verificar horário de funcionamento antes de enviar
+      // ✅ Verificar horário de funcionamento antes de enviar (a menos que ignore_business_hours esteja ativo)
       const workspaceId = conversation.workspace_id || card.pipelines?.workspace_id;
-      if (workspaceId) {
+      const ignoreBusinessHours = automation?.ignore_business_hours === true;
+      
+      if (workspaceId && !ignoreBusinessHours) {
         const withinBusinessHours = await isWithinBusinessHours(workspaceId, supabaseClient);
         if (!withinBusinessHours) {
           console.log(`🚫 Mensagem bloqueada: fora do horário de funcionamento`);
@@ -531,6 +534,8 @@ async function executeAutomationAction(
           return; // Retornar sem enviar
         }
         console.log(`✅ Dentro do horário de funcionamento - prosseguindo com envio`);
+      } else if (ignoreBusinessHours) {
+        console.log(`⏰ Automação configurada para ignorar horário de funcionamento - prosseguindo com envio`);
       } else {
         console.warn(`⚠️ Workspace ID não encontrado - não é possível verificar horário de funcionamento`);
       }
@@ -1013,18 +1018,22 @@ async function executeAutomationAction(
       
       console.log(`📤 Iniciando envio de ${sortedSteps.length} mensagens do funil...`);
       
-      // ✅ Verificar horário de funcionamento antes de enviar funil
-      const workspaceId = conversation.workspace_id || card.pipelines?.workspace_id;
-      if (workspaceId) {
-        const withinBusinessHours = await isWithinBusinessHours(workspaceId, supabaseClient);
+      // ✅ Verificar horário de funcionamento antes de enviar funil (a menos que ignore_business_hours esteja ativo)
+      const funnelWorkspaceId = conversation.workspace_id || card.pipelines?.workspace_id;
+      const ignoreFunnelBusinessHours = automation?.ignore_business_hours === true;
+      
+      if (funnelWorkspaceId && !ignoreFunnelBusinessHours) {
+        const withinBusinessHours = await isWithinBusinessHours(funnelWorkspaceId, supabaseClient);
         if (!withinBusinessHours) {
           console.log(`🚫 Funil bloqueado: fora do horário de funcionamento`);
-          console.log(`   Workspace ID: ${workspaceId}`);
+          console.log(`   Workspace ID: ${funnelWorkspaceId}`);
           console.log(`   Card ID: ${card.id}`);
           console.log(`   Funil não será enviado para evitar violação legal`);
           return; // Retornar sem enviar
         }
         console.log(`✅ Dentro do horário de funcionamento - prosseguindo com envio do funil`);
+      } else if (ignoreFunnelBusinessHours) {
+        console.log(`⏰ Automação configurada para ignorar horário de funcionamento - prosseguindo com envio do funil`);
       } else {
         console.warn(`⚠️ Workspace ID não encontrado - não é possível verificar horário de funcionamento`);
       }
@@ -1469,7 +1478,7 @@ serve(async (req) => {
                   
                   for (const action of actions) {
                     try {
-                      await executeAutomationAction(action, card, supabaseClient);
+                      await executeAutomationAction(action, card, supabaseClient, automation);
                       console.log(`   ✅ Ação ${action.action_type} executada`);
                     } catch (actionError) {
                       console.error(`   ❌ Erro ao executar ação ${action.action_type}:`, actionError);
@@ -2668,7 +2677,7 @@ serve(async (req) => {
                             console.log(`✅ [remove_agent] conversation_id confirmado: ${finalConversationId}`);
                           }
                           
-                          await executeAutomationAction(action, card, supabaseClient);
+                          await executeAutomationAction(action, card, supabaseClient, automation);
                           
                           // Atualizar timestamp se for ação de mensagem
                           if (isMessageAction) {
@@ -2721,7 +2730,7 @@ serve(async (req) => {
                             console.log(`✅ [remove_agent] conversation_id confirmado: ${finalConversationId}`);
                           }
                           
-                          await executeAutomationAction(action, card, supabaseClient);
+                          await executeAutomationAction(action, card, supabaseClient, automation);
                           
                           console.log(`✅ Ação ${action.action_type} executada com sucesso`);
                           return { success: true, action: action.action_type };

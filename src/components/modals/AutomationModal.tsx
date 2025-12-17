@@ -6,7 +6,8 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Plus, Trash2, X } from "lucide-react";
+import { Switch } from "@/components/ui/switch";
+import { Plus, Trash2, X, Clock } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from '@/integrations/supabase/client';
 import { useWorkspaceHeaders } from '@/lib/workspaceHeaders';
@@ -22,6 +23,7 @@ interface AutomationModalProps {
     name: string;
     description: string | null;
     is_active: boolean;
+    ignore_business_hours?: boolean;
     triggers?: Array<{
       id: string;
       trigger_type: string;
@@ -89,6 +91,7 @@ export function AutomationModal({
 }: AutomationModalProps) {
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
+  const [ignoreBusinessHours, setIgnoreBusinessHours] = useState(false);
   const [triggers, setTriggers] = useState<Trigger[]>([]);
   const [actions, setActions] = useState<Action[]>([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -250,6 +253,7 @@ export function AutomationModal({
       if (automation) {
         setName(automation.name || '');
         setDescription(automation.description || '');
+        setIgnoreBusinessHours(automation.ignore_business_hours || false);
         setTriggers(automation.triggers?.map(t => ({
           id: t.id,
           trigger_type: t.trigger_type as any,
@@ -288,6 +292,7 @@ export function AutomationModal({
       } else {
         setName('');
         setDescription('');
+        setIgnoreBusinessHours(false);
         setTriggers([]);
         setActions([]);
       }
@@ -474,6 +479,7 @@ export function AutomationModal({
           p_triggers: triggersJson as any,
           p_actions: actionsJson as any,
           p_user_id: currentUserId,
+          p_ignore_business_hours: ignoreBusinessHours,
         });
 
         if (updateError) throw updateError;
@@ -507,6 +513,7 @@ export function AutomationModal({
           p_triggers: triggersJson as any,
           p_actions: actionsJson as any,
           p_user_id: currentUserId,
+          p_ignore_business_hours: ignoreBusinessHours,
         });
 
         if (createError) throw createError;
@@ -899,6 +906,26 @@ export function AutomationModal({
               placeholder="Descreva o propósito desta automação (opcional)"
               rows={2}
               className={`text-xs rounded-none border-gray-300 dark:border-gray-700 bg-white dark:bg-[#1b1b1b] text-gray-900 dark:text-gray-100 placeholder:text-gray-500 dark:placeholder:text-gray-400 focus-visible:ring-0 min-h-[60px]`}
+            />
+          </div>
+
+          {/* Ignorar Horário de Funcionamento */}
+          <div className={`flex items-center justify-between p-3 border border-[#d4d4d4] dark:border-gray-700 rounded-none bg-gray-50 dark:bg-[#1a1a1a]`}>
+            <div className="flex items-center gap-3">
+              <Clock className="w-5 h-5 text-amber-500" />
+              <div className="space-y-0.5">
+                <Label htmlFor="ignore-business-hours" className={`text-xs font-bold text-gray-700 dark:text-gray-200 cursor-pointer`}>
+                  Ignorar horário de funcionamento
+                </Label>
+                <p className={`text-xs text-gray-500 dark:text-gray-400`}>
+                  Se ativado, esta automação será executada mesmo fora do horário de atendimento configurado
+                </p>
+              </div>
+            </div>
+            <Switch
+              id="ignore-business-hours"
+              checked={ignoreBusinessHours}
+              onCheckedChange={setIgnoreBusinessHours}
             />
           </div>
 

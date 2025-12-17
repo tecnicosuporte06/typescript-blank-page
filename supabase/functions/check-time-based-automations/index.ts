@@ -185,6 +185,7 @@ serve(async (req) => {
         workspace_id,
         name,
         is_active,
+        ignore_business_hours,
         triggers:crm_column_automation_triggers!inner(
           trigger_type,
           trigger_config
@@ -514,9 +515,11 @@ serve(async (req) => {
                       break;
                     }
 
-                    // ✅ Verificar horário de funcionamento antes de enviar
+                    // ✅ Verificar horário de funcionamento antes de enviar (a menos que ignore_business_hours esteja ativo)
                     const workspaceId = (card as any).pipelines?.workspace_id;
-                    if (workspaceId) {
+                    const ignoreBusinessHours = (automation as any).ignore_business_hours === true;
+                    
+                    if (workspaceId && !ignoreBusinessHours) {
                       const withinBusinessHours = await isWithinBusinessHours(workspaceId, supabase);
                       if (!withinBusinessHours) {
                         console.log(`🚫 [Time Automations] Mensagem bloqueada: fora do horário de funcionamento`);
@@ -527,6 +530,8 @@ serve(async (req) => {
                         break; // Sair do switch sem enviar
                       }
                       console.log(`✅ [Time Automations] Dentro do horário de funcionamento - prosseguindo com envio`);
+                    } else if (ignoreBusinessHours) {
+                      console.log(`⏰ [Time Automations] Automação configurada para ignorar horário de funcionamento - prosseguindo com envio`);
                     } else {
                       console.warn(`⚠️ [Time Automations] Workspace ID não encontrado - não é possível verificar horário de funcionamento`);
                     }
@@ -629,19 +634,23 @@ serve(async (req) => {
                     
                     console.log(`📤 [Time Automations] Iniciando envio de ${sortedSteps.length} mensagens do funil...`);
                     
-                    // ✅ Verificar horário de funcionamento antes de enviar funil
-                    const workspaceId = (card as any).pipelines?.workspace_id;
-                    if (workspaceId) {
-                      const withinBusinessHours = await isWithinBusinessHours(workspaceId, supabase);
+                    // ✅ Verificar horário de funcionamento antes de enviar funil (a menos que ignore_business_hours esteja ativo)
+                    const funnelWorkspaceId = (card as any).pipelines?.workspace_id;
+                    const ignoreFunnelBusinessHours = (automation as any).ignore_business_hours === true;
+                    
+                    if (funnelWorkspaceId && !ignoreFunnelBusinessHours) {
+                      const withinBusinessHours = await isWithinBusinessHours(funnelWorkspaceId, supabase);
                       if (!withinBusinessHours) {
                         console.log(`🚫 [Time Automations] Funil bloqueado: fora do horário de funcionamento`);
-                        console.log(`   Workspace ID: ${workspaceId}`);
+                        console.log(`   Workspace ID: ${funnelWorkspaceId}`);
                         console.log(`   Card ID: ${card.id}`);
                         console.log(`   Funil não será enviado para evitar violação legal`);
                         actionSuccess = false;
                         break; // Sair do switch sem enviar
                       }
                       console.log(`✅ [Time Automations] Dentro do horário de funcionamento - prosseguindo com envio do funil`);
+                    } else if (ignoreFunnelBusinessHours) {
+                      console.log(`⏰ [Time Automations] Automação configurada para ignorar horário de funcionamento - prosseguindo com envio do funil`);
                     } else {
                       console.warn(`⚠️ [Time Automations] Workspace ID não encontrado - não é possível verificar horário de funcionamento`);
                     }
