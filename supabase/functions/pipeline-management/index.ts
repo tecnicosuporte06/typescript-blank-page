@@ -649,18 +649,49 @@ async function executeAutomationAction(
     
     case 'move_to_column': {
       const targetColumnId = action.action_config?.target_column_id || action.action_config?.column_id;
+      const targetPipelineId = action.action_config?.target_pipeline_id || action.action_config?.pipeline_id;
+      
       if (!targetColumnId) {
         console.warn(`⚠️ Ação move_to_column não tem target_column_id configurado.`);
         return;
       }
       
-      // Atualizar card para nova coluna
-      await supabaseClient
+      const updateData: any = { 
+        column_id: targetColumnId,
+        updated_at: new Date().toISOString()
+      };
+
+      // Se um pipeline foi especificado, atualizar também
+      if (targetPipelineId) {
+        updateData.pipeline_id = targetPipelineId;
+      } else {
+        // Se não foi especificado, vamos buscar o pipeline da coluna para garantir consistência
+        try {
+          const { data: columnData } = await supabaseClient
+            .from('pipeline_columns')
+            .select('pipeline_id')
+            .eq('id', targetColumnId)
+            .single();
+          
+          if (columnData?.pipeline_id) {
+            updateData.pipeline_id = columnData.pipeline_id;
+          }
+        } catch (err) {
+          console.warn(`⚠️ Não foi possível determinar o pipeline da coluna ${targetColumnId}`);
+        }
+      }
+      
+      // Atualizar card para nova coluna (e pipeline se necessário)
+      const { error: updateError } = await supabaseClient
         .from('pipeline_cards')
-        .update({ column_id: targetColumnId })
+        .update(updateData)
         .eq('id', card.id);
       
-      console.log(`✅ Card movido para coluna ${targetColumnId}`);
+      if (updateError) {
+        console.error(`❌ Erro ao mover card ${card.id}:`, updateError);
+      } else {
+        console.log(`✅ Card movido para coluna ${targetColumnId} no pipeline ${updateData.pipeline_id || 'original'}`);
+      }
       break;
     }
     

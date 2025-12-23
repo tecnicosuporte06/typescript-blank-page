@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -106,25 +106,24 @@ export function AutomationModal({
   const [connectionsLoading, setConnectionsLoading] = useState(false);
   const [tags, setTags] = useState<any[]>([]);
   const [tagsLoading, setTagsLoading] = useState(false);
-  const [columns, setColumns] = useState<any[]>([]);
+  const [pipelines, setPipelines] = useState<any[]>([]);
+  const [pipelinesLoading, setPipelinesLoading] = useState(false);
+  const [columnsByPipeline, setColumnsByPipeline] = useState<Record<string, any[]>>({});
   const [columnsLoading, setColumnsLoading] = useState(false);
   const [agents, setAgents] = useState<any[]>([]);
   const [agentsLoading, setAgentsLoading] = useState(false);
 
-  // ✅ Funções de carregamento lazy
-  const loadFunnels = async () => {
-    if (funnels.length > 0 || funnelsLoading) return; // Já carregado ou carregando
-    
+  // ✅ Funções de carregamento lazy estabilizadas com useCallback
+  const loadFunnels = useCallback(async () => {
+    if (funnels.length > 0 || funnelsLoading) return;
     try {
       setFunnelsLoading(true);
       if (!selectedWorkspace?.workspace_id) return;
-      
       const { data, error } = await supabase
         .from('quick_funnels')
         .select('*')
         .eq('workspace_id', selectedWorkspace.workspace_id)
         .order('created_at', { ascending: false });
-      
       if (error) throw error;
       setFunnels(data || []);
     } catch (error: any) {
@@ -132,60 +131,38 @@ export function AutomationModal({
     } finally {
       setFunnelsLoading(false);
     }
-  };
+  }, [funnels.length, funnelsLoading, selectedWorkspace?.workspace_id]);
 
-  const loadConnections = async () => {
+  const loadConnections = useCallback(async () => {
     if (connections.length > 0 || connectionsLoading) return;
-    
     try {
       setConnectionsLoading(true);
-      if (!selectedWorkspace?.workspace_id) {
-        console.log('🔍 Conexões: workspace_id não disponível');
-        return;
-      }
-      
-      console.log('🔍 Carregando conexões para workspace:', selectedWorkspace.workspace_id);
-      
+      if (!selectedWorkspace?.workspace_id) return;
       const { data, error } = await supabase
         .from('connections')
         .select('id, instance_name, phone_number, status')
         .eq('workspace_id', selectedWorkspace.workspace_id)
         .eq('status', 'connected')
         .order('instance_name');
-      
       if (error) throw error;
-      
-      console.log('🔍 Conexões carregadas:', {
-        total: data?.length || 0,
-        workspaceId: selectedWorkspace.workspace_id,
-        conexoes: data?.map(c => ({ id: c.id, nome: c.instance_name, status: c.status }))
-      });
-      
       setConnections(data || []);
-      
-      if (!data || data.length === 0) {
-        console.warn('⚠️ Nenhuma conexão ativa encontrada para o workspace');
-      }
     } catch (error: any) {
-      console.error('❌ Erro ao carregar conexões:', error);
+      console.error('Erro ao carregar conexões:', error);
     } finally {
       setConnectionsLoading(false);
     }
-  };
+  }, [connections.length, connectionsLoading, selectedWorkspace?.workspace_id]);
 
-  const loadTags = async () => {
+  const loadTags = useCallback(async () => {
     if (tags.length > 0 || tagsLoading) return;
-    
     try {
       setTagsLoading(true);
       if (!selectedWorkspace?.workspace_id) return;
-      
       const { data, error } = await supabase
         .from('tags')
         .select('id, name, color')
         .eq('workspace_id', selectedWorkspace.workspace_id)
         .order('name');
-      
       if (error) throw error;
       setTags(data || []);
     } catch (error: any) {
@@ -193,52 +170,68 @@ export function AutomationModal({
     } finally {
       setTagsLoading(false);
     }
-  };
+  }, [tags.length, tagsLoading, selectedWorkspace?.workspace_id]);
 
-  const loadColumns = async () => {
-    if (columns.length > 0 || columnsLoading) return;
-    
+  const loadPipelines = useCallback(async () => {
+    if (pipelines.length > 0 || pipelinesLoading) return;
+    try {
+      setPipelinesLoading(true);
+      if (!selectedWorkspace?.workspace_id) return;
+      const { data, error } = await supabase
+        .from('pipelines')
+        .select('id, name')
+        .eq('workspace_id', selectedWorkspace.workspace_id)
+        .order('name');
+      if (error) throw error;
+      setPipelines(data || []);
+    } catch (error: any) {
+      console.error('Erro ao carregar pipelines:', error);
+    } finally {
+      setPipelinesLoading(false);
+    }
+  }, [pipelines.length, pipelinesLoading, selectedWorkspace?.workspace_id]);
+
+  const loadColumns = useCallback(async (pipelineIdParam?: string) => {
     try {
       setColumnsLoading(true);
-      
-      // Buscar pipeline_id da coluna
-      const { data: columnData } = await supabase
-        .from('pipeline_columns')
-        .select('pipeline_id')
-        .eq('id', columnId)
-        .single();
-      
-      if (columnData?.pipeline_id) {
+      let targetPipelineId = pipelineIdParam;
+      if (!targetPipelineId) {
+        if (!columnId) return;
+        const { data: columnData } = await supabase
+          .from('pipeline_columns')
+          .select('pipeline_id')
+          .eq('id', columnId)
+          .maybeSingle();
+        targetPipelineId = columnData?.pipeline_id;
+      }
+      if (targetPipelineId) {
+        if (columnsByPipeline[targetPipelineId] && !pipelineIdParam) return;
         const { data: cols, error } = await supabase
           .from('pipeline_columns')
           .select('*')
-          .eq('pipeline_id', columnData.pipeline_id)
+          .eq('pipeline_id', targetPipelineId)
           .order('order_position');
-        
         if (error) throw error;
-        setColumns(cols || []);
+        setColumnsByPipeline(prev => ({ ...prev, [targetPipelineId!]: cols || [] }));
       }
     } catch (error: any) {
       console.error('Erro ao carregar colunas:', error);
     } finally {
       setColumnsLoading(false);
     }
-  };
+  }, [columnId, columnsByPipeline]);
 
-  const loadAgents = async () => {
+  const loadAgents = useCallback(async () => {
     if (agents.length > 0 || agentsLoading) return;
-    
     try {
       setAgentsLoading(true);
       if (!selectedWorkspace?.workspace_id) return;
-      
       const { data, error } = await supabase
         .from('ai_agents')
         .select('id, name')
         .eq('workspace_id', selectedWorkspace.workspace_id)
         .eq('is_active', true)
         .order('name');
-      
       if (error) throw error;
       setAgents(data || []);
     } catch (error: any) {
@@ -246,7 +239,7 @@ export function AutomationModal({
     } finally {
       setAgentsLoading(false);
     }
-  };
+  }, [agents.length, agentsLoading, selectedWorkspace?.workspace_id]);
 
   useEffect(() => {
     if (open) {
@@ -287,7 +280,17 @@ export function AutomationModal({
         if (needsFunnels) loadFunnels();
         if (needsConnections) loadConnections();
         if (needsTags) loadTags();
-        if (needsColumns) loadColumns();
+        if (needsColumns) {
+          loadPipelines();
+          // Carregar colunas para cada ação de mover para coluna que já tenha pipeline
+          automation.actions?.forEach(a => {
+            if (a.action_type === 'move_to_column' && (a.action_config?.pipeline_id || a.action_config?.target_pipeline_id)) {
+              loadColumns(a.action_config?.pipeline_id || a.action_config?.target_pipeline_id);
+            }
+          });
+          // Também carregar colunas do pipeline atual
+          loadColumns();
+        }
         if (needsAgents) loadAgents();
       } else {
         setName('');
@@ -319,32 +322,32 @@ export function AutomationModal({
   };
 
   const updateTrigger = (id: string, field: keyof Trigger, value: any) => {
-    setTriggers(triggers.map(t => 
+    setTriggers(prevTriggers => prevTriggers.map(t => 
       t.id === id ? { ...t, [field]: value } : t
     ));
   };
 
   const updateTriggerConfig = (id: string, configField: string, value: any) => {
-    setTriggers(triggers.map(t => 
+    setTriggers(prevTriggers => prevTriggers.map(t => 
       t.id === id ? { ...t, trigger_config: { ...t.trigger_config, [configField]: value } } : t
     ));
   };
 
   const addAction = () => {
-    setActions([...actions, {
+    setActions(prevActions => [...prevActions, {
       id: `temp-${Date.now()}`,
       action_type: '',
       action_config: {},
-      action_order: actions.length
+      action_order: prevActions.length
     }]);
   };
 
   const removeAction = (id: string) => {
-    setActions(actions.filter(a => a.id !== id));
+    setActions(prevActions => prevActions.filter(a => a.id !== id));
   };
 
   const updateAction = async (id: string, field: keyof Action, value: any) => {
-    setActions(actions.map(a => {
+    setActions(prevActions => prevActions.map(a => {
       if (a.id === id) {
         const updated = { ...a, [field]: value };
         
@@ -354,6 +357,7 @@ export function AutomationModal({
             loadFunnels();
           }
           if (value === 'move_to_column') {
+            loadPipelines();
             loadColumns();
           }
           if (value === 'add_tag') {
@@ -370,33 +374,32 @@ export function AutomationModal({
     }));
   };
 
-  const updateActionConfig = async (id: string, configKey: string, value: any) => {
-    setActions(actions.map(a => {
+  const updateActionConfig = useCallback((id: string, updates: Record<string, any>) => {
+    setActions(prevActions => prevActions.map(a => {
       if (a.id === id) {
         const updatedConfig = { ...a.action_config };
         
-        // Se o valor for null, remover o campo ao invés de definir como null
-        if (value === null || value === undefined) {
-          delete updatedConfig[configKey];
-        } else {
-          updatedConfig[configKey] = value;
-        }
+        Object.entries(updates).forEach(([key, value]) => {
+          if (value === null || value === undefined) {
+            delete updatedConfig[key];
+          } else {
+            updatedConfig[key] = value;
+          }
+        });
         
-        const updated = {
+        return {
           ...a,
           action_config: updatedConfig
         };
-        
-        // ✅ Carregar conexões quando selecionar "conexão específica"
-        if (configKey === 'connection_mode' && value === 'specific') {
-          loadConnections();
-        }
-        
-        return updated;
       }
       return a;
     }));
-  };
+
+    // ✅ Verificar se precisa carregar conexões
+    if (updates.connection_mode === 'specific') {
+      loadConnections();
+    }
+  }, [loadConnections]);
 
   const handleSave = async () => {
     // Validações
@@ -472,8 +475,7 @@ export function AutomationModal({
           console.log('🔍 [AutomationModal] Salvando ações remove_agent (UPDATE):', JSON.stringify(removeAgentActions, null, 2));
         }
 
-        // Atualizar automação (RPC) + persistir ignore_business_hours diretamente na tabela
-        // (mantemos update direto para compatibilidade com schemas que ainda não têm o parâmetro no RPC)
+        // Atualizar automação (RPC)
         const { error: updateError } = await supabase.rpc('update_column_automation', {
           p_automation_id: automation.id,
           p_name: name.trim(),
@@ -481,34 +483,31 @@ export function AutomationModal({
           p_triggers: triggersJson as any,
           p_actions: actionsJson as any,
           p_user_id: currentUserId,
+          p_ignore_business_hours: ignoreBusinessHours, // ✅ Passando explicitamente para resolver ambiguidade
         });
 
-        if (updateError) throw updateError;
-
-        // Atualizar ignore_business_hours via RPC (bypass RLS)
-        console.log('🔄 Atualizando ignore_business_hours:', { 
-          automationId: automation.id, 
-          ignoreBusinessHours 
-        });
-        
-        const { data: updateResult, error: ignoreHoursError } = await (supabase.rpc as any)(
-          'update_automation_ignore_business_hours', 
-          {
-            p_automation_id: automation.id,
-            p_ignore_business_hours: ignoreBusinessHours
+        if (updateError) {
+          console.error('❌ Erro no update_column_automation:', updateError);
+          // Se falhar porque a versão de 8 parâmetros não existe (fallback)
+          if (updateError.message?.includes('p_ignore_business_hours') || updateError.code === 'P0001') {
+             const { error: retryError } = await supabase.rpc('update_column_automation', {
+              p_automation_id: automation.id,
+              p_name: name.trim(),
+              p_description: description.trim() || null,
+              p_triggers: triggersJson as any,
+              p_actions: actionsJson as any,
+              p_user_id: currentUserId,
+            });
+            if (retryError) throw retryError;
+            
+            // Tentar atualizar ignore_business_hours separadamente se o RPC principal não aceita
+            await (supabase.rpc as any)('update_automation_ignore_business_hours', {
+              p_automation_id: automation.id,
+              p_ignore_business_hours: ignoreBusinessHours
+            });
+          } else {
+            throw updateError;
           }
-        );
-
-        console.log('🔄 Resultado do update:', { updateResult, ignoreHoursError });
-
-        if (ignoreHoursError) {
-          console.error('❌ Erro ao salvar ignore_business_hours:', ignoreHoursError);
-          // Não fazer throw - a automação já foi salva, só o ignore_business_hours falhou
-          toast({
-            title: "Atenção",
-            description: "Automação salva, mas não foi possível atualizar a opção de ignorar horário.",
-            variant: "destructive",
-          });
         }
       } else {
         // Criar nova automação usando função SQL
@@ -532,7 +531,7 @@ export function AutomationModal({
           console.log('🔍 [AutomationModal] Salvando ações remove_agent:', JSON.stringify(removeAgentActions, null, 2));
         }
 
-        // Usar a função RPC original (sem o novo parâmetro) para compatibilidade
+        // Criar nova automação
         const { data: automationId, error: createError } = await supabase.rpc('create_column_automation', {
           p_column_id: columnId,
           p_workspace_id: selectedWorkspace.workspace_id,
@@ -541,34 +540,32 @@ export function AutomationModal({
           p_triggers: triggersJson as any,
           p_actions: actionsJson as any,
           p_user_id: currentUserId,
+          p_ignore_business_hours: ignoreBusinessHours, // ✅ Passando explicitamente para resolver ambiguidade
         });
 
-        if (createError) throw createError;
-
-        // Persistir ignore_business_hours via RPC (bypass RLS)
-        if (automationId) {
-          console.log('🔄 Salvando ignore_business_hours para nova automação:', { 
-            automationId, 
-            ignoreBusinessHours 
-          });
-          
-          const { data: updateResult, error: ignoreHoursError } = await (supabase.rpc as any)(
-            'update_automation_ignore_business_hours', 
-            {
-              p_automation_id: automationId,
-              p_ignore_business_hours: ignoreBusinessHours
-            }
-          );
-
-          console.log('🔄 Resultado do update (nova automação):', { updateResult, ignoreHoursError });
-
-          if (ignoreHoursError) {
-            console.error('❌ Erro ao salvar ignore_business_hours:', ignoreHoursError);
-            toast({
-              title: "Atenção",
-              description: "Automação criada, mas não foi possível salvar a opção de ignorar horário de funcionamento.",
-              variant: "destructive",
+        if (createError) {
+          console.error('❌ Erro no create_column_automation:', createError);
+          // Fallback se a versão de 8 parâmetros não existir
+          if (createError.message?.includes('p_ignore_business_hours') || createError.code === 'P0001') {
+            const { data: retryId, error: retryError } = await supabase.rpc('create_column_automation', {
+              p_column_id: columnId,
+              p_workspace_id: selectedWorkspace.workspace_id,
+              p_name: name.trim(),
+              p_description: description.trim() || null,
+              p_triggers: triggersJson as any,
+              p_actions: actionsJson as any,
+              p_user_id: currentUserId,
             });
+            if (retryError) throw retryError;
+            
+            if (retryId) {
+              await (supabase.rpc as any)('update_automation_ignore_business_hours', {
+                p_automation_id: retryId,
+                p_ignore_business_hours: ignoreBusinessHours
+              });
+            }
+          } else {
+            throw createError;
           }
         }
       }
@@ -600,7 +597,7 @@ export function AutomationModal({
             <Label className={`text-gray-700 dark:text-gray-200`}>Mensagem</Label>
             <Textarea
               value={action.action_config?.message || ''}
-              onChange={(e) => updateActionConfig(action.id, 'message', e.target.value)}
+              onChange={(e) => updateActionConfig(action.id, { message: e.target.value })}
               placeholder="Digite a mensagem a ser enviada"
               rows={3}
               className={`border-gray-300 dark:border-gray-700 bg-white dark:bg-[#1b1b1b] text-gray-900 dark:text-gray-100 placeholder:text-gray-500 dark:placeholder:text-gray-400`}
@@ -608,7 +605,7 @@ export function AutomationModal({
             <Label className={`text-gray-700 dark:text-gray-200`}>Modo de conexão</Label>
             <Select
               value={action.action_config?.connection_mode || 'default'}
-              onValueChange={(value) => updateActionConfig(action.id, 'connection_mode', value)}
+              onValueChange={(value) => updateActionConfig(action.id, { connection_mode: value })}
             >
               <SelectTrigger className={`border-gray-300 dark:border-gray-700 bg-white dark:bg-[#1b1b1b] text-gray-900 dark:text-gray-100`}>
                 <SelectValue />
@@ -626,7 +623,7 @@ export function AutomationModal({
                 <Label className={`text-gray-700 dark:text-gray-200`}>Conexão específica</Label>
                 <Select
                   value={action.action_config?.connection_id || ''}
-                  onValueChange={(value) => updateActionConfig(action.id, 'connection_id', value)}
+                  onValueChange={(value) => updateActionConfig(action.id, { connection_id: value })}
                   onOpenChange={(open) => {
                     if (open && connections.length === 0 && !connectionsLoading) {
                       loadConnections();
@@ -668,7 +665,7 @@ export function AutomationModal({
             <Label className={`text-gray-700 dark:text-gray-200`}>Funil</Label>
             <Select
               value={action.action_config?.funnel_id || ''}
-              onValueChange={(value) => updateActionConfig(action.id, 'funnel_id', value)}
+              onValueChange={(value) => updateActionConfig(action.id, { funnel_id: value })}
               onOpenChange={(open) => {
                 if (open && funnels.length === 0 && !funnelsLoading) {
                   loadFunnels();
@@ -699,7 +696,7 @@ export function AutomationModal({
             <Label className={`text-gray-700 dark:text-gray-200`}>Modo de conexão</Label>
             <Select
               value={action.action_config?.connection_mode || 'default'}
-              onValueChange={(value) => updateActionConfig(action.id, 'connection_mode', value)}
+              onValueChange={(value) => updateActionConfig(action.id, { connection_mode: value })}
             >
               <SelectTrigger className={`border-gray-300 dark:border-gray-700 bg-white dark:bg-[#1b1b1b] text-gray-900 dark:text-gray-100`}>
                 <SelectValue />
@@ -717,7 +714,7 @@ export function AutomationModal({
                 <Label className={`text-gray-700 dark:text-gray-200`}>Conexão específica</Label>
                 <Select
                   value={action.action_config?.connection_id || ''}
-                  onValueChange={(value) => updateActionConfig(action.id, 'connection_id', value)}
+                  onValueChange={(value) => updateActionConfig(action.id, { connection_id: value })}
                   onOpenChange={(open) => {
                     if (open && connections.length === 0 && !connectionsLoading) {
                       loadConnections();
@@ -754,32 +751,76 @@ export function AutomationModal({
         );
 
       case 'move_to_column':
+        const selectedPipelineId = action.action_config?.pipeline_id || action.action_config?.target_pipeline_id;
+        const currentPipelineColumns = selectedPipelineId ? (columnsByPipeline[selectedPipelineId] || []) : [];
+
         return (
           <div className="space-y-2">
-            <Label className={`text-gray-700 dark:text-gray-200`}>Coluna de destino</Label>
+            <Label className={`text-gray-700 dark:text-gray-200`}>Pipeline de destino</Label>
             <Select
-              value={action.action_config?.column_id || ''}
-              onValueChange={(value) => updateActionConfig(action.id, 'column_id', value)}
+              value={selectedPipelineId || ''}
+              onValueChange={(value) => {
+                updateActionConfig(action.id, {
+                  pipeline_id: value,
+                  target_pipeline_id: value,
+                  column_id: '',
+                  target_column_id: ''
+                });
+                loadColumns(value);
+              }}
               onOpenChange={(open) => {
-                if (open && columns.length === 0 && !columnsLoading) {
-                  loadColumns();
+                if (open && pipelines.length === 0 && !pipelinesLoading) {
+                  loadPipelines();
                 }
               }}
             >
               <SelectTrigger className={`border-gray-300 dark:border-gray-700 bg-white dark:bg-[#1b1b1b] text-gray-900 dark:text-gray-100`}>
-                <SelectValue placeholder={columnsLoading ? "Carregando..." : "Selecione uma coluna"} />
+                <SelectValue placeholder={pipelinesLoading ? "Carregando..." : "Selecione um pipeline"} />
+              </SelectTrigger>
+              <SelectContent className={`border-gray-300 dark:border-gray-700 bg-white dark:bg-[#1b1b1b]`}>
+                {pipelinesLoading ? (
+                  <div className={`p-2 text-sm text-muted-foreground dark:text-gray-400 text-center`}>
+                    Carregando pipelines...
+                  </div>
+                ) : pipelines.length === 0 ? (
+                  <div className={`p-2 text-sm text-muted-foreground dark:text-gray-400 text-center`}>
+                    Nenhum pipeline encontrado
+                  </div>
+                ) : (
+                  pipelines.map(p => (
+                    <SelectItem key={p.id} value={p.id} className={`text-gray-900 dark:text-gray-100 focus:bg-gray-100 dark:focus:bg-[#2a2a2a]`}>
+                      {p.name}
+                    </SelectItem>
+                  ))
+                )}
+              </SelectContent>
+            </Select>
+
+            <Label className={`text-gray-700 dark:text-gray-200`}>Coluna de destino</Label>
+            <Select
+              value={action.action_config?.column_id || action.action_config?.target_column_id || ''}
+              onValueChange={(value) => {
+                updateActionConfig(action.id, {
+                  column_id: value,
+                  target_column_id: value
+                });
+              }}
+              disabled={!selectedPipelineId}
+            >
+              <SelectTrigger className={`border-gray-300 dark:border-gray-700 bg-white dark:bg-[#1b1b1b] text-gray-900 dark:text-gray-100`}>
+                <SelectValue placeholder={columnsLoading ? "Carregando..." : !selectedPipelineId ? "Selecione um pipeline primeiro" : "Selecione uma coluna"} />
               </SelectTrigger>
               <SelectContent className={`border-gray-300 dark:border-gray-700 bg-white dark:bg-[#1b1b1b]`}>
                 {columnsLoading ? (
                   <div className={`p-2 text-sm text-muted-foreground dark:text-gray-400 text-center`}>
                     Carregando colunas...
                   </div>
-                ) : columns.length === 0 ? (
+                ) : currentPipelineColumns.length === 0 ? (
                   <div className={`p-2 text-sm text-muted-foreground dark:text-gray-400 text-center`}>
                     Nenhuma coluna encontrada
                   </div>
                 ) : (
-                  columns
+                  currentPipelineColumns
                     .filter(col => col.id !== columnId)
                     .map(col => (
                       <SelectItem key={col.id} value={col.id} className={`text-gray-900 dark:text-gray-100 focus:bg-gray-100 dark:focus:bg-[#2a2a2a]`}>
@@ -798,7 +839,7 @@ export function AutomationModal({
             <Label className={`text-gray-700 dark:text-gray-200`}>Tag</Label>
             <Select
               value={action.action_config?.tag_id || ''}
-              onValueChange={(value) => updateActionConfig(action.id, 'tag_id', value)}
+              onValueChange={(value) => updateActionConfig(action.id, { tag_id: value })}
               onOpenChange={(open) => {
                 if (open && tags.length === 0 && !tagsLoading) {
                   loadTags();
@@ -835,7 +876,7 @@ export function AutomationModal({
             <Label className={`text-gray-700 dark:text-gray-200`}>Agente de IA</Label>
             <Select
               value={action.action_config?.agent_id || ''}
-              onValueChange={(value) => updateActionConfig(action.id, 'agent_id', value)}
+              onValueChange={(value) => updateActionConfig(action.id, { agent_id: value })}
               onOpenChange={(open) => {
                 if (open && agents.length === 0 && !agentsLoading) {
                   loadAgents();
@@ -875,12 +916,16 @@ export function AutomationModal({
               onValueChange={(value) => {
                 if (value === 'current') {
                   // Remover agente atual - não precisa de agent_id específico
-                  updateActionConfig(action.id, 'remove_current', true);
-                  updateActionConfig(action.id, 'agent_id', null);
+                  updateActionConfig(action.id, {
+                    remove_current: true,
+                    agent_id: null
+                  });
                 } else {
                   // Remover agente específico
-                  updateActionConfig(action.id, 'remove_current', false);
-                  updateActionConfig(action.id, 'agent_id', value);
+                  updateActionConfig(action.id, {
+                    remove_current: false,
+                    agent_id: value
+                  });
                 }
               }}
               onOpenChange={(open) => {

@@ -367,21 +367,34 @@ serve(async (req) => {
                   case 'mover_coluna':
                   case 'move_to_column': {
                     const targetColumnId = actionConfig?.column_id || actionConfig?.target_column_id;
+                    const targetPipelineId = actionConfig?.pipeline_id || actionConfig?.target_pipeline_id;
+                    
                     console.log(`🔍 [Time Automations] Move action config:`, actionConfig);
-                    console.log(`🔍 [Time Automations] Target column ID: ${targetColumnId}`);
+                    console.log(`🔍 [Time Automations] Target column ID: ${targetColumnId}, Target Pipeline ID: ${targetPipelineId}`);
                     
                     if (targetColumnId) {
-                      // Usar RPC para mover card
+                      const updateData: any = {
+                        column_id: targetColumnId,
+                        moved_to_column_at: new Date().toISOString(),
+                        updated_at: new Date().toISOString()
+                      };
+
+                      if (targetPipelineId) {
+                        updateData.pipeline_id = targetPipelineId;
+                      }
+
+                      // Usar update direto para suportar pipeline_id
                       const { data: updateResult, error: updateError } = await supabase
-                        .rpc('move_pipeline_card', {
-                          p_card_id: card.id,
-                          p_new_column_id: targetColumnId
-                        });
+                        .from('pipeline_cards')
+                        .update(updateData)
+                        .eq('id', card.id)
+                        .select()
+                        .single();
                       
                       if (updateError) {
                         console.error(`❌ [Time Automations] Erro ao mover card:`, updateError);
                       } else {
-                        console.log(`✅ [Time Automations] Card ${card.id} movido via RPC para coluna ${targetColumnId}`, updateResult);
+                        console.log(`✅ [Time Automations] Card ${card.id} movido para coluna ${targetColumnId} no pipeline ${targetPipelineId || card.pipeline_id}`, updateResult);
                         
                         // Enviar broadcast manual para garantir que o frontend receba a atualização
                         const channel = supabase.channel(`pipeline-${card.pipeline_id}`);
@@ -392,7 +405,7 @@ serve(async (req) => {
                             card_id: card.id,
                             old_column_id: card.column_id,
                             new_column_id: targetColumnId,
-                            pipeline_id: card.pipeline_id
+                            pipeline_id: targetPipelineId || card.pipeline_id
                           }
                         });
                         console.log(`📡 [Time Automations] Broadcast enviado para pipeline-${card.pipeline_id}`);

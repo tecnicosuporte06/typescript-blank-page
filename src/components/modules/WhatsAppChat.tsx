@@ -1,4 +1,5 @@
-import { useState, useEffect, useRef, useCallback, useMemo } from "react";
+import { useState, useEffect, useLayoutEffect, useRef, useCallback, useMemo } from "react";
+import { flushSync } from "react-dom";
 import { useRealtimeNotifications } from "@/components/RealtimeNotificationProvider";
 import { useNotifications } from "@/hooks/useNotifications";
 import { getConnectionColor } from '@/lib/utils';
@@ -261,6 +262,10 @@ export function WhatsAppChat({
   const [transferModalOpen, setTransferModalOpen] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [isDeletingConversation, setIsDeletingConversation] = useState(false);
+  
+  // ✅ Estado para controlar quantas mensagens mostrar (Infinite Scroll com dados em memória)
+  const [visibleMessagesCount, setVisibleMessagesCount] = useState(10);
+  const [isVisualLoading, setIsVisualLoading] = useState(false);
   const messageText = selectedConversation ? (messageDrafts[selectedConversation.id] ?? "") : "";
 
   const updateMessageDraft = useCallback((conversationId: string, value: string) => {
@@ -511,8 +516,12 @@ export function WhatsAppChat({
   // Hook para data flutuante
   const { floatingDate, shouldShowFloating } = useFloatingDate(messagesScrollRef, messages);
 
-  // Agrupar mensagens por data
-  const messagesByDate = useMemo(() => groupMessagesByDate(messages), [messages]);
+  // Agrupar mensagens por data (apenas as que devem estar visíveis)
+  const messagesByDate = useMemo(() => {
+    // Pegar as últimas N mensagens baseadas no visibleMessagesCount
+    const visibleMessages = messages.slice(-visibleMessagesCount);
+    return groupMessagesByDate(visibleMessages);
+  }, [messages, visibleMessagesCount]);
 
   const handleTransferSuccess = useCallback(
     async ({
@@ -617,6 +626,11 @@ export function WhatsAppChat({
 
   // Estados para controle de carregamento manual
   const isInitialLoadRef = useRef(true);
+  
+  // ✅ Refs para algoritmo de preservação de posição visual (infinite scroll upwards)
+  const isLoadingMoreRef = useRef(false);
+  const scrollPositionBeforeLoadRef = useRef<{ scrollTop: number; scrollHeight: number } | null>(null);
+  const lastMessageLengthRef = useRef(0);
   
   // ✅ MUTEX: Prevenir envio duplicado
   const sendingRef = useRef<Set<string>>(new Set());
@@ -1237,9 +1251,6 @@ export function WhatsAppChat({
     });
   };
   
-  // ✅ Ref para rastrear o último tamanho do array de mensagens
-  const lastMessageLengthRef = useRef(0);
-
   const convertBlobToMp3 = useCallback(async (blob: Blob) => {
     if (typeof window === 'undefined') {
       throw new Error('Conversão de áudio indisponível neste ambiente.');
@@ -1705,22 +1716,89 @@ export function WhatsAppChat({
     }, 100);
   };
 
-  // Detectar se o usuário está no final do chat
-  const handleScroll = useCallback((event: React.UIEvent<HTMLElement>) => {
-    const element = event.currentTarget;
-    const threshold = 100; // pixels de tolerância
+  // Ref para prevenir múltiplos carregamentos simultâneos no scroll infinito
+  const isLoadingMoreScrollRef = useRef(false);
+
+  // Detectar se o usuário está no final do chat e no topo para scroll infinito
+  const handleScrollEvent = useCallback((element: HTMLElement) => {
+    const threshold = 100; // pixels de tolerância para o bottom
+    const topThreshold = 150; // pixels de tolerância para o topo (scroll infinito)
+    
     const isNearBottom = element.scrollHeight - element.scrollTop - element.clientHeight < threshold;
+    const isNearTop = element.scrollTop < topThreshold;
     
     setIsAtBottom(isNearBottom);
     setShouldAutoScroll(isNearBottom);
     
+    // ✅ Scroll infinito simplificado: carregar do array que já está na memória
+    const hasMoreInMemory = messages.length > visibleMessagesCount;
+
+    if (isNearTop && (hasMoreInMemory || hasMore) && !isLoadingMoreRef.current && !isVisualLoading) {
+      // Apenas sinalizamos o início do carregamento visual
+      setIsVisualLoading(true);
+      isLoadingMoreRef.current = true;
+
+      console.log('🔄 Scroll infinito - Iniciando preloading visual de 3s');
+
+      // Simular delay visual de 3s conforme pedido
+      setTimeout(() => {
+        // ✅ CAPTURA CRÍTICA: Capturar a posição EXATAMENTE antes de mudar o estado
+        if (messagesScrollRef.current) {
+          scrollPositionBeforeLoadRef.current = {
+            scrollTop: messagesScrollRef.current.scrollTop,
+            scrollHeight: messagesScrollRef.current.scrollHeight
+          };
+        }
+
+        // ✅ ATUALIZAÇÃO ATÔMICA: Injetar mensagens e remover spinner no mesmo ciclo
+        flushSync(() => {
+          setVisibleMessagesCount(prev => prev + 10);
+          setIsVisualLoading(false);
+        });
+        
+        // Se as mensagens na memória estão acabando, o hook em background já deve estar trazendo mais
+        if (!hasMoreInMemory && hasMore) {
+          loadMoreMessages();
+        }
+      }, 3000);
+    }
+    
     console.log('📜 Posição do scroll:', {
       isNearBottom,
+      isNearTop,
       scrollTop: element.scrollTop,
       scrollHeight: element.scrollHeight,
-      clientHeight: element.clientHeight
+      clientHeight: element.clientHeight,
+      hasMore,
+      loadingMore,
+      messagesCount: messages.length
     });
-  }, []);
+  }, [hasMore, loadingMore, messages, loadMoreMessages]);
+
+  // Handler para React.UIEvent
+  const handleScroll = useCallback((event: React.UIEvent<HTMLElement>) => {
+    handleScrollEvent(event.currentTarget);
+  }, [handleScrollEvent]);
+
+  // Handler para Event nativo
+  const handleNativeScroll = useCallback((event: Event) => {
+    const element = event.target as HTMLElement;
+    if (element) {
+      handleScrollEvent(element);
+    }
+  }, [handleScrollEvent]);
+
+  // ✅ Anexar listener nativo ao viewport quando ele estiver disponível
+  useEffect(() => {
+    const viewport = messagesScrollRef.current;
+    if (viewport) {
+      console.log('✅ Anexando listener nativo ao viewport');
+      viewport.addEventListener('scroll', handleNativeScroll, { passive: true });
+      return () => {
+        viewport.removeEventListener('scroll', handleNativeScroll);
+      };
+    }
+  }, [handleNativeScroll, selectedConversation?.id]);
 
   // Evitar segundo disparo de seleção automática por outros caminhos
   useEffect(() => {
@@ -1728,7 +1806,51 @@ export function WhatsAppChat({
     if (lastAutoOpenedIdRef.current === selectedConversationId) return; // já tratamos acima
   }, [selectedConversationId, conversations]);
 
-  // ✅ Scroll inteligente para última mensagem
+  // ✅ ALGORITMO DE PRESERVAÇÃO DE POSIÇÃO VISUAL (Infinite Scroll Upwards)
+  useLayoutEffect(() => {
+    if (!isLoadingMoreRef.current || !scrollPositionBeforeLoadRef.current || !messagesScrollRef.current) {
+      lastMessageLengthRef.current = messages.length;
+      return;
+    }
+
+    // O gatilho agora é a mudança no visibleMessagesCount ou messages.length
+    const element = messagesScrollRef.current;
+    const saved = scrollPositionBeforeLoadRef.current;
+    
+    const oldScrollHeight = saved.scrollHeight;
+    const oldScrollTop = saved.scrollTop;
+    const newScrollHeight = element.scrollHeight;
+    const heightDifference = newScrollHeight - oldScrollHeight;
+    
+    if (heightDifference !== 0) {
+      element.style.scrollBehavior = 'auto';
+      element.scrollTop = oldScrollTop + heightDifference;
+      
+      // Segunda tentativa para garantir estabilidade absoluta
+      requestAnimationFrame(() => {
+        if (messagesScrollRef.current && scrollPositionBeforeLoadRef.current) {
+          const currentDiff = messagesScrollRef.current.scrollHeight - oldScrollHeight;
+          messagesScrollRef.current.scrollTop = oldScrollTop + currentDiff;
+        }
+        // Limpar apenas após o segundo ajuste
+        isLoadingMoreRef.current = false;
+        scrollPositionBeforeLoadRef.current = null;
+      });
+    } else {
+      isLoadingMoreRef.current = false;
+      scrollPositionBeforeLoadRef.current = null;
+    }
+
+    lastMessageLengthRef.current = messages.length;
+  }, [messages.length, visibleMessagesCount]);
+
+  useEffect(() => {
+    if (selectedConversation?.id) {
+      setVisibleMessagesCount(10);
+    }
+  }, [selectedConversation?.id]);
+
+  // ✅ Scroll inteligente para última mensagem e auto-scroll
   useEffect(() => {
     if (!selectedConversation || messages.length === 0) return;
     
@@ -1736,33 +1858,30 @@ export function WhatsAppChat({
     if (isInitialLoadRef.current) {
       const timer = setTimeout(() => {
         if (messagesEndRef.current) {
-          console.log('📜 Scroll inicial para última mensagem');
           messagesEndRef.current.scrollIntoView({ behavior: 'auto' });
           isInitialLoadRef.current = false;
-          lastMessageLengthRef.current = messages.length;
         }
       }, 150);
       return () => clearTimeout(timer);
     }
     
-    // ✅ Auto-scroll APENAS se uma NOVA mensagem foi adicionada (não substituída)
+    // Auto-scroll para baixo APENAS se o usuário já estiver lá e NÃO estivermos carregando histórico
     const lengthChanged = messages.length !== lastMessageLengthRef.current;
-    
-    if (shouldAutoScroll && lengthChanged) {
+    if (shouldAutoScroll && lengthChanged && !isLoadingMoreRef.current && !loadingMore) {
       const timer = setTimeout(() => {
         if (messagesEndRef.current) {
-          console.log('📜 Auto-scroll para nova mensagem');
           messagesEndRef.current.scrollIntoView({ behavior: 'smooth' });
         }
       }, 100);
-      lastMessageLengthRef.current = messages.length;
       return () => clearTimeout(timer);
     }
-    
-    // ✅ Atualizar a ref mesmo sem scroll para manter sincronizado
-    lastMessageLengthRef.current = messages.length;
-  }, [selectedConversation?.id, messages.length, shouldAutoScroll]);
+  }, [selectedConversation?.id, messages.length, shouldAutoScroll, loadingMore]);
 
+  // ✅ Trigger para aplicar preservação de scroll quando loadingMore terminar
+  // Removido o bloco anterior que causava o travamento do scroll
+  useEffect(() => {
+    // Não fazemos mais nada aqui, o useLayoutEffect cuida da preservação
+  }, [loadingMore]);
 
   // ✅ CORREÇÃO: Listener ESC para voltar da conversa
   useEffect(() => {
@@ -1787,7 +1906,7 @@ export function WhatsAppChat({
     window.history.pushState({}, '', url.toString());
   };
 
-  return <div className="flex h-full bg-white overflow-hidden w-full dark:bg-[#1f1f1f] transition-colors duration-300 ease-in-out">
+  return <div className={`flex h-full bg-white overflow-hidden w-full dark:bg-[#1f1f1f] transition-colors duration-300 ease-in-out ${onlyMessages ? 'flex-col' : ''}`}>
       {/* Sidebar de Filtros */}
       {(!onlyMessages) && (
       <div className={cn("border-r border-[#d4d4d4] flex flex-col transition-all duration-300 bg-[#f0f0f0] dark:bg-[#1a1a1a] dark:border-gray-700", sidebarCollapsed ? "w-14" : "w-40 lg:w-48")}>
@@ -2235,10 +2354,10 @@ export function WhatsAppChat({
       )}
 
       {/* Área principal de chat */}
-      <div className="flex-1 flex flex-col">
+      <div className="flex-1 flex flex-col overflow-hidden">
         {selectedConversation ? <>
             {/* Cabeçalho do chat */}
-            <div className="px-4 py-3 border-b border-[#d4d4d4] bg-white dark:bg-[#1f1f1f] dark:border-gray-700">
+            <div className="px-4 py-3 border-b border-[#d4d4d4] bg-white dark:bg-[#1f1f1f] dark:border-gray-700 flex-shrink-0">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-3">
                   {!onlyMessages && (
@@ -2399,48 +2518,32 @@ export function WhatsAppChat({
             </div>
 
             {/* Área de mensagens */}
-        <div className="flex-1 h-0 relative">
+        <div className="flex-1 h-0 relative overflow-hidden">
           {/* Indicador de data flutuante - FORA do ScrollArea */}
           {shouldShowFloating && floatingDate && (
             <FloatingDateIndicator date={floatingDate} visible={shouldShowFloating} />
           )}
           
           <ScrollArea 
-            className="h-full bg-white dark:bg-[#0f1115]" 
+            className="h-full w-full bg-white dark:bg-[#0f1115]" 
             ref={node => {
               if (node) {
                 const scrollContainer = node.querySelector('[data-radix-scroll-area-viewport]');
                 if (scrollContainer) {
                   messagesScrollRef.current = scrollContainer as HTMLElement;
+                  console.log('✅ Viewport encontrado:', scrollContainer);
                 }
               }
             }}
             onScroll={handleScroll}
           >
             <div className="p-4">
-              {/* Botão Carregar Mais Mensagens */}
-              {hasMore && !loadingMore && messages.length > 0 && (
-                <div className="flex justify-center py-3">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => {
-                      console.log('🔘 Clicou em Carregar Mais - scroll atual:', messagesScrollRef.current?.scrollTop);
-                      loadMoreMessages();
-                    }}
-                    className="text-xs rounded-none border-[#d4d4d4] hover:bg-gray-100 dark:border-gray-600 dark:hover:bg-gray-700 dark:text-gray-200 dark:bg-[#2d2d2d]"
-                  >
-                    Carregar mais mensagens
-                  </Button>
-                </div>
-              )}
-              
-              {/* Loading ao carregar mais mensagens */}
-              {loadingMore && (
+              {/* Loading visual ao carregar mais mensagens (mesmo que já estejam em memória) */}
+              {(isVisualLoading || loadingMore) && (
                 <div className="flex justify-center py-3">
                   <div className="flex items-center gap-2 text-muted-foreground">
                     <div className="animate-spin rounded-full h-4 w-4 border-2 border-primary border-t-transparent"></div>
-                    <span className="text-xs">Carregando mensagens...</span>
+                    <span className="text-xs font-medium">Carregando mensagens anteriores...</span>
                   </div>
                 </div>
               )}

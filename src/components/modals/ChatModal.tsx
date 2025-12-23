@@ -15,8 +15,8 @@ interface ChatModalProps {
 export function ChatModal({ isOpen, onClose, conversationId }: ChatModalProps) {
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="max-w-5xl h-[85vh] p-0 gap-0">
-        <div className="h-full">
+      <DialogContent className="max-w-5xl h-[85vh] p-0 gap-0 overflow-hidden flex flex-col">
+        <div className="h-full w-full overflow-hidden flex flex-col">
           <WhatsAppChat selectedConversationId={conversationId} onlyMessages={true} />
         </div>
       </DialogContent>

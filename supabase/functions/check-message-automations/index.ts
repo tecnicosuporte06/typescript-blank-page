@@ -876,7 +876,9 @@ async function executeAction(action: any, card: any, supabaseClient: any, worksp
     }
 
     case 'change_column': {
-      const targetColumnId = actionConfig.column_id;
+      const targetColumnId = actionConfig.column_id || actionConfig.target_column_id;
+      const targetPipelineId = actionConfig.pipeline_id || actionConfig.target_pipeline_id;
+      
       if (!targetColumnId) {
         console.warn('⚠️ change_column sem column_id configurado');
         return;
@@ -884,12 +886,18 @@ async function executeAction(action: any, card: any, supabaseClient: any, worksp
 
       console.log(`🔀 Movendo card para coluna ${targetColumnId}`);
 
+      const updateData: any = { 
+        column_id: targetColumnId,
+        updated_at: new Date().toISOString()
+      };
+
+      if (targetPipelineId) {
+        updateData.pipeline_id = targetPipelineId;
+      }
+
       const { error: moveError } = await supabaseClient
         .from('pipeline_cards')
-        .update({ 
-          column_id: targetColumnId,
-          updated_at: new Date().toISOString()
-        })
+        .update(updateData)
         .eq('id', card.id);
 
       if (moveError) {

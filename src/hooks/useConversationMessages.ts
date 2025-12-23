@@ -203,7 +203,6 @@ export function useConversationMessages(): UseConversationMessagesReturn {
       timestamp: new Date().toISOString()
     });
 
-    // Invalidar cache (sempre, principalmente se forceRefresh)
     const cacheKey = `${workspaceId}:${conversationId}`;
     cacheRef.current.delete(cacheKey);
 
@@ -217,111 +216,81 @@ export function useConversationMessages(): UseConversationMessagesReturn {
       const { data, error } = await supabase.functions.invoke('whatsapp-get-messages', {
         body: { 
           conversation_id: conversationId,
-          limit: 6
+          limit: 10
         },
         headers
       });
 
-      if (error) {
-        console.error('❌ [useConversationMessages] Erro ao carregar mensagens:', error);
-        toast({
-          title: "Erro ao carregar mensagens",
-          description: error.message,
-          variant: "destructive",
-        });
-        return;
-      }
+      if (error) throw error;
 
       const newMessages = data?.items || [];
       const normalizedMessages = dedupeAndSortMessages(newMessages);
-      console.log(`✅ [useConversationMessages] Carregadas ${normalizedMessages.length} mensagens para conversa ${conversationId}`);
-
+      
       setMessages(normalizedMessages);
-      setHasMore(!!data?.nextBefore);
-      setCursorBefore(data?.nextBefore || null);
+      const nextBefore = data?.nextBefore;
+      setHasMore(!!nextBefore);
+      setCursorBefore(nextBefore || null);
 
-      cacheRef.current.set(cacheKey, {
-        messages: normalizedMessages,
-        timestamp: Date.now()
-      });
+      // ✅ DISPARAR CARREGAMENTO EM BACKGROUND APÓS O INICIAL
+      if (nextBefore) {
+        setTimeout(() => triggerBackgroundLoad(conversationId, nextBefore), 1000);
+      }
 
     } catch (error: any) {
-      console.error('❌ [useConversationMessages] Erro ao carregar mensagens:', error);
-      toast({
-        title: "Erro ao carregar mensagens",
-        description: error.message,
-        variant: "destructive",
-      });
+      console.error('❌ [useConversationMessages] Erro:', error);
     } finally {
       setLoading(false);
     }
-  }, []); // ✅ ESTÁVEL - lê selectedWorkspace dentro da função
+  }, []);
+
+  // ✅ FUNÇÃO DE CARREGAMENTO OCULTO (BACKGROUND)
+  const triggerBackgroundLoad = async (conversationId: string, before: string) => {
+    let currentBefore = before;
+    let continueLoading = true;
+
+    while (continueLoading) {
+      try {
+        const { data, error } = await supabase.functions.invoke('whatsapp-get-messages', {
+          body: { 
+            conversation_id: conversationId,
+            limit: 10,
+            before: currentBefore
+          },
+          headers
+        });
+
+        if (error || !data?.items || data.items.length === 0) {
+          continueLoading = false;
+          setHasMore(false);
+          break;
+        }
+
+        const olderMessages = data.items;
+        setMessages(prev => dedupeAndSortMessages([...olderMessages, ...prev]));
+        
+        currentBefore = data.nextBefore;
+        setCursorBefore(currentBefore);
+        setHasMore(!!currentBefore);
+
+        if (!currentBefore) {
+          continueLoading = false;
+        }
+
+        // Pequeno delay para não sobrecarregar a CPU/Rede
+        await new Promise(resolve => setTimeout(resolve, 500));
+
+      } catch (e) {
+        continueLoading = false;
+        break;
+      }
+    }
+  };
 
   const loadMore = useCallback(async () => {
-    if (!currentConversationId || !cursorBefore) return;
-
-    console.log('🔄 [useConversationMessages] loadMore chamado:', {
-      conversationId: currentConversationId,
-      cursorBefore,
-      timestamp: new Date().toISOString()
-    });
-
-    setLoadingMore(true);
-    try {
-      const { data, error } = await supabase.functions.invoke('whatsapp-get-messages', {
-        body: { 
-          conversation_id: currentConversationId,
-          limit: 6,
-          before: cursorBefore
-        },
-        headers
-      });
-
-      if (error) {
-        console.error('❌ [useConversationMessages] Erro ao carregar mais mensagens:', error);
-        toast({
-          title: "Erro ao carregar mensagens",
-          description: error.message,
-          variant: "destructive",
-        });
-        return;
-      }
-
-      const olderMessages = data?.items || [];
-      console.log(`✅ [useConversationMessages] Carregadas ${olderMessages.length} mensagens adicionais`);
-
-      if (olderMessages.length === 0) {
-        setHasMore(false);
-        return;
-      }
-
-      let nextMessagesState: WhatsAppMessage[] = [];
-      setMessages(prevMessages => {
-        nextMessagesState = dedupeAndSortMessages([...olderMessages, ...prevMessages]);
-        return nextMessagesState;
-      });
-      setHasMore(!!data?.nextBefore);
-      setCursorBefore(data?.nextBefore || null);
-
-      if (selectedWorkspace?.workspace_id) {
-        const cacheKey = `${selectedWorkspace.workspace_id}:${currentConversationId}`;
-        cacheRef.current.set(cacheKey, {
-          messages: nextMessagesState,
-          timestamp: Date.now()
-        });
-      }
-
-    } catch (error: any) {
-      console.error('❌ [useConversationMessages] Erro ao carregar mais mensagens:', error);
-      toast({
-        title: "Erro ao carregar mensagens",
-        description: error.message,
-        variant: "destructive",
-      });
-    } finally {
-      setLoadingMore(false);
-    }
-  }, [currentConversationId, cursorBefore, selectedWorkspace?.workspace_id]); // ✅ SEM getHeaders e toast
+    // Agora o loadMore apenas sinaliza que o usuário quer ver mais.
+    // O triggerBackgroundLoad já está enchendo o array 'messages'.
+    return Promise.resolve();
+  }, []);
 
   const addMessage = useCallback((message: WhatsAppMessage) => {
     console.log('➕ [useConversationMessages] addMessage chamado:', {

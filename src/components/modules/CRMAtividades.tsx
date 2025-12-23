@@ -10,7 +10,8 @@ import {
   Phone,
   Briefcase,
   Map as MapIcon,
-  Columns
+  Columns,
+  Tag
 } from "lucide-react";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
@@ -124,6 +125,11 @@ export function CRMAtividades() {
         .map((a) => a.pipeline_card_id)
         .filter(Boolean) as string[];
 
+      // Buscar contact_ids diretamente das atividades (mesmo sem pipeline_card_id)
+      const activityContactIds = activitiesData
+        .map((a) => a.contact_id)
+        .filter(Boolean) as string[];
+
       const pipelineCardsMap = new Map<
         string,
         {
@@ -140,59 +146,132 @@ export function CRMAtividades() {
         }
       >();
 
+      // Buscar contatos diretamente das atividades (para atividades sem pipeline_card_id)
+      const allContactIds = new Set<string>();
+      activityContactIds.forEach(id => allContactIds.add(id));
+
+      // Buscar contatos das atividades
+      let directContactsMap = new Map<string, { name: string; phone: string }>();
+      if (allContactIds.size > 0) {
+        const { data: directContactsData, error: contactsError } = await supabase
+          .from("contacts")
+          .select("id, name, phone")
+          .in("id", Array.from(allContactIds))
+          .eq("workspace_id", selectedWorkspace.workspace_id);
+
+        if (contactsError) {
+          console.error("Erro ao buscar contatos das atividades:", contactsError);
+        }
+
+        directContactsData?.forEach((contact) => {
+          directContactsMap.set(contact.id, {
+            name: contact.name || "-",
+            phone: contact.phone || "-",
+          });
+        });
+
+        console.log(`📞 Contatos buscados: ${directContactsData?.length || 0} de ${allContactIds.size} contact_ids`);
+      }
+
       if (pipelineCardIds.length > 0) {
-        const { data: cardsOnly } = await supabase
+        const { data: cardsOnly, error: cardsError } = await supabase
           .from("pipeline_cards")
           .select("id, description, pipeline_id, column_id, contact_id, status")
           .in("id", [...new Set(pipelineCardIds)]);
 
-        const pipelineIds = Array.from(new Set(cardsOnly?.map((card) => card.pipeline_id).filter(Boolean))) as string[];
-        const columnIds = Array.from(new Set(cardsOnly?.map((card) => card.column_id).filter(Boolean))) as string[];
-        const contactIds = Array.from(new Set(cardsOnly?.map((card) => card.contact_id).filter(Boolean))) as string[];
+        if (cardsError) {
+          console.error("Erro ao buscar pipeline cards:", cardsError);
+        }
 
-        const { data: pipelinesData } = await supabase
-          .from("pipelines")
-          .select("id, name, workspace_id")
-          .in("id", pipelineIds)
-          .eq("workspace_id", selectedWorkspace.workspace_id);
+        if (cardsOnly && cardsOnly.length > 0) {
+          console.log(`📋 Pipeline cards encontrados: ${cardsOnly.length} de ${pipelineCardIds.length}`);
+          const pipelineIds = Array.from(new Set(cardsOnly.map((card) => card.pipeline_id).filter(Boolean))) as string[];
+          const columnIds = Array.from(new Set(cardsOnly.map((card) => card.column_id).filter(Boolean))) as string[];
+          const cardContactIds = Array.from(new Set(cardsOnly.map((card) => card.contact_id).filter(Boolean))) as string[];
 
-        const allowedPipelineIds = new Set(pipelinesData?.map((pipeline) => pipeline.id));
+          // Adicionar contact_ids dos cards ao conjunto
+          cardContactIds.forEach(id => allContactIds.add(id));
 
-        const { data: columnsData } = await supabase
-          .from("pipeline_columns")
-          .select("id, name, pipeline_id")
-          .in("id", columnIds);
+          const { data: pipelinesData, error: pipelinesError } = await supabase
+            .from("pipelines")
+            .select("id, name, workspace_id")
+            .in("id", pipelineIds)
+            .eq("workspace_id", selectedWorkspace.workspace_id);
 
-        const columnsMapById = new Map(columnsData?.map((column) => [column.id, column]));
-
-        const { data: contactsData } = await supabase
-          .from("contacts")
-          .select("id, name, phone")
-          .in("id", contactIds);
-
-        const contactsMapById = new Map(contactsData?.map((contact) => [contact.id, contact]));
-
-        cardsOnly?.forEach((card) => {
-          if (!allowedPipelineIds.has(card.pipeline_id)) {
-            return;
+          if (pipelinesError) {
+            console.error("Erro ao buscar pipelines:", pipelinesError);
           }
-          const pipelineInfo = pipelinesData?.find((pipeline) => pipeline.id === card.pipeline_id);
-          const columnInfo = columnsMapById.get(card.column_id);
-          const contactInfo = contactsMapById.get(card.contact_id || "");
 
-          pipelineCardsMap.set(card.id, {
-            description: card.description,
-            pipeline_id: card.pipeline_id,
-            pipeline_name: pipelineInfo?.name || "-",
-            column_id: card.column_id,
-            column_name: columnInfo?.name || "-",
-            contact_id: card.contact_id,
-            contact_name: contactInfo?.name || card.description || "-",
-            contact_phone: contactInfo?.phone || "-",
-            status: card.status,
-            pipeline_workspace_id: pipelineInfo?.workspace_id,
+          const allowedPipelineIds = new Set(pipelinesData?.map((pipeline) => pipeline.id) || []);
+          console.log(`🔷 Pipelines encontrados: ${pipelinesData?.length || 0} de ${pipelineIds.length}`);
+
+          const { data: columnsData } = await supabase
+            .from("pipeline_columns")
+            .select("id, name, pipeline_id")
+            .in("id", columnIds);
+
+          const columnsMapById = new Map(columnsData?.map((column) => [column.id, column]));
+
+          // Buscar contatos dos cards (se ainda não foram buscados)
+          if (cardContactIds.length > 0) {
+            const missingContactIds = cardContactIds.filter(id => !directContactsMap.has(id));
+            if (missingContactIds.length > 0) {
+              const { data: cardContactsData, error: cardContactsError } = await supabase
+                .from("contacts")
+                .select("id, name, phone")
+                .in("id", missingContactIds)
+                .eq("workspace_id", selectedWorkspace.workspace_id);
+
+              if (cardContactsError) {
+                console.error("Erro ao buscar contatos dos cards:", cardContactsError);
+              }
+
+              cardContactsData?.forEach((contact) => {
+                directContactsMap.set(contact.id, {
+                  name: contact.name || "-",
+                  phone: contact.phone || "-",
+                });
+              });
+            }
+          }
+
+          cardsOnly.forEach((card) => {
+            if (!allowedPipelineIds.has(card.pipeline_id)) {
+              // Mesmo que o pipeline não esteja no workspace, ainda podemos usar os dados do card
+              // para mostrar informações básicas
+              const contactInfo = directContactsMap.get(card.contact_id || "");
+              pipelineCardsMap.set(card.id, {
+                description: card.description,
+                pipeline_id: card.pipeline_id,
+                pipeline_name: "-", // Pipeline não permitido
+                column_id: card.column_id,
+                column_name: "-",
+                contact_id: card.contact_id,
+                contact_name: contactInfo?.name || card.description || "-",
+                contact_phone: contactInfo?.phone || "-",
+                status: card.status,
+                pipeline_workspace_id: null,
+              });
+              return;
+            }
+            const pipelineInfo = pipelinesData?.find((pipeline) => pipeline.id === card.pipeline_id);
+            const columnInfo = columnsMapById.get(card.column_id);
+            const contactInfo = directContactsMap.get(card.contact_id || "");
+
+            pipelineCardsMap.set(card.id, {
+              description: card.description,
+              pipeline_id: card.pipeline_id,
+              pipeline_name: pipelineInfo?.name || "-",
+              column_id: card.column_id,
+              column_name: columnInfo?.name || "-",
+              contact_id: card.contact_id,
+              contact_name: contactInfo?.name || card.description || "-",
+              contact_phone: contactInfo?.phone || "-",
+              status: card.status,
+              pipeline_workspace_id: pipelineInfo?.workspace_id,
+            });
           });
-        });
+        }
       }
 
       const formattedActivities: ActivityData[] = activitiesData
@@ -210,12 +289,26 @@ export function CRMAtividades() {
             }
           }
 
+          // Buscar dados do contato diretamente se não houver card
+          const directContact = item.contact_id ? directContactsMap.get(item.contact_id) : null;
+          
+          // Priorizar dados do card, mas usar dados diretos do contato como fallback
           const pipelineName = card?.pipeline_name || "-";
           const stageName = card?.column_name || "-";
-          const contactPhone = card?.contact_phone || "-";
-          const contactName = card?.contact_name || card?.description || "-";
+          const contactPhone = card?.contact_phone || directContact?.phone || "-";
+          const contactName = card?.contact_name || directContact?.name || card?.description || "-";
           const dealName = card?.description || "-";
           const contactId = item.contact_id || card?.contact_id || null;
+
+          // Log de debug para atividades sem dados completos
+          if ((!card && !directContact && item.contact_id) || (card && !card.contact_phone && !directContact?.phone && item.contact_id)) {
+            console.warn(`⚠️ Atividade ${item.id} sem dados de contato:`, {
+              hasCard: !!card,
+              hasDirectContact: !!directContact,
+              contactId: item.contact_id,
+              pipelineCardId: item.pipeline_card_id,
+            });
+          }
 
           return {
             id: item.id,
@@ -306,6 +399,12 @@ export function CRMAtividades() {
                     <span>Pipeline</span>
                   </div>
                 </th>
+                <th className="border border-[#d4d4d4] px-2 py-1 text-left font-semibold text-gray-700 min-w-[150px] group hover:bg-[#e1e1e1] cursor-pointer dark:border-gray-700 dark:text-gray-200 dark:hover:bg-[#2a2a2a]">
+                  <div className="flex items-center gap-1">
+                    <Tag className="h-3 w-3 text-gray-400" />
+                    <span>Tipo da Atividade</span>
+                  </div>
+                </th>
                 <th className="border border-[#d4d4d4] px-2 py-1 text-left font-semibold text-gray-700 min-w-[200px] group hover:bg-[#e1e1e1] cursor-pointer dark:border-gray-700 dark:text-gray-200 dark:hover:bg-[#2a2a2a]">
                   <div className="flex items-center gap-1">
                     <AlertCircle className="h-3 w-3 text-gray-400" />
@@ -367,6 +466,9 @@ export function CRMAtividades() {
                       <div className="h-4 w-24 bg-gray-100 dark:bg-gray-800 animate-pulse rounded-sm" />
                     </td>
                     <td className="border border-[#e0e0e0] px-2 py-1 dark:border-gray-700">
+                      <div className="h-4 w-24 bg-gray-100 dark:bg-gray-800 animate-pulse rounded-sm" />
+                    </td>
+                    <td className="border border-[#e0e0e0] px-2 py-1 dark:border-gray-700">
                       <div className="h-4 w-32 bg-gray-100 dark:bg-gray-800 animate-pulse rounded-sm" />
                     </td>
                     <td className="border border-[#e0e0e0] px-2 py-1 dark:border-gray-700">
@@ -389,7 +491,7 @@ export function CRMAtividades() {
                 ))
               ) : filteredActivities.length === 0 ? (
                 <tr>
-                  <td colSpan={8} className="border border-[#e0e0e0] text-center py-12 bg-gray-50 dark:border-gray-700 dark:bg-[#1a1a1a]">
+                  <td colSpan={9} className="border border-[#e0e0e0] text-center py-12 bg-gray-50 dark:border-gray-700 dark:bg-[#1a1a1a]">
                     <div className="flex flex-col items-center gap-2">
                       <CalendarClock className="h-8 w-8 text-gray-300 dark:text-gray-500" />
                       <p className="text-gray-500 font-medium dark:text-gray-300">
@@ -403,6 +505,9 @@ export function CRMAtividades() {
                   <tr key={activity.id} className="hover:bg-blue-50 group h-[32px] dark:hover:bg-[#1f2937]">
                     <td className="border border-[#e0e0e0] px-2 py-0 whitespace-nowrap dark:border-gray-700 dark:text-gray-200">
                       {activity.pipeline_name}
+                    </td>
+                    <td className="border border-[#e0e0e0] px-2 py-0 whitespace-nowrap dark:border-gray-700 dark:text-gray-200">
+                      {activity.type || "-"}
                     </td>
                     <td className="border border-[#e0e0e0] px-2 py-0 whitespace-nowrap dark:border-gray-700 dark:text-gray-200 font-medium">
                       {activity.subject}
@@ -453,6 +558,7 @@ export function CRMAtividades() {
               )}
               {filteredActivities.length > 0 && Array.from({ length: Math.max(0, 20 - filteredActivities.length) }).map((_, i) => (
                 <tr key={`empty-${i}`} className="h-[32px]">
+                   <td className="border border-[#e0e0e0] dark:border-gray-700"></td>
                    <td className="border border-[#e0e0e0] dark:border-gray-700"></td>
                    <td className="border border-[#e0e0e0] dark:border-gray-700"></td>
                    <td className="border border-[#e0e0e0] dark:border-gray-700"></td>
