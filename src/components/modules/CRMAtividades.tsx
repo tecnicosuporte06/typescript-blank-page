@@ -51,6 +51,7 @@ interface SelectedDealDetails {
 }
 
 export function CRMAtividades() {
+  const PAGE_SIZE = 50;
   const { selectedWorkspace } = useWorkspace();
   const { user, userRole } = useAuth();
   const [activities, setActivities] = useState<ActivityData[]>([]);
@@ -58,6 +59,8 @@ export function CRMAtividades() {
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [selectedDealDetails, setSelectedDealDetails] = useState<SelectedDealDetails | null>(null);
+  const [page, setPage] = useState(1);
+  const [totalCount, setTotalCount] = useState(0);
   const { toast } = useToast();
 
   const handleOpenDealDetails = (activity: ActivityData) => {
@@ -84,19 +87,25 @@ export function CRMAtividades() {
       setIsLoading(true);
       console.log("🔄 Buscando atividades...");
 
+      const start = (page - 1) * PAGE_SIZE;
+      const end = start + PAGE_SIZE - 1;
+
       let query = supabase
         .from("activities")
-        .select("*")
+        .select("*", { count: "exact" })
         .eq("workspace_id", selectedWorkspace.workspace_id)
-        .order("scheduled_for", { ascending: true });
+        .order("scheduled_for", { ascending: true })
+        .range(start, end);
 
       if (userRole === "user" && user?.id) {
         query = query.eq("responsible_id", user.id);
       }
 
-      const { data: activitiesData, error } = await query;
+      const { data: activitiesData, error, count } = await query;
 
       if (error) throw error;
+
+      setTotalCount(count || 0);
 
       if (!activitiesData || activitiesData.length === 0) {
         setActivities([]);
@@ -346,7 +355,7 @@ export function CRMAtividades() {
 
   useEffect(() => {
     fetchActivities();
-  }, [selectedWorkspace?.workspace_id]);
+  }, [selectedWorkspace?.workspace_id, page]);
 
   const filteredActivities = useMemo(() => {
     const term = searchTerm.toLowerCase();
@@ -388,7 +397,7 @@ export function CRMAtividades() {
       </div>
 
       {/* Table */}
-      <div className="flex-1 overflow-auto bg-[#e6e6e6] dark:bg-[#050505]">
+      <div className="flex-1 overflow-auto bg-[#e6e6e6] dark:bg-[#050505] relative">
         <div className="inline-block min-w-full align-middle bg-white dark:bg-[#111111]">
           <table className="min-w-full border-collapse bg-white text-xs font-sans dark:bg-[#111111] dark:text-gray-100">
             <thead className="bg-[#f3f3f3] sticky top-0 z-10 dark:bg-[#1f1f1f]">
@@ -572,6 +581,32 @@ export function CRMAtividades() {
             </tbody>
           </table>
         </div>
+        
+        {/* Footer fixo com paginação */}
+        <div className="sticky bottom-0 left-0 right-0 bg-[#f8f9fa] dark:bg-[#141414] border-t border-gray-300 dark:border-gray-700 px-4 py-2 z-20">
+          <div className="flex items-center justify-center gap-2 text-[11px] text-gray-600 dark:text-gray-400">
+            <button
+              className="px-2 py-1 border border-gray-300 rounded-sm disabled:opacity-50 dark:border-gray-700"
+              onClick={() => setPage((p) => Math.max(1, p - 1))}
+              disabled={page === 1 || isLoading}
+            >
+              Anterior
+            </button>
+            <span>
+              Página {page} • {Math.ceil((totalCount || 0) / PAGE_SIZE) || 1}
+            </span>
+            <button
+              className="px-2 py-1 border border-gray-300 rounded-sm disabled:opacity-50 dark:border-gray-700"
+              onClick={() => setPage((p) => (p * PAGE_SIZE < totalCount ? p + 1 : p))}
+              disabled={isLoading || page * PAGE_SIZE >= totalCount}
+            >
+              Próxima
+            </button>
+            <span className="opacity-70">
+              {filteredActivities.length} registros
+            </span>
+          </div>
+        </div>
       </div>
       {selectedDealDetails && (
         <DealDetailsModal
@@ -593,4 +628,3 @@ export function CRMAtividades() {
     </div>
   );
 }
-

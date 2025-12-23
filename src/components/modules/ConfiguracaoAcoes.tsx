@@ -4,7 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { useWorkspace } from '@/contexts/WorkspaceContext';
 import { useLossReasons } from '@/hooks/useLossReasons';
-import { Plus, Trash2, Edit2, X, Check, FileText } from 'lucide-react';
+import { Plus, Trash2, Edit2, X, Check, FileText, Search } from 'lucide-react';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -15,6 +15,14 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
 import { Badge } from '@/components/ui/badge';
 
 export const ConfiguracaoAcoes: React.FC = () => {
@@ -43,6 +51,8 @@ export const ConfiguracaoAcoes: React.FC = () => {
     });
   }, [urlWorkspaceId, selectedWorkspace?.workspace_id, effectiveWorkspaceId, lossReasons.length, isLoading]);
 
+  const [searchTerm, setSearchTerm] = useState('');
+  const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [newReasonName, setNewReasonName] = useState('');
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editingName, setEditingName] = useState('');
@@ -52,7 +62,13 @@ export const ConfiguracaoAcoes: React.FC = () => {
     if (!newReasonName.trim()) return;
     await createLossReason(newReasonName.trim());
     setNewReasonName('');
+    setIsAddModalOpen(false);
   };
+
+  // Filtrar motivos de perda baseado no termo de busca
+  const filteredLossReasons = lossReasons.filter(reason =>
+    reason.name.toLowerCase().includes(searchTerm.toLowerCase())
+  );
 
   const handleStartEdit = (id: string, name: string) => {
     setEditingId(id);
@@ -88,43 +104,40 @@ export const ConfiguracaoAcoes: React.FC = () => {
         <div className="flex items-center justify-between px-4 py-2 bg-primary text-primary-foreground h-10">
           <div className="flex items-center gap-2">
             <FileText className="h-4 w-4" />
-            <span className="font-semibold text-sm tracking-tight">Configuração de Ações</span>
+            <span className="font-semibold text-sm tracking-tight">Motivos de Perda</span>
           </div>
           <Badge variant="outline" className="rounded-none border-white/40 text-[10px] tracking-tight bg-primary/30 text-primary-foreground px-2 py-0.5">
-            {lossReasons.length} motivo{lossReasons.length === 1 ? '' : 's'}
+            {searchTerm ? `${filteredLossReasons.length} de ${lossReasons.length}` : lossReasons.length} motivo{lossReasons.length === 1 ? '' : 's'}
           </Badge>
         </div>
 
         {/* Faixa de ferramentas */}
         <div className="flex flex-wrap items-center gap-2 px-3 py-2 border-t border-gray-200 bg-[#f3f3f3] dark:border-gray-700 dark:bg-[#1a1a1a]">
-          <div className="flex-1 min-w-[240px]">
+          <div className="flex-1 min-w-[240px] relative">
+            <Search className="absolute left-2 top-1/2 transform -translate-y-1/2 text-gray-500 h-3.5 w-3.5 dark:text-gray-400" />
             <Input
-              placeholder="Digite o nome do novo motivo..."
-              value={newReasonName}
-              onChange={(e) => setNewReasonName(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') {
-                  handleCreate();
-                }
-              }}
-              className="h-8 text-xs rounded-none border-gray-300 focus-visible:ring-1 focus-visible:ring-primary dark:bg-[#1b1b1b] dark:border-gray-700 dark:text-gray-100 dark:placeholder:text-gray-500"
+              placeholder="Pesquisar motivo de perda pelo nome..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="h-8 text-xs rounded-none border-gray-300 pl-8 focus-visible:ring-1 focus-visible:ring-primary dark:bg-[#1b1b1b] dark:border-gray-700 dark:text-gray-100 dark:placeholder:text-gray-500"
             />
           </div>
           <Button
-            onClick={handleCreate}
-            disabled={!newReasonName.trim() || isLoading}
+            onClick={() => setIsAddModalOpen(true)}
             className="h-8 rounded-none bg-yellow-500 hover:bg-yellow-600 text-gray-900"
           >
             <Plus className="h-3.5 w-3.5 mr-1.5" />
             Adicionar
           </Button>
-          <Button
-            variant="ghost"
-            className="h-8 rounded-none border border-gray-300 text-gray-700 hover:bg-white dark:border-gray-600 dark:text-gray-200 dark:bg-transparent dark:hover:bg-[#1f1f1f]"
-            onClick={() => setNewReasonName('')}
-          >
-            Limpar
-          </Button>
+          {searchTerm && (
+            <Button
+              variant="ghost"
+              className="h-8 rounded-none border border-gray-300 text-gray-700 hover:bg-white dark:border-gray-600 dark:text-gray-200 dark:bg-transparent dark:hover:bg-[#1f1f1f]"
+              onClick={() => setSearchTerm('')}
+            >
+              Limpar
+            </Button>
+          )}
         </div>
       </div>
 
@@ -150,7 +163,7 @@ export const ConfiguracaoAcoes: React.FC = () => {
                 </tr>
               </thead>
               <tbody>
-                {isLoading && lossReasons.length === 0 && (
+                {isLoading && filteredLossReasons.length === 0 && (
                   <>
                     {Array.from({ length: 4 }).map((_, index) => (
                       <tr key={`skeleton-${index}`} className="bg-white dark:bg-[#111111]">
@@ -168,15 +181,17 @@ export const ConfiguracaoAcoes: React.FC = () => {
                   </>
                 )}
 
-                {!isLoading && lossReasons.length === 0 && (
+                {!isLoading && filteredLossReasons.length === 0 && (
                   <tr>
                     <td colSpan={3} className="border border-[#e0e0e0] px-3 py-8 bg-white text-center text-gray-500 dark:border-gray-700 dark:bg-[#111111] dark:text-gray-400">
-                      Nenhum motivo cadastrado. Utilize a barra superior para incluir novos motivos.
+                      {searchTerm 
+                        ? `Nenhum motivo encontrado para "${searchTerm}"`
+                        : 'Nenhum motivo cadastrado. Utilize o botão "Adicionar" para incluir novos motivos.'}
                     </td>
                   </tr>
                 )}
 
-                {!isLoading && lossReasons.length > 0 && lossReasons.map((reason) => (
+                {!isLoading && filteredLossReasons.length > 0 && filteredLossReasons.map((reason) => (
                   <tr key={reason.id} className="bg-white hover:bg-yellow-50 transition-colors dark:bg-[#111111] dark:hover:bg-[#1f2937]">
                     {editingId === reason.id ? (
                       <>
@@ -270,18 +285,65 @@ export const ConfiguracaoAcoes: React.FC = () => {
         </div>
       </div>
 
+      {/* Dialog para adicionar novo motivo */}
+      <Dialog open={isAddModalOpen} onOpenChange={setIsAddModalOpen}>
+        <DialogContent className="rounded-none">
+          <DialogHeader>
+            <DialogTitle className="text-lg dark:text-gray-100">Adicionar Motivo de Perda</DialogTitle>
+            <DialogDescription className="text-xs text-muted-foreground dark:text-gray-400">
+              Digite o nome do novo motivo de perda que será exibido ao marcar um negócio como perdido.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="py-4">
+            <Input
+              placeholder="Digite o nome do novo motivo..."
+              value={newReasonName}
+              onChange={(e) => setNewReasonName(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && newReasonName.trim()) {
+                  handleCreate();
+                }
+              }}
+              className="h-8 text-xs rounded-none border-gray-300 focus-visible:ring-1 focus-visible:ring-primary dark:bg-[#1b1b1b] dark:border-gray-700 dark:text-gray-100 dark:placeholder:text-gray-500"
+              autoFocus
+            />
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setIsAddModalOpen(false);
+                setNewReasonName('');
+              }}
+              className="rounded-none border border-gray-300 dark:border-gray-600 dark:text-gray-200 dark:bg-transparent dark:hover:bg-[#1f1f1f]"
+            >
+              Cancelar
+            </Button>
+            <Button
+              onClick={handleCreate}
+              disabled={!newReasonName.trim() || isLoading}
+              className="rounded-none bg-yellow-500 hover:bg-yellow-600 text-gray-900"
+            >
+              Adicionar
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       {/* Dialog de confirmação de exclusão */}
       <AlertDialog open={!!deleteReasonId} onOpenChange={() => setDeleteReasonId(null)}>
-        <AlertDialogContent className="rounded-none border border-gray-300 dark:border-gray-700 dark:bg-[#0b0b0b] dark:text-gray-100">
+        <AlertDialogContent className="rounded-none">
           <AlertDialogHeader>
-            <AlertDialogTitle className="text-lg">Confirmar exclusão</AlertDialogTitle>
-            <AlertDialogDescription className="text-xs text-muted-foreground dark:text-gray-400">
+            <AlertDialogTitle className="text-lg dark:text-black">Confirmar exclusão</AlertDialogTitle>
+          </AlertDialogHeader>
+          <div className="flex items-center justify-center py-6">
+            <AlertDialogDescription className="text-xs text-muted-foreground dark:text-gray-200 text-center">
               Tem certeza que deseja excluir este motivo de perda? Esta ação não pode ser desfeita.
             </AlertDialogDescription>
-          </AlertDialogHeader>
+          </div>
           <AlertDialogFooter>
             <AlertDialogCancel className="rounded-none border border-gray-300 dark:border-gray-600 dark:text-gray-200 dark:bg-transparent dark:hover:bg-[#1f1f1f]">Cancelar</AlertDialogCancel>
-            <AlertDialogAction onClick={handleDelete} className="rounded-none bg-red-600 hover:bg-red-700">
+            <AlertDialogAction onClick={handleDelete} className="rounded-none bg-red-600 hover:bg-red-700 dark:bg-red-600 dark:hover:bg-red-700 dark:text-white">
               Excluir
             </AlertDialogAction>
           </AlertDialogFooter>

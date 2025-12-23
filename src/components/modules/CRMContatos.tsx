@@ -61,6 +61,8 @@ interface Contact {
   profile_image_url?: string;
   extra_info?: Record<string, any>;
 }
+const PAGE_SIZE = 50;
+
 export function CRMContatos() {
   const { selectedWorkspace } = useWorkspace();
   const [editingContact, setEditingContact] = useState<Contact | null>(null);
@@ -69,6 +71,8 @@ export function CRMContatos() {
   const [showDuplicates, setShowDuplicates] = useState(false);
   const [contacts, setContacts] = useState<Contact[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [page, setPage] = useState(1);
+  const [totalCount, setTotalCount] = useState(0);
   const [customFields, setCustomFields] = useState<
     Array<{
       key: string;
@@ -298,7 +302,7 @@ export function CRMContatos() {
 
   // ✅ CARREGAR CONTATOS AUTOMATICAMENTE quando workspace mudar
   useEffect(() => {
-    console.log("🎯 [CRMContatos] useEffect triggered - workspace:", selectedWorkspace?.workspace_id);
+    console.log("🎯 [CRMContatos] useEffect triggered - workspace:", selectedWorkspace?.workspace_id, "page:", page);
     
     if (!selectedWorkspace?.workspace_id) {
       console.warn("⚠️ [CRMContatos] No workspace selected, clearing contacts");
@@ -312,18 +316,22 @@ export function CRMContatos() {
       try {
         setIsLoading(true);
         
-        console.log("🔄 [CRMContatos] Fetching contacts for workspace:", selectedWorkspace.workspace_id);
+        console.log("🔄 [CRMContatos] Fetching contacts for workspace:", selectedWorkspace.workspace_id, "page:", page);
 
       // Get all contacts from the workspace - QUERY SIMPLES
         console.log("🔍 [CRMContatos] Fazendo query com workspace_id:", selectedWorkspace.workspace_id);
         
-        const { data: contactsData, error: contactsError } = await supabase
+        const start = (page - 1) * PAGE_SIZE;
+        const end = start + PAGE_SIZE - 1;
+
+        const { data: contactsData, error: contactsError, count } = await supabase
           .from("contacts")
-          .select("*")
+          .select("*", { count: "exact" })
           .eq("workspace_id", selectedWorkspace.workspace_id)
           .order("created_at", {
             ascending: false,
-          });
+          })
+          .range(start, end);
 
         console.log("📦 [CRMContatos] Resposta da query:", {
           success: !contactsError,
@@ -342,6 +350,8 @@ export function CRMContatos() {
           setContacts([]);
           return;
         }
+
+        setTotalCount(count || 0);
 
         if (!contactsData || contactsData.length === 0) {
           console.log("ℹ️ [CRMContatos] No contacts found");
@@ -433,7 +443,7 @@ export function CRMContatos() {
     };
 
     loadContacts();
-  }, [selectedWorkspace?.workspace_id, toast]); // ✅ workspace_id e toast como dependências
+  }, [selectedWorkspace?.workspace_id, toast, page]); // ✅ workspace_id, página e toast como dependências
 
   // Real-time subscription for contacts changes
   useEffect(() => {
@@ -1454,7 +1464,7 @@ export function CRMContatos() {
       </div>
 
       {/* Excel Grid Table */}
-      <div className="flex-1 overflow-auto bg-[#e6e6e6] dark:bg-[#050505]">
+      <div className="flex-1 overflow-auto bg-[#e6e6e6] dark:bg-[#050505] relative">
         <div className="inline-block min-w-full align-middle bg-white dark:bg-[#111111]">
           <table className="min-w-full border-collapse bg-white text-xs font-sans dark:bg-[#111111] dark:text-gray-100">
             <thead className="bg-[#f3f3f3] sticky top-0 z-10 dark:bg-[#1f1f1f]">
@@ -1713,6 +1723,36 @@ export function CRMContatos() {
                ))}
             </tbody>
           </table>
+        </div>
+        
+        {/* Footer fixo com paginação */}
+        <div className="sticky bottom-0 left-0 right-0 bg-[#f8f9fa] dark:bg-[#141414] border-t border-gray-300 dark:border-gray-700 px-4 py-2 z-20">
+          <div className="flex items-center justify-center gap-2 text-[11px] text-gray-600 dark:text-gray-400">
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-7 px-2 rounded-none"
+              onClick={() => setPage((p) => Math.max(1, p - 1))}
+              disabled={page === 1 || isLoading}
+            >
+              Anterior
+            </Button>
+            <span>
+              Página {page} • {Math.ceil((totalCount || 0) / PAGE_SIZE) || 1}
+            </span>
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-7 px-2 rounded-none"
+              onClick={() => setPage((p) => (p * PAGE_SIZE < totalCount ? p + 1 : p))}
+              disabled={isLoading || page * PAGE_SIZE >= totalCount}
+            >
+              Próxima
+            </Button>
+            <span className="opacity-70">
+              {totalCount} registros
+            </span>
+          </div>
         </div>
       </div>
 

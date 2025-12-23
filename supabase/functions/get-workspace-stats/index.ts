@@ -3,7 +3,9 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-system-user-id, x-system-user-email',
+  // Permitimos todos os headers para evitar bloqueio por preflight (inclui x-workspace-id)
+  'Access-Control-Allow-Headers': '*',
+  'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
 }
 
 serve(async (req) => {
@@ -123,9 +125,13 @@ serve(async (req) => {
 
     console.log(`✅ Found ${workspaces?.length || 0} workspaces`);
 
-    // Get stats for each workspace using service role (bypasses RLS)
+    // Get stats for each workspace using more efficient queries
     const stats = await Promise.all(
       (workspaces || []).map(async (workspace) => {
+        // Use a single query for each table to get the count
+        const now = new Date();
+        const last24h = new Date(now.getTime() - 24 * 60 * 60 * 1000).toISOString();
+
         const [
           { count: connectionsCount },
           { count: conversationsCount },
@@ -137,7 +143,7 @@ serve(async (req) => {
           supabase.from('messages').select('*', { count: 'exact', head: true }).eq('workspace_id', workspace.id),
           supabase.from('conversations').select('*', { count: 'exact', head: true })
             .eq('workspace_id', workspace.id)
-            .gte('last_activity_at', new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString())
+            .or(`status.eq.open,last_activity_at.gte.${last24h}`) // Use status open OR activity in last 24h
         ]);
 
         return {

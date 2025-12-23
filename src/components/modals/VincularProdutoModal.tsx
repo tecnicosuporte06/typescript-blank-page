@@ -243,6 +243,7 @@ export function VincularProdutoModal({
               onChange={(event) => setManualValue(event.target.value)}
               disabled={!isManualMode}
               placeholder="0,00"
+              className="dark:bg-[#2d2d2d] dark:border-gray-600 dark:text-white dark:placeholder:text-gray-400"
             />
             {!isManualMode && (
               <p className="text-xs text-muted-foreground">

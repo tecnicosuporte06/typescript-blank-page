@@ -1975,12 +1975,13 @@ export function DealDetailsModal({
                   </div>
                 ) : pipelineSteps.length > 0 ? (
                   <div className={cn(
-                    "w-full border p-4 shadow-sm rounded-none",
+                    "w-full border p-4 shadow-sm rounded-none overflow-x-auto",
                     isDarkMode ? "bg-[#1b1b1b] border-gray-700" : "bg-white border-[#d4d4d4]"
                   )}>
                     
                     {/* Pipeline Visual com Ícones */}
-                    <PipelineTimeline 
+                    <div className="min-w-full">
+                      <PipelineTimeline 
                       columns={pipelineSteps.map(step => ({
                         id: step.id,
                         name: step.name,
@@ -1989,7 +1990,7 @@ export function DealDetailsModal({
                         isActive: step.isActive
                       }))}
                       currentColumnId={selectedColumnId}
-                      className="pt-12 pb-8"
+                      className="pt-12 pb-[82px]"
                       isDarkMode={isDarkMode}
                       onStepClick={async (newColumnId) => {
                         if (newColumnId === selectedColumnId || !selectedCardId) return;
@@ -2020,6 +2021,7 @@ export function DealDetailsModal({
                         }
                       }}
                     />
+                    </div>
                   </div>
                 ) : (
                   <div className="text-center py-8">

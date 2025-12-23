@@ -217,7 +217,7 @@ export function Sidebar({
     icon: <Calendar className="w-5 h-5" />
   }, {
     id: "administracao-acoes" as ModuleType,
-    label: "Configuração de Ações",
+    label: "Motivos de Perda",
     icon: <Settings className="w-5 h-5" />,
     group: "administracao",
     masterOnly: false

@@ -56,8 +56,28 @@ type ResponsibleFilterValue = 'ALL' | 'UNASSIGNED' | (string & {});
 // Componente de Badge do Agente
 function AgentBadge({ conversationId }: { conversationId: string }) {
   const { agent, isLoading } = useWorkspaceAgent(conversationId);
+  const [isDark, setIsDark] = useState(false);
   
   console.log('🤖 [AgentBadge] Renderizando:', { conversationId, hasAgent: !!agent, isLoading });
+  
+  // Detectar mudanças no tema
+  useEffect(() => {
+    const checkTheme = () => {
+      setIsDark(document.documentElement.classList.contains("dark"));
+    };
+    
+    // Verificar tema inicial
+    checkTheme();
+    
+    // Observar mudanças na classe 'dark' do documentElement
+    const observer = new MutationObserver(checkTheme);
+    observer.observe(document.documentElement, {
+      attributes: true,
+      attributeFilter: ['class']
+    });
+    
+    return () => observer.disconnect();
+  }, []);
   
   if (isLoading) return null;
   if (!agent) return null;
@@ -67,11 +87,23 @@ function AgentBadge({ conversationId }: { conversationId: string }) {
       ? `${agent.name.slice(0, 8)}...`
       : agent.name;
   
+  // Ajuste de cor para claro/escuro
+  const bg = isDark ? "#5e5b5b" : "rgb(217, 217, 217)";
+  const border = isDark ? "#5e5b5b" : "rgb(217, 217, 217)";
+  const text = isDark ? "#ffffff" : "#2d2d2d";
+
   return (
     <TooltipProvider>
       <Tooltip>
         <TooltipTrigger asChild>
-          <div className="flex items-center gap-0.5 px-1.5 py-0.5 rounded-md bg-purple-100 dark:bg-purple-900 text-purple-600 dark:text-purple-300 border border-purple-200 dark:border-purple-700">
+          <div
+            className="flex items-center gap-0.5 px-1.5 py-0.5 rounded-md border text-[10px] font-medium"
+            style={{
+              backgroundColor: bg,
+              color: text,
+              borderColor: border,
+            }}
+          >
             <Bot className="h-3 w-3" />
             <span className="text-[10px] font-medium">{displayName}</span>
           </div>

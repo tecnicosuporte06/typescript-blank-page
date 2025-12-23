@@ -173,7 +173,7 @@ export function AutomacoesFilas() {
       </div>
 
       {/* Table Area */}
-      <div className="flex-1 overflow-auto bg-[#e6e6e6] dark:bg-[#050505]">
+      <div className="flex-1 overflow-auto bg-[#e6e6e6] dark:bg-[#050505] relative">
         <div className="inline-block min-w-full align-middle bg-white dark:bg-[#111111]">
           <table className="min-w-full border-collapse bg-white text-xs font-sans dark:bg-[#111111] dark:text-gray-100">
             <thead className="bg-[#f3f3f3] sticky top-0 z-10 dark:bg-[#1f1f1f]">
@@ -279,6 +279,30 @@ export function AutomacoesFilas() {
               ))}
             </tbody>
           </table>
+        </div>
+        
+        {/* Footer fixo com paginação */}
+        <div className="sticky bottom-0 left-0 right-0 bg-[#f8f9fa] dark:bg-[#141414] border-t border-gray-300 dark:border-gray-700 px-4 py-2 z-20">
+          <div className="flex items-center justify-center gap-2 text-[11px] text-gray-600 dark:text-gray-400">
+            <button
+              className="px-2 py-1 border border-gray-300 rounded-sm disabled:opacity-50 dark:border-gray-700"
+              disabled={true}
+            >
+              Anterior
+            </button>
+            <span>
+              Página 1 • 1
+            </span>
+            <button
+              className="px-2 py-1 border border-gray-300 rounded-sm disabled:opacity-50 dark:border-gray-700"
+              disabled={true}
+            >
+              Próxima
+            </button>
+            <span className="opacity-70">
+              {filteredFilas.length} registros
+            </span>
+          </div>
         </div>
       </div>
 

@@ -266,7 +266,27 @@ export function WhatsAppChat({
   // ✅ Estado para controlar quantas mensagens mostrar (Infinite Scroll com dados em memória)
   const [visibleMessagesCount, setVisibleMessagesCount] = useState(10);
   const [isVisualLoading, setIsVisualLoading] = useState(false);
+  const [isDark, setIsDark] = useState(false);
   const messageText = selectedConversation ? (messageDrafts[selectedConversation.id] ?? "") : "";
+
+  // Detectar mudanças no tema
+  useEffect(() => {
+    const checkTheme = () => {
+      setIsDark(document.documentElement.classList.contains("dark"));
+    };
+    
+    // Verificar tema inicial
+    checkTheme();
+    
+    // Observar mudanças na classe 'dark' do documentElement
+    const observer = new MutationObserver(checkTheme);
+    observer.observe(document.documentElement, {
+      attributes: true,
+      attributeFilter: ['class']
+    });
+    
+    return () => observer.disconnect();
+  }, []);
 
   const updateMessageDraft = useCallback((conversationId: string, value: string) => {
     setMessageDrafts(prev => {
@@ -1738,9 +1758,9 @@ export function WhatsAppChat({
       setIsVisualLoading(true);
       isLoadingMoreRef.current = true;
 
-      console.log('🔄 Scroll infinito - Iniciando preloading visual de 3s');
+      console.log('🔄 Scroll infinito - Iniciando preloading visual de 1s');
 
-      // Simular delay visual de 3s conforme pedido
+      // Simular delay visual de 1s conforme pedido
       setTimeout(() => {
         // ✅ CAPTURA CRÍTICA: Capturar a posição EXATAMENTE antes de mudar o estado
         if (messagesScrollRef.current) {
@@ -1760,7 +1780,7 @@ export function WhatsAppChat({
         if (!hasMoreInMemory && hasMore) {
           loadMoreMessages();
         }
-      }, 3000);
+      }, 1000);
     }
     
     console.log('📜 Posição do scroll:', {
@@ -2416,21 +2436,38 @@ export function WhatsAppChat({
                     {selectedConversation.agente_ativo && agent ? (
                       <button
                         onClick={() => setChangeAgentModalOpen(true)}
-                        className="flex items-center gap-2 px-3 py-1 bg-gradient-to-r from-green-50 to-emerald-50 dark:from-green-900/30 dark:to-emerald-900/30 border border-[#d4d4d4] dark:border-green-800 rounded-none shadow-sm hover:shadow-md transition-all group h-8"
+                        className="flex items-center gap-2 px-3 py-1 rounded-none shadow-sm hover:shadow-md transition-all group h-8"
+                        style={{
+                          backgroundColor: isDark ? "#5e5b5b" : "rgb(217, 217, 217)",
+                          borderColor: isDark ? "#5e5b5b" : "rgb(217, 217, 217)",
+                          borderWidth: "1px",
+                          borderStyle: "solid"
+                        }}
                         title="Agente ativo - clique para trocar"
                       >
                         <div className="flex items-center gap-1.5">
                           <div className="w-1.5 h-1.5 bg-green-500 dark:bg-green-400 rounded-full animate-pulse shadow-lg shadow-green-500/50 dark:shadow-green-400/50" />
                           <Bot className="w-3.5 h-3.5 text-green-600 dark:text-green-400 group-hover:scale-110 transition-transform" />
                         </div>
-                        <span className="text-xs font-bold text-green-700 dark:text-green-300 leading-none">
+                        <span 
+                          className="text-xs font-bold leading-none"
+                          style={{
+                            color: isDark ? "#ffffff" : "#2d2d2d"
+                          }}
+                        >
                           {agent.name}
                         </span>
                       </button>
                     ) : (
                       <button
                         onClick={() => setChangeAgentModalOpen(true)}
-                        className="flex items-center gap-2 px-3 py-1 bg-gray-50 border border-[#d4d4d4] rounded-none shadow-sm hover:shadow-md transition-all hover:bg-gray-100 group h-8"
+                        className="flex items-center gap-2 px-3 py-1 rounded-none shadow-sm hover:shadow-md transition-all group h-8"
+                        style={{
+                          backgroundColor: "#fab4b4",
+                          borderColor: "#fab4b4",
+                          borderWidth: "1px",
+                          borderStyle: "solid"
+                        }}
                         title="Clique para ativar um agente"
                       >
                         <div className="flex items-center gap-1.5">

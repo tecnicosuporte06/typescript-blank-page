@@ -31,7 +31,7 @@ export function PipelineTimeline({ columns, currentColumnId, className, onStepCl
   })));
 
   return (
-    <div className={cn("flex items-center justify-between w-full py-8 px-4", className)}>
+    <div className={cn("flex items-center justify-between w-full py-8 px-4 min-w-max", className)}>
       {columns.map((column, index) => {
         const IconComponent = (column.icon && LucideIcons[column.icon as keyof typeof LucideIcons]) as LucideIcon;
         const Icon = IconComponent || LucideIcons.Circle;
@@ -69,8 +69,8 @@ export function PipelineTimeline({ columns, currentColumnId, className, onStepCl
         return (
           <div key={column.id} className="contents">
             <div 
-              className={cn("flex flex-col items-center relative group", onStepClick && "cursor-pointer")} 
-                style={{ minWidth: '80px' }}
+              className={cn("flex flex-col items-center relative group flex-shrink-0", onStepClick && "cursor-pointer")} 
+                style={{ minWidth: '120px', maxWidth: '200px' }}
               onClick={() => onStepClick?.(column.id)}
             >
               {/* Ícone grande acima */}
@@ -124,12 +124,17 @@ export function PipelineTimeline({ columns, currentColumnId, className, onStepCl
               {/* Label abaixo */}
               <span
                 className={cn(
-                  "absolute top-6 text-[10px] font-medium text-center max-w-[100px] transition-all duration-200 whitespace-nowrap",
+                  "absolute top-6 text-[10px] font-medium text-center transition-all duration-200",
                   isPast && (isDarkMode ? "text-gray-400" : "text-muted-foreground"),
                   isFuture && (isDarkMode ? "text-gray-500" : "text-muted"),
                   isCurrent && "font-bold"
                 )}
-                style={isCurrent ? { color: column.color } : isFuture ? { opacity: futureOpacity } : {}}
+                style={{
+                  ...(isCurrent ? { color: column.color } : isFuture ? { opacity: futureOpacity } : {}),
+                  maxWidth: '120px',
+                  wordBreak: 'break-word',
+                  lineHeight: '1.2'
+                }}
               >
                 {column.name}
               </span>
@@ -138,10 +143,11 @@ export function PipelineTimeline({ columns, currentColumnId, className, onStepCl
             {/* Linha conectora com gradientes */}
             {index < columns.length - 1 && (
               <div 
-                className="h-0.5 transition-all duration-200" 
+                className="h-0.5 transition-all duration-200 flex-shrink-0" 
                 style={{ 
                   flexGrow: 1,
-                  minWidth: '40px',
+                  minWidth: '60px',
+                  maxWidth: '120px',
                   ...lineStyle
                 }}
               />
