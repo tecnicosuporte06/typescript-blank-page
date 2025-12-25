@@ -8,14 +8,13 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Checkbox } from "@/components/ui/checkbox";
 import { useToast } from "@/hooks/use-toast";
-import { ColorPickerModal } from "./ColorPickerModal";
 import { IconSelector } from "@/components/ui/icon-selector";
 import { supabase } from '@/integrations/supabase/client';
 import { useWorkspaceHeaders } from '@/lib/workspaceHeaders';
 import { ColumnAutomationsTab } from "./ColumnAutomationsTab";
 import { useWorkspaceMembers } from "@/hooks/useWorkspaceMembers";
 import { useWorkspace } from "@/contexts/WorkspaceContext";
-import { Trash2, User, Palette } from "lucide-react";
+import { Trash2, User } from "lucide-react";
 import { DeletarColunaModal } from "./DeletarColunaModal";
 import { useAuth } from "@/hooks/useAuth";
 
@@ -41,9 +40,8 @@ export function EditarColunaModal({
   isDarkMode = false,
 }: EditarColunaModalProps) {
   const [name, setName] = useState(columnName);
-  const [color, setColor] = useState(columnColor);
+  const [color] = useState(columnColor); // Mantido para compatibilidade com backend, mas não editável
   const [icon, setIcon] = useState(columnIcon);
-  const [showColorPicker, setShowColorPicker] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [activeTab, setActiveTab] = useState('settings');
   const [viewAllDealsUsers, setViewAllDealsUsers] = useState<string[]>([]);
@@ -83,10 +81,6 @@ export function EditarColunaModal({
     }
   };
 
-  const handleColorSelect = (selectedColor: string) => {
-    setColor(selectedColor);
-    setShowColorPicker(false);
-  };
 
   const handleSave = async () => {
     if (!name.trim()) {
@@ -253,28 +247,6 @@ export function EditarColunaModal({
                 </p>
               </div>
 
-              <div className="space-y-2">
-                <Label className={`text-xs font-bold text-gray-700 dark:text-gray-200`}>Cor</Label>
-                <div className="flex items-center gap-2">
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="icon"
-                    onClick={() => setShowColorPicker(true)}
-                    className="w-10 h-10 rounded-none border-2 border-gray-400 hover:border-gray-600 dark:border-gray-500 dark:hover:border-gray-300 transition-colors"
-                    style={{ backgroundColor: color }}
-                    title={color ? `Cor atual: ${color}` : "Selecionar cor"}
-                  >
-                    <Palette className={`h-4 w-4 ${color ? 'text-white drop-shadow-[0_1px_2px_rgba(0,0,0,0.5)]' : 'text-gray-500'}`} />
-                  </Button>
-                  <Input
-                    value={color}
-                    onChange={(e) => setColor(e.target.value)}
-                    placeholder="#000000"
-                    className={`flex-1 h-8 text-xs rounded-none border-gray-300 dark:border-gray-700 bg-white dark:bg-[#1b1b1b] text-gray-900 dark:text-gray-100 focus-visible:ring-0`}
-                  />
-                </div>
-              </div>
 
               <DialogFooter className={`pt-4 flex-col sm:flex-row gap-2 bg-gray-50 dark:bg-[#1a1a1a] border-t border-[#d4d4d4] dark:border-gray-700 -mx-6 -mb-6 p-4 mt-4`}>
                 <div className="flex gap-2 sm:mr-auto">
@@ -368,11 +340,6 @@ export function EditarColunaModal({
         </DialogContent>
       </Dialog>
 
-      <ColorPickerModal
-        open={showColorPicker}
-        onOpenChange={setShowColorPicker}
-        onColorSelect={handleColorSelect}
-      />
 
       <DeletarColunaModal
         isOpen={isDeleteModalOpen}

@@ -119,6 +119,36 @@ export function useContactTags(contactId?: string | null, workspaceIdOverride?: 
     }
   };
 
+  // Remove tag from contact
+  const removeTagFromContact = async (tagId: string) => {
+    if (!contactId) return false;
+
+    setIsLoading(true);
+    try {
+      const { error } = await supabase
+        .from('contact_tags')
+        .delete()
+        .eq('contact_id', contactId)
+        .eq('tag_id', tagId);
+
+      if (error) throw error;
+
+      await fetchContactTags();
+      
+      return true;
+    } catch (error: any) {
+      console.error('Error removing tag from contact:', error);
+      toast({
+        title: "Erro",
+        description: "Não foi possível remover a tag. Tente novamente.",
+        variant: "destructive",
+      });
+      return false;
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   // Get available tags excluding already assigned ones
   const getFilteredTags = (searchTerm: string = '') => {
     const assignedTagIds = contactTags.map(tag => tag.id);
@@ -166,6 +196,7 @@ export function useContactTags(contactId?: string | null, workspaceIdOverride?: 
     availableTags,
     isLoading,
     addTagToContact,
+    removeTagFromContact,
     getFilteredTags,
     refreshTags: fetchContactTags
   };

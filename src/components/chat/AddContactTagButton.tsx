@@ -19,7 +19,6 @@ interface AddContactTagButtonProps {
 
 export function AddContactTagButton({ contactId, isDarkMode = false, onTagAdded }: AddContactTagButtonProps) {
   const [isOpen, setIsOpen] = useState(false);
-  const [isHovered, setIsHovered] = useState(false);
 
   const { 
     availableTags,
@@ -48,27 +47,14 @@ export function AddContactTagButton({ contactId, isDarkMode = false, onTagAdded 
   return (
     <Popover open={isOpen} onOpenChange={setIsOpen}>
       <PopoverTrigger asChild>
-        <div 
-          className="relative flex items-center"
-          onMouseEnter={() => setIsHovered(true)}
-          onMouseLeave={() => setIsHovered(false)}
+        {/* Botão com texto + Adicionar Tag */}
+        <Button
+          variant="ghost"
+          className="h-6 px-2 rounded-none border border-primary/30 bg-primary hover:bg-primary/90 text-primary-foreground flex items-center gap-1"
         >
-          {/* Botão quadrado com + (Excel style - Theme Color) */}
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-6 w-6 rounded-none border border-primary/30 bg-primary hover:bg-primary/90 text-primary-foreground"
-          >
-            <Plus className="w-3.5 h-3.5" />
-          </Button>
-          
-          {/* Tooltip/Pill hover */}
-          {isHovered && (
-            <div className="absolute left-8 top-0 flex items-center h-6 px-2 bg-white border border-[#d4d4d4] rounded-none text-xs text-gray-700 whitespace-nowrap z-10 shadow-sm">
-              + Adicionar tag
-            </div>
-          )}
-        </div>
+          <Plus className="w-3.5 h-3.5" />
+          <span className="text-xs font-medium">Adicionar Tag</span>
+        </Button>
       </PopoverTrigger>
       
       <PopoverContent className="w-64 p-0 rounded-none border-[#d4d4d4]" align="start">

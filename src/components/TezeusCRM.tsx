@@ -35,12 +35,14 @@ import { ParceirosClientes } from "./modules/ParceirosClientes";
 import { WorkspaceEmpresas } from "./modules/WorkspaceEmpresas";
 import { WorkspaceUsersPage } from "./modules/WorkspaceUsersPage";
 import { WorkspaceApiKeys } from "./modules/WorkspaceApiKeys";
+import { DealDetailsPage } from "@/pages/DealDetailsPage";
 
 export type ModuleType = 
   | "dashboard"
   | "conversas"
   | "ds-voice"
   | "crm-negocios"
+  | "crm-negocios-detail"
   | "crm-atividades"
   
   | "crm-contatos"
@@ -108,6 +110,11 @@ export function TezeusCRM() {
     if (!path || path === "dashboard") return "dashboard";
     if (path.startsWith("editar-agente/")) return "editar-agente";
     if (path.includes("/usuarios")) return "workspace-usuarios";
+    // Verificar se é a página de detalhes do negócio - deve ter formato crm-negocios/:cardId
+    const pathParts = path.split("/");
+    if (pathParts[0] === "crm-negocios" && pathParts.length > 1 && pathParts[1]) {
+      return "crm-negocios-detail";
+    }
     
     return path as ModuleType;
   };
@@ -152,6 +159,8 @@ export function TezeusCRM() {
         return <DSVoice />;
       case "crm-negocios":
         return <CRMNegocios />;
+      case "crm-negocios-detail":
+        return <DealDetailsPage />;
       case "crm-atividades":
         return <CRMAtividades />;
       case "crm-contatos":

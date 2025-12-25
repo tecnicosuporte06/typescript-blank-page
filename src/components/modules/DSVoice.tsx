@@ -552,13 +552,6 @@ export function DSVoice() {
             ) : (
               data.map((item) => renderRow(item))
             )}
-             {/* Empty rows filler */}
-             {data.length > 0 && Array.from({ length: Math.max(0, 15 - data.length) }).map((_, i) => (
-                <tr key={`empty-${i}`} className="h-[32px]">
-                   {headers.map((_, j) => <td key={j} className="border border-[#e0e0e0] dark:border-gray-700"></td>)}
-                   <td className="border border-[#e0e0e0] bg-gray-50 dark:border-gray-700 dark:bg-[#141414]"></td>
-                </tr>
-             ))}
           </tbody>
         </table>
       </div>
@@ -772,12 +765,12 @@ export function DSVoice() {
       {/* Excel-like Toolbar (Ribbonish) */}
       <div className="flex flex-col border-b border-gray-300 bg-[#f8f9fa] dark:bg-[#141414] dark:border-gray-700">
         {/* Title Bar / Top Menu */}
-        <div className="flex items-center justify-between px-4 py-1 bg-primary text-primary-foreground h-8">
+        <div className="flex items-center justify-between px-4 pt-3 pb-2 h-auto">
           <div className="flex items-center gap-2">
-            <MessageSquare className="h-4 w-4" />
-            <span className="font-semibold text-sm">Respostas Rápidas</span>
+            <MessageSquare className="h-4 w-4 text-gray-700 dark:text-gray-200" />
+            <span className="font-semibold text-sm text-gray-900 dark:text-gray-100">Respostas Rápidas</span>
           </div>
-          <div className="text-[10px] opacity-80 dark:text-gray-200">
+          <div className="text-[10px] opacity-80 text-gray-600 dark:text-gray-200">
              {activeCategory.charAt(0).toUpperCase() + activeCategory.slice(1)}
           </div>
         </div>

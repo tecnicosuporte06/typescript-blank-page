@@ -4,7 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { useWorkspace } from '@/contexts/WorkspaceContext';
 import { useLossReasons } from '@/hooks/useLossReasons';
-import { Plus, Trash2, Edit2, X, Check, FileText, Search } from 'lucide-react';
+import { Plus, Trash2, Edit2, X, Check, FileText, Search, Layers } from 'lucide-react';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -99,103 +99,94 @@ export const ConfiguracaoAcoes: React.FC = () => {
 
   return (
     <div className="flex flex-col h-full bg-white border border-gray-300 m-2 shadow-sm font-sans text-xs dark:bg-[#0f0f0f] dark:border-gray-700 dark:text-gray-100">
-      {/* Barra superior estilo “Excel” */}
+      {/* Excel-like Toolbar (Ribbon) */}
       <div className="flex flex-col border-b border-gray-300 bg-[#f8f9fa] dark:border-gray-700 dark:bg-[#141414]">
-        <div className="flex items-center justify-between px-4 py-2 bg-primary text-primary-foreground h-10">
+        {/* Title Bar */}
+        <div className="flex items-center justify-between px-4 pt-3 pb-2 h-auto">
           <div className="flex items-center gap-2">
-            <FileText className="h-4 w-4" />
-            <span className="font-semibold text-sm tracking-tight">Motivos de Perda</span>
+            <Layers className="h-4 w-4 text-gray-700 dark:text-gray-200" />
+            <span className="font-semibold text-sm text-gray-900 dark:text-gray-100">Motivos de Perda</span>
           </div>
-          <Badge variant="outline" className="rounded-none border-white/40 text-[10px] tracking-tight bg-primary/30 text-primary-foreground px-2 py-0.5">
-            {searchTerm ? `${filteredLossReasons.length} de ${lossReasons.length}` : lossReasons.length} motivo{lossReasons.length === 1 ? '' : 's'}
-          </Badge>
+          <div className="text-[10px] opacity-80 text-gray-600 dark:text-gray-300">
+            {isLoading ? "Carregando..." : `${filteredLossReasons.length} motivos`}
+          </div>
         </div>
 
-        {/* Faixa de ferramentas */}
-        <div className="flex flex-wrap items-center gap-2 px-3 py-2 border-t border-gray-200 bg-[#f3f3f3] dark:border-gray-700 dark:bg-[#1a1a1a]">
-          <div className="flex-1 min-w-[240px] relative">
-            <Search className="absolute left-2 top-1/2 transform -translate-y-1/2 text-gray-500 h-3.5 w-3.5 dark:text-gray-400" />
-            <Input
-              placeholder="Pesquisar motivo de perda pelo nome..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="h-8 text-xs rounded-none border-gray-300 pl-8 focus-visible:ring-1 focus-visible:ring-primary dark:bg-[#1b1b1b] dark:border-gray-700 dark:text-gray-100 dark:placeholder:text-gray-500"
-            />
-          </div>
-          <Button
-            onClick={() => setIsAddModalOpen(true)}
-            className="h-8 rounded-none bg-yellow-500 hover:bg-yellow-600 text-gray-900"
-          >
-            <Plus className="h-3.5 w-3.5 mr-1.5" />
-            Adicionar
-          </Button>
-          {searchTerm && (
-            <Button
-              variant="ghost"
-              className="h-8 rounded-none border border-gray-300 text-gray-700 hover:bg-white dark:border-gray-600 dark:text-gray-200 dark:bg-transparent dark:hover:bg-[#1f1f1f]"
-              onClick={() => setSearchTerm('')}
-            >
-              Limpar
-            </Button>
-          )}
-        </div>
-      </div>
-
-      {/* Conteúdo principal */}
-      <div className="flex-1 overflow-auto bg-[#e6e6e6] p-4 dark:bg-[#050505]">
-        <div className="max-w-4xl mx-auto bg-white border border-gray-300 shadow-sm dark:bg-[#111111] dark:border-gray-700">
-          <div className="flex items-center justify-between px-4 py-2 bg-[#f3f3f3] border-b border-gray-300 dark:bg-[#1f1f1f] dark:border-gray-700">
-            <div>
-              <p className="text-xs font-semibold text-gray-700 dark:text-gray-200">Motivos de perda</p>
-              <span className="text-[10px] text-gray-500 dark:text-gray-400">
-                Configure os motivos que podem ser selecionados ao marcar um negócio como perdido.
-              </span>
+        {/* Tools Bar */}
+        <div className="flex items-center gap-2 p-2 overflow-x-auto">
+          {/* Search Group */}
+          <div className="flex items-center gap-2 border-r border-gray-300 pr-3 mr-1 dark:border-gray-700">
+            <div className="relative w-48">
+              <Search className="absolute left-2 top-1/2 transform -translate-y-1/2 text-gray-500 h-3 w-3 dark:text-gray-400" />
+              <Input
+                placeholder="Pesquisar motivo..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="pl-8 h-7 text-xs border-gray-300 rounded-none focus-visible:ring-1 focus-visible:ring-primary dark:bg-[#1b1b1b] dark:border-gray-700 dark:text-gray-100 dark:placeholder:text-gray-500"
+              />
             </div>
           </div>
 
-          <div className="overflow-x-auto">
-            <table className="min-w-full border-collapse text-xs dark:text-gray-100">
-              <thead className="bg-[#f7f7f7] dark:bg-[#1f1f1f]">
+          {/* Actions Group */}
+          <div className="flex items-center gap-1">
+            <Button
+              size="sm"
+              variant="ghost"
+              className="h-8 px-2 hover:bg-gray-200 rounded-sm flex flex-col items-center justify-center gap-0.5 text-gray-700 dark:text-gray-200 dark:hover:bg-[#2a2a2a]"
+              onClick={() => setIsAddModalOpen(true)}
+            >
+              <Plus className="h-4 w-4 text-primary" />
+              <span className="text-[9px]">Novo Motivo</span>
+            </Button>
+          </div>
+        </div>
+      </div>
+
+      {/* Table Area */}
+      <div className="flex-1 overflow-auto bg-[#e6e6e6] dark:bg-[#050505] relative">
+        <div className="inline-block min-w-full align-middle bg-white dark:bg-[#111111]">
+          <table className="min-w-full border-collapse bg-white text-xs font-sans dark:bg-[#111111] dark:text-gray-100">
+            <thead className="bg-[#f3f3f3] sticky top-0 z-10 dark:bg-[#1f1f1f]">
+              <tr>
+                <th className="border border-[#d4d4d4] px-2 py-1 text-left font-semibold text-gray-700 min-w-[200px] group hover:bg-[#e1e1e1] cursor-pointer dark:border-gray-700 dark:text-gray-200 dark:hover:bg-[#2a2a2a]">
+                  <div className="flex items-center justify-between">
+                    <span>Motivo</span>
+                    <div className="w-[1px] h-3 bg-gray-400 mx-1" />
+                  </div>
+                </th>
+                <th className="border border-[#d4d4d4] px-2 py-1 text-left font-semibold text-gray-700 min-w-[150px] group hover:bg-[#e1e1e1] cursor-pointer dark:border-gray-700 dark:text-gray-200 dark:hover:bg-[#2a2a2a]">
+                  <div className="flex items-center justify-between">
+                    <span>Status</span>
+                    <div className="w-[1px] h-3 bg-gray-400 mx-1" />
+                  </div>
+                </th>
+                <th className="border border-[#d4d4d4] px-2 py-1 text-center font-semibold text-gray-700 w-[80px] dark:border-gray-700 dark:text-gray-200">
+                  <div className="flex items-center justify-between">
+                    <span>Ações</span>
+                    <div className="w-[1px] h-3 bg-gray-400 mx-1" />
+                  </div>
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              {isLoading ? (
                 <tr>
-                  <th className="border border-[#d4d4d4] px-3 py-2 text-left font-semibold text-gray-700 dark:border-gray-700 dark:text-gray-200">Motivo</th>
-                  <th className="border border-[#d4d4d4] px-3 py-2 text-left font-semibold text-gray-700 w-52 dark:border-gray-700 dark:text-gray-200">Status</th>
-                  <th className="border border-[#d4d4d4] px-3 py-2 text-center font-semibold text-gray-700 w-32 dark:border-gray-700 dark:text-gray-200">Ações</th>
+                  <td colSpan={3} className="border border-[#e0e0e0] text-center py-12 bg-gray-50 text-muted-foreground dark:border-gray-700 dark:bg-[#1a1a1a] dark:text-gray-400">
+                    Carregando motivos...
+                  </td>
                 </tr>
-              </thead>
-              <tbody>
-                {isLoading && filteredLossReasons.length === 0 && (
-                  <>
-                    {Array.from({ length: 4 }).map((_, index) => (
-                      <tr key={`skeleton-${index}`} className="bg-white dark:bg-[#111111]">
-                        <td className="border border-[#e0e0e0] px-3 py-3 dark:border-gray-700">
-                          <div className="h-4 w-40 bg-gray-100 dark:bg-gray-800 animate-pulse rounded-sm" />
-                        </td>
-                        <td className="border border-[#e0e0e0] px-3 py-3 dark:border-gray-700">
-                          <div className="h-4 w-24 bg-gray-100 dark:bg-gray-800 animate-pulse rounded-sm" />
-                        </td>
-                        <td className="border border-[#e0e0e0] px-3 py-3 text-center dark:border-gray-700">
-                          <div className="h-4 w-16 bg-gray-100 dark:bg-gray-800 animate-pulse rounded-sm mx-auto" />
-                        </td>
-                      </tr>
-                    ))}
-                  </>
-                )}
-
-                {!isLoading && filteredLossReasons.length === 0 && (
-                  <tr>
-                    <td colSpan={3} className="border border-[#e0e0e0] px-3 py-8 bg-white text-center text-gray-500 dark:border-gray-700 dark:bg-[#111111] dark:text-gray-400">
-                      {searchTerm 
-                        ? `Nenhum motivo encontrado para "${searchTerm}"`
-                        : 'Nenhum motivo cadastrado. Utilize o botão "Adicionar" para incluir novos motivos.'}
-                    </td>
-                  </tr>
-                )}
-
-                {!isLoading && filteredLossReasons.length > 0 && filteredLossReasons.map((reason) => (
-                  <tr key={reason.id} className="bg-white hover:bg-yellow-50 transition-colors dark:bg-[#111111] dark:hover:bg-[#1f2937]">
+              ) : filteredLossReasons.length === 0 ? (
+                <tr>
+                  <td colSpan={3} className="border border-[#e0e0e0] text-center py-12 bg-gray-50 text-muted-foreground dark:border-gray-700 dark:bg-[#1a1a1a] dark:text-gray-400">
+                    {searchTerm ? `Nenhum motivo encontrado para "${searchTerm}"` : 'Nenhuma motivo encontrada.'}
+                  </td>
+                </tr>
+              ) : (
+                filteredLossReasons.map((reason) => (
+                  <tr key={reason.id} className="hover:bg-blue-50 group h-[32px] dark:hover:bg-[#1f2937]">
                     {editingId === reason.id ? (
                       <>
-                        <td className="border border-[#e0e0e0] px-3 py-3 align-top dark:border-gray-700">
+                        <td className="border border-[#e0e0e0] px-2 py-0 align-middle dark:border-gray-700">
                           <Input
                             value={editingName}
                             onChange={(e) => setEditingName(e.target.value)}
@@ -206,46 +197,44 @@ export const ConfiguracaoAcoes: React.FC = () => {
                                 handleCancelEdit();
                               }
                             }}
-                            className="h-8 rounded-none border-gray-300 dark:bg-[#161616] dark:border-gray-700 dark:text-gray-100"
+                            className="h-6 text-xs rounded-none border-gray-300 dark:bg-[#161616] dark:border-gray-700 dark:text-gray-100"
                             autoFocus
                           />
-                          <p className="text-[10px] text-gray-500 mt-1 dark:text-gray-400">Enter para salvar • ESC para cancelar</p>
                         </td>
-                        <td className="border border-[#e0e0e0] px-3 py-3 text-gray-500 dark:border-gray-700 dark:text-gray-400">
+                        <td className="border border-[#e0e0e0] px-2 py-0 text-gray-500 dark:border-gray-700 dark:text-gray-400 align-middle">
                           {lossReasons.find(r => r.id === editingId)?.is_active !== false ? 'Motivo ativo' : 'Motivo inativo'}
                         </td>
-                        <td className="border border-[#e0e0e0] px-3 py-3 text-center dark:border-gray-700">
-                          <div className="flex items-center justify-center gap-1">
+                        <td className="border border-[#e0e0e0] px-1 py-0 text-center align-middle dark:border-gray-700">
+                          <div className="flex items-center justify-center gap-1 h-full">
                             <Button
-                              size="icon"
                               variant="ghost"
-                              className="h-7 w-7 rounded-none hover:bg-green-50 dark:hover:bg-green-900/30"
+                              size="icon"
                               onClick={handleSaveEdit}
                               disabled={!editingName.trim()}
+                              className="h-6 w-6 rounded-sm hover:bg-green-100 text-green-600 dark:text-gray-200 dark:hover:bg-[#1a3a1a]"
                             >
-                              <Check className="h-4 w-4 text-green-600 dark:text-green-400" />
+                              <Check className="h-3.5 w-3.5" />
                             </Button>
                             <Button
-                              size="icon"
                               variant="ghost"
-                              className="h-7 w-7 rounded-none hover:bg-red-50 dark:hover:bg-red-900/30"
+                              size="icon"
                               onClick={handleCancelEdit}
+                              className="h-6 w-6 rounded-sm hover:bg-red-100 text-red-600 dark:hover:bg-[#2a1f1f]"
                             >
-                              <X className="h-4 w-4 text-red-600 dark:text-red-400" />
+                              <X className="h-3.5 w-3.5" />
                             </Button>
                           </div>
                         </td>
                       </>
                     ) : (
                       <>
-                        <td className="border border-[#e0e0e0] px-3 py-3 dark:border-gray-700">
-                          <p className="text-sm font-semibold text-gray-900 dark:text-gray-100">{reason.name}</p>
-                          <span className="text-[10px] text-gray-500 uppercase tracking-[0.08em] dark:text-gray-400">Motivo padrão</span>
+                        <td className="border border-[#e0e0e0] px-2 py-0 font-medium align-middle dark:border-gray-700 dark:text-gray-100">
+                          {reason.name}
                         </td>
-                        <td className="border border-[#e0e0e0] px-3 py-3 dark:border-gray-700">
+                        <td className="border border-[#e0e0e0] px-2 py-0 align-middle dark:border-gray-700">
                           <Badge
                             onClick={() => handleToggleStatus(reason.id, reason.is_active ?? true)}
-                            className={`rounded-none text-[10px] cursor-pointer transition-colors ${
+                            className={`rounded-none text-[10px] cursor-pointer transition-colors px-2 py-0.5 ${
                               reason.is_active !== false
                                 ? 'bg-green-100 text-green-700 border border-green-300 dark:bg-green-900/30 dark:text-green-300 dark:border-green-500/40 hover:bg-green-200 dark:hover:bg-green-900/50'
                                 : 'bg-gray-100 text-gray-700 border border-gray-300 dark:bg-gray-800/30 dark:text-gray-400 dark:border-gray-600/40 hover:bg-gray-200 dark:hover:bg-gray-800/50'
@@ -255,32 +244,56 @@ export const ConfiguracaoAcoes: React.FC = () => {
                             {reason.is_active !== false ? 'Motivo ativo' : 'Motivo inativo'}
                           </Badge>
                         </td>
-                        <td className="border border-[#e0e0e0] px-3 py-3 dark:border-gray-700">
-                          <div className="flex items-center justify-center gap-1">
+                        <td className="border border-[#e0e0e0] px-1 py-0 text-center align-middle dark:border-gray-700">
+                          <div className="flex items-center justify-center gap-1 h-full">
                             <Button
-                              size="icon"
                               variant="ghost"
-                              className="h-7 w-7 rounded-none hover:bg-gray-200 dark:hover:bg-gray-700"
+                              size="icon"
                               onClick={() => handleStartEdit(reason.id, reason.name)}
+                              className="h-6 w-6 rounded-sm hover:bg-blue-100 text-gray-600 dark:text-gray-200 dark:hover:bg-[#243447]"
                             >
-                              <Edit2 className="h-4 w-4 dark:text-gray-300" />
+                              <Edit2 className="h-3.5 w-3.5" />
                             </Button>
                             <Button
-                              size="icon"
                               variant="ghost"
-                              className="h-7 w-7 rounded-none hover:bg-red-50 dark:hover:bg-red-900/30"
+                              size="icon"
                               onClick={() => setDeleteReasonId(reason.id)}
+                              className="h-6 w-6 rounded-sm hover:bg-red-100 text-red-600 dark:hover:bg-[#2a1f1f]"
                             >
-                              <Trash2 className="h-4 w-4 text-red-600 dark:text-red-400" />
+                              <Trash2 className="h-3.5 w-3.5" />
                             </Button>
                           </div>
                         </td>
                       </>
                     )}
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
+        
+        {/* Footer fixo com paginação */}
+        <div className="sticky bottom-0 left-0 right-0 bg-[#f8f9fa] dark:bg-[#141414] border-t border-gray-300 dark:border-gray-700 px-4 py-2 z-20">
+          <div className="flex items-center justify-center gap-2 text-[11px] text-gray-600 dark:text-gray-400">
+            <button
+              className="px-2 py-1 border border-gray-300 rounded-sm disabled:opacity-50 dark:border-gray-700"
+              disabled={true}
+            >
+              Anterior
+            </button>
+            <span>
+              Página 1 • 1
+            </span>
+            <button
+              className="px-2 py-1 border border-gray-300 rounded-sm disabled:opacity-50 dark:border-gray-700"
+              disabled={true}
+            >
+              Próxima
+            </button>
+            <span className="opacity-70">
+              {filteredLossReasons.length} registros
+            </span>
           </div>
         </div>
       </div>

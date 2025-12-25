@@ -5,7 +5,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { CalendarIcon } from "lucide-react";
+import { CalendarIcon, MessageSquare } from "lucide-react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Calendar } from "@/components/ui/calendar";
 import { format } from "date-fns";
@@ -26,6 +26,7 @@ interface FilterData {
   status: string[];
   selectedDate?: Date;
   dateRange?: { from: Date; to: Date };
+  unreadMessages?: boolean;
 }
 
 interface Tag {
@@ -43,6 +44,7 @@ export function FilterModal({ open, onOpenChange, onApplyFilters, isDarkMode = f
   const [selectedDate, setSelectedDate] = useState<Date | undefined>();
   const [dateRange, setDateRange] = useState<{ from: Date; to: Date } | undefined>();
   const [showCalendar, setShowCalendar] = useState(false);
+  const [unreadMessages, setUnreadMessages] = useState<boolean>(false);
 
   const toggleTag = (tagId: string) => {
     setSelectedTags(prev => 
@@ -67,6 +69,7 @@ export function FilterModal({ open, onOpenChange, onApplyFilters, isDarkMode = f
     setSelectedStatuses([]);
     setSelectedDate(undefined);
     setDateRange(undefined);
+    setUnreadMessages(false);
     
     // Limpar filtros aplicados também
     if (onApplyFilters) {
@@ -75,7 +78,8 @@ export function FilterModal({ open, onOpenChange, onApplyFilters, isDarkMode = f
         queues: [],
         status: [],
         selectedDate: undefined,
-        dateRange: undefined
+        dateRange: undefined,
+        unreadMessages: false
       });
     }
   };
@@ -86,7 +90,8 @@ export function FilterModal({ open, onOpenChange, onApplyFilters, isDarkMode = f
       queues: selectedQueues,
       status: selectedStatuses,
       selectedDate,
-      dateRange
+      dateRange,
+      unreadMessages
     };
     
     if (onApplyFilters) {
@@ -256,6 +261,27 @@ export function FilterModal({ open, onOpenChange, onApplyFilters, isDarkMode = f
                 </div>
               </PopoverContent>
             </Popover>
+          </div>
+
+          {/* Mensagens não visualizadas */}
+          <div>
+            <Label htmlFor="unread-messages" className={`text-xs font-bold text-gray-700 dark:text-gray-200`}>
+              Mensagens não visualizadas
+            </Label>
+            <div className="flex items-center space-x-2 mt-1">
+              <Checkbox
+                id="unread-messages"
+                checked={unreadMessages}
+                onCheckedChange={(checked) => setUnreadMessages(checked === true)}
+                className="rounded-none border-gray-300 dark:border-gray-700 data-[state=checked]:bg-primary data-[state=checked]:text-primary-foreground"
+              />
+              <label
+                htmlFor="unread-messages"
+                className="text-xs text-gray-700 dark:text-gray-300 cursor-pointer"
+              >
+                Mostrar apenas negócios com mensagens não visualizadas
+              </label>
+            </div>
           </div>
 
           {/* Seleção de data */}

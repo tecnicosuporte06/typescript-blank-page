@@ -82,11 +82,8 @@ export function Dashboard({
   const COLORS = ['#3B82F6', '#10B981', '#EF4444']; // Blue, Green, Red
 
   return <div className="flex flex-col h-full bg-white border border-[#d4d4d4] m-2 shadow-sm font-sans text-xs overflow-auto dark:bg-[#1f1f1f] dark:border-gray-700 transition-all duration-300 ease-in-out">
-      {/* Header */}
-      <div className="bg-primary text-primary-foreground p-2 px-4 border-b border-[#d4d4d4] dark:border-gray-700 transition-all duration-300 ease-in-out">
-        <h1 className="text-sm font-bold">
-          Relatórios
-        </h1>
+      <div className="px-4 pt-3 pb-2">
+        <h1 className="text-sm font-bold text-gray-900 dark:text-gray-100">Relatórios</h1>
       </div>
 
       <div className="p-4 space-y-4">

@@ -16,7 +16,8 @@ export interface CardHistoryEvent {
     | 'activity_ligacao'
     | 'activity_reuniao'
     | 'activity_agendamento'
-    | 'tag';
+    | 'tag'
+    | 'notes';
   action: string;
   description: string;
   timestamp: string;
@@ -108,6 +109,10 @@ export const useCardHistory = (cardId: string, contactId?: string) => {
             description = `Tag "${metadata.tag_name || 'sem nome'}" foi atribuída ao contato`;
             eventType = 'tag';
             eventTitle = 'Tag Atribuída';
+          } else if (event.action === 'note_created') {
+            description = metadata.description || metadata.content || 'Anotação adicionada';
+            eventType = 'notes';
+            eventTitle = 'Anotação';
           } else if (metadata.description) {
             description = metadata.description;
           }

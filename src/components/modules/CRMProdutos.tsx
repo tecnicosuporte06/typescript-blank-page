@@ -109,12 +109,12 @@ export function CRMProdutos() {
       {/* Excel-like Toolbar (Ribbon) */}
       <div className="flex flex-col border-b border-gray-300 bg-[#f8f9fa] dark:border-gray-700 dark:bg-[#141414]">
         {/* Title Bar */}
-        <div className="flex items-center justify-between px-4 py-1 bg-primary text-primary-foreground h-8">
+        <div className="flex items-center justify-between px-4 pt-3 pb-2 h-auto">
           <div className="flex items-center gap-2">
-            <Package className="h-4 w-4" />
-            <span className="font-semibold text-sm">Produtos</span>
+            <Package className="h-4 w-4 text-gray-700 dark:text-gray-200" />
+            <span className="font-semibold text-sm text-gray-900 dark:text-gray-100">Produtos</span>
           </div>
-          <div className="text-[10px] opacity-80 dark:text-gray-300">
+          <div className="text-[10px] opacity-80 text-gray-600 dark:text-gray-300">
             {isLoading ? "Carregando..." : `${filteredProducts.length} itens`}
           </div>
         </div>
@@ -213,14 +213,6 @@ export function CRMProdutos() {
                   </tr>
                 ))
               )}
-              {/* Empty rows filler */}
-              {filteredProducts.length > 0 && Array.from({ length: Math.max(0, 20 - filteredProducts.length) }).map((_, i) => (
-                <tr key={`empty-${i}`} className="h-[32px]">
-                   <td className="border border-[#e0e0e0] dark:border-gray-700"></td>
-                   <td className="border border-[#e0e0e0] dark:border-gray-700"></td>
-                   <td className="border border-[#e0e0e0] bg-gray-50 dark:border-gray-700 dark:bg-[#1a1a1a]"></td>
-                </tr>
-              ))}
             </tbody>
           </table>
         </div>

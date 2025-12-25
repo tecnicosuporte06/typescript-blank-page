@@ -405,7 +405,7 @@ export function WhatsAppChat({
   const [quickFunnelsModalOpen, setQuickFunnelsModalOpen] = useState(false);
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [selectedAgent, setSelectedAgent] = useState<string>("");
-  const [selectedTag, setSelectedTag] = useState<string>("");
+  const [selectedTags, setSelectedTags] = useState<string[]>([]);
   const [selectedConnection, setSelectedConnection] = useState<string>("");
   const [isUpdatingProfileImages, setIsUpdatingProfileImages] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
@@ -454,7 +454,7 @@ export function WhatsAppChat({
     console.log('🔍 [Filter] Recalculando conversas filtradas:', {
       totalConversations: conversations.length,
       activeTab,
-      selectedTag,
+      selectedTags,
       userId: user?.id,
       timestamp: new Date().toISOString()
     });
@@ -484,20 +484,22 @@ export function WhatsAppChat({
       activeTab
     });
 
-    // Filtrar por tag se selecionada (ignorar "all" ou string vazia)
-    if (selectedTag && selectedTag !== "all") {
+    // Filtrar por tags se selecionadas
+    if (selectedTags.length > 0) {
       filtered = filtered.filter(conv => {
         // Buscar tags do CONTATO (não da conversa)
         const contactId = conv.contact?.id;
         if (!contactId) return false;
         
-        // Verificar se o contato tem a tag selecionada
-        const contactHasTag = tags.some(tag => 
-          tag.id === selectedTag && 
-          tag.contact_tags?.some(ct => ct.contact_id === contactId)
+        // Verificar se o contato tem pelo menos uma das tags selecionadas
+        const contactHasAnyTag = selectedTags.some(selectedTagId => 
+          tags.some(tag => 
+            tag.id === selectedTagId && 
+            tag.contact_tags?.some(ct => ct.contact_id === contactId)
+          )
         );
         
-        return contactHasTag;
+        return contactHasAnyTag;
       });
     }
 
@@ -513,7 +515,7 @@ export function WhatsAppChat({
     
     console.log('✅ [Filter] Conversas filtradas finais:', filtered.length);
     return filtered;
-  }, [conversations, activeTab, selectedTag, selectedConnection, searchTerm, user?.id, conversationNotifications, tags]);
+  }, [conversations, activeTab, selectedTags, selectedConnection, searchTerm, user?.id, conversationNotifications, tags]);
   const [peekModalOpen, setPeekModalOpen] = useState(false);
   const [peekConversationId, setPeekConversationId] = useState<string | null>(null);
   const [contactPanelOpen, setContactPanelOpen] = useState(false);
@@ -1960,11 +1962,11 @@ export function WhatsAppChat({
             <TooltipProvider>
               <Tooltip>
                 <TooltipTrigger asChild>
-                  <button onClick={() => setActiveTab('all')} className={cn("w-full flex items-center gap-2 px-2 py-1.5 rounded-none transition-all text-xs border", activeTab === 'all' ? "bg-[#FEF3C7] border-gray-300 text-black font-bold shadow-sm dark:bg-primary dark:border-primary dark:text-primary-foreground" : "border-transparent text-gray-700 hover:bg-[#e1e1e1] hover:border-gray-300 dark:text-gray-400 dark:hover:bg-[#333] dark:hover:border-gray-600")}>
+                  <button onClick={() => setActiveTab('all')} className={cn("w-full flex items-center gap-2 px-2 py-1.5 rounded-none transition-all text-xs border", activeTab === 'all' ? "bg-gray-100 border-gray-300 text-gray-900 font-semibold shadow-sm dark:bg-gray-800 dark:border-gray-700 dark:text-gray-100" : "border-transparent text-gray-700 hover:bg-[#e1e1e1] hover:border-gray-300 dark:text-gray-200 dark:hover:bg-[#333] dark:hover:border-gray-600")}>
                     <Circle className={cn("h-3.5 w-3.5", activeTab === 'all' ? "fill-black text-black dark:fill-primary-foreground dark:text-primary-foreground" : "text-gray-500 dark:text-gray-400")} />
                     {!sidebarCollapsed && <>
                         <span className="flex-1 text-left">Todos</span>
-                        <span className={cn("text-[10px] px-1 py-0 rounded-none border", activeTab === 'all' ? "bg-white border-gray-300 dark:bg-black/20 dark:border-primary-foreground/20" : "bg-gray-200 border-transparent dark:bg-[#333] dark:text-gray-400")}>
+                        <span className={cn("text-[10px] px-1 py-0 rounded-none border", activeTab === 'all' ? "bg-white border-gray-300 dark:bg-black/20 dark:border-primary-foreground/20" : "bg-gray-200 border-transparent dark:bg-[#333] dark:text-gray-200")}>
                           {conversations.filter(c => c.status !== 'closed').length}
                         </span>
                       </>}
@@ -1978,11 +1980,11 @@ export function WhatsAppChat({
             <TooltipProvider>
               <Tooltip>
                 <TooltipTrigger asChild>
-                  <button onClick={() => setActiveTab('mine')} className={cn("w-full flex items-center gap-2 px-2 py-1.5 rounded-none transition-all text-xs border", activeTab === 'mine' ? "bg-[#FEF3C7] border-gray-300 text-black font-bold shadow-sm" : "border-transparent text-gray-700 hover:bg-[#e1e1e1] hover:border-gray-300")}>
+                  <button onClick={() => setActiveTab('mine')} className={cn("w-full flex items-center gap-2 px-2 py-1.5 rounded-none transition-all text-xs border", activeTab === 'mine' ? "bg-gray-100 border-gray-300 text-gray-900 font-semibold shadow-sm dark:bg-gray-800 dark:border-gray-700 dark:text-gray-100" : "border-transparent text-gray-700 hover:bg-[#e1e1e1] hover:border-gray-300 dark:text-gray-200 dark:hover:bg-[#333] dark:hover:border-gray-600")}>
                     <UserCircle className={cn("h-3.5 w-3.5", activeTab === 'mine' ? "text-black" : "text-gray-500")} />
                     {!sidebarCollapsed && <>
                         <span className="flex-1 text-left">Minhas conversas</span>
-                        <span className={cn("text-[10px] px-1 py-0 rounded-none border", activeTab === 'mine' ? "bg-white border-gray-300 dark:bg-black/20 dark:border-primary-foreground/20" : "bg-gray-200 border-transparent dark:bg-[#333] dark:text-gray-400")}>
+                        <span className={cn("text-[10px] px-1 py-0 rounded-none border", activeTab === 'mine' ? "bg-white border-gray-300 dark:bg-black/20 dark:border-primary-foreground/20" : "bg-gray-200 border-transparent dark:bg-[#333] dark:text-gray-200")}>
                           {conversations.filter(c => c.assigned_user_id === user?.id && c.status !== 'closed').length}
                         </span>
                       </>}
@@ -1996,11 +1998,11 @@ export function WhatsAppChat({
             <TooltipProvider>
               <Tooltip>
                 <TooltipTrigger asChild>
-                  <button onClick={() => setActiveTab('unassigned')} className={cn("w-full flex items-center gap-2 px-2 py-1.5 rounded-none transition-all text-xs border", activeTab === 'unassigned' ? "bg-[#FEF3C7] border-gray-300 text-black font-bold shadow-sm" : "border-transparent text-gray-700 hover:bg-[#e1e1e1] hover:border-gray-300")}>
+                  <button onClick={() => setActiveTab('unassigned')} className={cn("w-full flex items-center gap-2 px-2 py-1.5 rounded-none transition-all text-xs border", activeTab === 'unassigned' ? "bg-gray-100 border-gray-300 text-gray-900 font-semibold shadow-sm dark:bg-gray-800 dark:border-gray-700 dark:text-gray-100" : "border-transparent text-gray-700 hover:bg-[#e1e1e1] hover:border-gray-300 dark:text-gray-200 dark:hover:bg-[#333] dark:hover:border-gray-600")}>
                     <UserX className={cn("h-3.5 w-3.5", activeTab === 'unassigned' ? "text-black" : "text-gray-500")} />
                     {!sidebarCollapsed && <>
                         <span className="flex-1 text-left">Não atribuídas</span>
-                        <span className={cn("text-[10px] px-1 py-0 rounded-none border", activeTab === 'unassigned' ? "bg-white border-gray-300 dark:bg-black/20 dark:border-primary-foreground/20" : "bg-gray-200 border-transparent dark:bg-[#333] dark:text-gray-400")}>
+                        <span className={cn("text-[10px] px-1 py-0 rounded-none border", activeTab === 'unassigned' ? "bg-white border-gray-300 dark:bg-black/20 dark:border-primary-foreground/20" : "bg-gray-200 border-transparent dark:bg-[#333] dark:text-gray-200")}>
                           {conversations.filter(c => !c.assigned_user_id && c.status !== 'closed').length}
                         </span>
                       </>}
@@ -2014,35 +2016,17 @@ export function WhatsAppChat({
             <TooltipProvider>
               <Tooltip>
                 <TooltipTrigger asChild>
-                  <button onClick={() => setActiveTab('unread')} className={cn("w-full flex items-center gap-2 px-2 py-1.5 rounded-none transition-all text-xs border", activeTab === 'unread' ? "bg-[#FEF3C7] border-gray-300 text-black font-bold shadow-sm" : "border-transparent text-gray-700 hover:bg-[#e1e1e1] hover:border-gray-300")}>
+                  <button onClick={() => setActiveTab('unread')} className={cn("w-full flex items-center gap-2 px-2 py-1.5 rounded-none transition-all text-xs border", activeTab === 'unread' ? "bg-gray-100 border-gray-300 text-gray-900 font-semibold shadow-sm dark:bg-gray-800 dark:border-gray-700 dark:text-gray-100" : "border-transparent text-gray-700 hover:bg-[#e1e1e1] hover:border-gray-300 dark:text-gray-200 dark:hover:bg-[#333] dark:hover:border-gray-600")}>
                     <MessageCircle className={cn("h-3.5 w-3.5", activeTab === 'unread' ? "text-black" : "text-gray-500")} />
                     {!sidebarCollapsed && <>
                         <span className="flex-1 text-left">Não lidas</span>
-                        <span className={cn("text-[10px] px-1 py-0 rounded-none border", activeTab === 'unread' ? "bg-white border-gray-300 dark:bg-black/20 dark:border-primary-foreground/20" : "bg-gray-200 border-transparent dark:bg-[#333] dark:text-gray-400")}>
+                        <span className={cn("text-[10px] px-1 py-0 rounded-none border", activeTab === 'unread' ? "bg-white border-gray-300 dark:bg-black/20 dark:border-primary-foreground/20" : "bg-gray-200 border-transparent dark:bg-[#333] dark:text-gray-200")}>
                           {conversations.filter(c => conversationNotifications.has(c.id) && c.status !== 'closed').length}
                         </span>
                       </>}
                   </button>
                 </TooltipTrigger>
                 {sidebarCollapsed && <TooltipContent side="right" className="text-xs rounded-none border-[#d4d4d4]">Não lidas</TooltipContent>}
-              </Tooltip>
-            </TooltipProvider>
-
-            {/* Grupos */}
-            <TooltipProvider>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <button onClick={() => setActiveTab('groups')} className={cn("w-full flex items-center gap-2 px-2 py-1.5 rounded-none transition-all text-xs border", activeTab === 'groups' ? "bg-[#FEF3C7] border-gray-300 text-black font-bold shadow-sm" : "border-transparent text-gray-700 hover:bg-[#e1e1e1] hover:border-gray-300")}>
-                    <UsersRound className={cn("h-3.5 w-3.5", activeTab === 'groups' ? "text-black" : "text-gray-500")} />
-                    {!sidebarCollapsed && <>
-                        <span className="flex-1 text-left">Grupos</span>
-                        <span className={cn("text-[10px] px-1 py-0 rounded-none border", activeTab === 'groups' ? "bg-white border-gray-300 dark:bg-black/20 dark:border-primary-foreground/20" : "bg-gray-200 border-transparent dark:bg-[#333] dark:text-gray-400")}>
-                          0
-                        </span>
-                      </>}
-                  </button>
-                </TooltipTrigger>
-                {sidebarCollapsed && <TooltipContent side="right" className="text-xs rounded-none border-[#d4d4d4]">Grupos</TooltipContent>}
               </Tooltip>
             </TooltipProvider>
           </div>
@@ -2061,34 +2045,83 @@ export function WhatsAppChat({
                 </Button>
               </CollapsibleTrigger>
               <CollapsibleContent className="space-y-1 mt-1">
-                {/* Filtro por Tag */}
+                {/* Filtro por Tag - Seleção Múltipla */}
                 <div className="px-1">
-                  <Select value={selectedTag || "all"} onValueChange={value => setSelectedTag(value === "all" ? "" : value)}>
-                    <SelectTrigger className="w-full h-8 text-xs rounded-none border-gray-300 bg-white focus:ring-0 dark:bg-[#2d2d2d] dark:border-gray-600 dark:text-gray-200">
-                      <SelectValue placeholder="Filtrar por tag" />
-                    </SelectTrigger>
-                    <SelectContent className="rounded-none border-[#d4d4d4] dark:bg-[#2d2d2d] dark:border-gray-600">
-                      <SelectItem value="all" className="text-xs rounded-none cursor-pointer dark:text-gray-200 dark:focus:bg-gray-700">Todas as tags</SelectItem>
-                      {tags.map(tag => <SelectItem key={tag.id} value={tag.id} className="text-xs rounded-none cursor-pointer dark:text-gray-200 dark:focus:bg-gray-700">
-                          <div className="flex items-center gap-2">
-                            <div className="w-2 h-2 rounded-full" style={{
-                        backgroundColor: tag.color || '#808080'
-                      }} />
-                            <span className="text-xs">{tag.name}</span>
+                  <Popover>
+                    <PopoverTrigger asChild>
+                      <Button
+                        variant="outline"
+                        className="w-full h-8 text-xs rounded-none border-gray-300 bg-white focus:ring-0 dark:bg-[#2d2d2d] dark:border-gray-600 dark:text-gray-200 justify-between"
+                      >
+                        <span>
+                          {selectedTags.length === 0 
+                            ? "Todas as tags" 
+                            : selectedTags.length === 1
+                            ? tags.find(t => t.id === selectedTags[0])?.name || "1 tag selecionada"
+                            : `${selectedTags.length} tags selecionadas`}
+                        </span>
+                        <ChevronDown className="h-3.5 w-3.5 ml-2 opacity-50" />
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-64 p-0 rounded-none border-[#d4d4d4] dark:bg-[#2d2d2d] dark:border-gray-600" align="start">
+                      <div className="max-h-60 overflow-y-auto p-2">
+                        {tags.length === 0 ? (
+                          <div className="p-4 text-center text-xs text-gray-500 dark:text-gray-400">
+                            Nenhuma tag encontrada
                           </div>
-                        </SelectItem>)}
-                    </SelectContent>
-                  </Select>
+                        ) : (
+                          tags.map((tag) => (
+                            <div
+                              key={tag.id}
+                              className="flex items-center space-x-2 p-2 hover:bg-[#e6f2ff] dark:hover:bg-[#2a2a2a] rounded-none cursor-pointer"
+                              onClick={() => {
+                                setSelectedTags(prev => 
+                                  prev.includes(tag.id) 
+                                    ? prev.filter(id => id !== tag.id)
+                                    : [...prev, tag.id]
+                                );
+                              }}
+                            >
+                              <input
+                                type="checkbox"
+                                checked={selectedTags.includes(tag.id)}
+                                onChange={() => {
+                                  setSelectedTags(prev => 
+                                    prev.includes(tag.id) 
+                                      ? prev.filter(id => id !== tag.id)
+                                      : [...prev, tag.id]
+                                  );
+                                }}
+                                className="rounded-none border-gray-300 dark:border-gray-600"
+                              />
+                              <div className="flex items-center space-x-2 flex-1">
+                                <div
+                                  className="w-2 h-2 rounded-full"
+                                  style={{ backgroundColor: tag.color || '#808080' }}
+                                />
+                                <span className="text-xs text-gray-900 dark:text-gray-100">{tag.name}</span>
+                              </div>
+                            </div>
+                          ))
+                        )}
+                      </div>
+                    </PopoverContent>
+                  </Popover>
                 </div>
 
                 {/* Botão Limpar */}
-                {selectedTag && <div className="px-1 pt-1">
-                    <Button variant="outline" size="sm" onClick={() => {
-                setSelectedTag("");
-              }} className="w-full h-7 text-xs rounded-none border-gray-300 bg-white hover:bg-gray-100 text-gray-700 dark:bg-[#2d2d2d] dark:border-gray-600 dark:text-gray-200 dark:hover:bg-[#3a3a3a]">
+                {selectedTags.length > 0 && (
+                  <div className="px-1 pt-1">
+                    <Button 
+                      variant="outline" 
+                      size="sm" 
+                      onClick={() => setSelectedTags([])} 
+                      className="w-full h-7 text-xs rounded-none border-gray-300 bg-white hover:bg-gray-100 text-gray-700 dark:bg-[#2d2d2d] dark:border-gray-600 dark:text-gray-200 dark:hover:bg-[#3a3a3a]"
+                    >
                       Limpar filtros
                     </Button>
-                  </div>}
+                  </div>
+                )}
               </CollapsibleContent>
             </Collapsible>
           </div>}

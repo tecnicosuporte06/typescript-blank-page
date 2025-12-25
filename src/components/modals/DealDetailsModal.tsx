@@ -139,25 +139,72 @@ function ActivityItem({
     description: activity.description || "",
     scheduled_for: activity.scheduled_for
   });
+  const [selectedDate, setSelectedDate] = useState<Date>(new Date(activity.scheduled_for));
+  const [selectedTime, setSelectedTime] = useState(() => {
+    const date = new Date(activity.scheduled_for);
+    return `${date.getHours().toString().padStart(2, '0')}:${date.getMinutes().toString().padStart(2, '0')}`;
+  });
+  const [selectedHour, setSelectedHour] = useState<number>(new Date(activity.scheduled_for).getHours());
+  const [selectedMinute, setSelectedMinute] = useState<number>(new Date(activity.scheduled_for).getMinutes());
+  const [showTimePicker, setShowTimePicker] = useState(false);
+  const [showMinutePicker, setShowMinutePicker] = useState(false);
   const { toast } = useToast();
 
   // Atualizar o formulário quando a atividade mudar (garante que description apareça corretamente)
   useEffect(() => {
+    const scheduledDate = new Date(activity.scheduled_for);
     setEditActivityForm({
       subject: activity.subject,
       description: activity.description || "",
       scheduled_for: activity.scheduled_for
     });
+    setSelectedDate(scheduledDate);
+    setSelectedTime(`${scheduledDate.getHours().toString().padStart(2, '0')}:${scheduledDate.getMinutes().toString().padStart(2, '0')}`);
+    setSelectedHour(scheduledDate.getHours());
+    setSelectedMinute(scheduledDate.getMinutes());
   }, [activity.id, activity.subject, activity.description, activity.scheduled_for]);
+
+  const handleDateSelect = (date: Date | undefined) => {
+    if (date) {
+      setSelectedDate(date);
+      setShowTimePicker(true);
+      return;
+    }
+    if (!date && selectedDate) {
+      setShowTimePicker(true);
+    }
+  };
+
+  const handleHourSelect = (hour: number) => {
+    setSelectedHour(hour);
+    setShowTimePicker(false);
+    setShowMinutePicker(true);
+  };
+
+  const handleMinuteSelect = (minute: number) => {
+    setSelectedMinute(minute);
+    setShowMinutePicker(false);
+    const timeString = `${selectedHour.toString().padStart(2, '0')}:${minute.toString().padStart(2, '0')}`;
+    setSelectedTime(timeString);
+  };
+
+  const handleDateTimeClick = () => {
+    // Este clique não faz nada, o calendário já abre automaticamente pelo Popover
+  };
 
   const handleSaveActivity = async () => {
     try {
+      // Combinar data e hora selecionadas
+      const [hour, minute] = selectedTime.split(':').map(Number);
+      const scheduledDateTime = new Date(selectedDate);
+      scheduledDateTime.setHours(hour, minute, 0, 0);
+
       const { error } = await supabase
         .from('activities')
         .update({
           subject: editActivityForm.subject,
           description: editActivityForm.description,
-          scheduled_for: editActivityForm.scheduled_for
+          scheduled_for: scheduledDateTime.toISOString()
         })
         .eq('id', activity.id);
 
@@ -205,6 +252,38 @@ function ActivityItem({
               rows={3}
             />
           </div>
+          <div className="space-y-2">
+            <label className={cn("text-xs font-medium", isDarkMode ? "text-gray-300" : "text-gray-700")}>
+              Data e Hora
+            </label>
+            <Popover>
+              <PopoverTrigger asChild>
+                <Button 
+                  variant="outline" 
+                  className={cn("w-full justify-start text-left font-normal h-8 text-xs rounded-none border-gray-300", isDarkMode ? "bg-[#2d2d2d] border-gray-600 text-white hover:bg-gray-700" : "bg-white")}
+                  onClick={handleDateTimeClick}
+                >
+                  <CalendarIcon className="mr-2 h-3.5 w-3.5" />
+                  {selectedDate && selectedTime ? 
+                    `${format(selectedDate, "dd/MM/yyyy", { locale: ptBR })} ${selectedTime}` : 
+                    "Selecionar data e hora"
+                  }
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent
+                className={cn("w-auto p-0 rounded-none border-gray-300", isDarkMode && "border-gray-600 bg-[#1b1b1b]")}
+                align="start"
+              >
+                <Calendar 
+                  mode="single" 
+                  selected={selectedDate} 
+                  onSelect={handleDateSelect} 
+                  initialFocus 
+                  className="pointer-events-auto rounded-none" 
+                />
+              </PopoverContent>
+            </Popover>
+          </div>
           <div className="flex gap-2 justify-end">
             <Button
               size="sm"
@@ -238,7 +317,7 @@ function ActivityItem({
                   locale: ptBR
                 })}
               </p>
-              <p className={cn("text-xs", isDarkMode ? "text-gray-300" : "text-gray-600")}>
+              <p className={cn("text-xs whitespace-pre-wrap", isDarkMode ? "text-gray-300" : "text-gray-600")}>
                 {activity.description || "Sem descrição"}
               </p>
             </div>
@@ -281,6 +360,20 @@ function ActivityItem({
           </div>
         </>
       )}
+      <TimePickerModal
+        isOpen={showTimePicker}
+        onClose={() => setShowTimePicker(false)}
+        onTimeSelect={handleHourSelect}
+        selectedHour={selectedHour}
+        isDarkMode={isDarkMode}
+      />
+      <MinutePickerModal
+        isOpen={showMinutePicker}
+        onClose={() => setShowMinutePicker(false)}
+        onMinuteSelect={handleMinuteSelect}
+        selectedMinute={selectedMinute}
+        isDarkMode={isDarkMode}
+      />
     </div>
   );
 }
@@ -2566,7 +2659,7 @@ export function DealDetailsModal({
                       
                       {/* Descrição/Comentário */}
                       {item.description && (
-                        <p className={cn("text-xs mt-2", isDarkMode ? "text-gray-300" : "text-gray-700")}>
+                        <p className={cn("text-xs mt-2 whitespace-pre-wrap", isDarkMode ? "text-gray-300" : "text-gray-700")}>
                           {item.description}
                         </p>
                       )}

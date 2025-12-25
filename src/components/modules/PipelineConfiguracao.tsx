@@ -516,11 +516,11 @@ export default function PipelineConfiguracao({
       className="flex flex-col h-full bg-white border border-gray-300 m-2 shadow-sm font-sans text-sm dark:bg-[#0f0f0f] dark:border-gray-700 dark:text-gray-100"
     >
       <div className="flex flex-col border-b border-gray-300 bg-[#f8f9fa] dark:border-gray-700 dark:bg-[#141414]">
-        <div className="flex items-center justify-between px-4 py-2 bg-primary text-primary-foreground h-10">
+        <div className="flex items-center justify-between px-4 pt-3 pb-2 h-auto">
           <div className="flex items-center gap-2">
-            <span className="font-semibold text-sm tracking-tight">Configuração de Pipeline</span>
+            <span className="font-semibold text-sm tracking-tight text-gray-900 dark:text-gray-100">Configuração de Pipeline</span>
           </div>
-          <span className="text-[10px] opacity-80">
+          <span className="text-[10px] opacity-80 text-gray-700 dark:text-gray-300">
             {selectedPipeline ? selectedPipeline.name : "Selecione um pipeline"}
           </span>
         </div>

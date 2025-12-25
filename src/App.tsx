@@ -67,6 +67,13 @@ const App = () => (
                 </RoleProtectedRoute>
               </ProtectedRoute>
             } />
+            <Route path="/workspace/:workspaceId/crm-negocios/:cardId" element={
+              <ProtectedRoute>
+                <RoleProtectedRoute allowedRoles={['master', 'admin', 'user']}>
+                  <TezeusCRM />
+                </RoleProtectedRoute>
+              </ProtectedRoute>
+            } />
             <Route path="/workspace/:workspaceId/crm-atividades" element={
               <ProtectedRoute>
                 <RoleProtectedRoute allowedRoles={['master']}>

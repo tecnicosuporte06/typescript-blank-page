@@ -170,22 +170,14 @@ export function Sidebar({
     label: "Relatórios",
     icon: <LayoutDashboard className="w-5 h-5" />
   }, {
-    id: "conversas" as ModuleType,
-    label: "Conversas",
-    icon: <MessageCircle className="w-5 h-5" />
-  }, {
-    id: "ds-voice" as ModuleType,
-    label: "Mensagens Rápidas",
-    icon: <AudioLines className="w-5 h-5" />
-  }, {
-    id: "workspace-empresas" as ModuleType,
-    label: "Minha Empresa",
-    icon: <Building2 className="w-5 h-5" />
-  }, {
     id: "crm-negocios" as ModuleType,
     label: "Pipeline",
     icon: <DollarSign className="w-5 h-5" />,
     group: "crm"
+  }, {
+    id: "conversas" as ModuleType,
+    label: "Conversas",
+    icon: <MessageCircle className="w-5 h-5" />
   }, {
     id: "crm-atividades" as ModuleType,
     label: "Atividades",
@@ -207,6 +199,12 @@ export function Sidebar({
     icon: <Package className="w-5 h-5" />,
     group: "crm"
   }, {
+    id: "administracao-acoes" as ModuleType,
+    label: "Configuração de Ações",
+    icon: <Settings className="w-5 h-5" />,
+    group: "administracao",
+    masterOnly: false
+  }, {
     id: "automacoes-filas" as ModuleType,
     label: "Filas",
     icon: <Users className="w-5 h-5" />,
@@ -216,11 +214,13 @@ export function Sidebar({
     label: "Google Agenda",
     icon: <Calendar className="w-5 h-5" />
   }, {
-    id: "administracao-acoes" as ModuleType,
-    label: "Motivos de Perda",
-    icon: <Settings className="w-5 h-5" />,
-    group: "administracao",
-    masterOnly: false
+    id: "ds-voice" as ModuleType,
+    label: "Mensagens Rápidas",
+    icon: <AudioLines className="w-5 h-5" />
+  }, {
+    id: "workspace-empresas" as ModuleType,
+    label: "Minha Empresa",
+    icon: <Building2 className="w-5 h-5" />
   }].filter(item => {
     // Filtrar itens masterOnly se o usuário não for master
     if (item.masterOnly && userRole !== 'master') {

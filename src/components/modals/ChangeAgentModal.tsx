@@ -217,12 +217,12 @@ export function ChangeAgentModal({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-[500px] p-0 gap-0 border border-[#d4d4d4] bg-white shadow-sm rounded-none dark:bg-[#1f1f1f] dark:border-gray-700">
-        <DialogHeader className="bg-primary p-4 rounded-none m-0 border-b border-[#d4d4d4] dark:border-gray-700">
-          <DialogTitle className="flex items-center gap-2 text-primary-foreground text-base font-bold">
-            <Bot className="w-5 h-5 text-primary-foreground" />
+        <DialogHeader className="px-4 pt-4 pb-3 border-b border-gray-200 bg-transparent dark:border-gray-700 dark:bg-transparent">
+          <DialogTitle className="flex items-center gap-2 text-base font-bold text-gray-900 dark:text-gray-100">
+            <Bot className="w-5 h-5" />
             {actualCurrentAgentId ? 'Trocar Agente de IA' : 'Ativar Agente de IA'}
           </DialogTitle>
-          <DialogDescription className="text-primary-foreground/80 text-xs">
+          <DialogDescription className="text-xs text-gray-700 dark:text-gray-300">
             {actualCurrentAgentId 
               ? 'Selecione um novo agente para esta conversa. O agente permanecerá ativo.'
               : 'Selecione um agente para ativar nesta conversa.'}

@@ -1,7 +1,7 @@
-import React, { useState, useCallback, useEffect, useMemo } from "react";
+import React, { useState, useCallback, useEffect, useMemo, useRef } from "react";
 import { formatDistanceToNow, differenceInHours } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
-import { useParams } from 'react-router-dom';
+import { useParams, useNavigate } from 'react-router-dom';
 import { ConnectionBadge } from "@/components/chat/ConnectionBadge";
 import { useToast } from "@/hooks/use-toast";
 import { useQueryClient } from "@tanstack/react-query";
@@ -154,6 +154,7 @@ interface Deal {
     id: string;
     connection_id?: string;
     agente_ativo?: boolean;
+    unread_count?: number;
     connection?: {
       id: string;
       instance_name: string;
@@ -252,9 +253,69 @@ function DraggableDeal({
     contactTags,
     availableTags,
     addTagToContact,
+    removeTagFromContact,
     getFilteredTags,
     refreshTags
   } = useContactTags(deal.contact?.id || null, resolvedWorkspaceId);
+  
+  // Estado para contador de mensagens não lidas
+  const [unreadCount, setUnreadCount] = useState<number>(0);
+  
+  // Buscar unread_count da conversa do contato
+  useEffect(() => {
+    if (!deal.contact?.id || !resolvedWorkspaceId) {
+      setUnreadCount(0);
+      return;
+    }
+    
+    const fetchUnreadCount = async () => {
+      try {
+        const { data: conversations, error } = await supabase
+          .from('conversations')
+          .select('id, unread_count')
+          .eq('contact_id', deal.contact.id)
+          .eq('workspace_id', resolvedWorkspaceId)
+          .eq('status', 'open')
+          .limit(1);
+        
+        if (error) throw error;
+        
+        if (conversations && conversations.length > 0) {
+          setUnreadCount(conversations[0].unread_count || 0);
+        } else {
+          setUnreadCount(0);
+        }
+      } catch (error) {
+        console.error('Erro ao buscar unread_count:', error);
+        setUnreadCount(0);
+      }
+    };
+    
+    fetchUnreadCount();
+    
+    // Escutar mudanças em tempo real
+    const channel = supabase
+      .channel(`conversation-unread-${deal.contact.id}`)
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'conversations',
+          filter: `contact_id=eq.${deal.contact.id}`
+        },
+        (payload) => {
+          if (payload.new && typeof payload.new === 'object' && 'unread_count' in payload.new) {
+            setUnreadCount((payload.new as any).unread_count || 0);
+          }
+        }
+      )
+      .subscribe();
+    
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [deal.contact?.id, resolvedWorkspaceId]);
   const {
     attributes,
     listeners,
@@ -296,21 +357,16 @@ function DraggableDeal({
 
   const responsibleName = deal.responsible?.trim() || "";
   const responsibleInitials = responsibleName ? getAvatarInitials(responsibleName) : "?";
-  const normalizedStatus = (deal.status || '').toLowerCase();
-  const statusColor = normalizedStatus.includes('ganh')
-    ? '#22c55e'
-    : normalizedStatus.includes('perd')
-      ? '#ef4444'
-      : undefined;
+  // Sempre usar cinza para a borda esquerda, mesma cor do topo da coluna
+  // #d4d4d4 (light) ou gray-700 #374151 (dark) - EXATAMENTE a mesma cor
+  const borderLeftColor = isDarkMode ? '#374151' : '#d4d4d4'; // Mesma cor do topo da coluna e scrollbar
 
   const cardStyle: React.CSSProperties = {
     ...style,
-    borderLeftColor: statusColor ?? columnColor
+    borderLeftWidth: '4px',
+    borderLeftColor: borderLeftColor, // Apenas a borda esquerda com cor cinza - mesma cor do topo da coluna (#d4d4d4 ou #374151)
+    borderLeftStyle: 'solid'
   };
-
-  if (statusColor) {
-    cardStyle.borderColor = statusColor;
-  }
 
   const dragHandleProps = !isSelectionMode ? listeners : undefined;
 
@@ -320,7 +376,7 @@ function DraggableDeal({
       style={cardStyle}
       {...attributes}
       className={cn(
-        "bg-white dark:bg-[#1b1b1b] border border-[#d4d4d4] dark:border-gray-700 border-l-4 shadow-sm rounded-none hover:shadow-md transition-all mb-1.5 md:mb-2 relative min-h-[85px] md:min-h-[95px]",
+        "bg-white dark:bg-[#1b1b1b] border-l-4 shadow-sm rounded-none hover:shadow-md transition-all mb-1.5 md:mb-2 relative min-h-[85px] md:min-h-[95px]",
         !isSelectionMode && "cursor-pointer",
         isSelectionMode && "cursor-pointer hover:bg-accent/50 dark:hover:bg-[#2a2a2a]",
         isSelected && isSelectionMode && "ring-2 ring-primary bg-accent/30 dark:bg-primary/20"
@@ -415,9 +471,6 @@ function DraggableDeal({
               <h3 className={cn("text-xs font-medium truncate", "text-foreground dark:text-gray-100")}>
                 {deal.contact?.name || deal.name}
               </h3>
-              
-              {/* Badge de Agente IA Ativo */}
-              {deal.conversation?.agente_ativo && <AgentBadge conversationId={deal.conversation.id} />}
             </div>
             
             {/* Produto + Preço à direita */}
@@ -440,109 +493,133 @@ function DraggableDeal({
           </div>
         </div>
         
-        {/* Área central para tags do contato */}
-        <div className="mb-1.5 min-h-[20px] flex items-center justify-between gap-2">
-          <div className="flex items-center flex-wrap gap-1 flex-1 min-w-0">
-          {contactTags.slice(0, 10).map(tag => {
-            const isExpanded = expandedTags[tag.id];
-            return (
-              <div key={tag.id} className="flex items-center">
-                {isExpanded ? (
-                  <Badge
-                    variant="outline"
-                    className="rounded-none border px-2 py-0.5 text-[11px] font-semibold h-5 flex items-center gap-1"
-                    style={{
-                      borderColor: tag.color,
-                      color: tag.color,
-                      backgroundColor: tag.color ? `${tag.color}15` : 'transparent'
-                    }}
-                  >
-                    <span className="truncate max-w-[110px]">{tag.name}</span>
-                    <button
-                      onClick={async (e) => {
-                        e.stopPropagation();
-                        try {
-                          await supabase.from('contact_tags').delete().eq('contact_id', deal.contact?.id).eq('tag_id', tag.id);
-                          removeTagFromExpansion(tag.id);
-                          await refreshTags();
-                        } catch (error) {
-                          console.error('Erro ao remover tag:', error);
-                        }
-                      }}
-                      className="rounded-sm hover:bg-black/10 flex items-center justify-center"
-                    >
-                      <X className="w-2.5 h-2.5" />
-                    </button>
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        toggleTagExpansion(tag.id);
-                      }}
-                      className="rounded-sm hover:bg-black/10 flex items-center justify-center"
-                    >
-                      <Tag className="w-3 h-3" style={{ color: tag.color }} />
-                    </button>
-                  </Badge>
-                ) : (
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      toggleTagExpansion(tag.id);
-                    }}
-                    className={`w-4 h-4 rounded-full border border-gray-300 dark:border-gray-700 flex items-center justify-center hover:bg-gray-100 dark:hover:bg-[#2a2a2a] transition-colors`}
-                  >
-                    <Tag className="w-3 h-3" style={{ color: tag.color }} fill={tag.color} />
-                  </button>
-                )}
-              </div>
-            );
-          })}
-          <Popover open={isTagPopoverOpen} onOpenChange={setIsTagPopoverOpen}>
-            <PopoverTrigger asChild onClick={e => e.stopPropagation()}>
-              <Button variant="outline" size="sm" className={`h-5 px-1.5 rounded-none border border-[#d4d4d4] dark:border-gray-700 bg-white dark:bg-[#1b1b1b] hover:bg-[#e6f2ff] dark:hover:bg-[#2a2a2a] text-gray-700 dark:text-gray-300 shadow-sm`}>
-                <Plus className="w-2.5 h-2.5 md:w-3 md:h-3" />
-              </Button>
-            </PopoverTrigger>
-            <PopoverContent className={`w-64 p-0 rounded-none border border-[#d4d4d4] dark:border-gray-700 bg-white dark:bg-[#1b1b1b]`} align="start" onClick={e => e.stopPropagation()}>
-              <Command className={`rounded-none bg-white dark:bg-[#1b1b1b]`}>
-                <CommandInput placeholder="Buscar tags..." value={searchTerm} onValueChange={setSearchTerm} className={`h-9 text-xs rounded-none border-b border-[#d4d4d4] dark:border-gray-700 text-gray-900 dark:text-gray-100 placeholder:text-gray-500 dark:placeholder:text-gray-400`} />
-                <CommandList className="max-h-[200px] overflow-y-auto scrollbar-thin scrollbar-thumb-yellow-500 scrollbar-track-transparent">
-                  <CommandEmpty className={`py-2 text-xs text-center text-gray-500 dark:text-gray-400`}>Nenhuma tag encontrada.</CommandEmpty>
-                  <CommandGroup className="p-1">
-                    {getFilteredTags(searchTerm).map(tag => <CommandItem key={tag.id} onSelect={async () => {
-                      try {
-                        await addTagToContact(tag.id);
-                        await refreshTags();
-                        setIsTagPopoverOpen(false);
-                        setSearchTerm("");
-                      } catch (error) {
-                        console.error('Erro ao adicionar tag:', error);
-                      }
-                    }} className={`text-xs rounded-none aria-selected:bg-[#EAA900] aria-selected:text-black dark:aria-selected:text-black cursor-pointer py-1.5 px-2 text-gray-900 dark:text-gray-100`}>
-                        <div className="flex items-center gap-2 w-full">
-                          <div className="w-2.5 h-2.5 rounded-none" style={{
-                          backgroundColor: tag.color
-                        }} />
-                          <span>{tag.name}</span>
-                        </div>
-                      </CommandItem>)}
-                  </CommandGroup>
-                </CommandList>
-              </Command>
-            </PopoverContent>
-          </Popover>
-          </div>
-          
-          {/* ConnectionBadge à direita */}
-          {deal.conversation?.connection_id && <div className="flex-shrink-0">
-              <ConnectionBadge connectionId={deal.conversation.connection_id} connectionInfo={deal.conversation.connection} />
-            </div>}
+        {/* Tags no centro do card - Divisória */}
+        <div className={`flex items-center flex-wrap gap-1 flex-1 min-w-0 py-1.5 border-t border-b border-border/50 dark:border-gray-700/50`}>
+          {contactTags && contactTags.length > 0 && (
+            <>
+              {contactTags.slice(0, 10).map((tag) => {
+                const isExpanded = expandedTags[tag.id];
+                return (
+                  <div key={tag.id} className="flex items-center">
+                    {isExpanded ? (
+                      <Badge
+                        variant="outline"
+                        className="rounded-none border px-2 py-0.5 text-[11px] font-semibold h-5 flex items-center gap-1"
+                        style={{
+                          borderColor: tag.color,
+                          color: tag.color,
+                          backgroundColor: tag.color ? `${tag.color}15` : 'transparent'
+                        }}
+                      >
+                        <span className="truncate max-w-[110px]">{tag.name}</span>
+                        <button
+                          className="rounded-sm hover:bg-black/10 flex items-center justify-center"
+                          onClick={async (e) => {
+                            e.stopPropagation();
+                            if (deal.contact?.id) {
+                              await removeTagFromContact(tag.id);
+                              refreshTags();
+                              removeTagFromExpansion(tag.id);
+                            }
+                          }}
+                        >
+                          <X className="w-2.5 h-2.5" />
+                        </button>
+                        <button
+                          className="rounded-sm hover:bg-black/10 flex items-center justify-center"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            toggleTagExpansion(tag.id);
+                          }}
+                        >
+                          <Tag className="w-3 h-3" style={{ color: tag.color }} />
+                        </button>
+                      </Badge>
+                    ) : (
+                      <button
+                        className="w-4 h-4 rounded-full border border-gray-300 dark:border-gray-700 flex items-center justify-center hover:bg-gray-100 dark:hover:bg-[#2a2a2a] transition-colors"
+                        title={tag.name}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          toggleTagExpansion(tag.id);
+                        }}
+                      >
+                        <Tag className="w-3 h-3" style={{ color: tag.color }} fill={tag.color} />
+                      </button>
+                    )}
+                  </div>
+                );
+              })}
+            </>
+          )}
+          {deal.contact?.id && (
+            <Popover open={isTagPopoverOpen} onOpenChange={setIsTagPopoverOpen}>
+              <PopoverTrigger asChild onClick={(e) => e.stopPropagation()}>
+                <Button 
+                  variant="ghost" 
+                  className="h-5 px-1.5 rounded-none border border-[#d4d4d4] dark:border-gray-700 bg-white dark:bg-[#1b1b1b] hover:bg-[#e6f2ff] dark:hover:bg-[#2a2a2a] text-gray-700 dark:text-gray-300 shadow-sm"
+                >
+                  <Plus className="w-2.5 h-2.5 md:w-3 md:h-3" />
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent 
+                className="w-64 p-0 rounded-none border-[#d4d4d4] dark:border-gray-700 bg-white dark:bg-[#1b1b1b]" 
+                align="start"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <Command className="rounded-none bg-white dark:bg-[#1b1b1b]">
+                  <CommandInput 
+                    placeholder="Buscar tags..." 
+                    value={searchTerm}
+                    onValueChange={setSearchTerm}
+                    className="h-9 text-xs rounded-none border-b border-[#d4d4d4] dark:border-gray-700" 
+                  />
+                  <CommandList className="max-h-[200px] overflow-y-auto">
+                    <CommandEmpty className="text-xs py-4 text-gray-500 dark:text-gray-400">Nenhuma tag encontrada.</CommandEmpty>
+                    <CommandGroup className="p-1">
+                      {getFilteredTags(searchTerm).map((tag) => {
+                        const isAssigned = contactTags.some(ct => ct.id === tag.id);
+                        return (
+                          <CommandItem
+                            key={tag.id}
+                            onSelect={() => {
+                              if (!isAssigned && deal.contact?.id) {
+                                addTagToContact(tag.id).then(() => {
+                                  refreshTags();
+                                });
+                              }
+                              setIsTagPopoverOpen(false);
+                              setSearchTerm("");
+                            }}
+                            disabled={isAssigned}
+                            className={`rounded-none text-xs px-2 py-1.5 cursor-pointer ${isAssigned ? 'opacity-50 cursor-not-allowed' : 'hover:bg-[#EAA900] hover:text-black'}`}
+                          >
+                            <div className="flex items-center gap-2 w-full">
+                              <div 
+                                className="w-2.5 h-2.5 rounded-none border border-gray-300" 
+                                style={{ backgroundColor: tag.color }}
+                              />
+                              <span>{tag.name}</span>
+                            </div>
+                          </CommandItem>
+                        );
+                      })}
+                    </CommandGroup>
+                  </CommandList>
+                </Command>
+              </PopoverContent>
+            </Popover>
+          )}
         </div>
         
         {/* Footer com ícones de ação e prioridade */}
         <div className={`flex items-center justify-between pt-1 border-t border-border/50 dark:border-gray-700/50`}>
           <div className="flex items-center gap-1">
-            <Button size="icon" variant="ghost" className={`h-5 w-5 p-0 hover:bg-green-100 dark:hover:bg-green-900 hover:text-green-600 dark:hover:text-green-400`} onClick={async e => {
+            <Button 
+              size="icon" 
+              variant="ghost" 
+              className={`h-5 w-5 p-0 hover:bg-green-100 dark:hover:bg-green-900 hover:text-green-600 dark:hover:text-green-400 relative`} 
+              onClick={async e => {
             e.stopPropagation();
             console.log('🎯 Clique no botão de chat - Deal:', deal);
             console.log('📞 Contact ID:', deal.contact?.id);
@@ -603,6 +680,11 @@ function DraggableDeal({
             }
           }}>
               <MessageCircle className="w-3 h-3" />
+              {unreadCount > 0 && (
+                <span className="absolute -top-1 -right-1 h-4 w-4 rounded-full bg-red-500 text-white text-[10px] font-bold flex items-center justify-center border-2 border-white dark:border-[#1b1b1b]">
+                  {unreadCount > 99 ? '99+' : unreadCount}
+                </span>
+              )}
             </Button>
             <TooltipProvider>
               <Tooltip>
@@ -628,7 +710,12 @@ function DraggableDeal({
                   <Button 
                     size="icon" 
                     variant="ghost" 
-                    className={`h-5 w-5 p-0 hover:bg-purple-100 dark:hover:bg-purple-900 hover:text-purple-600 dark:hover:text-purple-400`} 
+                    className={cn(
+                      "h-5 w-5 p-0",
+                      (deal.conversation?.agente_ativo || deal.conversation?.queue?.ai_agent)
+                        ? "text-green-600 dark:text-green-400"
+                        : "text-gray-500 dark:text-gray-400"
+                    )} 
                     onClick={(e) => {
                       e.preventDefault();
                       e.stopPropagation();
@@ -653,8 +740,8 @@ function DraggableDeal({
                     <Bot className="w-3 h-3" />
                   </Button>
                 </TooltipTrigger>
-                <TooltipContent>
-                  <p>Configurar Agente IA</p>
+                <TooltipContent className="bg-white dark:bg-[#1b1b1b] text-gray-900 dark:text-gray-100 border-gray-300 dark:border-gray-700">
+                  <p>{deal.conversation?.queue?.ai_agent?.name || "Agente IA"}</p>
                 </TooltipContent>
               </Tooltip>
             </TooltipProvider>
@@ -1110,6 +1197,31 @@ const [selectedCardForProduct, setSelectedCardForProduct] = useState<{
         return true;
       });
     }
+
+    // Filtrar por mensagens não visualizadas
+    if (appliedFilters?.unreadMessages) {
+      columnCards = columnCards.filter(card => {
+        // Verificar se o card tem uma conversa associada com unread_count > 0
+        const conversation = card.conversation;
+        // O unread_count pode vir como número ou string, então vamos garantir que seja número
+        const conversationUnreadCount = typeof conversation?.unread_count === 'number' 
+          ? conversation.unread_count 
+          : (typeof conversation?.unread_count === 'string' ? parseInt(conversation.unread_count) || 0 : 0);
+        
+        // Debug log
+        console.log('🔍 Filtro unread:', {
+          cardId: card.id,
+          hasConversation: !!conversation,
+          conversationId: conversation?.id,
+          unreadCount: conversationUnreadCount,
+          unreadCountRaw: conversation?.unread_count,
+          willInclude: conversationUnreadCount > 0
+        });
+        
+        return conversationUnreadCount > 0;
+      });
+    }
+
     return columnCards;
   };
   // ✅ Detecção de colisão customizada para colunas
@@ -1251,6 +1363,8 @@ const [selectedCardForProduct, setSelectedCardForProduct] = useState<{
       moveCardOptimistic(activeCard.id, newColumnId);
     }
   }, [cards, columns, draggedColumn, moveCardOptimistic, reorderColumns]);
+  const navigate = useNavigate();
+  
   const openCardDetails = (card: any) => {
     console.log('🔍 Abrindo detalhes do card:', card);
     console.log('📋 Card completo:', {
@@ -1260,8 +1374,14 @@ const [selectedCardForProduct, setSelectedCardForProduct] = useState<{
       pipeline_id: card.pipeline_id,
       contact: card.contact
     });
-    setSelectedCard(card);
-    setIsDealDetailsModalOpen(true);
+    // Navegar para a página de detalhes ao invés de abrir modal
+    if (effectiveWorkspaceId) {
+      navigate(`/workspace/${effectiveWorkspaceId}/crm-negocios/${card.id}`);
+    } else {
+      // Fallback: abrir modal se não houver workspaceId
+      setSelectedCard(card);
+      setIsDealDetailsModalOpen(true);
+    }
   };
   const handlePipelineCreate = async (nome: string) => {
     try {
@@ -1920,10 +2040,7 @@ const [selectedCardForProduct, setSelectedCardForProduct] = useState<{
                           return (
                             <DroppableColumn key={column.id} id={`column-${column.id}`}>
                               <div className="w-full max-w-md h-full flex flex-col pb-2">
-                                <div className={`bg-white dark:bg-[#111111] border border-[#d4d4d4] dark:border-gray-700 shadow-sm h-full flex flex-col overflow-hidden`} style={{
-                                  borderTopColor: column.color,
-                                  borderTopWidth: '3px'
-                                }}>
+                                <div className={`bg-white dark:bg-[#111111] border border-[#d4d4d4] dark:border-gray-700 border-t-[3px] border-t-[#d4d4d4] dark:border-t-gray-700 shadow-sm h-full flex flex-col overflow-hidden`}>
                                   {/* Column Header */}
                                   <div className={`bg-[#f3f3f3] dark:bg-[#1f1f1f] p-2 flex-shrink-0 border-b border-[#d4d4d4] dark:border-gray-700`}>
                                     <div className="flex items-start justify-between">
@@ -1944,7 +2061,7 @@ const [selectedCardForProduct, setSelectedCardForProduct] = useState<{
                                   </div>
 
                                   {/* Cards Area */}
-                                  <div className={`flex-1 p-2 overflow-y-auto bg-white dark:bg-[#111111]`}>
+                                  <div className={`flex-1 p-2 overflow-y-auto bg-white dark:bg-[#111111] scrollbar-thin scrollbar-thumb-gray-column scrollbar-track-transparent`}>
                                      <SortableContext items={columnCards.map(card => `card-${card.id}`)} strategy={verticalListSortingStrategy}>
                                        {columnCards.length > 0 ? columnCards.map(card => {
                                          const deal: Deal = {
@@ -1959,7 +2076,10 @@ const [selectedCardForProduct, setSelectedCardForProduct] = useState<{
                                            priority: 'medium',
                                            created_at: card.created_at,
                                            contact: card.contact,
-                                           conversation: card.conversation || (card.conversation_id ? { id: card.conversation_id } : undefined),
+                                           conversation: card.conversation ? {
+                                             ...card.conversation,
+                                             unread_count: card.conversation.unread_count ?? 0
+                                           } : (card.conversation_id ? { id: card.conversation_id, unread_count: 0 } : undefined),
                                          };
 
                                          return (
@@ -2067,10 +2187,7 @@ const [selectedCardForProduct, setSelectedCardForProduct] = useState<{
                       isColumnBeingDragged && "scale-[1.02] ring-2 ring-primary/50 shadow-2xl",
                       isColumnDropTarget && "ring-2 ring-primary/40 bg-primary/5"
                     )}>
-                       <div className={`bg-white dark:bg-[#111111] border border-[#d4d4d4] dark:border-gray-700 shadow-sm h-full flex flex-col overflow-hidden transition-colors duration-200`} style={{
-                  borderTopColor: column.color,
-                  borderTopWidth: '3px'
-                }}>
+                       <div className={`bg-white dark:bg-[#111111] border border-[#d4d4d4] dark:border-gray-700 border-t-[3px] border-t-[#d4d4d4] dark:border-t-gray-700 shadow-sm h-full flex flex-col overflow-hidden transition-colors duration-200`}>
                         {/* Cabeçalho da coluna - fundo branco/claro */}
                         <div className={`bg-[#f3f3f3] dark:bg-[#1f1f1f] p-2 flex-shrink-0 border-b border-[#d4d4d4] dark:border-gray-700`}>
                           {isSelectionMode && selectedColumnForAction === column.id ? <div className="mb-3 space-y-2">
@@ -2183,7 +2300,7 @@ const [selectedCardForProduct, setSelectedCardForProduct] = useState<{
                         
                         {/* Corpo da coluna - fundo colorido */}
                         <div className={cn(
-                          "flex-1 p-2 overflow-y-auto min-h-0 bg-[#f9f9f9] dark:bg-[#0a0a0a] transition-all duration-200",
+                          "flex-1 p-2 overflow-y-auto min-h-0 bg-[#f9f9f9] dark:bg-[#0a0a0a] transition-all duration-200 scrollbar-thin scrollbar-thumb-gray-column scrollbar-track-transparent",
                           !draggedColumn && dragOverColumn === column.id && "ring-1 ring-primary/10 bg-primary/5 dark:bg-primary/10"
                         )}>
                         {columnCards.length === 0 ? (
@@ -2219,9 +2336,10 @@ const [selectedCardForProduct, setSelectedCardForProduct] = useState<{
                             priority: 'medium',
                             created_at: card.created_at,
                             contact: card.contact,
-                            conversation: card.conversation || (card.conversation_id ? {
-                              id: card.conversation_id
-                            } : undefined),
+                            conversation: card.conversation ? {
+                              ...card.conversation,
+                              unread_count: card.conversation.unread_count ?? 0
+                            } : (card.conversation_id ? { id: card.conversation_id, unread_count: 0 } : undefined),
                             product_name: productName || undefined,
                             product_id: productId || undefined,
                             product_value: productValue ?? null,
@@ -2348,9 +2466,10 @@ const [selectedCardForProduct, setSelectedCardForProduct] = useState<{
                 priority: 'medium',
                 created_at: activeCard.created_at,
                 contact: activeCard.contact,
-                conversation: activeCard.conversation || (activeCard.conversation_id ? {
-                  id: activeCard.conversation_id
-                } : undefined),
+                conversation: activeCard.conversation ? {
+                  ...activeCard.conversation,
+                  unread_count: activeCard.conversation.unread_count ?? 0
+                } : (activeCard.conversation_id ? { id: activeCard.conversation_id, unread_count: 0 } : undefined),
                 product_id: productId || undefined,
                 product_name: productName || undefined,
                 product_value: productValue ?? null,
