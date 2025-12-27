@@ -81,6 +81,13 @@ const App = () => (
                 </RoleProtectedRoute>
               </ProtectedRoute>
             } />
+            <Route path="/workspace/:workspaceId/crm-agenda" element={
+              <ProtectedRoute>
+                <RoleProtectedRoute allowedRoles={['master']}>
+                  <TezeusCRM />
+                </RoleProtectedRoute>
+              </ProtectedRoute>
+            } />
             <Route path="/workspace/:workspaceId/crm-ligacoes" element={
               <ProtectedRoute>
                 <RoleProtectedRoute allowedRoles={['master']}>
@@ -273,6 +280,13 @@ const App = () => (
               </ProtectedRoute>
             } />
             <Route path="/crm-atividades" element={
+              <ProtectedRoute>
+                <RoleProtectedRoute allowedRoles={['admin', 'user']}>
+                  <TezeusCRM />
+                </RoleProtectedRoute>
+              </ProtectedRoute>
+            } />
+            <Route path="/crm-agenda" element={
               <ProtectedRoute>
                 <RoleProtectedRoute allowedRoles={['admin', 'user']}>
                   <TezeusCRM />

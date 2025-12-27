@@ -856,7 +856,7 @@ export function AutomationModal({
                   </div>
                 ) : tags.length === 0 ? (
                   <div className={`p-2 text-sm text-muted-foreground dark:text-gray-400 text-center`}>
-                    Nenhuma tag encontrada
+                    Nenhuma etiqueta encontrada
                   </div>
                 ) : (
                   tags.map(tag => (

@@ -138,7 +138,7 @@ Pedro Costa,5511777777777,,Serviço Premium,3000.50,Pipeline Vendas,Negociação
             <p className="font-semibold mt-3 mb-2">Colunas opcionais:</p>
             <ul className="list-disc list-inside space-y-1 ml-2">
               <li><strong>Email</strong> - Email do contato</li>
-              <li><strong>Tags</strong> - Tags separadas por vírgula</li>
+              <li><strong>Etiquetas</strong> - Etiquetas separadas por vírgula</li>
               <li><strong>Responsável</strong> - Nome do usuário responsável</li>
             </ul>
           </div>

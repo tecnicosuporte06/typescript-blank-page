@@ -66,10 +66,14 @@ export function CRMTags() {
         {/* Title Bar / Top Menu */}
         <div className="flex items-center justify-between px-4 pt-3 pb-2 h-auto">
           <div className="flex items-center gap-2">
-            <Tag className="h-4 w-4 text-gray-700 dark:text-gray-200" />
-            <span className="font-semibold text-sm text-gray-900 dark:text-gray-100">Tags</span>
+            <span
+              className="font-semibold text-gray-900 dark:text-gray-100"
+              style={{ fontSize: "1.5rem" }}
+            >
+              Etiquetas
+            </span>
           </div>
-          <div className="text-[10px] opacity-80 text-gray-600 dark:text-gray-300">
+          <div className="text-[15px] opacity-80 text-gray-600 dark:text-gray-300">
             {isLoading ? "Carregando..." : `${tags.length} registros`}
           </div>
         </div>
@@ -218,8 +222,8 @@ export function CRMTags() {
               className="h-8 px-2 hover:bg-gray-200 rounded-sm flex flex-col items-center justify-center gap-0.5 text-gray-700 dark:text-gray-200 dark:hover:bg-[#2a2a2a]"
               onClick={() => setIsCreateModalOpen(true)}
             >
-              <Plus className="h-4 w-4 text-primary" />
-              <span className="text-[9px]">Nova Tag</span>
+              <Plus className="h-4 w-4 text-black dark:text-white" />
+              <span className="text-[9px]">Nova Etiqueta</span>
             </Button>
           </div>
         </div>
@@ -280,7 +284,7 @@ export function CRMTags() {
                     <div className="flex flex-col items-center gap-2">
                       <Tag className="h-8 w-8 text-gray-300" />
                       <p className="text-gray-500 font-medium">
-                        Nenhuma tag encontrada
+                        Nenhuma etiqueta encontrada
                       </p>
                       <Button
                         size="sm"
@@ -302,10 +306,8 @@ export function CRMTags() {
                         variant="outline" 
                         style={{ 
                           backgroundColor: `${tag.color}15`,
-                          borderColor: tag.color,
-                          color: tag.color
                         }}
-                        className="rounded-none border px-2 py-0.5 text-[11px] font-semibold h-5 inline-flex items-center gap-1"
+                        className="rounded-none px-2 py-0.5 text-[11px] font-semibold h-5 inline-flex items-center gap-1 text-black dark:text-white border-none"
                       >
                         <span className="truncate max-w-[180px]">{tag.name}</span>
                       </Badge>

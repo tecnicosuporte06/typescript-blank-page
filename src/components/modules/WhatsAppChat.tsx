@@ -68,7 +68,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { Search, Send, Bot, Phone, MoreVertical, Circle, MessageCircle, ArrowRight, Settings, Users, Trash2, ChevronDown, Filter, Eye, RefreshCw, Mic, Square, X, Check, PanelLeft, UserCircle, UserX, UsersRound, Tag, Plus, Loader2, Workflow, Clock } from "lucide-react";
+import { Search, Send, Bot, Phone, MoreVertical, Circle, MessageCircle, ArrowRight, Settings, Users, Trash2, ChevronDown, Filter, Eye, RefreshCw, Mic, Square, X, Check, PanelLeft, UserCircle, UserX, UsersRound, Tag, Plus, Loader2, Workflow, Clock, Music } from "lucide-react";
 import { WhatsAppChatSkeleton } from "@/components/chat/WhatsAppChatSkeleton";
 import { Switch } from "@/components/ui/switch";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -262,6 +262,18 @@ export function WhatsAppChat({
   const [transferModalOpen, setTransferModalOpen] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [isDeletingConversation, setIsDeletingConversation] = useState(false);
+  const [quickAudioPreview, setQuickAudioPreview] = useState<{
+    file: { name: string; url: string };
+    title: string;
+  } | null>(null);
+  const [isQuickAudioPreviewSending, setIsQuickAudioPreviewSending] = useState(false);
+  const [recordedAudioPreview, setRecordedAudioPreview] = useState<{
+    blob: Blob;
+    fileName: string;
+    content: string;
+    previewUrl: string;
+  } | null>(null);
+  const [isRecordedAudioSending, setIsRecordedAudioSending] = useState(false);
   
   // ✅ Estado para controlar quantas mensagens mostrar (Infinite Scroll com dados em memória)
   const [visibleMessagesCount, setVisibleMessagesCount] = useState(10);
@@ -883,6 +895,124 @@ export function WhatsAppChat({
       setTimeout(() => sendingRef.current.delete(messageKey), 1000);
     }
   };
+  const requestQuickAudioPreview = (file: { name: string; url: string }, title: string) => {
+    setQuickAudioPreview({ file, title });
+  };
+  const cancelQuickAudioPreview = () => {
+    setQuickAudioPreview(null);
+  };
+  const confirmQuickAudioPreviewSend = async () => {
+    if (!quickAudioPreview) return;
+    setIsQuickAudioPreviewSending(true);
+    try {
+      await handleSendQuickAudio(quickAudioPreview.file, quickAudioPreview.title);
+      setQuickAudioPreview(null);
+    } catch (error) {
+      console.error('Erro ao enviar áudio a partir do preview:', error);
+    } finally {
+      setIsQuickAudioPreviewSending(false);
+    }
+  };
+  const cancelRecordedAudioPreview = () => {
+    setRecordedAudioPreview((prev) => {
+      if (prev?.previewUrl) {
+        URL.revokeObjectURL(prev.previewUrl);
+      }
+      return null;
+    });
+  };
+  const confirmRecordedAudioPreviewSend = async () => {
+    if (!recordedAudioPreview || !selectedConversation) return;
+    setIsRecordedAudioSending(true);
+    const { fileName, blob, content, previewUrl } = recordedAudioPreview;
+    try {
+      const filePath = `messages/${fileName}`;
+      const { error: uploadError } = await supabase.storage
+        .from('whatsapp-media')
+        .upload(filePath, blob, { contentType: 'audio/mpeg' });
+      if (uploadError) {
+        throw uploadError;
+      }
+      const { data: { publicUrl } } = await supabase.storage
+        .from('whatsapp-media')
+        .getPublicUrl(filePath);
+      const clientMessageId = generateRandomId();
+      const optimisticMessage = {
+        id: clientMessageId,
+        external_id: clientMessageId,
+        conversation_id: selectedConversation.id,
+        content,
+        message_type: 'audio' as const,
+        sender_type: 'agent' as const,
+        sender_id: user?.id,
+        file_url: publicUrl,
+        file_name: fileName,
+        created_at: new Date().toISOString(),
+        status: 'sending' as const,
+        workspace_id: selectedWorkspace?.workspace_id || ''
+      };
+      addMessage(optimisticMessage);
+      clearMessageDraft(selectedConversation.id);
+      const { data: sendResult, error: sendError } = await supabase.functions.invoke('test-send-msg', {
+        body: {
+          conversation_id: selectedConversation.id,
+          content,
+          message_type: 'audio',
+          sender_id: user?.id,
+          sender_type: 'agent',
+          file_url: publicUrl,
+          file_name: fileName,
+          clientMessageId
+        },
+        headers: {
+          'x-system-user-id': user?.id || '',
+          'x-workspace-id': selectedWorkspace?.workspace_id || '',
+          'x-system-user-email': user?.email || ''
+        }
+      });
+      if (sendError) {
+        console.error('❌ Erro ao enviar áudio gravado:', sendError);
+        updateMessage(clientMessageId, { status: 'failed' });
+        toast({
+          title: "Erro ao enviar áudio",
+          description: sendError.message,
+          variant: "destructive"
+        });
+      } else {
+        updateMessage(clientMessageId, {
+          status: 'sent',
+          external_id: sendResult?.message?.external_id || sendResult?.message?.id || clientMessageId
+        });
+      }
+    } catch (error: any) {
+      console.error('Erro ao enviar áudio gravado:', error);
+      toast({
+        title: "Erro ao enviar áudio",
+        description: error?.message || "Tente novamente",
+        variant: "destructive"
+      });
+    } finally {
+      setIsRecordedAudioSending(false);
+      cancelRecordedAudioPreview();
+    }
+  };
+  const activeAudioPreview = quickAudioPreview
+    ? {
+        label: quickAudioPreview.title || quickAudioPreview.file.name,
+        src: quickAudioPreview.file.url,
+        sending: isQuickAudioPreviewSending,
+        onSend: confirmQuickAudioPreviewSend,
+        onCancel: cancelQuickAudioPreview
+      }
+    : recordedAudioPreview
+      ? {
+          label: recordedAudioPreview.fileName,
+          src: recordedAudioPreview.previewUrl,
+          sending: isRecordedAudioSending,
+          onSend: confirmRecordedAudioPreviewSend,
+          onCancel: cancelRecordedAudioPreview
+        }
+      : null;
   const handleSendQuickMedia = async (file: {
     name: string;
     url: string;
@@ -1421,6 +1551,9 @@ export function WhatsAppChat({
           recordingIntervalRef.current = null;
         }
 
+        setIsRecording(false);
+        setRecordingTime(0);
+
         let uploadBlob: Blob;
         try {
           setIsConvertingAudio(true);
@@ -1432,103 +1565,31 @@ export function WhatsAppChat({
             description: "Não foi possível gerar o arquivo de áudio. Tente novamente.",
             variant: "destructive"
           });
-          setIsConvertingAudio(false);
-          setIsRecording(false);
-          setRecordingTime(0);
           audioChunksRef.current = [];
           return;
         } finally {
           setIsConvertingAudio(false);
         }
 
-        const uploadMime = 'audio/mpeg';
         const fileName = `audio_${Date.now()}.mp3`;
-        const filePath = `messages/${fileName}`;
-        const { error: uploadError } = await supabase.storage
-          .from('whatsapp-media')
-          .upload(filePath, uploadBlob, { contentType: uploadMime });
+        const draftText = messageText.trim();
+        const content = draftText || '[ÁUDIO]';
+        const previewUrl = URL.createObjectURL(uploadBlob);
 
-        if (uploadError) {
-          throw uploadError;
-        }
-
-        const { data: { publicUrl } } = supabase.storage
-          .from('whatsapp-media')
-          .getPublicUrl(filePath);
-
-        if (selectedConversation) {
-          const draftText = messageText.trim();
-          const audioContent = draftText || '[AUDIO]';
-          const clientMessageId = generateRandomId();
-          const optimisticMessage = {
-            id: clientMessageId,
-            external_id: clientMessageId,
-            conversation_id: selectedConversation.id,
-            content: audioContent,
-            message_type: 'audio' as const,
-            sender_type: 'agent' as const,
-            sender_id: user?.id,
-            file_url: publicUrl,
-            file_name: fileName,
-            created_at: new Date().toISOString(),
-            status: 'sending' as const,
-            workspace_id: selectedWorkspace?.workspace_id || ''
-          };
-          addMessage(optimisticMessage);
-          clearMessageDraft(selectedConversation.id);
-          try {
-            const { data: sendResult, error: sendError } = await supabase.functions.invoke('test-send-msg', {
-              body: {
-                conversation_id: selectedConversation.id,
-                content: audioContent,
-                message_type: 'audio',
-                sender_id: user?.id,
-                sender_type: 'agent',
-                file_url: publicUrl,
-                file_name: fileName,
-                clientMessageId
-              },
-              headers: {
-                'x-system-user-id': user?.id || '',
-                'x-workspace-id': selectedWorkspace?.workspace_id || '',
-                'x-system-user-email': user?.email || ''
-              }
-            });
-            if (sendError) {
-              console.error('❌ Erro ao enviar áudio:', sendError);
-              updateMessage(clientMessageId, { status: 'failed' });
-              toast({
-                title: "Erro ao enviar áudio",
-                description: sendError.message,
-                variant: "destructive"
-              });
-            } else {
-              console.log('✅ Áudio enviado com sucesso');
-              updateMessage(clientMessageId, {
-                status: 'sent',
-                external_id: sendResult?.message?.external_id || sendResult?.message?.id || clientMessageId
-              });
-            }
-          } catch (err) {
-            console.error('Erro ao enviar áudio:', err);
-            updateMessage(clientMessageId, { status: 'failed' });
-            toast({
-              title: "Erro ao enviar áudio",
-              description: "Erro de conexão",
-              variant: "destructive"
-            });
-          }
-        }
+        setRecordedAudioPreview({
+          blob: uploadBlob,
+          fileName,
+          content,
+          previewUrl
+        });
       } catch (error) {
-        console.error('Erro ao enviar áudio:', error);
+        console.error('Erro ao preparar áudio gravado:', error);
         toast({
-          title: "Erro ao enviar áudio",
-          description: "Tente novamente",
+          title: "Erro ao gravar áudio",
+          description: "Não foi possível processar o áudio. Tente novamente.",
           variant: "destructive"
         });
       } finally {
-        setIsRecording(false);
-        setRecordingTime(0);
         audioChunksRef.current = [];
       }
     };
@@ -1934,7 +1995,14 @@ export function WhatsAppChat({
       <div className={cn("border-r border-[#d4d4d4] flex flex-col transition-all duration-300 bg-[#f0f0f0] dark:bg-[#1a1a1a] dark:border-gray-700", sidebarCollapsed ? "w-14" : "w-40 lg:w-48")}>
         {/* Header da sidebar */}
         <div className="p-3 border-b border-[#d4d4d4] flex items-center justify-between bg-[#f0f0f0] dark:bg-[#1a1a1a] dark:border-gray-700">
-          {!sidebarCollapsed && <h2 className="text-xs font-bold text-gray-800 dark:text-gray-200">Conversas</h2>}
+          {!sidebarCollapsed && (
+            <h2 
+              className="font-bold text-gray-800 dark:text-gray-200"
+              style={{ fontSize: "1.5rem" }}
+            >
+              Conversas
+            </h2>
+          )}
           <Button variant="ghost" size="icon" onClick={() => setSidebarCollapsed(!sidebarCollapsed)} className="h-6 w-6 hover:bg-gray-200 dark:hover:bg-gray-800 rounded-none">
             <PanelLeft className="h-3.5 w-3.5 text-gray-600 dark:text-gray-400" />
           </Button>
@@ -2067,7 +2135,7 @@ export function WhatsAppChat({
                       <div className="max-h-60 overflow-y-auto p-2">
                         {tags.length === 0 ? (
                           <div className="p-4 text-center text-xs text-gray-500 dark:text-gray-400">
-                            Nenhuma tag encontrada
+                            Nenhuma etiqueta encontrada
                           </div>
                         ) : (
                           tags.map((tag) => (
@@ -2682,13 +2750,13 @@ export function WhatsAppChat({
                              ? "bg-transparent border-none shadow-none"
                              : "bg-[#f0fdf4] border-green-200 dark:bg-green-900/20 dark:border-green-800"
                        // Mensagens normais do agente
-                       : message.message_type !== 'text' && message.file_url 
-                         ? message.message_type === 'audio' 
-                           ? "" 
-                           : message.message_type === 'image' || message.message_type === 'video' 
-                             ? "bg-transparent border-none shadow-none" 
-                             : "bg-[#e6f2ff] border-[#d4d4d4] dark:bg-blue-900/20 dark:border-blue-800" 
-                         : "bg-[#e6f2ff] border-[#d4d4d4] dark:bg-blue-900/20 dark:border-blue-800",
+                      : message.message_type !== 'text' && message.file_url 
+                          ? message.message_type === 'audio' 
+                            ? "" 
+                            : message.message_type === 'image' || message.message_type === 'video' 
+                              ? "bg-transparent border-none shadow-none" 
+                              : "bg-[#e6f2ff] border-[#d4d4d4] dark:bg-blue-900/20 dark:border-transparent" 
+                          : "bg-[#e6f2ff] border-[#d4d4d4] dark:bg-blue-900/20 dark:border-transparent",
                          // Padding base
                          message.message_type !== 'audio' && !(message.message_type === 'image' || message.message_type === 'video') && "px-3 py-2"
                      )}>
@@ -2964,7 +3032,55 @@ export function WhatsAppChat({
       
       <ContactSidePanel isOpen={contactPanelOpen} onClose={() => setContactPanelOpen(false)} contact={selectedConversation?.contact || null} />
       
-      <QuickItemsModal open={quickItemsModalOpen} onOpenChange={setQuickItemsModalOpen} onSendMessage={handleSendQuickMessage} onSendAudio={handleSendQuickAudio} onSendMedia={handleSendQuickMedia} onSendDocument={handleSendQuickDocument} />
+      <QuickItemsModal
+        open={quickItemsModalOpen}
+        onOpenChange={setQuickItemsModalOpen}
+        onSendMessage={handleSendQuickMessage}
+        onSendAudio={handleSendQuickAudio}
+        onPreviewAudio={requestQuickAudioPreview}
+        onSendMedia={handleSendQuickMedia}
+        onSendDocument={handleSendQuickDocument}
+      />
+      {activeAudioPreview && (
+        <div className="w-full rounded-none border border-[#d4d4d4] bg-[#f8f9fa] px-3 py-2 text-xs text-gray-700 dark:border-gray-700 dark:bg-[#171717] dark:text-gray-100 mb-2">
+          <div className="flex items-center justify-between gap-2 mb-1">
+            <div className="flex items-center gap-2">
+              <Music className="h-4 w-4 text-muted-foreground" />
+              <span className="font-medium truncate">{activeAudioPreview.label}</span>
+            </div>
+            <span className="text-[10px] text-muted-foreground">
+              Pré-visualização
+            </span>
+          </div>
+          <audio controls className="w-full rounded-md bg-white/70 dark:bg-white/10" src={activeAudioPreview.src} />
+          <div className="flex justify-end gap-2 pt-2">
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-8 rounded-none border border-gray-300 dark:border-gray-600 dark:text-gray-100"
+              onClick={activeAudioPreview.onCancel}
+              disabled={activeAudioPreview.sending}
+            >
+              Cancelar
+            </Button>
+            <Button
+              size="sm"
+              className="h-8 rounded-none bg-primary text-primary-foreground dark:hover:bg-primary/90"
+              onClick={activeAudioPreview.onSend}
+              disabled={activeAudioPreview.sending}
+            >
+              {activeAudioPreview.sending ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  Enviando...
+                </>
+              ) : (
+                "Enviar"
+              )}
+            </Button>
+          </div>
+        </div>
+      )}
       
       <ForwardMessageModal isOpen={forwardModalOpen} onClose={() => setForwardModalOpen(false)} onForward={handleForwardMessages} />
       

@@ -134,10 +134,14 @@ export function AutomacoesFilas() {
         {/* Title Bar */}
         <div className="flex items-center justify-between px-4 pt-3 pb-2 h-auto">
           <div className="flex items-center gap-2">
-            <Layers className="h-4 w-4 text-gray-700 dark:text-gray-200" />
-            <span className="font-semibold text-sm text-gray-900 dark:text-gray-100">Filas de Atendimento</span>
+            <span
+              className="font-semibold text-gray-900 dark:text-gray-100"
+              style={{ fontSize: "1.5rem" }}
+            >
+              Filas de Atendimento
+            </span>
           </div>
-          <div className="text-[10px] opacity-80 text-gray-600 dark:text-gray-300">
+          <div className="text-[15px] opacity-80 text-gray-600 dark:text-gray-300">
             {loading ? "Carregando..." : `${filteredFilas.length} filas`}
           </div>
         </div>

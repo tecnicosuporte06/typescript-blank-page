@@ -184,13 +184,18 @@ export function Sidebar({
     icon: <CheckSquare className="w-5 h-5" />,
     group: "crm"
   }, {
+    id: "crm-agenda" as ModuleType,
+    label: "Agenda",
+    icon: <Calendar className="w-5 h-5" />,
+    group: "crm"
+  }, {
     id: "crm-contatos" as ModuleType,
     label: "Contatos",
     icon: <Users className="w-5 h-5" />,
     group: "crm"
   }, {
     id: "crm-tags" as ModuleType,
-    label: "Tags",
+    label: "Etiquetas",
     icon: <Target className="w-5 h-5" />,
     group: "crm"
   }, {
@@ -209,10 +214,6 @@ export function Sidebar({
     label: "Filas",
     icon: <Users className="w-5 h-5" />,
     group: "administracao"
-  }, {
-    id: "administracao-google-agenda" as ModuleType,
-    label: "Google Agenda",
-    icon: <Calendar className="w-5 h-5" />
   }, {
     id: "ds-voice" as ModuleType,
     label: "Mensagens Rápidas",
@@ -266,7 +267,7 @@ export function Sidebar({
             <TooltipTrigger asChild>
               {menuButton}
             </TooltipTrigger>
-            <TooltipContent side="right" className="ml-2 text-xs">
+            <TooltipContent side="right" className="ml-2 text-xs bg-white dark:bg-[#1b1b1b] border-gray-200 dark:border-gray-700 text-gray-900 dark:text-gray-100 shadow-md">
               <p>{item.label}</p>
             </TooltipContent>
           </Tooltip>
@@ -377,7 +378,6 @@ export function Sidebar({
           if (item.id === 'crm-contatos') return canView('crm-contatos-item');
           if (item.id === 'crm-tags') return canView('crm-tags-item');
           if (item.id === 'crm-produtos') return canView('crm-produtos-item');
-          if (item.id === 'administracao-google-agenda') return true; // Visível para todos
           if (item.group === 'administracao') return hasRole(['master', 'admin']);
           return true;
         }).map(renderMenuItem)}
@@ -421,7 +421,7 @@ export function Sidebar({
                       </button>
                     </TooltipTrigger>
                   </PopoverTrigger>
-                  <PopoverContent side="right" align="start" className="p-0 w-auto rounded-none border-[#d4d4d4] dark:bg-[#2d2d2d] dark:border-gray-600">
+                  <PopoverContent side="right" align="start" className="p-0 w-auto rounded-none border-[#d4d4d4] bg-white dark:bg-[#1b1b1b] dark:border-gray-700 shadow-md">
                     <NotificationTooltip notifications={notifications} totalUnread={totalUnread} getAvatarInitials={getAvatarInitials} getAvatarColor={getAvatarColor} formatTimestamp={formatTimestamp} onNotificationClick={handleNotificationClick} onMarkAllAsRead={handleMarkAllAsRead} onMarkContactAsRead={handleMarkContactAsRead} />
                   </PopoverContent>
                 </Popover>
@@ -432,7 +432,7 @@ export function Sidebar({
                   </button>
                 </TooltipTrigger>
               )}
-              {isCollapsed && <TooltipContent side="right"><p>Notificações</p></TooltipContent>}
+              {isCollapsed && <TooltipContent side="right" className="bg-white dark:bg-[#1b1b1b] border-gray-200 dark:border-gray-700 text-gray-900 dark:text-gray-100 shadow-md"><p>Notificações</p></TooltipContent>}
             </Tooltip>
           </TooltipProvider>
           </div>

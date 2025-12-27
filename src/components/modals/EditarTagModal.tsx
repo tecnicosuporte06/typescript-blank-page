@@ -44,7 +44,7 @@ export function EditarTagModal({ isOpen, onClose, onTagUpdated, tag }: EditarTag
     if (!name.trim()) {
       toast({
         title: "Erro",
-        description: "O nome da tag é obrigatório.",
+        description: "O nome da etiqueta é obrigatório.",
         variant: "destructive",
       });
       return;
@@ -65,7 +65,7 @@ export function EditarTagModal({ isOpen, onClose, onTagUpdated, tag }: EditarTag
       if (error) throw error;
 
       toast({
-        title: "Tag atualizada",
+        title: "Etiqueta atualizada",
         description: `A tag "${name}" foi atualizada com sucesso.`,
       });
 
@@ -93,7 +93,7 @@ export function EditarTagModal({ isOpen, onClose, onTagUpdated, tag }: EditarTag
         <DialogContent className="max-w-md bg-white text-gray-900 dark:bg-[#0b0b0b] dark:text-gray-100 dark:border-gray-700">
           <DialogHeader className="px-4 py-2 bg-primary text-primary-foreground border-b border-[#d4d4d4] rounded-t-none dark:border-gray-700">
             <DialogTitle className="text-lg font-semibold text-primary-foreground">
-              Editar Tag
+              Editar Etiqueta
             </DialogTitle>
           </DialogHeader>
 
@@ -107,7 +107,7 @@ export function EditarTagModal({ isOpen, onClose, onTagUpdated, tag }: EditarTag
                 id="tagName"
                 value={name}
                 onChange={(e) => setName(e.target.value)}
-                placeholder="Digite o nome da tag"
+                placeholder="Digite o nome da etiqueta"
                 className="mt-1 bg-white border-gray-300 text-gray-900 dark:bg-[#161616] dark:border-gray-700 dark:text-gray-100"
               />
             </div>

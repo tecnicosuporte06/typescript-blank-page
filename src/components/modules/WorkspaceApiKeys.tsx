@@ -1088,7 +1088,7 @@ X-API-Key: sua_api_key_aqui
                       <p className="text-xs text-gray-500 dark:text-gray-400">Carregando tags...</p>
                     ) : tags.length === 0 ? (
                       <p className="text-xs text-gray-500 dark:text-gray-400">
-                        Nenhuma tag disponível no workspace
+                        Nenhuma etiqueta disponível no workspace
                       </p>
                     ) : (
                       <div className="max-h-40 overflow-y-auto border border-[#d4d4d4] dark:border-gray-700 rounded p-2 bg-white dark:bg-[#2d2d2d]">
@@ -1116,7 +1116,7 @@ X-API-Key: sua_api_key_aqui
                     )}
                     {selectedTagIds.length > 0 && (
                       <p className="text-xs text-gray-500 dark:text-gray-400">
-                        {selectedTagIds.length} tag(s) selecionada(s)
+                        {selectedTagIds.length} etiqueta(s) selecionada(s)
                       </p>
                     )}
                   </div>

@@ -40,7 +40,7 @@ export function EditarColunaModal({
   isDarkMode = false,
 }: EditarColunaModalProps) {
   const [name, setName] = useState(columnName);
-  const [color] = useState(columnColor); // Mantido para compatibilidade com backend, mas não editável
+  const [color, setColor] = useState(columnColor);
   const [icon, setIcon] = useState(columnIcon);
   const [isLoading, setIsLoading] = useState(false);
   const [activeTab, setActiveTab] = useState('settings');

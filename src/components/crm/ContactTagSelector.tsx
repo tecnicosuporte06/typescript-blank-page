@@ -25,7 +25,7 @@ export function ContactTagSelector({ contactId, onTagAdded }: ContactTagSelector
         onValueChange={setSearchTerm}
       />
       <CommandList>
-        <CommandEmpty>Nenhuma tag encontrada.</CommandEmpty>
+        <CommandEmpty>Nenhuma etiqueta encontrada.</CommandEmpty>
         <CommandGroup>
           {getFilteredTags(searchTerm).map((tag) => (
             <CommandItem

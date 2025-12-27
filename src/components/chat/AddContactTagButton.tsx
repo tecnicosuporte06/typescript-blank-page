@@ -47,13 +47,13 @@ export function AddContactTagButton({ contactId, isDarkMode = false, onTagAdded 
   return (
     <Popover open={isOpen} onOpenChange={setIsOpen}>
       <PopoverTrigger asChild>
-        {/* Botão com texto + Adicionar Tag */}
+        {/* Botão com texto + Adicionar Etiqueta */}
         <Button
           variant="ghost"
-          className="h-6 px-2 rounded-none border border-primary/30 bg-primary hover:bg-primary/90 text-primary-foreground flex items-center gap-1"
+          className="h-6 px-2 rounded-none border border-gray-300 bg-white text-gray-700 hover:bg-gray-100 dark:border-gray-700 dark:bg-[#111111] dark:text-gray-100 dark:hover:bg-[#1f1f1f] flex items-center gap-1"
         >
           <Plus className="w-3.5 h-3.5" />
-          <span className="text-xs font-medium">Adicionar Tag</span>
+          <span className="text-xs font-medium">Etiqueta</span>
         </Button>
       </PopoverTrigger>
       

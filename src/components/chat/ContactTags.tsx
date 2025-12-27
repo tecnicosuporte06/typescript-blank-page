@@ -167,7 +167,7 @@ export function ContactTags({ contactId, conversationId, isDarkMode = false, onT
                   backgroundColor: tag.color ? `${tag.color}15` : 'transparent'
                 }}
               >
-                <span className="truncate max-w-[120px]">{tag.name}</span>
+                <span className="truncate max-w-[120px] text-black dark:text-white">{tag.name}</span>
                 <button
                   onClick={(e) => {
                     e.stopPropagation();

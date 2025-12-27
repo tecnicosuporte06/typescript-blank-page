@@ -1382,8 +1382,8 @@ export function DealDetailsModal({
       setContactTags(prev => prev.filter(tag => tag.id !== tagId));
       // O trigger log_contact_tag_action já registra no histórico automaticamente
       toast({
-        title: "Tag removida",
-        description: "A tag foi removida do contato."
+        title: "Etiqueta removida",
+        description: "A etiqueta foi removida do contato."
       });
     } catch (error) {
       toast({
@@ -1908,46 +1908,42 @@ export function DealDetailsModal({
             <div className="ml-auto flex gap-2 items-center">
               {(() => {
                 const filteredActions = pipelineActions.filter((action: any) => {
-                  if (action.deal_state === 'Aberto') {
-                    return canViewOpenAction && cardStatus !== 'aberto';
+                  const actionName = (action.action_name || '').toLowerCase();
+                  const isMasterOrAdmin = userRole === 'master' || userRole === 'admin';
+                  const isWonOrLost = cardStatus === 'ganho' || cardStatus === 'perda';
+
+                  // Regra: Reabrir só aparece para Master/Admin e quando o card é Ganho ou Perdido
+                  if (actionName.includes('reabrir')) {
+                    return isMasterOrAdmin && isWonOrLost;
                   }
-                  return action.deal_state === 'Ganho' || action.deal_state === 'Perda';
+                  
+                  // Regra: Ganho e Perdido só aparecem quando o card está Aberto
+                  if (actionName.includes('ganho') || actionName.includes('perdido') || actionName.includes('perda')) {
+                    return cardStatus === 'aberto';
+                  }
+
+                  return action.deal_state === 'Ganho' || action.deal_state === 'Perda' || action.deal_state === 'Aberto';
                 });
                 
                 return filteredActions.map((action: any) => {
                   const isWin = action.deal_state === 'Ganho';
                   const isLoss = action.deal_state === 'Perda';
-                  const isOpen = action.deal_state === 'Aberto';
-                  const variant = isLoss ? 'destructive' : isOpen ? 'secondary' : 'default';
                   const isClosedStatus = cardStatus !== 'aberto';
                   const shouldDisable = isExecutingAction || (isClosedStatus && (isWin || isLoss));
-                  const actionColor: string | undefined = action.button_color || action.buttonColor || undefined;
                   
-                  const styleClass = actionColor
-                    ? 'rounded-none h-8 px-3 text-xs font-semibold shadow-sm border transition-all hover:brightness-105 disabled:opacity-60'
-                    : isWin
-                      ? 'bg-green-600 hover:bg-green-700 text-white border-transparent shadow-sm rounded-none h-8 text-xs font-medium disabled:opacity-60'
+                  const styleClass = isWin
+                      ? 'bg-green-600 hover:bg-green-700 text-white border-transparent shadow-sm rounded-none h-8 px-4 text-xs font-medium disabled:opacity-60'
                       : isLoss
-                        ? 'bg-red-600 hover:bg-red-700 text-white border-transparent shadow-sm rounded-none h-8 text-xs font-medium disabled:opacity-60'
-                        : 'bg-white text-primary hover:bg-gray-100 border-transparent shadow-sm rounded-none h-8 text-xs font-medium disabled:opacity-60';
+                        ? 'bg-red-600 hover:bg-red-700 text-white border-transparent shadow-sm rounded-none h-8 px-4 text-xs font-medium disabled:opacity-60'
+                        : 'bg-white text-gray-900 hover:bg-gray-100 border-gray-300 shadow-sm rounded-none h-8 px-4 text-xs font-medium disabled:opacity-60 dark:bg-[#1b1b1b] dark:text-gray-100 dark:border-gray-700';
                   
-                  const inlineStyle = actionColor
-                    ? {
-                        backgroundColor: actionColor,
-                        borderColor: actionColor,
-                        color: getReadableActionTextColor(actionColor),
-                      }
-                    : undefined;
-
                   return (
                   <Button
                     key={action.id}
                     size="sm"
-                    variant={variant}
                     onClick={() => executeAction(action)}
                     disabled={shouldDisable}
                     className={styleClass}
-                    style={inlineStyle}
                   >
                     {isExecutingAction ? 'Processando...' : action.action_name}
                   </Button>

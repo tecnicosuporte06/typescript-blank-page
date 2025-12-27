@@ -104,8 +104,12 @@ export const ConfiguracaoAcoes: React.FC = () => {
         {/* Title Bar */}
         <div className="flex items-center justify-between px-4 pt-3 pb-2 h-auto">
           <div className="flex items-center gap-2">
-            <Layers className="h-4 w-4 text-gray-700 dark:text-gray-200" />
-            <span className="font-semibold text-sm text-gray-900 dark:text-gray-100">Motivos de Perda</span>
+            <span
+              className="font-semibold text-gray-900 dark:text-gray-100"
+              style={{ fontSize: "1.5rem" }}
+            >
+              Motivos de Perda
+            </span>
           </div>
           <div className="text-[10px] opacity-80 text-gray-600 dark:text-gray-300">
             {isLoading ? "Carregando..." : `${filteredLossReasons.length} motivos`}
@@ -236,7 +240,7 @@ export const ConfiguracaoAcoes: React.FC = () => {
                             onClick={() => handleToggleStatus(reason.id, reason.is_active ?? true)}
                             className={`rounded-none text-[10px] cursor-pointer transition-colors px-2 py-0.5 ${
                               reason.is_active !== false
-                                ? 'bg-green-100 text-green-700 border border-green-300 dark:bg-green-900/30 dark:text-green-300 dark:border-green-500/40 hover:bg-green-200 dark:hover:bg-green-900/50'
+                                ? 'bg-green-100 text-black border border-green-300 dark:bg-green-900/30 dark:text-white dark:border-green-500/40 hover:bg-green-200 dark:hover:bg-green-900/50'
                                 : 'bg-gray-100 text-gray-700 border border-gray-300 dark:bg-gray-800/30 dark:text-gray-400 dark:border-gray-600/40 hover:bg-gray-200 dark:hover:bg-gray-800/50'
                             }`}
                             title="Clique para alterar o status"

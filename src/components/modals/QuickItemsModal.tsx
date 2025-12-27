@@ -16,6 +16,7 @@ interface QuickItemsModalProps {
   onOpenChange: (open: boolean) => void;
   onSendMessage?: (content: string, type: 'text') => void;
   onSendAudio?: (file: { name: string; url: string }, content: string) => void;
+  onPreviewAudio?: (file: { name: string; url: string }, content: string) => void;
   onSendMedia?: (file: { name: string; url: string }, content: string, type: 'image' | 'video') => void;
   onSendDocument?: (file: { name: string; url: string }, content: string) => void;
 }
@@ -25,6 +26,7 @@ export function QuickItemsModal({
   onOpenChange, 
   onSendMessage, 
   onSendAudio, 
+  onPreviewAudio,
   onSendMedia, 
   onSendDocument 
 }: QuickItemsModalProps) {
@@ -43,12 +45,14 @@ export function QuickItemsModal({
     }
   };
 
-  const handleSendAudio = (audio: any) => {
-    if (onSendAudio) {
-      onSendAudio(
+  const handlePreviewAudio = (audio: any) => {
+    if (onPreviewAudio) {
+      onPreviewAudio(
         { name: audio.file_name, url: audio.file_url },
         audio.title
       );
+    }
+    if (onOpenChange) {
       onOpenChange(false);
     }
   };
@@ -113,7 +117,7 @@ export function QuickItemsModal({
       <Button
         size="sm"
         variant="ghost"
-        onClick={() => handleSendAudio(audio)}
+        onClick={() => handlePreviewAudio(audio)}
         className="w-8 h-8 p-0 shrink-0 text-muted-foreground hover:text-foreground hover:bg-accent"
       >
         <Send className="w-4 h-4" />

@@ -32,7 +32,7 @@ export function CriarTagModal({ isOpen, onClose, onTagCreated }: CriarTagModalPr
     if (!name.trim()) {
       toast({
         title: "Erro",
-        description: "O nome da tag é obrigatório.",
+        description: "O nome da etiqueta é obrigatório.",
         variant: "destructive",
       });
       return;
@@ -60,8 +60,8 @@ export function CriarTagModal({ isOpen, onClose, onTagCreated }: CriarTagModalPr
       if (error) throw error;
 
       toast({
-        title: "Tag criada",
-        description: `A tag "${name}" foi criada com sucesso.`,
+        title: "Etiqueta criada",
+        description: `A etiqueta "${name}" foi criada com sucesso.`,
       });
 
       // Reset form
@@ -93,7 +93,7 @@ export function CriarTagModal({ isOpen, onClose, onTagCreated }: CriarTagModalPr
         <DialogContent className="max-w-md bg-white text-gray-900 dark:bg-[#0b0b0b] dark:text-gray-100 dark:border-gray-700">
           <DialogHeader className="px-4 py-2 bg-primary text-primary-foreground border-b border-[#d4d4d4] rounded-t-none dark:border-gray-700">
             <DialogTitle className="text-lg font-semibold text-primary-foreground">
-              Criar Tag
+              Criar Etiqueta
             </DialogTitle>
           </DialogHeader>
 
@@ -107,7 +107,7 @@ export function CriarTagModal({ isOpen, onClose, onTagCreated }: CriarTagModalPr
                 id="tagName"
                 value={name}
                 onChange={(e) => setName(e.target.value)}
-                placeholder="Digite o nome da tag"
+                placeholder="Digite o nome da etiqueta"
                 className="mt-1 bg-white border-gray-300 text-gray-900 dark:bg-[#161616] dark:border-gray-700 dark:text-gray-100"
               />
             </div>

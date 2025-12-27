@@ -13,6 +13,7 @@ import { Conversas } from "./modules/Conversas";
 import { DSVoice } from "./modules/DSVoice";
 import { CRMNegocios } from "./modules/CRMNegocios";
 import { CRMAtividades } from "./modules/CRMAtividades";
+import { CRMAgenda } from "./modules/CRMAgenda";
 
 import { CRMContatos } from "./modules/CRMContatos";
 import { CRMTags } from "./modules/CRMTags";
@@ -44,7 +45,7 @@ export type ModuleType =
   | "crm-negocios"
   | "crm-negocios-detail"
   | "crm-atividades"
-  
+  | "crm-agenda"
   | "crm-contatos"
   | "crm-tags"
   | "crm-produtos"
@@ -158,11 +159,13 @@ export function TezeusCRM() {
       case "ds-voice":
         return <DSVoice />;
       case "crm-negocios":
-        return <CRMNegocios />;
+        return <CRMNegocios onCollapseSidebar={() => setIsCollapsed(true)} />;
       case "crm-negocios-detail":
         return <DealDetailsPage />;
       case "crm-atividades":
         return <CRMAtividades />;
+      case "crm-agenda":
+        return <CRMAgenda />;
       case "crm-contatos":
         return <CRMContatos />;
       case "crm-tags":

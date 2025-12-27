@@ -132,13 +132,13 @@ export function WorkspaceEmpresas({ onNavigateToUsers, onNavigateToConfig }: Wor
   if (isLoading) {
     return (
       <div className="p-6 bg-white dark:bg-[#0f0f0f] text-gray-900 dark:text-gray-100 min-h-full">
-        <div className="flex items-center justify-between mb-6">
-          <div>
-            <h1 className="text-2xl font-semibold">Minha Empresa</h1>
-            <p className="text-muted-foreground dark:text-gray-400">
-              Informações e configurações da empresa atual
-            </p>
-          </div>
+      <div className="flex items-center justify-between mb-6">
+        <div>
+          <h1 className="font-semibold" style={{ fontSize: "1.5rem" }}>Minha Empresa</h1>
+          <p className="text-muted-foreground dark:text-gray-400">
+            Informações e configurações da empresa atual
+          </p>
+        </div>
         </div>
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
           {[...Array(3)].map((_, i) => (
@@ -183,7 +183,7 @@ export function WorkspaceEmpresas({ onNavigateToUsers, onNavigateToConfig }: Wor
     <div className="p-6 bg-white dark:bg-[#0f0f0f] text-gray-900 dark:text-gray-100 min-h-full">
       <div className="flex items-center justify-between mb-6">
         <div>
-          <h1 className="text-2xl font-semibold">Minha Empresa</h1>
+          <h1 className="font-semibold" style={{ fontSize: "1.5rem" }}>Minha Empresa</h1>
           <p className="text-muted-foreground dark:text-gray-400">
             Informações e configurações da empresa atual
           </p>

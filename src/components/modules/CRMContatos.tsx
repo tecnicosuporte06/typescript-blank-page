@@ -300,7 +300,12 @@ export function CRMContatos() {
     }
   }, [selectedWorkspace?.workspace_id, toast]);
 
-  // ✅ CARREGAR CONTATOS AUTOMATICAMENTE quando workspace mudar
+  // Resetar página ao mudar termo de busca
+  useEffect(() => {
+    setPage(1);
+  }, [searchTerm]);
+
+  // ✅ CARREGAR CONTATOS AUTOMATICAMENTE quando workspace ou página mudar
   useEffect(() => {
     console.log("🎯 [CRMContatos] useEffect triggered - workspace:", selectedWorkspace?.workspace_id, "page:", page);
     
@@ -318,20 +323,29 @@ export function CRMContatos() {
         
         console.log("🔄 [CRMContatos] Fetching contacts for workspace:", selectedWorkspace.workspace_id, "page:", page);
 
-      // Get all contacts from the workspace - QUERY SIMPLES
-        console.log("🔍 [CRMContatos] Fazendo query com workspace_id:", selectedWorkspace.workspace_id);
+      // Get contacts com suporte a busca (ilike) e paginação apenas quando sem busca
+        console.log("🔍 [CRMContatos] Fazendo query com workspace_id:", selectedWorkspace.workspace_id, "search:", searchTerm, "page:", page);
         
         const start = (page - 1) * PAGE_SIZE;
         const end = start + PAGE_SIZE - 1;
 
-        const { data: contactsData, error: contactsError, count } = await supabase
+        const search = searchTerm.trim();
+
+        let query = supabase
           .from("contacts")
           .select("*", { count: "exact" })
           .eq("workspace_id", selectedWorkspace.workspace_id)
           .order("created_at", {
             ascending: false,
-          })
-          .range(start, end);
+          });
+
+        if (search) {
+          query = query.or(`name.ilike.%${search}%,phone.ilike.%${search}%`);
+        } else {
+          query = query.range(start, end);
+        }
+
+        const { data: contactsData, error: contactsError, count } = await query;
 
         console.log("📦 [CRMContatos] Resposta da query:", {
           success: !contactsError,
@@ -1124,7 +1138,7 @@ export function CRMContatos() {
     const orderedWorkspaceKeys = workspaceFieldNames.filter((key) => extraInfoKeySet.has(key));
     const otherExtraKeys = Array.from(extraInfoKeySet).filter((key) => !workspaceFieldNames.includes(key)).sort();
     const extraInfoHeaders = [...orderedWorkspaceKeys, ...otherExtraKeys];
-    const headers = [...baseHeaders, ...extraInfoHeaders, "Tags"];
+    const headers = [...baseHeaders, ...extraInfoHeaders, "Etiquetas"];
 
     const normalizeValue = (value: unknown) => {
       if (value === null || value === undefined) return "";
@@ -1306,10 +1320,14 @@ export function CRMContatos() {
         {/* Title Bar / Top Menu */}
         <div className="flex items-center justify-between px-4 pt-3 pb-2 h-auto">
           <div className="flex items-center gap-2">
-            <FileText className="h-4 w-4 text-gray-700 dark:text-gray-200" />
-            <span className="font-semibold text-sm text-gray-900 dark:text-gray-100">Contatos</span>
+            <span
+              className="font-semibold text-gray-900 dark:text-gray-100"
+              style={{ fontSize: "1.5rem" }}
+            >
+              Contatos
+            </span>
           </div>
-          <div className="text-[10px] opacity-80 text-gray-600 dark:text-gray-200">
+          <div className="text-[15px] opacity-80 text-gray-600 dark:text-gray-200">
             {isLoading ? "Carregando..." : `${filteredContacts.length} registros`}
           </div>
         </div>
@@ -1342,7 +1360,7 @@ export function CRMContatos() {
               <PopoverContent className="w-64 p-0" align="start">
                 <div className="max-h-60 overflow-y-auto p-2 bg-white dark:bg-[#1b1b1b] dark:text-gray-100">
                   {tags.length === 0 ? (
-                    <div className="p-4 text-center text-muted-foreground text-xs dark:text-gray-400">Nenhuma tag encontrada</div>
+                    <div className="p-4 text-center text-muted-foreground text-xs dark:text-gray-400">Nenhuma etiqueta encontrada</div>
                   ) : (
                     <>
                       {tags.map((tag) => (
@@ -1396,7 +1414,7 @@ export function CRMContatos() {
               className="h-8 px-2 hover:bg-gray-200 rounded-sm flex flex-col items-center justify-center gap-0.5 text-gray-700 dark:text-gray-200 dark:hover:bg-[#2a2a2a]"
               onClick={() => setIsFieldConfigModalOpen(true)}
             >
-              <Pin className="h-4 w-4 text-primary" />
+              <Pin className="h-4 w-4 text-black dark:text-white" />
               <span className="text-[9px]">Campos</span>
             </Button>
 
@@ -1406,7 +1424,7 @@ export function CRMContatos() {
               className="h-8 px-2 hover:bg-gray-200 rounded-sm flex flex-col items-center justify-center gap-0.5 text-gray-700 dark:text-gray-200 dark:hover:bg-[#2a2a2a]"
               onClick={handleAddContact}
             >
-              <Plus className="h-4 w-4 text-primary" />
+              <Plus className="h-4 w-4 text-black dark:text-white" />
               <span className="text-[9px]">Novo</span>
             </Button>
 
@@ -1416,7 +1434,7 @@ export function CRMContatos() {
               className="h-8 px-2 hover:bg-gray-200 rounded-sm flex flex-col items-center justify-center gap-0.5 text-gray-700 dark:text-gray-200 dark:hover:bg-[#2a2a2a]"
               onClick={handleExportCSV}
             >
-              <Download className="h-4 w-4 text-primary" />
+              <Download className="h-4 w-4 text-black dark:text-white" />
               <span className="text-[9px]">Exportar</span>
             </Button>
 
@@ -1426,7 +1444,7 @@ export function CRMContatos() {
               className="h-8 px-2 hover:bg-gray-200 rounded-sm flex flex-col items-center justify-center gap-0.5 text-gray-700 dark:text-gray-200 dark:hover:bg-[#2a2a2a]"
               onClick={handleDownloadTemplate}
             >
-              <FileSpreadsheet className="h-4 w-4 text-primary" />
+              <FileSpreadsheet className="h-4 w-4 text-black dark:text-white" />
               <span className="text-[9px]">Modelo</span>
             </Button>
 
@@ -1437,7 +1455,7 @@ export function CRMContatos() {
               onClick={() => fileInputRef.current?.click()}
               disabled={isImporting}
             >
-              <Upload className="h-4 w-4 text-primary" />
+              <Upload className="h-4 w-4 text-black dark:text-white" />
               <span className="text-[9px]">{isImporting ? "..." : "Importar"}</span>
             </Button>
 
@@ -1448,7 +1466,7 @@ export function CRMContatos() {
               disabled={selectedIds.length === 0}
               onClick={() => setIsBulkDeleteOpen(true)}
             >
-              <Trash2 className="h-4 w-4 text-red-500" />
+              <Trash2 className="h-4 w-4 text-black dark:text-white" />
               <span className="text-[9px]">Excluir</span>
             </Button>
           </div>
@@ -1477,7 +1495,7 @@ export function CRMContatos() {
                 </th>
                 <th className="border border-[#d4d4d4] px-2 py-1 text-left font-semibold text-gray-700 min-w-[200px] group hover:bg-[#e1e1e1] cursor-pointer dark:border-gray-700 dark:text-gray-200 dark:hover:bg-[#2a2a2a]">
                   <div className="flex items-center justify-between">
-                    <span>Tags</span>
+                    <span>Etiquetas</span>
                     <div className="w-[1px] h-3 bg-gray-400 mx-1" />
                   </div>
                 </th>
@@ -1598,14 +1616,12 @@ export function CRMContatos() {
                               <Badge
                                 key={`${contact.id}-tag-${i}`}
                                 variant="outline"
-                                className="h-5 rounded-none border text-[10px] font-semibold tracking-tight px-2 py-0 flex items-center gap-1"
+                                className="h-5 rounded-none text-[10px] font-semibold tracking-tight px-2 py-0 flex items-center gap-1 border-none text-black dark:text-white"
                                 style={{
-                                  borderColor: tag.color,
-                                  color: tag.color,
                                   backgroundColor: tag.color ? `${tag.color}15` : 'transparent'
                                 }}
                               >
-                                <span className="truncate max-w-[120px]">{tag.name}</span>
+                                <span className="truncate max-w-[120px] text-black dark:text-white">{tag.name}</span>
                                 <button
                                   className="ml-1 rounded-sm hover:bg-black/10 transition-colors flex items-center justify-center"
                                   onClick={async (e) => {
@@ -1628,7 +1644,7 @@ export function CRMContatos() {
                               </Badge>
                             ))
                           ) : (
-                            <span className="text-[10px] text-gray-400 italic dark:text-gray-500">Sem tags</span>
+                            <span className="text-[10px] text-gray-400 italic dark:text-gray-500">Sem etiquetas</span>
                           )}
                         </div>
                         <Popover>
@@ -1665,7 +1681,7 @@ export function CRMContatos() {
                          <Button
                           variant="ghost"
                           size="icon"
-                          className="h-6 w-6 rounded-sm hover:bg-primary hover:text-primary-foreground text-primary"
+                          className="h-6 w-6 rounded-sm hover:bg-gray-100 text-black dark:text-white dark:hover:bg-gray-800"
                           onClick={() => {
                             setSelectedContactForWhatsApp(contact);
                             setIsWhatsAppModalOpen(true);
@@ -1738,7 +1754,10 @@ export function CRMContatos() {
             >
               Próxima
             </Button>
-            <span className="opacity-70">
+            <span
+              className="text-[15px] opacity-80 text-gray-600 dark:text-gray-400 text-center"
+              style={{ paddingRight: "256px" }}
+            >
               {totalCount} registros
             </span>
           </div>

@@ -4,17 +4,28 @@ import { useEffect, useState, useCallback, useRef } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
-import { ArrowLeft, Check, X, ChevronDown, Plus, Pencil, User, Mail, FileText, File, Image as ImageIcon, ChevronRight, RefreshCw, Tag, DollarSign, CheckSquare, Circle, MoreVertical, List } from "lucide-react";
+import { 
+  ArrowLeft, Check, X, ChevronDown, Plus, Pencil, User, Mail, FileText, File, 
+  Image as ImageIcon, ChevronRight, RefreshCw, Tag, DollarSign, CheckSquare, 
+  Circle, MoreVertical, List, ChevronsUpDown, Clock, Phone, 
+  Calendar as CalendarIconLucide, Video, MapPin, CheckCircle2, Copy, Link2, 
+  Building2, Info, Lock, MessageSquare as MessageSquareIcon, 
+  FileText as FileTextIcon, Mail as MailIcon, File as FileIcon, Receipt, 
+  CheckCircle, Bold, Italic, Underline, ListOrdered, AlignLeft, 
+  AlignRight, Strikethrough, AtSign, Music, Upload, Download 
+} from "lucide-react";
 import { cn } from "@/lib/utils";
 import { usePipelineColumns } from "@/hooks/usePipelineColumns";
 import { useWorkspaceHeaders } from "@/lib/workspaceHeaders";
 import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/hooks/useAuth";
 import { format, differenceInDays, differenceInHours } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Input } from "@/components/ui/input";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { useCardHistory, cardHistoryQueryKey } from "@/hooks/useCardHistory";
@@ -23,14 +34,15 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Calendar } from "@/components/ui/calendar";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-import { Clock, Phone, Calendar as CalendarIconLucide, Video, MapPin, CheckCircle2, Copy, Link2, Building2, Info, Lock, MessageSquare as MessageSquareIcon, FileText as FileTextIcon, Mail as MailIcon, File as FileIcon, Receipt, CheckCircle, Bold, Italic, Underline, ListOrdered, AlignLeft, AlignRight, Strikethrough, Image as ImageIconLucide, AtSign } from "lucide-react";
-import { TimePickerModal } from "@/components/modals/TimePickerModal";
-import { MinutePickerModal } from "@/components/modals/MinutePickerModal";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { AddContactTagButton } from "@/components/chat/AddContactTagButton";
+import { AttachmentPreviewModal } from "@/components/modals/AttachmentPreviewModal";
 
 export function DealDetailsPage() {
   const { cardId, workspaceId: urlWorkspaceId } = useParams<{ cardId: string; workspaceId: string }>();
   const navigate = useNavigate();
   const { selectedWorkspace } = useWorkspace();
+  const { user: authUser, userRole } = useAuth();
   const effectiveWorkspaceId = urlWorkspaceId || selectedWorkspace?.workspace_id;
   const { getHeaders } = useWorkspaceHeaders();
   const { toast } = useToast();
@@ -54,6 +66,10 @@ const [isProductModalOpen, setIsProductModalOpen] = useState(false);
 const [availableProducts, setAvailableProducts] = useState<any[]>([]);
 const [selectedProductId, setSelectedProductId] = useState<string>("");
 const [manualValue, setManualValue] = useState<string>("");
+  const [isEditingContactName, setIsEditingContactName] = useState(false);
+  const [tempContactName, setTempContactName] = useState("");
+  const [isUploadingFile, setIsUploadingFile] = useState(false);
+  const [selectedFileForPreview, setSelectedFileForPreview] = useState<any | null>(null);
   
   // Estados para anotações
   const [noteContent, setNoteContent] = useState("");
@@ -90,6 +106,8 @@ const [selectedNoteForEdit, setSelectedNoteForEdit] = useState<any | null>(null)
 const [noteEditContent, setNoteEditContent] = useState("");
 const [editingNoteId, setEditingNoteId] = useState<string | null>(null);
 const [editingNoteContent, setEditingNoteContent] = useState("");
+  const [pipelineActions, setPipelineActions] = useState<any[]>([]);
+  const [isExecutingAction, setIsExecutingAction] = useState(false);
 
   // Estados para visão geral
   const [overviewData, setOverviewData] = useState<{
@@ -189,6 +207,8 @@ const formatTime = (date: Date) => {
         
         if (!pipelineError && pipeline) {
           setPipelineData(pipeline);
+          // Buscar as ações configuradas para este pipeline
+          fetchPipelineActions(pipeline.id);
         }
       }
 
@@ -253,7 +273,7 @@ const formatTime = (date: Date) => {
       if (card.responsible_user_id) {
         const { data: userData, error: userError } = await supabase
           .from('system_users')
-          .select('id, name, profile_image_url')
+          .select('id, name, profile_image_url, profile')
           .eq('id', card.responsible_user_id)
           .maybeSingle();
         
@@ -388,10 +408,12 @@ const formatTime = (date: Date) => {
   // Buscar produtos disponíveis
   useEffect(() => {
     const fetchProducts = async () => {
+      if (!effectiveWorkspaceId) return;
       try {
         const { data, error } = await supabase
           .from('products')
           .select('id, name, value')
+          .eq('workspace_id', effectiveWorkspaceId)
           .order('name');
 
         if (error) throw error;
@@ -402,7 +424,7 @@ const formatTime = (date: Date) => {
     };
 
     fetchProducts();
-  }, []);
+  }, [effectiveWorkspaceId]);
 
   // Buscar atividades do card
   const fetchActivities = useCallback(async () => {
@@ -559,6 +581,20 @@ const formatTime = (date: Date) => {
     );
   }
 
+  const generateTimeOptions = () => {
+    const times = [];
+    for (let hour = 0; hour < 24; hour++) {
+      for (let minute = 0; minute < 60; minute += 15) {
+        const h = hour.toString().padStart(2, '0');
+        const m = minute.toString().padStart(2, '0');
+        times.push(`${h}:${m}`);
+      }
+    }
+    return times;
+  };
+
+  const timeOptions = generateTimeOptions();
+
   // Calcular tempo em cada coluna
   useEffect(() => {
     if (!cardId || !cardData) {
@@ -598,13 +634,13 @@ const formatTime = (date: Date) => {
         const cardCreatedAt = new Date(cardData.created_at || Date.now());
         
         // Processar cada mudança de coluna
-        let lastColumnId = history[0]?.metadata?.old_column_id || cardData.column_id;
+        let lastColumnId = (history[0]?.metadata as any)?.old_column_id || cardData.column_id;
         let lastChangeTime = cardCreatedAt;
 
         for (const event of history) {
           const changeTime = new Date(event.changed_at);
-          const fromColumn = event.metadata?.old_column_id;
-          const toColumn = event.metadata?.new_column_id;
+          const fromColumn = (event.metadata as any)?.old_column_id;
+          const toColumn = (event.metadata as any)?.new_column_id;
 
           if (fromColumn && lastColumnId === fromColumn) {
             // Calcular dias na coluna anterior
@@ -656,7 +692,7 @@ const formatTime = (date: Date) => {
       const { error } = await supabase.functions.invoke(
         'pipeline-management/cards',
         {
-          method: 'PATCH',
+          method: 'PUT',
           headers,
           body: {
             id: cardId,
@@ -683,6 +719,7 @@ const formatTime = (date: Date) => {
   };
 
   const handleMarkAsWon = async () => {
+    // Manter por compatibilidade se necessário, mas vamos preferir executeAction
     if (!cardId) return;
     
     try {
@@ -690,7 +727,7 @@ const formatTime = (date: Date) => {
       const { error } = await supabase.functions.invoke(
         'pipeline-management/cards',
         {
-          method: 'PATCH',
+          method: 'PUT',
           headers,
           body: {
             id: cardId,
@@ -706,7 +743,6 @@ const formatTime = (date: Date) => {
         description: "Negócio marcado como ganho.",
       });
       
-      // Atualizar dados
       fetchCardData();
     } catch (error) {
       console.error('Erro ao marcar como ganho:', error);
@@ -719,6 +755,7 @@ const formatTime = (date: Date) => {
   };
 
   const handleMarkAsLost = async () => {
+    // Manter por compatibilidade se necessário, mas vamos preferir executeAction
     if (!cardId) return;
     
     try {
@@ -726,7 +763,7 @@ const formatTime = (date: Date) => {
       const { error } = await supabase.functions.invoke(
         'pipeline-management/cards',
         {
-          method: 'PATCH',
+          method: 'PUT',
           headers,
           body: {
             id: cardId,
@@ -742,7 +779,6 @@ const formatTime = (date: Date) => {
         description: "Negócio marcado como perdido.",
       });
       
-      // Atualizar dados
       fetchCardData();
     } catch (error) {
       console.error('Erro ao marcar como perdido:', error);
@@ -751,6 +787,121 @@ const formatTime = (date: Date) => {
         description: "Não foi possível marcar o negócio como perdido.",
         variant: "destructive",
       });
+    }
+  };
+
+  const fetchPipelineActions = useCallback(async (pipelineId: string) => {
+    try {
+      const headers = getHeaders();
+      if (!headers) return;
+
+      const { data, error } = await supabase.functions.invoke(
+        `pipeline-management/actions?pipeline_id=${pipelineId}`,
+        {
+          method: 'GET',
+          headers
+        }
+      );
+
+      if (!error) {
+        // Garantir que as 3 ações padrão existam, preservando configurações do banco
+        const standardStates = [
+          { state: 'Ganho', defaultName: 'Ganho', id: 'std-ganho' },
+          { state: 'Perda', defaultName: 'Perdido', id: 'std-perdido' },
+          { state: 'Aberto', defaultName: 'Reabrir', id: 'std-reabrir' }
+        ];
+
+        const dbActions = data || [];
+        const finalActions = [...dbActions];
+
+        // Verificar quais estados padrão estão faltando e adicionar
+        standardStates.forEach(std => {
+          const exists = dbActions.some((a: any) => a.deal_state === std.state);
+          if (!exists) {
+            finalActions.push({
+              id: std.id,
+              action_name: std.defaultName,
+              deal_state: std.state,
+              target_pipeline_id: null,
+              target_column_id: null
+            });
+          }
+        });
+
+        setPipelineActions(finalActions);
+      }
+    } catch (error) {
+      console.error('Erro ao buscar ações do pipeline:', error);
+    }
+  }, [getHeaders]);
+
+  const executeAction = async (action: any) => {
+    if (!cardId || isExecutingAction) return;
+    setIsExecutingAction(true);
+
+    try {
+      const headers = getHeaders();
+      if (!headers) throw new Error('Não foi possível obter headers do workspace');
+
+      const body: any = {
+        id: cardId
+      };
+
+      // Determinar o novo status baseado na regra da ação
+      const statusMap: Record<string, string> = {
+        'Ganho': 'ganho',
+        'Perda': 'perda',
+        'Aberto': 'aberto'
+      };
+      
+      const newStatus = statusMap[action.deal_state] || 'aberto';
+      body.status = newStatus;
+
+      // Verificar se há transferência configurada - garantir que não enviamos strings vazias
+      if (action.target_pipeline_id && action.target_pipeline_id.trim() !== "") {
+        body.pipeline_id = action.target_pipeline_id;
+      }
+      
+      if (action.target_column_id && action.target_column_id.trim() !== "") {
+        body.column_id = action.target_column_id;
+      }
+
+      console.log('🚀 Executando ação de pipeline:', {
+        action: action.action_name,
+        body
+      });
+
+      // ✅ CORREÇÃO: Passar o ID na URL para a Edge Function
+      const { error } = await supabase.functions.invoke(`pipeline-management/cards?id=${cardId}`, {
+        method: 'PUT',
+        headers,
+        body
+      });
+
+      if (error) throw error;
+
+      toast({
+        title: "Sucesso",
+        description: `Negócio marcado como ${action.action_name.toLowerCase()}.`,
+      });
+
+      // Recarregar dados do card
+      await fetchCardData();
+      
+      // Se houve transferência de pipeline, carregar as ações do novo pipeline
+      if (body.pipeline_id && body.pipeline_id !== cardData?.pipeline_id) {
+        await fetchPipelineActions(body.pipeline_id);
+      }
+
+    } catch (error: any) {
+      console.error('Erro ao executar ação:', error);
+      toast({
+        title: "Erro ao executar ação",
+        description: error.message || "Não foi possível realizar a ação.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsExecutingAction(false);
     }
   };
 
@@ -952,6 +1103,85 @@ const formatTime = (date: Date) => {
     [cardId, fetchActivities, queryClient]
   );
 
+  const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file || !cardId || !effectiveWorkspaceId || !contact?.id) return;
+
+    setIsUploadingFile(true);
+    try {
+      const fileExt = file.name.split('.').pop();
+      const fileName = `${Date.now()}_${Math.random().toString(36).substring(7)}.${fileExt}`;
+      const filePath = `${effectiveWorkspaceId}/${fileName}`;
+
+      const { error: uploadError } = await supabase.storage
+        .from('activity-attachments')
+        .upload(filePath, file);
+
+      if (uploadError) throw uploadError;
+
+      const { data: { publicUrl } } = supabase.storage
+        .from('activity-attachments')
+        .getPublicUrl(filePath);
+
+      // Criar uma atividade do tipo "Arquivo" para registrar o upload
+      const { error: activityError } = await supabase
+        .from('activities')
+        .insert({
+          contact_id: contact.id,
+          workspace_id: effectiveWorkspaceId,
+          pipeline_card_id: cardId,
+          type: 'Arquivo',
+          subject: `Arquivo anexado: ${file.name}`,
+          attachment_name: file.name,
+          attachment_url: publicUrl,
+          responsible_id: authUser?.id || null,
+          scheduled_for: new Date().toISOString(),
+          is_completed: true,
+          completed_at: new Date().toISOString()
+        });
+
+      if (activityError) throw activityError;
+
+      toast({
+        title: "Sucesso",
+        description: "Arquivo anexado com sucesso.",
+      });
+
+      // Recarregar atividades para atualizar a lista de arquivos
+      await fetchActivities();
+      queryClient.invalidateQueries({ queryKey: cardHistoryQueryKey(cardId) });
+    } catch (error: any) {
+      console.error('Erro ao fazer upload:', error);
+      toast({
+        title: "Erro",
+        description: error.message || "Não foi possível carregar o arquivo.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsUploadingFile(false);
+      if (event.target) event.target.value = '';
+    }
+  };
+
+  const getFileIconComponent = (fileName: string) => {
+    const ext = fileName.split('.').pop()?.toLowerCase();
+    if (['jpg', 'jpeg', 'png', 'gif', 'webp'].includes(ext || '')) return <ImageIcon className="h-8 w-8 text-blue-500" />;
+    if (ext === 'pdf') return <FileTextIcon className="h-8 w-8 text-red-500" />;
+    if (['doc', 'docx'].includes(ext || '')) return <FileTextIcon className="h-8 w-8 text-blue-600" />;
+    if (['xls', 'xlsx', 'csv'].includes(ext || '')) return <FileTextIcon className="h-8 w-8 text-green-600" />;
+    return <FileIcon className="h-8 w-8 text-gray-500" />;
+  };
+
+  const handleDownloadFile = (url: string, name: string) => {
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = name;
+    link.target = '_blank';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
   const handleDeleteActivity = useCallback(async () => {
     if (!selectedActivityForEdit || !cardId) return;
     try {
@@ -997,9 +1227,9 @@ const formatTime = (date: Date) => {
         }
 
         setSelectedNoteForEdit(data);
-        setNoteEditContent(data.content || "");
-        setEditingNoteId(data.id);
-        setEditingNoteContent(data.content || "");
+        setNoteEditContent((data as any).content || "");
+        setEditingNoteId((data as any).id);
+        setEditingNoteContent((data as any).content || "");
       } catch (error: any) {
         console.error("Erro ao carregar anotação:", error);
         toast({
@@ -1069,6 +1299,38 @@ const formatTime = (date: Date) => {
       });
     }
   }, [cardId, editingNoteContent, editingNoteId, noteEditContent, queryClient, selectedNoteForEdit, toast]);
+
+  const handleUpdateContactName = async () => {
+    if (!contact?.id || !tempContactName.trim()) {
+      setIsEditingContactName(false);
+      return;
+    }
+
+    try {
+      const { error } = await supabase
+        .from('contacts')
+        .update({ name: tempContactName.trim() })
+        .eq('id', contact.id);
+
+      if (error) throw error;
+
+      toast({
+        title: "Sucesso",
+        description: "Nome do contato atualizado com sucesso."
+      });
+
+      setContact({ ...contact, name: tempContactName.trim() });
+      setIsEditingContactName(false);
+      await fetchCardData();
+    } catch (error) {
+      console.error('Erro ao atualizar nome do contato:', error);
+      toast({
+        title: "Erro",
+        description: "Não foi possível atualizar o nome do contato.",
+        variant: "destructive"
+      });
+    }
+  };
 
   const deleteNoteById = useCallback(
     async (noteId: string) => {
@@ -1158,6 +1420,15 @@ const formatTime = (date: Date) => {
     setSelectedNoteForEdit(null);
   }, []);
 
+  const executeEditorCommand = (command: string, value: string | undefined = undefined) => {
+    if (noteContentRef.current) {
+      noteContentRef.current.focus();
+      document.execCommand(command, false, value);
+      // Forçar atualização do estado após comando
+      setNoteContent(noteContentRef.current.innerHTML || "");
+    }
+  };
+
   // Adicionar produto ou valor ao card
   const handleAddProductToCard = useCallback(async () => {
     if (!cardId) return;
@@ -1212,7 +1483,7 @@ const formatTime = (date: Date) => {
         if (isNaN(valueNumber)) {
           toast({
             title: "Erro",
-            description: "Valor inválido.",
+            description: "Preço inválido.",
             variant: "destructive",
           });
           return;
@@ -1229,8 +1500,8 @@ const formatTime = (date: Date) => {
         setCardData((prev: any) => ({ ...prev, value: valueNumber }));
 
         toast({
-          title: "Valor atualizado",
-          description: "O valor foi atualizado no negócio.",
+          title: "Preço atualizado",
+          description: "O preço foi atualizado no negócio.",
         });
 
         setIsProductModalOpen(false);
@@ -1301,8 +1572,8 @@ const formatTime = (date: Date) => {
       setCardData((prev: any) => ({ ...prev, value: 0 }));
 
       toast({
-        title: "Valor removido",
-        description: "O valor foi removido do negócio.",
+        title: "Preço removido",
+        description: "O preço foi removido do negócio.",
       });
     } catch (error: any) {
       console.error('Erro ao remover valor:', error);
@@ -1366,6 +1637,8 @@ const formatTime = (date: Date) => {
   const getFilteredHistoryEvents = (events: any[], filter: string) => {
     if (filter === "all") return events;
     if (filter === "activities") return events.filter(e => e.type?.startsWith("activity_"));
+    if (filter === "activities_done") return events.filter(e => e.type?.startsWith("activity_") && e.metadata?.status === 'completed');
+    if (filter === "activities_future") return events.filter(e => e.type?.startsWith("activity_") && e.metadata?.status !== 'completed');
     if (filter === "notes") return events.filter(e => e.type === "notes");
     if (filter === "email") return events.filter(e => e.type === "email");
     if (filter === "files") return events.filter(e => e.type === "files");
@@ -1405,7 +1678,9 @@ const formatTime = (date: Date) => {
               <h1 className="text-lg font-semibold px-2 py-1">
                 Oportunidade
               </h1>
+            </div>
 
+            <div className="flex items-center gap-4">
               {/* Proprietário */}
               {owner && (
                 <div className="flex items-center gap-2">
@@ -1415,31 +1690,85 @@ const formatTime = (date: Date) => {
                   </Avatar>
                   <div className="flex flex-col">
                     <span className="text-sm font-medium">{owner.name}</span>
-                    <span className="text-xs text-gray-500 dark:text-gray-400">Proprietário</span>
+                    <span className="text-xs text-gray-500 dark:text-gray-400 capitalize">{owner.profile || 'Usuário'}</span>
                   </div>
                 </div>
               )}
-            </div>
 
             <div className="flex items-center gap-2">
+                {(() => {
+                  const cardStatus = cardData?.status?.toLowerCase() || 'aberto';
+                  const isMasterOrAdmin = userRole === 'master' || userRole === 'admin';
+                  const isClosed = cardStatus === 'ganho' || cardStatus === 'perda' || cardStatus === 'perdido';
+
+                  // Filtrar ações baseadas no estado do negócio e papel do usuário
+                  const filteredActions = pipelineActions.filter((action: any) => {
+                    const state = action.deal_state;
+                    
+                    // Regra: Ações de 'Aberto' (Reabrir) só aparecem para Master/Admin e se fechado
+                    if (state === 'Aberto') {
+                      const show = isMasterOrAdmin && isClosed;
+                      return show;
+                    }
+                    
+                    // Regra: Ações de 'Ganho' e 'Perda' só aparecem se estiver aberto
+                    if (state === 'Ganho' || state === 'Perda') {
+                      const show = cardStatus === 'aberto';
+                      return show;
+                    }
+
+                    return true;
+                  });
+
+                  if (filteredActions.length === 0) {
+                    console.log('⚠️ [Actions] Nenhuma ação passou pelos filtros:', { 
+                      cardStatus, 
+                      userRole, 
+                      totalActions: pipelineActions.length,
+                      actionsStates: pipelineActions.map(a => a.deal_state)
+                    });
+                  }
+
+                  // Ordenar: Ganho, Perda, outros
+                  const orderedActions = [...filteredActions].sort((a, b) => {
+                    const order = { 'Ganho': 1, 'Perda': 2, 'Aberto': 3 };
+                    return (order[a.deal_state] || 99) - (order[b.deal_state] || 99);
+                  });
+
+                  return orderedActions.map((action: any) => {
+                    const isWin = action.deal_state === 'Ganho';
+                    const isLoss = action.deal_state === 'Perda';
+                    const shouldDisable = isExecutingAction;
+
+                    return (
               <Button
-                onClick={handleMarkAsWon}
-                className="bg-green-600 hover:bg-green-700 text-white h-8"
-              >
-                Ganho
+                        key={action.id}
+                        size="sm"
+                        onClick={() => {
+                          console.log('🎯 Botão clicado:', action.action_name);
+                          executeAction(action);
+                        }}
+                        disabled={shouldDisable}
+                        className={cn(
+                          "h-8 px-4 text-xs font-medium rounded-none shadow-sm transition-all",
+                          isWin 
+                            ? "bg-green-600 hover:bg-green-700 text-white border-transparent dark:bg-green-600 dark:hover:bg-green-700 dark:text-white" 
+                            : isLoss 
+                              ? "bg-red-600 hover:bg-red-700 text-white border-transparent dark:bg-red-600 dark:hover:bg-red-700 dark:text-white" 
+                              : "bg-white text-gray-900 border border-gray-300 hover:bg-gray-100 dark:bg-[#1b1b1b] dark:text-gray-100 dark:border-gray-700"
+                        )}
+                      >
+                        {isExecutingAction ? '...' : action.action_name}
               </Button>
-              <Button
-                onClick={handleMarkAsLost}
-                variant="destructive"
-                className="h-8"
-              >
-                Perdido
-              </Button>
+                    );
+                  });
+                })()}
+              </div>
               
               {/* Popover de ações do card */}
               <Popover open={isCardActionsPopoverOpen} onOpenChange={setIsCardActionsPopoverOpen}>
                 <PopoverContent 
-                  className="w-48 p-1 z-[100]" 
+                  className="w-48 p-1 z-[100] bg-white dark:bg-[#1b1b1b] border-gray-200 dark:border-gray-700 shadow-md" 
                   align="end"
                   side="bottom"
                   sideOffset={5}
@@ -1481,65 +1810,16 @@ const formatTime = (date: Date) => {
           </div>
         </div>
 
-        {/* Timeline do Pipeline - ENTRE HEADER E TABS */}
+        {/* Breadcrumb do pipeline */}
         {pipelineData && columns && Array.isArray(columns) && columns.length > 0 && cardData && cardData.column_id && (
           <div className="px-6 pb-4 border-b border-gray-200 dark:border-gray-700">
-            {/* Barra de progresso com formato de seta - mais fina e colada */}
-            <div className="flex items-center mb-2" role="listbox" style={{ gap: 0 }}>
-              {columns.map((column, index) => {
-                try {
-                  const isCurrent = column?.id === cardData?.column_id;
-                  const isPassed = passedColumns?.some(c => c?.id === column?.id) || false;
-                  const days = getDaysInStage(column?.id || '');
-                  const isFirst = index === 0;
-                  const isLast = index === columns.length - 1;
-                  const isActive = isCurrent || isPassed;
-                  
-                  return (
-                    <button
-                      key={column?.id || index}
-                      role="option"
-                      aria-selected={isCurrent}
-                      className={cn(
-                        "relative flex items-center justify-center text-xs font-medium transition-colors border-0 outline-none",
-                        isCurrent ? "cui5-stage-selector__stage--current" : ""
-                      )}
-                      style={{ 
-                        flex: 1,
-                        height: '28px', // Mais fina ainda
-                        clipPath: isLast 
-                          ? "polygon(0 0, calc(100% - 6px) 0, 100% 50%, calc(100% - 6px) 100%, 0 100%)"
-                          : isFirst
-                          ? "polygon(0 0, calc(100% - 6px) 0, 100% 50%, calc(100% - 6px) 100%, 0 100%)"
-                          : "polygon(0 0, calc(100% - 6px) 0, 100% 50%, calc(100% - 6px) 100%, 0 100%, 6px 50%)",
-                        marginLeft: isFirst ? 0 : -6, // Overlap menor para ficar colado
-                        paddingLeft: isFirst ? "0.5rem" : "0.75rem",
-                        paddingRight: isLast ? "0.5rem" : "0.75rem",
-                        zIndex: columns.length - index,
-                        backgroundColor: isActive 
-                          ? "#16a34a" // green-600
-                          : "#e5e7eb", // gray-200
-                        color: isActive ? "#ffffff" : "#374151", // gray-700
-                      }}
-                    >
-                      <div>{days > 0 ? `${days} ${days === 1 ? 'dia' : 'dias'}` : '0 dias'}</div>
-                    </button>
-                  );
-                } catch (error) {
-                  console.error('Erro ao renderizar coluna:', error, column);
-                  return null;
-                }
-              })}
-            </div>
-            
-            {/* Breadcrumb do pipeline */}
             <div className="flex items-center">
               <button 
-                className="flex items-center gap-1 text-sm text-blue-600 dark:text-blue-400 hover:underline bg-transparent border-0 p-0 cursor-pointer"
+                className="flex items-center gap-1 text-sm text-gray-900 dark:text-gray-100 bg-transparent border-0 p-0 cursor-pointer"
                 data-testid="pipeline-info"
               >
                 <span>{pipelineData.name}</span>
-                <ChevronRight className="h-4 w-4 mx-1" />
+                <ChevronRight className="h-4 w-4 mx-1 text-gray-400" />
                 <Popover open={isColumnSelectModalOpen} onOpenChange={setIsColumnSelectModalOpen}>
                   <PopoverTrigger asChild>
                     <span 
@@ -1547,13 +1827,13 @@ const formatTime = (date: Date) => {
                         e.stopPropagation();
                         setSelectedColumnId(cardData?.column_id || "");
                       }}
-                      className="cursor-pointer hover:text-blue-800 dark:hover:text-blue-300"
+                      className="cursor-pointer hover:opacity-80 transition-opacity"
                     >
                       {currentColumn?.name || 'Coluna não encontrada'}
                     </span>
                   </PopoverTrigger>
                   <PopoverContent 
-                    className="w-auto p-4 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-[#1f1f1f] shadow-lg"
+                    className="w-auto p-4 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-[#1b1b1b] shadow-lg"
                     align="start"
                     sideOffset={8}
                     onClick={(e) => e.stopPropagation()}
@@ -1685,12 +1965,9 @@ const formatTime = (date: Date) => {
                   <div className="flex items-center gap-2 text-sm">
                     <User className="h-4 w-4 text-gray-400" />
                     <div className="flex-1">
-                      <a 
-                        href={`#`}
-                        className="text-blue-600 dark:text-blue-400 hover:underline"
-                      >
+                      <span className="text-gray-900 dark:text-gray-100">
                         {owner.name}
-                      </a>
+                      </span>
                     </div>
                     <Button
                       variant="ghost"
@@ -1764,24 +2041,58 @@ const formatTime = (date: Date) => {
                   <div className="flex items-center gap-2 text-sm">
                     <User className="h-4 w-4 text-gray-400" />
                     <div className="flex-1">
-                      <a 
-                        href={`#`}
-                        className="text-blue-600 dark:text-blue-400 hover:underline"
-                      >
+                      {isEditingContactName ? (
+                        <div className="flex items-center gap-1">
+                          <Input
+                            value={tempContactName}
+                            onChange={(e) => setTempContactName(e.target.value)}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter') handleUpdateContactName();
+                              if (e.key === 'Escape') setIsEditingContactName(false);
+                            }}
+                            className="h-7 text-xs py-0"
+                            autoFocus
+                          />
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-6 w-6 text-green-600"
+                            onClick={handleUpdateContactName}
+                          >
+                            <Check className="h-3 w-3" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-6 w-6 text-red-600"
+                            onClick={() => setIsEditingContactName(false)}
+                          >
+                            <X className="h-3 w-3" />
+                          </Button>
+                        </div>
+                      ) : (
+                        <span className="text-gray-900 dark:text-gray-100">
                         {contact.name}
-                      </a>
+                        </span>
+                      )}
                     </div>
+                    {!isEditingContactName && (
                     <Button
                       variant="ghost"
                       size="icon"
                       className="h-6 w-6"
+                        onClick={() => {
+                          setTempContactName(contact.name || "");
+                          setIsEditingContactName(true);
+                        }}
                     >
                       <Pencil className="h-3 w-3" />
                     </Button>
+                    )}
                   </div>
                 )}
 
-                {/* Etiquetas/Tags */}
+                {/* Etiquetas */}
                 <div className="flex items-start gap-2 text-sm">
                   <Tag className="h-4 w-4 text-gray-400 mt-0.5" />
                   <div className="flex-1 flex flex-wrap gap-1">
@@ -1790,20 +2101,63 @@ const formatTime = (date: Date) => {
                         <Badge
                           key={tag.id}
                           variant="outline"
-                          className="text-xs h-5 rounded-none border px-2 py-0"
+                          className="text-[11px] font-semibold h-5 rounded-none border-none px-2 py-0.5 inline-flex items-center gap-1 text-black dark:text-white"
                           style={{
-                            borderColor: tag.color,
-                            color: tag.color,
                             backgroundColor: tag.color ? `${tag.color}15` : 'transparent'
                           }}
                         >
-                          {tag.name}
+                          <span>{tag.name}</span>
+                          <button
+                            className="ml-1 rounded-sm hover:bg-black/10 transition-colors flex items-center justify-center"
+                            onClick={async (e) => {
+                              e.stopPropagation();
+                              if (!contact?.id) return;
+                              try {
+                                const { error } = await supabase
+                                  .from('contact_tags')
+                                  .delete()
+                                  .eq('contact_id', contact.id)
+                                  .eq('tag_id', tag.id);
+                                
+                                if (error) throw error;
+                                
+                                setContactTags(prev => prev.filter(t => t.id !== tag.id));
+                                toast({
+                                  title: "Etiqueta removida",
+                                  description: "A etiqueta foi removida com sucesso."
+                                });
+                              } catch (error) {
+                                console.error('Erro ao remover etiqueta:', error);
+                                toast({
+                                  title: "Erro",
+                                  description: "Não foi possível remover a etiqueta.",
+                                  variant: "destructive"
+                                });
+                              }
+                            }}
+                            title="Remover etiqueta"
+                          >
+                            <X className="w-3 h-3" />
+                          </button>
                         </Badge>
                       ))
                     ) : (
                       <span className="text-gray-500 dark:text-gray-400 text-xs">Adicionar etiquetas</span>
                     )}
                   </div>
+                  {contact?.id && (
+                    <AddContactTagButton
+                      contactId={contact.id}
+                      onTagAdded={(tag) => {
+                        setContactTags((prev) => {
+                          if (prev.some((existing) => existing.id === tag.id)) {
+                            return prev;
+                          }
+                          return [...prev, tag];
+                        });
+                      }}
+                    />
+                  )}
                 </div>
               </CollapsibleContent>
             </Collapsible>
@@ -1963,16 +2317,25 @@ const formatTime = (date: Date) => {
           {/* Tabs */}
           <Tabs defaultValue="anotacoes" className="flex-1 flex flex-col overflow-hidden">
             <div className="border-b border-gray-200 dark:border-gray-700 px-6">
-              <TabsList className="bg-transparent">
-                <TabsTrigger value="anotacoes" className="flex items-center gap-2">
+              <TabsList className="bg-transparent gap-4">
+                <TabsTrigger 
+                  value="anotacoes" 
+                  className="flex items-center gap-2 rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:shadow-none dark:text-gray-400 dark:data-[state=active]:text-white"
+                >
                   <FileText className="h-4 w-4" />
                   <span>Anotações</span>
                 </TabsTrigger>
-                <TabsTrigger value="atividade" className="flex items-center gap-2">
+                <TabsTrigger 
+                  value="atividade" 
+                  className="flex items-center gap-2 rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:shadow-none dark:text-gray-400 dark:data-[state=active]:text-white"
+                >
                   <CalendarIconLucide className="h-4 w-4" />
                   <span>Atividade</span>
                 </TabsTrigger>
-                <TabsTrigger value="arquivos" className="flex items-center gap-2">
+                <TabsTrigger 
+                  value="arquivos" 
+                  className="flex items-center gap-2 rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:shadow-none dark:text-gray-400 dark:data-[state=active]:text-white"
+                >
                   <File className="h-4 w-4" />
                   <span>Arquivos</span>
                 </TabsTrigger>
@@ -1991,97 +2354,184 @@ const formatTime = (date: Date) => {
                           Escreva uma anotação, @nome...
                         </div>
                       )}
+                      <style>
+                        {`
+                          .note-editor ul { list-style-type: disc !important; margin-left: 1.5rem !important; margin-top: 0.5rem !important; margin-bottom: 0.5rem !important; }
+                          .note-editor ol { list-style-type: decimal !important; margin-left: 1.5rem !important; margin-top: 0.5rem !important; margin-bottom: 0.5rem !important; }
+                          .note-editor li { display: list-item !important; margin-bottom: 0.25rem !important; }
+                          .note-editor b, .note-editor strong { font-weight: 700 !important; }
+                          .note-editor i, .note-editor em { font-style: italic !important; }
+                          .note-editor u { text-decoration: underline !important; }
+                        `}
+                      </style>
                       <div
                         ref={noteContentRef}
                         contentEditable
                         suppressContentEditableWarning
                         onInput={(e) => {
-                          const text = e.currentTarget.textContent || "";
-                          setNoteContent(text);
+                          const html = e.currentTarget.innerHTML || "";
+                          setNoteContent(html);
                         }}
                         onFocus={(e) => {
-                          if (!e.currentTarget.textContent) {
-                            e.currentTarget.textContent = "";
+                          if (!e.currentTarget.innerHTML) {
+                            e.currentTarget.innerHTML = "";
                           }
                         }}
-                        className="flex-1 p-4 outline-none text-sm min-h-[200px] relative z-10"
-                        style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}
+                        className="flex-1 p-4 outline-none text-sm min-h-[200px] relative z-10 text-gray-900 dark:text-gray-100 note-editor prose prose-sm dark:prose-invert max-w-none"
                       />
                     </div>
                     
                     {/* Toolbar de formatação */}
                     <div className="border-t border-gray-200 dark:border-gray-700 p-2 flex items-center gap-1 flex-wrap">
+                      <TooltipProvider delayDuration={700}>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
                       <button
                         type="button"
-                        onClick={() => document.execCommand('bold', false)}
-                        className="p-1.5 rounded hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors"
-                        title="Negrito"
+                              onMouseDown={(e) => {
+                                e.preventDefault();
+                                executeEditorCommand('bold');
+                              }}
+                              className="p-1.5 rounded hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors text-gray-700 dark:text-gray-300"
                       >
                         <Bold className="h-4 w-4" />
                       </button>
+                          </TooltipTrigger>
+                          <TooltipContent className="bg-white dark:bg-[#1b1b1b] border-gray-200 dark:border-gray-700 text-gray-900 dark:text-gray-100 shadow-md">
+                            <p>Negrito</p>
+                          </TooltipContent>
+                        </Tooltip>
+
+                        <Tooltip>
+                          <TooltipTrigger asChild>
                       <button
                         type="button"
-                        onClick={() => document.execCommand('italic', false)}
-                        className="p-1.5 rounded hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors"
-                        title="Itálico"
+                              onMouseDown={(e) => {
+                                e.preventDefault();
+                                executeEditorCommand('italic');
+                              }}
+                              className="p-1.5 rounded hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors text-gray-700 dark:text-gray-300"
                       >
                         <Italic className="h-4 w-4" />
                       </button>
+                          </TooltipTrigger>
+                          <TooltipContent className="bg-white dark:bg-[#1b1b1b] border-gray-200 dark:border-gray-700 text-gray-900 dark:text-gray-100 shadow-md">
+                            <p>Itálico</p>
+                          </TooltipContent>
+                        </Tooltip>
+
+                        <Tooltip>
+                          <TooltipTrigger asChild>
                       <button
                         type="button"
-                        onClick={() => document.execCommand('underline', false)}
-                        className="p-1.5 rounded hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors"
-                        title="Sublinhado"
+                              onMouseDown={(e) => {
+                                e.preventDefault();
+                                executeEditorCommand('underline');
+                              }}
+                              className="p-1.5 rounded hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors text-gray-700 dark:text-gray-300"
                       >
                         <Underline className="h-4 w-4" />
                       </button>
+                          </TooltipTrigger>
+                          <TooltipContent className="bg-white dark:bg-[#1b1b1b] border-gray-200 dark:border-gray-700 text-gray-900 dark:text-gray-100 shadow-md">
+                            <p>Sublinhado</p>
+                          </TooltipContent>
+                        </Tooltip>
+
                       <div className="w-px h-6 bg-gray-300 dark:bg-gray-600 mx-1" />
+
+                        <Tooltip>
+                          <TooltipTrigger asChild>
                       <button
                         type="button"
-                        onClick={() => document.execCommand('insertOrderedList', false)}
-                        className="p-1.5 rounded hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors"
-                        title="Lista numerada"
+                              onMouseDown={(e) => {
+                                e.preventDefault();
+                                executeEditorCommand('insertUnorderedList');
+                              }}
+                              className="p-1.5 rounded hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors text-gray-700 dark:text-gray-300"
+                            >
+                              <List className="h-4 w-4" />
+                            </button>
+                          </TooltipTrigger>
+                          <TooltipContent className="bg-white dark:bg-[#1b1b1b] border-gray-200 dark:border-gray-700 text-gray-900 dark:text-gray-100 shadow-md">
+                            <p>Lista de marcadores</p>
+                          </TooltipContent>
+                        </Tooltip>
+
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <button
+                              type="button"
+                              onMouseDown={(e) => {
+                                e.preventDefault();
+                                executeEditorCommand('insertOrderedList');
+                              }}
+                              className="p-1.5 rounded hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors text-gray-700 dark:text-gray-300"
                       >
                         <ListOrdered className="h-4 w-4" />
                       </button>
+                          </TooltipTrigger>
+                          <TooltipContent className="bg-white dark:bg-[#1b1b1b] border-gray-200 dark:border-gray-700 text-gray-900 dark:text-gray-100 shadow-md">
+                            <p>Lista numerada</p>
+                          </TooltipContent>
+                        </Tooltip>
+
                       <div className="w-px h-6 bg-gray-300 dark:bg-gray-600 mx-1" />
+
+                        <Tooltip>
+                          <TooltipTrigger asChild>
                       <button
                         type="button"
-                        onClick={() => document.execCommand('outdent', false)}
-                        className="p-1.5 rounded hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors"
-                        title="Diminuir indentação"
+                              onMouseDown={(e) => {
+                                e.preventDefault();
+                                executeEditorCommand('outdent');
+                              }}
+                              className="p-1.5 rounded hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors text-gray-700 dark:text-gray-300"
                       >
                         <AlignLeft className="h-4 w-4" />
                       </button>
+                          </TooltipTrigger>
+                          <TooltipContent className="bg-white dark:bg-[#1b1b1b] border-gray-200 dark:border-gray-700 text-gray-900 dark:text-gray-100 shadow-md">
+                            <p>Diminuir indentação</p>
+                          </TooltipContent>
+                        </Tooltip>
+
+                        <Tooltip>
+                          <TooltipTrigger asChild>
                       <button
                         type="button"
-                        onClick={() => document.execCommand('indent', false)}
-                        className="p-1.5 rounded hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors"
-                        title="Aumentar indentação"
+                              onMouseDown={(e) => {
+                                e.preventDefault();
+                                executeEditorCommand('indent');
+                              }}
+                              className="p-1.5 rounded hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors text-gray-700 dark:text-gray-300"
                       >
                         <AlignRight className="h-4 w-4" />
                       </button>
+                          </TooltipTrigger>
+                          <TooltipContent className="bg-white dark:bg-[#1b1b1b] border-gray-200 dark:border-gray-700 text-gray-900 dark:text-gray-100 shadow-md">
+                            <p>Aumentar indentação</p>
+                          </TooltipContent>
+                        </Tooltip>
+
+                        <Tooltip>
+                          <TooltipTrigger asChild>
                       <button
                         type="button"
-                        onClick={() => document.execCommand('strikeThrough', false)}
-                        className="p-1.5 rounded hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors"
-                        title="Tachado"
-                      >
-                        <Strikethrough className="h-4 w-4" />
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => document.execCommand('removeFormat', false)}
-                        className="p-1.5 rounded hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors"
-                        title="Remover formatação"
+                              onMouseDown={(e) => {
+                                e.preventDefault();
+                                executeEditorCommand('removeFormat');
+                              }}
+                              className="p-1.5 rounded hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors text-gray-700 dark:text-gray-300"
                       >
                         <X className="h-4 w-4" />
                       </button>
-                      
-                      {/* Separador e informações */}
-                      <div className="flex-1" />
-                      <div className="w-px h-6 bg-gray-300 dark:bg-gray-600 mx-1" />
-                      <Info className="h-4 w-4 text-gray-400" />
+                          </TooltipTrigger>
+                          <TooltipContent className="bg-white dark:bg-[#1b1b1b] border-gray-200 dark:border-gray-700 text-gray-900 dark:text-gray-100 shadow-md">
+                            <p>Remover formatação</p>
+                          </TooltipContent>
+                        </Tooltip>
+                      </TooltipProvider>
                       
                       {/* Botões de ação */}
                       <div className="flex items-center gap-2 ml-2">
@@ -2090,10 +2540,10 @@ const formatTime = (date: Date) => {
                           onClick={() => {
                             setNoteContent("");
                             if (noteContentRef.current) {
-                              noteContentRef.current.textContent = "";
+                              noteContentRef.current.innerHTML = "";
                             }
                           }}
-                          className="h-8"
+                          className="h-8 dark:bg-transparent dark:border-gray-600 dark:text-gray-100 dark:hover:bg-gray-800"
                         >
                           Cancelar
                         </Button>
@@ -2136,7 +2586,7 @@ const formatTime = (date: Date) => {
                               // Limpar campo de anotação
                               setNoteContent("");
                               if (noteContentRef.current) {
-                                noteContentRef.current.textContent = "";
+                                noteContentRef.current.innerHTML = "";
                               }
 
                               toast({
@@ -2157,7 +2607,7 @@ const formatTime = (date: Date) => {
                             }
                           }}
                           disabled={!noteContent.trim()}
-                          className="bg-green-600 hover:bg-green-700 text-white h-8 disabled:opacity-50"
+                          className="bg-green-600 hover:bg-green-700 text-white h-8 disabled:opacity-50 dark:bg-green-600 dark:hover:bg-green-700 dark:text-white"
                         >
                           Salvar
                         </Button>
@@ -2181,54 +2631,79 @@ const formatTime = (date: Date) => {
                       {/* Filtros */}
                       <div className="flex items-center gap-2 flex-wrap mb-6">
                         <Button
-                          variant={historyFilter === "all" ? "default" : "ghost"}
+                          variant="ghost"
                           size="sm"
                           onClick={() => setHistoryFilter("all")}
                           className={cn(
-                            "text-xs h-8",
+                            "text-xs h-8 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-none transition-colors",
                             historyFilter === "all" && "bg-blue-50 dark:bg-blue-950 border border-blue-200 dark:border-blue-800 text-blue-600 dark:text-blue-400 font-semibold hover:bg-blue-100 dark:hover:bg-blue-900"
                           )}
                         >
                           Todos
                         </Button>
                         <Button
-                          variant={historyFilter === "notes" ? "default" : "ghost"}
+                          variant="ghost"
                           size="sm"
                           onClick={() => setHistoryFilter("notes")}
                           className={cn(
-                            "text-xs h-8 hover:bg-gray-100 dark:hover:bg-gray-800",
+                            "text-xs h-8 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-none transition-colors",
                             historyFilter === "notes" && "bg-blue-50 dark:bg-blue-950 border border-blue-200 dark:border-blue-800 text-blue-600 dark:text-blue-400 font-semibold hover:bg-blue-100 dark:hover:bg-blue-900"
                           )}
                         >
                           Anotações ({historyEvents.filter(e => e.type === "notes").length})
                         </Button>
                         <Button
-                          variant={historyFilter === "activities" ? "default" : "ghost"}
+                          variant="ghost"
                           size="sm"
                           onClick={() => setHistoryFilter("activities")}
                           className={cn(
-                            "text-xs h-8",
+                            "text-xs h-8 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-none transition-colors",
                             historyFilter === "activities" && "bg-blue-50 dark:bg-blue-950 border border-blue-200 dark:border-blue-800 text-blue-600 dark:text-blue-400 font-semibold hover:bg-blue-100 dark:hover:bg-blue-900"
                           )}
                         >
                           Atividades ({historyEvents.filter(e => e.type?.startsWith("activity_")).length})
                         </Button>
                         <Button
-                          variant={historyFilter === "files" ? "default" : "ghost"}
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => setHistoryFilter("activities_done")}
+                          className={cn(
+                            "text-xs h-8 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-none transition-colors",
+                            historyFilter === "activities_done" && "bg-blue-50 dark:bg-blue-950 border border-blue-200 dark:border-blue-800 text-blue-600 dark:text-blue-400 font-semibold hover:bg-blue-100 dark:hover:bg-blue-900"
+                          )}
+                        >
+                          Atividades Realizadas ({historyEvents.filter(e => e.type?.startsWith("activity_") && e.metadata?.status === 'completed').length})
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => setHistoryFilter("activities_future")}
+                          className={cn(
+                            "text-xs h-8 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-none transition-colors",
+                            historyFilter === "activities_future" && "bg-blue-50 dark:bg-blue-950 border border-blue-200 dark:border-blue-800 text-blue-600 dark:text-blue-400 font-semibold hover:bg-blue-100 dark:hover:bg-blue-900"
+                          )}
+                        >
+                          Atividades Futuras ({historyEvents.filter(e => e.type?.startsWith("activity_") && e.metadata?.status !== 'completed').length})
+                        </Button>
+                        <Button
+                          variant="ghost"
                           size="sm"
                           onClick={() => setHistoryFilter("files")}
                           className={cn(
-                            "text-xs h-8",
+                            "text-xs h-8 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-none transition-colors",
                             historyFilter === "files" && "bg-blue-50 dark:bg-blue-950 border border-blue-200 dark:border-blue-800 text-blue-600 dark:text-blue-400 font-semibold hover:bg-blue-100 dark:hover:bg-blue-900"
                           )}
                         >
-                          Arquivos ({historyEvents.filter(e => e.type === "files").length})
+                          Arquivos ({historyEvents.filter(e => (e.type as any) === "files").length})
                         </Button>
                         <Button
-                          variant={historyFilter === "changelog" ? "default" : "ghost"}
+                          variant="ghost"
                           size="sm"
                           onClick={() => setHistoryFilter("changelog")}
-                          className="text-xs h-8"
+                          className={cn(
+                            "text-xs h-8 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-none transition-colors",
+                            historyFilter === "changelog" && "bg-blue-50 dark:bg-blue-950 border border-blue-200 dark:border-blue-800 text-blue-600 dark:text-blue-400 font-semibold hover:bg-blue-100 dark:hover:bg-blue-900"
+                          )}
                         >
                           Registro de alterações ({historyEvents.filter(e => ["column_transfer", "pipeline_transfer", "tag", "user_assigned", "queue_transfer", "agent_activity"].includes(e.type)).length})
                         </Button>
@@ -2254,6 +2729,7 @@ const formatTime = (date: Date) => {
                               setEditingNoteContent={setEditingNoteContent}
                               onSaveNote={handleUpdateNote}
                               onCancelNote={cancelNoteEdit}
+                              setSelectedFileForPreview={setSelectedFileForPreview}
                             />
                           ))}
                           {getFilteredHistoryEvents(historyEvents, historyFilter).length === 0 && (
@@ -2275,10 +2751,10 @@ const formatTime = (date: Date) => {
                     {/* Título da Atividade */}
                     <div>
                       <Input
-                        placeholder="Ligação Abordada"
+                        placeholder={activityForm.type}
                         value={activityForm.subject}
                         onChange={(e) => setActivityForm({...activityForm, subject: e.target.value})}
-                        className="text-lg font-semibold border-0 border-b-2 border-gray-300 dark:border-gray-600 rounded-none px-0 focus-visible:ring-0 focus-visible:border-primary bg-transparent"
+                        className="text-lg font-semibold border-0 border-b-2 border-gray-300 dark:border-gray-600 rounded-none pl-2 pr-0 focus-visible:ring-0 focus-visible:border-primary bg-transparent"
                       />
                     </div>
 
@@ -2306,14 +2782,14 @@ const formatTime = (date: Date) => {
                                   className={cn(
                                     "p-2 rounded-md transition-colors",
                                     activityForm.type === option.type
-                                      ? "bg-blue-600 dark:bg-blue-700 text-white"
+                                      ? "bg-[#eab308] text-black"
                                       : "bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700"
                                   )}
                                 >
                                   <Icon className="h-5 w-5" />
                                 </button>
                               </TooltipTrigger>
-                              <TooltipContent>
+                              <TooltipContent className="bg-white dark:bg-[#1b1b1b] border-gray-200 dark:border-gray-700 text-gray-900 dark:text-gray-100 shadow-md">
                                 <p>{option.label}</p>
                               </TooltipContent>
                             </Tooltip>
@@ -2322,21 +2798,23 @@ const formatTime = (date: Date) => {
                       </div>
                     </TooltipProvider>
 
-                    {/* Data e Hora */}
-                    <div className="grid grid-cols-2 gap-4">
-                      <div className="space-y-2">
-                        <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Data de início</label>
+                    {/* Data e Hora - Estilo Unificado */}
+                    <div className="flex items-center gap-2">
+                      <div className="shrink-0">
+                        <Clock className="h-5 w-5 text-gray-400" />
+                      </div>
+                      <div className="flex items-center gap-1.5 flex-1 flex-wrap md:flex-nowrap">
+                        {/* Data Início */}
                         <Popover open={showStartDatePicker} onOpenChange={setShowStartDatePicker}>
                           <PopoverTrigger asChild>
                             <Button
                               variant="outline"
-                              className="w-full justify-start text-left font-normal"
+                              className="h-9 px-3 py-1 text-sm font-normal border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-[#1b1b1b] min-w-[140px]"
                             >
-                              <CalendarIconLucide className="mr-2 h-4 w-4" />
                               {format(activityForm.startDate, "dd 'de' MMM 'de' yyyy", { locale: ptBR })}
                             </Button>
                           </PopoverTrigger>
-                          <PopoverContent className="w-auto p-0" align="start">
+                          <PopoverContent className="w-auto p-0 bg-white dark:bg-[#1b1b1b] border border-gray-200 dark:border-gray-700 shadow-md" align="start">
                             <Calendar
                               mode="single"
                               selected={activityForm.startDate}
@@ -2344,59 +2822,96 @@ const formatTime = (date: Date) => {
                                 if (date) {
                                   setActivityForm({...activityForm, startDate: date});
                                   setShowStartDatePicker(false);
-                                  setShowStartTimePicker(true);
                                 }
                               }}
                               initialFocus
                             />
                           </PopoverContent>
                         </Popover>
-                      </div>
 
-                      <div className="space-y-2">
-                        <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Hora de início</label>
+                        {/* Hora Início */}
                         <Popover open={showStartTimePicker} onOpenChange={setShowStartTimePicker}>
                           <PopoverTrigger asChild>
                             <Button
                               variant="outline"
-                              className="w-full justify-start text-left font-normal"
+                              className="h-9 px-3 py-1 text-sm font-normal border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-[#1b1b1b] min-w-[70px]"
                             >
-                              <Clock className="mr-2 h-4 w-4" />
-                              {activityForm.startTime}
+                              {activityForm.startTime || "HH:mm"}
                             </Button>
                           </PopoverTrigger>
-                          <PopoverContent className="w-auto p-0" align="start">
-                            <TimePickerModal
-                              isOpen={showStartTimePicker}
-                              onClose={() => setShowStartTimePicker(false)}
-                              onTimeSelect={(hour) => {
+                          <PopoverContent className="w-32 p-0 bg-white dark:bg-[#1b1b1b] border border-gray-200 dark:border-gray-700 shadow-md" align="start">
+                            <ScrollArea className="h-60">
+                              <div className="p-1">
+                                {timeOptions.map((time) => (
+                                  <button
+                                    key={time}
+                                    className={cn(
+                                      "w-full text-left px-3 py-2 text-sm rounded-sm hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors",
+                                      activityForm.startTime === time && "bg-primary text-primary-foreground font-semibold"
+                                    )}
+                                    onClick={() => {
+                                      const [hour] = time.split(':').map(Number);
                                 setSelectedStartHour(hour);
+                                      setActivityForm({ ...activityForm, startTime: time });
                                 setShowStartTimePicker(false);
-                                setActivityForm({
-                                  ...activityForm,
-                                  startTime: `${hour.toString().padStart(2, '0')}:00`
-                                });
-                              }}
-                              selectedHour={selectedStartHour}
-                              isDarkMode={false}
-                            />
+                                    }}
+                                  >
+                                    {time}
+                                  </button>
+                                ))}
+                              </div>
+                            </ScrollArea>
                           </PopoverContent>
                         </Popover>
-                      </div>
 
-                      <div className="space-y-2">
-                        <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Data de fim</label>
+                        <span className="text-gray-400 mx-0.5">–</span>
+
+                        {/* Hora Fim */}
+                        <Popover open={showEndTimePicker} onOpenChange={setShowEndTimePicker}>
+                          <PopoverTrigger asChild>
+                            <Button
+                              variant="outline"
+                              className="h-9 px-3 py-1 text-sm font-normal border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-[#1b1b1b] min-w-[70px]"
+                            >
+                              {activityForm.endTime || "HH:mm"}
+                            </Button>
+                          </PopoverTrigger>
+                          <PopoverContent className="w-32 p-0 bg-white dark:bg-[#1b1b1b] border border-gray-200 dark:border-gray-700 shadow-md" align="start">
+                            <ScrollArea className="h-60">
+                              <div className="p-1">
+                                {timeOptions.map((time) => (
+                                  <button
+                                    key={time}
+                                    className={cn(
+                                      "w-full text-left px-3 py-2 text-sm rounded-sm hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors",
+                                      activityForm.endTime === time && "bg-primary text-primary-foreground font-semibold"
+                                    )}
+                                    onClick={() => {
+                                      const [hour] = time.split(':').map(Number);
+                                      setSelectedEndHour(hour);
+                                      setActivityForm({ ...activityForm, endTime: time });
+                                      setShowEndTimePicker(false);
+                                    }}
+                                  >
+                                    {time}
+                                  </button>
+                                ))}
+                      </div>
+                            </ScrollArea>
+                          </PopoverContent>
+                        </Popover>
+
+                        {/* Data Fim */}
                         <Popover open={showEndDatePicker} onOpenChange={setShowEndDatePicker}>
                           <PopoverTrigger asChild>
                             <Button
                               variant="outline"
-                              className="w-full justify-start text-left font-normal"
+                              className="h-9 px-3 py-1 text-sm font-normal border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-[#1b1b1b] min-w-[140px]"
                             >
-                              <CalendarIconLucide className="mr-2 h-4 w-4" />
                               {format(activityForm.endDate, "dd 'de' MMM 'de' yyyy", { locale: ptBR })}
                             </Button>
                           </PopoverTrigger>
-                          <PopoverContent className="w-auto p-0" align="start">
+                          <PopoverContent className="w-auto p-0 bg-white dark:bg-[#1b1b1b] border border-gray-200 dark:border-gray-700 shadow-md" align="start">
                             <Calendar
                               mode="single"
                               selected={activityForm.endDate}
@@ -2404,41 +2919,9 @@ const formatTime = (date: Date) => {
                                 if (date) {
                                   setActivityForm({...activityForm, endDate: date});
                                   setShowEndDatePicker(false);
-                                  setShowEndTimePicker(true);
                                 }
                               }}
                               initialFocus
-                            />
-                          </PopoverContent>
-                        </Popover>
-                      </div>
-
-                      <div className="space-y-2">
-                        <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Hora de fim</label>
-                        <Popover open={showEndTimePicker} onOpenChange={setShowEndTimePicker}>
-                          <PopoverTrigger asChild>
-                            <Button
-                              variant="outline"
-                              className="w-full justify-start text-left font-normal"
-                            >
-                              <Clock className="mr-2 h-4 w-4" />
-                              {activityForm.endTime}
-                            </Button>
-                          </PopoverTrigger>
-                          <PopoverContent className="w-auto p-0" align="start">
-                            <TimePickerModal
-                              isOpen={showEndTimePicker}
-                              onClose={() => setShowEndTimePicker(false)}
-                              onTimeSelect={(hour) => {
-                                setSelectedEndHour(hour);
-                                setShowEndTimePicker(false);
-                                setActivityForm({
-                                  ...activityForm,
-                                  endTime: `${hour.toString().padStart(2, '0')}:30`
-                                });
-                              }}
-                              selectedHour={selectedEndHour}
-                              isDarkMode={false}
                             />
                           </PopoverContent>
                         </Popover>
@@ -2479,7 +2962,6 @@ const formatTime = (date: Date) => {
                             <SelectItem value="ocupado">Ocupado</SelectItem>
                           </SelectContent>
                         </Select>
-                        <Info className="h-4 w-4 text-gray-400" />
                       </div>
                     </div>
 
@@ -2735,7 +3217,7 @@ const formatTime = (date: Date) => {
                             onClick={() => setHistoryFilter("all")}
                             className={cn(
                               "text-xs h-8",
-                              historyFilter === "all" && "bg-blue-50 dark:bg-blue-950 border border-blue-200 dark:border-blue-800 text-blue-600 dark:text-blue-400 font-semibold hover:bg-blue-100 dark:hover:bg-blue-900"
+                              historyFilter === "all" && "bg-blue-50 dark:bg-blue-950 text-blue-600 dark:text-blue-400 font-semibold hover:bg-blue-100 dark:hover:bg-blue-900"
                             )}
                           >
                             Todos
@@ -2746,7 +3228,7 @@ const formatTime = (date: Date) => {
                             onClick={() => setHistoryFilter("notes")}
                             className={cn(
                               "text-xs h-8 hover:bg-gray-100 dark:hover:bg-gray-800",
-                              historyFilter === "notes" && "bg-blue-50 dark:bg-blue-950 border border-blue-200 dark:border-blue-800 text-blue-600 dark:text-blue-400 font-semibold hover:bg-blue-100 dark:hover:bg-blue-900"
+                              historyFilter === "notes" && "bg-blue-50 dark:bg-blue-950 text-blue-600 dark:text-blue-400 font-semibold hover:bg-blue-100 dark:hover:bg-blue-900"
                             )}
                           >
                             Anotações ({historyEvents.filter(e => e.type === "notes").length})
@@ -2757,10 +3239,32 @@ const formatTime = (date: Date) => {
                             onClick={() => setHistoryFilter("activities")}
                             className={cn(
                               "text-xs h-8",
-                              historyFilter === "activities" && "bg-blue-50 dark:bg-blue-950 border border-blue-200 dark:border-blue-800 text-blue-600 dark:text-blue-400 font-semibold hover:bg-blue-100 dark:hover:bg-blue-900"
+                              historyFilter === "activities" && "bg-blue-50 dark:bg-blue-950 text-blue-600 dark:text-blue-400 font-semibold hover:bg-blue-100 dark:hover:bg-blue-900"
                             )}
                           >
                             Atividades ({historyEvents.filter(e => e.type?.startsWith("activity_")).length})
+                          </Button>
+                          <Button
+                            variant={historyFilter === "activities_done" ? "default" : "ghost"}
+                            size="sm"
+                            onClick={() => setHistoryFilter("activities_done")}
+                            className={cn(
+                              "text-xs h-8 hover:bg-gray-100 dark:hover:bg-gray-800",
+                              historyFilter === "activities_done" && "bg-blue-50 dark:bg-blue-950 text-blue-600 dark:text-blue-400 font-semibold hover:bg-blue-100 dark:hover:bg-blue-900"
+                            )}
+                          >
+                            Atividades Realizadas ({historyEvents.filter(e => e.type?.startsWith("activity_") && e.metadata?.status === 'completed').length})
+                          </Button>
+                          <Button
+                            variant={historyFilter === "activities_future" ? "default" : "ghost"}
+                            size="sm"
+                            onClick={() => setHistoryFilter("activities_future")}
+                            className={cn(
+                              "text-xs h-8 hover:bg-gray-100 dark:hover:bg-gray-800",
+                              historyFilter === "activities_future" && "bg-blue-50 dark:bg-blue-950 text-blue-600 dark:text-blue-400 font-semibold hover:bg-blue-100 dark:hover:bg-blue-900"
+                            )}
+                          >
+                            Atividades Futuras ({historyEvents.filter(e => e.type?.startsWith("activity_") && e.metadata?.status !== 'completed').length})
                           </Button>
                           <Button
                             variant={historyFilter === "files" ? "default" : "ghost"}
@@ -2768,10 +3272,10 @@ const formatTime = (date: Date) => {
                             onClick={() => setHistoryFilter("files")}
                             className={cn(
                               "text-xs h-8",
-                              historyFilter === "files" && "bg-blue-50 dark:bg-blue-950 border border-blue-200 dark:border-blue-800 text-blue-600 dark:text-blue-400 font-semibold hover:bg-blue-100 dark:hover:bg-blue-900"
+                              historyFilter === "files" && "bg-blue-50 dark:bg-blue-950 text-blue-600 dark:text-blue-400 font-semibold hover:bg-blue-100 dark:hover:bg-blue-900"
                             )}
                           >
-                            Arquivos ({historyEvents.filter(e => e.type === "files").length})
+                            Arquivos ({historyEvents.filter(e => (e.type as any) === "files").length})
                           </Button>
                           <Button
                             variant={historyFilter === "changelog" ? "default" : "ghost"}
@@ -2779,7 +3283,7 @@ const formatTime = (date: Date) => {
                             onClick={() => setHistoryFilter("changelog")}
                             className={cn(
                               "text-xs h-8",
-                              historyFilter === "changelog" && "bg-blue-50 dark:bg-blue-950 border border-blue-200 dark:border-blue-800 text-blue-600 dark:text-blue-400 font-semibold hover:bg-blue-100 dark:hover:bg-blue-900"
+                              historyFilter === "changelog" && "bg-blue-50 dark:bg-blue-950 text-blue-600 dark:text-blue-400 font-semibold hover:bg-blue-100 dark:hover:bg-blue-900"
                             )}
                           >
                             Registro de alterações ({historyEvents.filter(e => ["column_transfer", "pipeline_transfer", "tag", "user_assigned", "queue_transfer", "agent_activity"].includes(e.type)).length})
@@ -2806,6 +3310,7 @@ const formatTime = (date: Date) => {
                                 setEditingNoteContent={setEditingNoteContent}
                                 onSaveNote={handleUpdateNote}
                                 onCancelNote={cancelNoteEdit}
+                                setSelectedFileForPreview={setSelectedFileForPreview}
                               />
                             ))}
                             {getFilteredHistoryEvents(historyEvents, historyFilter).length === 0 && (
@@ -2820,7 +3325,115 @@ const formatTime = (date: Date) => {
               </TabsContent>
 
               <TabsContent value="arquivos" className="mt-0">
-                <p className="text-gray-600 dark:text-gray-400">Conteúdo de arquivos será implementado aqui.</p>
+                <div className="space-y-6">
+                  {/* Área de Upload */}
+                  <div className="bg-gray-50 dark:bg-gray-900/20 border-2 border-dashed border-gray-200 dark:border-gray-700 p-8 text-center rounded-none">
+                    <input
+                      type="file"
+                      id="file-upload"
+                      className="hidden"
+                      onChange={handleFileUpload}
+                      disabled={isUploadingFile}
+                    />
+                    <label 
+                      htmlFor="file-upload" 
+                      className={cn(
+                        "flex flex-col items-center gap-3 cursor-pointer",
+                        isUploadingFile && "opacity-50 cursor-not-allowed"
+                      )}
+                    >
+                      <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center">
+                        <Upload className="h-6 w-6 text-primary" />
+                      </div>
+                      <div className="space-y-1">
+                        <p className="text-sm font-medium text-gray-900 dark:text-gray-100">
+                          {isUploadingFile ? "Enviando arquivo..." : "Clique para selecionar um arquivo"}
+                        </p>
+                        <p className="text-xs text-gray-500 dark:text-gray-400">
+                          PDF, DOC, XLS, PNG, JPG (máx. 10MB)
+                        </p>
+                      </div>
+                    </label>
+                  </div>
+
+                  {/* Lista de Arquivos */}
+                  <div className="space-y-4">
+                    <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100 flex items-center gap-2">
+                      <File className="h-4 w-4" />
+                      Arquivos anexados
+                    </h3>
+                    
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                      {activities
+                        .filter(a => a.attachment_url)
+                        .map(file => (
+                            <div 
+                              key={file.id} 
+                              className="flex items-center gap-3 p-3 border border-gray-200 dark:border-gray-700 bg-white dark:bg-[#1b1b1b] shadow-sm group hover:border-primary transition-colors cursor-pointer"
+                              onClick={() => {
+                                const ext = file.attachment_name?.split('.').pop()?.toLowerCase();
+                                setSelectedFileForPreview({
+                                  url: file.attachment_url,
+                                  name: file.attachment_name,
+                                  type: ext
+                                });
+                              }}
+                            >
+                            <div className="shrink-0">
+                              {getFileIconComponent(file.attachment_name || "")}
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <p className="text-xs font-medium text-gray-900 dark:text-gray-100 truncate" title={file.attachment_name}>
+                                {file.attachment_name}
+                              </p>
+                              <p className="text-[10px] text-gray-500 dark:text-gray-400">
+                                {format(new Date(file.created_at), "dd/MM/yyyy HH:mm")}
+                              </p>
+                            </div>
+                            <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-7 w-7"
+                                onClick={() => handleDownloadFile(file.attachment_url, file.attachment_name || "arquivo")}
+                                title="Baixar arquivo"
+                              >
+                                <Download className="h-3.5 w-3.5" />
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-7 w-7 text-destructive hover:text-destructive"
+                                onClick={async () => {
+                                  if (!confirm('Deseja realmente excluir este arquivo?')) return;
+                                  try {
+                                    const { error } = await supabase
+                                      .from('activities')
+                                      .delete()
+                                      .eq('id', file.id);
+                                    if (error) throw error;
+                                    await fetchActivities();
+                                    toast({ title: "Sucesso", description: "Arquivo removido." });
+                                  } catch (error) {
+                                    console.error('Erro ao excluir arquivo:', error);
+                                  }
+                                }}
+                                title="Excluir arquivo"
+                              >
+                                <X className="h-3.5 w-3.5" />
+                              </Button>
+                            </div>
+                          </div>
+                        ))}
+                      
+                      {activities.filter(a => a.attachment_url).length === 0 && (
+                        <div className="col-span-full py-8 text-center text-gray-500 dark:text-gray-400 border border-dashed border-gray-200 dark:border-gray-700 text-xs">
+                          Nenhum arquivo anexado a esta oportunidade.
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
               </TabsContent>
             </div>
           </Tabs>
@@ -2829,19 +3442,27 @@ const formatTime = (date: Date) => {
       
       {/* Modal de edição de atividade */}
       <Dialog open={isActivityEditModalOpen} onOpenChange={setIsActivityEditModalOpen}>
-        <DialogContent className="max-w-2xl">
-          <DialogHeader className="flex items-center justify-between bg-gray-100 text-gray-900 px-4 py-3 border-b border-gray-200 dark:bg-[#1a1a1a] dark:text-gray-100 dark:border-gray-700">
-            <DialogTitle>Editar atividade</DialogTitle>
+        <DialogContent className="max-w-2xl p-0 overflow-hidden bg-[#0f0f0f] border-gray-800">
+          <div className="flex flex-col h-full max-h-[90vh]">
+            <DialogHeader className="px-6 py-4 border-b border-gray-800 bg-[#1a1a1a] shrink-0">
+              <DialogTitle className="text-xl font-semibold text-white">Editar atividade</DialogTitle>
           </DialogHeader>
-          <div className="space-y-4">
+
+            <div className="p-6 space-y-6 overflow-y-auto">
+              {/* Assunto/Título */}
+              <div className="space-y-2">
+                <label className="text-sm font-semibold text-gray-200">Assunto</label>
             <Input
-              placeholder="Assunto"
+                  placeholder={activityEditForm.type}
               value={activityEditForm.subject}
               onChange={(e) => setActivityEditForm({ ...activityEditForm, subject: e.target.value })}
-              className="text-base"
+                  className="bg-[#1a1a1a] border-gray-700 h-11 text-gray-100 placeholder:text-gray-500 focus:border-blue-500"
             />
+              </div>
 
-            {/* Ícones de tipo (mesmo layout da tela principal) */}
+              {/* Ícones de tipo */}
+              <div className="space-y-2">
+                <label className="text-sm font-semibold text-gray-200">Tipo de atividade</label>
             <div className="flex items-center gap-2 flex-wrap">
               {[
                 { label: "Mensagem", type: "Mensagem", icon: MessageSquareIcon },
@@ -2864,32 +3485,117 @@ const formatTime = (date: Date) => {
                         className={cn(
                           "p-2 rounded-md transition-colors",
                           activityEditForm.type === option.type
-                            ? "bg-blue-600 dark:bg-blue-700 text-white"
-                            : "bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700"
+                                ? "bg-[#eab308] text-black"
+                                : "bg-[#1a1a1a] border border-gray-700 text-gray-400 hover:bg-[#252525] hover:text-gray-100"
                         )}
                       >
                         <Icon className="h-5 w-5" />
                       </button>
                     </TooltipTrigger>
-                    <TooltipContent>
+                        <TooltipContent className="bg-[#1b1b1b] border-gray-700 text-gray-100 shadow-md">
                       <p>{option.label}</p>
                     </TooltipContent>
                   </Tooltip>
                 );
               })}
             </div>
+              </div>
 
-            <div className="grid grid-cols-2 gap-4">
+              {/* Grid para Datas e Horas */}
+              <div className="grid grid-cols-2 gap-6">
+                {/* Data de início */}
               <div className="space-y-2">
-                <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Responsável</label>
+                  <label className="text-sm font-semibold text-gray-200">Data de início</label>
+                <Popover open={showEditStartDatePicker} onOpenChange={setShowEditStartDatePicker}>
+                  <PopoverTrigger asChild>
+                      <Button variant="outline" className="w-full justify-start text-left font-normal bg-[#1a1a1a] border-gray-700 h-11 hover:bg-[#252525] rounded-md text-gray-100">
+                        <CalendarIconLucide className="mr-3 h-4 w-4 text-gray-400" />
+                      {format(activityEditForm.startDate, "dd 'de' MMM 'de' yyyy", { locale: ptBR })}
+                    </Button>
+                  </PopoverTrigger>
+                    <PopoverContent className="w-auto p-0 bg-[#1b1b1b] border-gray-700" align="start">
+                      <Calendar mode="single" selected={activityEditForm.startDate} onSelect={(date) => { if (date) { setActivityEditForm({ ...activityEditForm, startDate: date }); setShowEditStartDatePicker(false); } }} initialFocus />
+                  </PopoverContent>
+                </Popover>
+              </div>
+                {/* Hora de início */}
+              <div className="space-y-2">
+                  <label className="text-sm font-semibold text-gray-200">Hora de início</label>
+                <Popover open={showEditStartTimePicker} onOpenChange={setShowEditStartTimePicker}>
+                  <PopoverTrigger asChild>
+                      <Button variant="outline" className="w-full justify-start text-left font-normal bg-[#1a1a1a] border-gray-700 h-11 hover:bg-[#252525] rounded-md text-gray-100">
+                        <Clock className="mr-3 h-4 w-4 text-gray-400" />
+                      {activityEditForm.startTime}
+                    </Button>
+                  </PopoverTrigger>
+                    <PopoverContent className="w-32 p-0 bg-[#1b1b1b] border-gray-700" align="start">
+                      <ScrollArea className="h-60">
+                        <div className="p-1">
+                          {timeOptions.map((time) => (
+                            <button key={time} className={cn("w-full text-left px-3 py-2 text-sm rounded-sm hover:bg-gray-800 transition-colors text-gray-100", activityEditForm.startTime === time && "bg-primary text-primary-foreground font-semibold")} onClick={() => { setActivityEditForm({ ...activityEditForm, startTime: time }); setShowEditStartTimePicker(false); }}>
+                              {time}
+                            </button>
+                          ))}
+                        </div>
+                      </ScrollArea>
+                  </PopoverContent>
+                </Popover>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-6">
+                {/* Data de fim */}
+              <div className="space-y-2">
+                  <label className="text-sm font-semibold text-gray-200">Data de fim</label>
+                <Popover open={showEditEndDatePicker} onOpenChange={setShowEditEndDatePicker}>
+                  <PopoverTrigger asChild>
+                      <Button variant="outline" className="w-full justify-start text-left font-normal bg-[#1a1a1a] border-gray-700 h-11 hover:bg-[#252525] rounded-md text-gray-100">
+                        <CalendarIconLucide className="mr-3 h-4 w-4 text-gray-400" />
+                      {format(activityEditForm.endDate, "dd 'de' MMM 'de' yyyy", { locale: ptBR })}
+                    </Button>
+                  </PopoverTrigger>
+                    <PopoverContent className="w-auto p-0 bg-[#1b1b1b] border-gray-700" align="start">
+                      <Calendar mode="single" selected={activityEditForm.endDate} onSelect={(date) => { if (date) { setActivityEditForm({ ...activityEditForm, endDate: date }); setShowEditEndDatePicker(false); } }} initialFocus />
+                  </PopoverContent>
+                </Popover>
+              </div>
+                {/* Hora de fim */}
+              <div className="space-y-2">
+                  <label className="text-sm font-semibold text-gray-200">Hora de fim</label>
+                <Popover open={showEditEndTimePicker} onOpenChange={setShowEditEndTimePicker}>
+                  <PopoverTrigger asChild>
+                      <Button variant="outline" className="w-full justify-start text-left font-normal bg-[#1a1a1a] border-gray-700 h-11 hover:bg-[#252525] rounded-md text-gray-100">
+                        <Clock className="mr-3 h-4 w-4 text-gray-400" />
+                      {activityEditForm.endTime}
+                    </Button>
+                  </PopoverTrigger>
+                    <PopoverContent className="w-32 p-0 bg-[#1b1b1b] border-gray-700" align="start">
+                      <ScrollArea className="h-60">
+                        <div className="p-1">
+                          {timeOptions.map((time) => (
+                            <button key={time} className={cn("w-full text-left px-3 py-2 text-sm rounded-sm hover:bg-gray-800 transition-colors text-gray-100", activityEditForm.endTime === time && "bg-primary text-primary-foreground font-semibold")} onClick={() => { setActivityEditForm({ ...activityEditForm, endTime: time }); setShowEditEndTimePicker(false); }}>
+                              {time}
+                            </button>
+                          ))}
+                        </div>
+                      </ScrollArea>
+                  </PopoverContent>
+                </Popover>
+                </div>
+              </div>
+
+              {/* Responsável e Prioridade */}
+              <div className="grid grid-cols-2 gap-6">
+              <div className="space-y-2">
+                  <label className="text-sm font-semibold text-gray-200">Responsável</label>
                 <Select
                   value={activityEditForm.responsibleId}
                   onValueChange={(v) => setActivityEditForm({ ...activityEditForm, responsibleId: v })}
                 >
-                  <SelectTrigger>
+                    <SelectTrigger className="bg-[#1a1a1a] border-gray-700 h-11 text-gray-100">
                     <SelectValue placeholder="Responsável" />
                   </SelectTrigger>
-                  <SelectContent>
+                    <SelectContent className="bg-[#1b1b1b] border-gray-700 text-gray-100">
                     {users.map((user) => (
                       <SelectItem key={user.id} value={user.id}>
                         {user.name}
@@ -2898,191 +3604,90 @@ const formatTime = (date: Date) => {
                   </SelectContent>
                 </Select>
               </div>
-
               <div className="space-y-2">
-                <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Tipo</label>
-                <Input
-                  value={activityEditForm.type}
-                  onChange={(e) => setActivityEditForm({ ...activityEditForm, type: e.target.value })}
-                />
-              </div>
-
-              <div className="space-y-2">
-                <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Data de início</label>
-                <Popover open={showEditStartDatePicker} onOpenChange={setShowEditStartDatePicker}>
-                  <PopoverTrigger asChild>
-                    <Button variant="outline" className="w-full justify-start text-left font-normal">
-                      <CalendarIconLucide className="mr-2 h-4 w-4" />
-                      {format(activityEditForm.startDate, "dd 'de' MMM 'de' yyyy", { locale: ptBR })}
-                    </Button>
-                  </PopoverTrigger>
-                  <PopoverContent className="w-auto p-0" align="start">
-                    <Calendar
-                      mode="single"
-                      selected={activityEditForm.startDate}
-                      onSelect={(date) => {
-                        if (date) {
-                          setActivityEditForm({ ...activityEditForm, startDate: date });
-                          setShowEditStartDatePicker(false);
-                          setShowEditStartTimePicker(true);
-                        }
-                      }}
-                      initialFocus
-                    />
-                  </PopoverContent>
-                </Popover>
-              </div>
-
-              <div className="space-y-2">
-                <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Hora de início</label>
-                <Popover open={showEditStartTimePicker} onOpenChange={setShowEditStartTimePicker}>
-                  <PopoverTrigger asChild>
-                    <Button variant="outline" className="w-full justify-start text-left font-normal">
-                      <Clock className="mr-2 h-4 w-4" />
-                      {activityEditForm.startTime}
-                    </Button>
-                  </PopoverTrigger>
-                  <PopoverContent className="w-auto p-0" align="start">
-                    <TimePickerModal
-                      isOpen={showEditStartTimePicker}
-                      onClose={() => setShowEditStartTimePicker(false)}
-                      onTimeSelect={(hour) => {
-                        setEditSelectedStartHour(hour);
-                        setShowEditStartTimePicker(false);
-                        setActivityEditForm({
-                          ...activityEditForm,
-                          startTime: `${hour.toString().padStart(2, '0')}:00`,
-                        });
-                      }}
-                      selectedHour={editSelectedStartHour}
-                      isDarkMode={false}
-                    />
-                  </PopoverContent>
-                </Popover>
-              </div>
-
-              <div className="space-y-2">
-                <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Data de fim</label>
-                <Popover open={showEditEndDatePicker} onOpenChange={setShowEditEndDatePicker}>
-                  <PopoverTrigger asChild>
-                    <Button variant="outline" className="w-full justify-start text-left font-normal">
-                      <CalendarIconLucide className="mr-2 h-4 w-4" />
-                      {format(activityEditForm.endDate, "dd 'de' MMM 'de' yyyy", { locale: ptBR })}
-                    </Button>
-                  </PopoverTrigger>
-                  <PopoverContent className="w-auto p-0" align="start">
-                    <Calendar
-                      mode="single"
-                      selected={activityEditForm.endDate}
-                      onSelect={(date) => {
-                        if (date) {
-                          setActivityEditForm({ ...activityEditForm, endDate: date });
-                          setShowEditEndDatePicker(false);
-                          setShowEditEndTimePicker(true);
-                        }
-                      }}
-                      initialFocus
-                    />
-                  </PopoverContent>
-                </Popover>
-              </div>
-
-              <div className="space-y-2">
-                <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Hora de fim</label>
-                <Popover open={showEditEndTimePicker} onOpenChange={setShowEditEndTimePicker}>
-                  <PopoverTrigger asChild>
-                    <Button variant="outline" className="w-full justify-start text-left font-normal">
-                      <Clock className="mr-2 h-4 w-4" />
-                      {activityEditForm.endTime}
-                    </Button>
-                  </PopoverTrigger>
-                  <PopoverContent className="w-auto p-0" align="start">
-                    <TimePickerModal
-                      isOpen={showEditEndTimePicker}
-                      onClose={() => setShowEditEndTimePicker(false)}
-                      onTimeSelect={(hour) => {
-                        setEditSelectedEndHour(hour);
-                        setShowEditEndTimePicker(false);
-                        setActivityEditForm({
-                          ...activityEditForm,
-                          endTime: `${hour.toString().padStart(2, '0')}:00`,
-                        });
-                      }}
-                      selectedHour={editSelectedEndHour}
-                      isDarkMode={false}
-                    />
-                  </PopoverContent>
-                </Popover>
-              </div>
-
-              <div className="space-y-2">
-                <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Prioridade</label>
+                  <label className="text-sm font-semibold text-gray-200">Prioridade</label>
                 <Select
                   value={activityEditForm.priority}
                   onValueChange={(v) => setActivityEditForm({ ...activityEditForm, priority: v })}
                 >
-                  <SelectTrigger>
+                    <SelectTrigger className="bg-[#1a1a1a] border-gray-700 h-11 text-gray-100">
                     <SelectValue placeholder="Prioridade" />
                   </SelectTrigger>
-                  <SelectContent>
+                    <SelectContent className="bg-[#1b1b1b] border-gray-700 text-gray-100">
                     <SelectItem value="alta">Alta</SelectItem>
                     <SelectItem value="normal">Normal</SelectItem>
                     <SelectItem value="baixa">Baixa</SelectItem>
                   </SelectContent>
                 </Select>
+                </div>
               </div>
 
+              {/* Disponibilidade */}
               <div className="space-y-2">
-                <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Disponibilidade</label>
+                <label className="text-sm font-semibold text-gray-200">Disponibilidade</label>
                 <Select
                   value={activityEditForm.availability}
                   onValueChange={(v) => setActivityEditForm({ ...activityEditForm, availability: v })}
                 >
-                  <SelectTrigger>
+                  <SelectTrigger className="bg-[#1a1a1a] border-gray-700 h-11 text-gray-100">
                     <SelectValue placeholder="Disponibilidade" />
                   </SelectTrigger>
-                  <SelectContent>
+                  <SelectContent className="bg-[#1b1b1b] border-gray-700 text-gray-100">
                     <SelectItem value="livre">Livre</SelectItem>
                     <SelectItem value="ocupado">Ocupado</SelectItem>
                   </SelectContent>
                 </Select>
-              </div>
             </div>
 
+              {/* Descrição */}
+              <div className="space-y-2">
+                <label className="text-sm font-semibold text-gray-200">Descrição</label>
             <Textarea
-              placeholder="Descrição"
+                  placeholder="Adicione detalhes sobre a atividade..."
               value={activityEditForm.description}
               onChange={(e) => setActivityEditForm({ ...activityEditForm, description: e.target.value })}
-              className="min-h-[120px]"
-            />
-
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <input
-                  id="activity-edit-done"
-                  type="checkbox"
-                  className="h-4 w-4"
-                  checked={activityEditForm.markAsDone}
-                  onChange={(e) => setActivityEditForm({ ...activityEditForm, markAsDone: e.target.checked })}
+                  className="min-h-[120px] bg-[#1a1a1a] border-gray-700 text-gray-100 placeholder:text-gray-500 focus:border-blue-500"
                 />
-                <label htmlFor="activity-edit-done" className="text-sm text-gray-700 dark:text-gray-300">
-                  Marcar como feito
+              </div>
+
+              {/* Checkbox de conclusão */}
+              <div className="flex items-center gap-3 pt-2">
+                <Checkbox
+                  id="activity-edit-done"
+                  checked={activityEditForm.markAsDone}
+                  onCheckedChange={(checked) => setActivityEditForm({ ...activityEditForm, markAsDone: checked === true })}
+                  className="border-gray-700 data-[state=checked]:bg-blue-600 data-[state=checked]:border-blue-600"
+                />
+                <label htmlFor="activity-edit-done" className="text-sm font-medium text-gray-200 cursor-pointer">
+                  Marcar como concluída
                 </label>
               </div>
-              <div className="text-xs text-gray-500 dark:text-gray-400">
-                As anotações ficam visíveis no sistema, exceto para convi
               </div>
-            </div>
-          </div>
-          <DialogFooter className="mt-4">
-            <Button variant="outline" onClick={() => setIsActivityEditModalOpen(false)}>
+
+            <DialogFooter className="mt-0 mx-0 mb-0 border-t border-gray-800 bg-[#1a1a1a] flex items-center justify-end gap-4 shrink-0 px-6 py-4">
+              <Button 
+                variant="outline" 
+                onClick={() => setIsActivityEditModalOpen(false)}
+                className="bg-[#1a1a1a] border-gray-700 text-gray-300 hover:bg-[#252525] hover:text-white h-10"
+              >
               Cancelar
             </Button>
-            <Button variant="destructive" onClick={handleDeleteActivity}>
+              <Button 
+                variant="ghost" 
+                onClick={handleDeleteActivity}
+                className="text-red-500 hover:text-red-400 hover:bg-red-500/10 h-10 px-2 flex items-center gap-2"
+              >
+                <X className="h-4 w-4" />
               Excluir
             </Button>
-            <Button onClick={handleUpdateActivity}>Salvar</Button>
+              <Button 
+                onClick={handleUpdateActivity}
+                className="bg-[#eab308] hover:bg-[#ca8a04] text-black font-semibold h-10 px-8 rounded-md"
+              >
+                Salvar Alterações
+              </Button>
           </DialogFooter>
+          </div>
         </DialogContent>
       </Dialog>
 
@@ -3103,7 +3708,13 @@ const formatTime = (date: Date) => {
               <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Produto</label>
               <Select value={selectedProductId} onValueChange={(v) => {
                 setSelectedProductId(v);
-                setManualValue(""); // Limpar valor manual quando seleciona produto
+                // Preencher o preço automaticamente ao selecionar um produto
+                const product = availableProducts.find(p => p.id === v);
+                if (product && product.value) {
+                  setManualValue(product.value.toFixed(2).replace('.', ','));
+                } else {
+                  setManualValue("");
+                }
               }}>
                 <SelectTrigger>
                   <SelectValue placeholder="Selecione um produto (opcional)" />
@@ -3111,14 +3722,14 @@ const formatTime = (date: Date) => {
                 <SelectContent>
                   {availableProducts.map((p) => (
                     <SelectItem key={p.id} value={p.id}>
-                      {p.name} {p.value ? `- R$ ${p.value.toFixed(2)}` : ""}
+                      {p.name}
                     </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
             </div>
             <div className="space-y-2">
-              <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Valor</label>
+              <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Preço</label>
               <Input
                 type="text"
                 placeholder="R$ 0,00"
@@ -3137,7 +3748,7 @@ const formatTime = (date: Date) => {
               />
             </div>
           </div>
-          <DialogFooter>
+          <DialogFooter className="mt-0 mx-0 mb-0 border-t border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-[#1a1a1a] px-6 py-4">
             <Button variant="outline" onClick={() => {
               setIsProductModalOpen(false);
               setSelectedProductId("");
@@ -3145,12 +3756,22 @@ const formatTime = (date: Date) => {
             }}>
               Cancelar
             </Button>
-            <Button onClick={handleAddProductToCard} disabled={!selectedProductId && !manualValue}>
+            <Button 
+              onClick={handleAddProductToCard} 
+              disabled={!selectedProductId && !manualValue}
+              className="bg-[#eab308] hover:bg-[#ca8a04] text-black font-semibold"
+            >
               Adicionar
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <AttachmentPreviewModal
+        isOpen={Boolean(selectedFileForPreview)}
+        onClose={() => setSelectedFileForPreview(null)}
+        attachment={selectedFileForPreview}
+      />
 
     </div>
   );
@@ -3184,7 +3805,8 @@ function HistoryTimelineItem({
   editingNoteContent,
   setEditingNoteContent,
   onSaveNote,
-  onCancelNote
+  onCancelNote,
+  setSelectedFileForPreview
 }: { 
   event: any; 
   isLast: boolean; 
@@ -3196,6 +3818,7 @@ function HistoryTimelineItem({
   setEditingNoteContent: (value: string) => void;
   onSaveNote: () => void;
   onCancelNote: () => void;
+  setSelectedFileForPreview: (file: any) => void;
 }) {
   const EventIcon = getEventIcon(event.type, event.action);
   const isActivity = event.type?.startsWith("activity_");
@@ -3204,6 +3827,13 @@ function HistoryTimelineItem({
   const [isActionsOpen, setIsActionsOpen] = useState(false);
   const isNote = event.type === "notes";
   const isEditingNote = isNote && editingNoteId === event.metadata?.note_id;
+  const descriptionHtml = event.metadata?.description;
+  const looksLikeHtml = typeof descriptionHtml === "string" && /<\/?[a-z][\s\S]*>/i.test(descriptionHtml);
+  const [isDescExpanded, setIsDescExpanded] = useState(false);
+  const hasDescription = Boolean(descriptionHtml);
+  const descIsLong =
+    typeof descriptionHtml === "string" &&
+    (descriptionHtml.length > 180 || descriptionHtml.includes("\n"));
   
   return (
     <div className="flex gap-4 relative">
@@ -3228,7 +3858,7 @@ function HistoryTimelineItem({
           className={cn(
             "border rounded-md p-4",
             isNote
-              ? "bg-amber-50 border-amber-100 text-gray-800"
+              ? "bg-amber-50 border-amber-100 text-gray-800 dark:bg-amber-950/20 dark:border-amber-900/30 dark:text-amber-200"
               : "bg-white dark:bg-[#1b1b1b] border-gray-200 dark:border-gray-700"
           )}
         >
@@ -3236,37 +3866,108 @@ function HistoryTimelineItem({
           <div className="flex items-start justify-between mb-2">
             <div className="flex-1">
               {isNote ? (
-                <div className="flex items-center gap-2 text-xs text-gray-600">
+                <div className="flex items-center gap-2 text-xs text-gray-600 dark:text-gray-400">
                   <span>{format(eventDate, "d 'de' MMMM 'às' HH:mm", { locale: ptBR })}</span>
                   {event.user_name && (
                     <>
                       <span className="text-gray-400">•</span>
-                      <span className="font-medium text-gray-700">{event.user_name}</span>
+                      <span className="font-medium text-gray-700 dark:text-gray-200">{event.user_name}</span>
                     </>
                   )}
                 </div>
               ) : isActivity ? (
+                <div className="space-y-2">
+                  {/* Linha superior: tipo + assunto */}
                 <div className="flex items-center gap-2">
-                  <input
-                    type="checkbox"
-                    checked={isCompleted}
-                    readOnly
-                    className="h-4 w-4 rounded border-gray-300 dark:border-gray-600"
-                  />
+                    {event.metadata?.activity_type && (
+                      <span className="text-[11px] px-2 py-0.5 rounded bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-200">
+                        {event.metadata.activity_type}
+                      </span>
+                    )}
                   <span className="font-semibold text-sm text-gray-900 dark:text-gray-100">
                     {event.metadata?.subject || event.description}
                   </span>
+                  </div>
+                  {/* Info da atividade: data, responsável e contato */}
+                  {!isNote && (
+                    <div className="flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400 flex-wrap mt-1 mb-2">
+                      <span>
+                        {format(eventDate, "d 'de' MMMM 'às' HH:mm", { locale: ptBR })}
+                      </span>
+                      {event.user_name && (
+                        <>
+                          <span>•</span>
+                          <span>{event.user_name}</span>
+                        </>
+                      )}
+                      {contact && isActivity && (
+                        <>
+                          <span>•</span>
+                          <div className="flex items-center gap-1">
+                            <User className="h-3 w-3" />
+                            <span>{contact.name}</span>
+                          </div>
+                        </>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Descrição abaixo com estilo colado e cor diferenciada */}
+                  {hasDescription && (
+                    <div className="relative -mx-4 -mb-4 border-t border-amber-100 dark:border-amber-900/30">
+                      <div
+                        className={cn(
+                          "text-xs text-gray-700 dark:text-gray-300 font-sans p-3 bg-[#fffde7] dark:bg-amber-950/20 transition-all duration-200 prose dark:prose-invert prose-sm max-w-none note-editor cursor-pointer",
+                          !isDescExpanded && "max-h-[40px] overflow-hidden pr-10"
+                        )}
+                        onClick={() => {
+                          if (event.metadata?.attachment_url) {
+                            const ext = event.metadata.attachment_name?.split('.').pop()?.toLowerCase();
+                            setSelectedFileForPreview({
+                              url: event.metadata.attachment_url,
+                              name: event.metadata.attachment_name,
+                              type: ext
+                            });
+                          }
+                        }}
+                      >
+                        {looksLikeHtml ? (
+                          <div dangerouslySetInnerHTML={{ __html: descriptionHtml }} />
+                        ) : (
+                          <pre className="whitespace-pre-wrap font-sans">
+                            {descriptionHtml}
+                          </pre>
+                        )}
+                      </div>
+                      
+                      {/* Botão de expansão (ícone à direita) */}
+                      <button
+                        type="button"
+                        className="absolute right-2 top-2 p-1 rounded-md border border-gray-200 dark:border-gray-700 bg-white/50 dark:bg-[#1b1b1b]/50 hover:bg-white dark:hover:bg-[#1b1b1b] text-gray-500 transition-colors"
+                        onClick={() => setIsDescExpanded((v) => !v)}
+                      >
+                        {isDescExpanded ? (
+                          <X className="h-3 w-3" />
+                        ) : (
+                          <ChevronsUpDown className="h-3 w-3" />
+                        )}
+                      </button>
+                    </div>
+                  )}
                 </div>
               ) : (
                 <div className="space-y-1">
                   <div className="font-semibold text-sm text-gray-900 dark:text-gray-100">
-                    {event.metadata?.event_title || event.description}
+                      {event.metadata?.event_title || 'Registro de Alteração'}
                   </div>
-                  {event.metadata?.description && (
-                    <div className="text-xs text-gray-600 dark:text-gray-400">
-                      {event.metadata.description}
+                    <div className="space-y-1">
+                      <pre className="text-xs text-gray-600 dark:text-gray-400 whitespace-pre-wrap font-sans">
+                        {event.metadata?.description || event.description}
+                      </pre>
+                      <div className="text-[10px] text-gray-400 dark:text-gray-500">
+                        {format(eventDate, "d 'de' MMMM 'às' HH:mm", { locale: ptBR })}
                     </div>
-                  )}
+                    </div>
                 </div>
               )}
             </div>
@@ -3276,8 +3977,9 @@ function HistoryTimelineItem({
                   <MoreVertical className="h-4 w-4" />
                 </Button>
               </PopoverTrigger>
-              <PopoverContent className="w-36 p-1" align="end" side="bottom" sideOffset={4}>
+              <PopoverContent className="w-36 p-1 bg-white dark:bg-[#1b1b1b] border-gray-200 dark:border-gray-700 shadow-md" align="end" side="bottom" sideOffset={4}>
                 <div className="space-y-1">
+                  {(isNote || isActivity) && (
                   <Button
                     variant="ghost"
                     className="w-full justify-start h-8"
@@ -3289,6 +3991,7 @@ function HistoryTimelineItem({
                     <Pencil className="h-4 w-4 mr-2" />
                     Editar
                   </Button>
+                  )}
                   <Button
                     variant="ghost"
                     className="w-full justify-start h-8 text-destructive hover:text-destructive hover:bg-destructive/10"
@@ -3306,17 +4009,20 @@ function HistoryTimelineItem({
           </div>
 
           {/* Conteúdo */}
-          {isNote ? (
+          {isNote && (
             <div className="mt-2">
               {!isEditingNote && (
-                <div className="text-sm leading-relaxed whitespace-pre-wrap break-words">
-                  {event.metadata?.description || event.metadata?.content || event.description}
-                </div>
+                <div 
+                  className="text-sm leading-relaxed break-words prose dark:prose-invert max-w-none note-editor"
+                  dangerouslySetInnerHTML={{ 
+                    __html: event.metadata?.description || event.metadata?.content || event.description || "" 
+                  }}
+                />
               )}
               {isEditingNote && (
                 <div className="space-y-2">
                   <textarea
-                    className="w-full min-h-[140px] rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-amber-300"
+                    className="w-full min-h-[140px] rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-amber-300 dark:bg-amber-950/20 dark:border-amber-900/30 dark:text-amber-200 dark:focus:ring-amber-800"
                     value={editingNoteContent}
                     onChange={(e) => setEditingNoteContent(e.target.value)}
                   />
@@ -3331,29 +4037,8 @@ function HistoryTimelineItem({
                 </div>
               )}
             </div>
-          ) : (
-            <div className="flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400 flex-wrap">
-              <span>
-                {format(eventDate, "d 'de' MMMM 'às' HH:mm", { locale: ptBR })}
-              </span>
-              {event.user_name && (
-                <>
-                  <span>•</span>
-                  <span>{event.user_name}</span>
-                </>
-              )}
-              {contact && isActivity && (
-                <>
-                  <span>•</span>
-                  <div className="flex items-center gap-1">
-                    <User className="h-3 w-3" />
-                    <span>{contact.name}</span>
-                  </div>
-                </>
-              )}
-            </div>
           )}
-        </div>
+                  </div>
       </div>
     </div>
   );

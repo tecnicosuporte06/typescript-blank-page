@@ -849,7 +849,7 @@ export function MasterBuscaIds({ workspaces }: MasterBuscaIdsProps) {
                               colSpan={4}
                               className="px-2 py-3 text-center text-[11px] text-gray-500 dark:text-gray-400"
                             >
-                              Nenhuma tag cadastrada para este workspace.
+                              Nenhuma etiqueta cadastrada para este workspace.
                             </td>
                           </tr>
                         )}

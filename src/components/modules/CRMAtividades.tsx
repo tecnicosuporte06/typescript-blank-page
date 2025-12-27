@@ -1,6 +1,5 @@
 import { useState, useEffect, useMemo } from "react";
 import { Input } from "@/components/ui/input";
-import { Checkbox } from "@/components/ui/checkbox";
 import { Badge } from "@/components/ui/badge";
 import {
   Search,
@@ -56,8 +55,8 @@ export function CRMAtividades() {
   const { user, userRole } = useAuth();
   const [activities, setActivities] = useState<ActivityData[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [isDataReady, setIsDataReady] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
-  const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [selectedDealDetails, setSelectedDealDetails] = useState<SelectedDealDetails | null>(null);
   const [page, setPage] = useState(1);
   const [totalCount, setTotalCount] = useState(0);
@@ -85,6 +84,7 @@ export function CRMAtividades() {
 
     try {
       setIsLoading(true);
+      setIsDataReady(false);
       console.log("🔄 Buscando atividades...");
 
       const start = (page - 1) * PAGE_SIZE;
@@ -211,9 +211,6 @@ export function CRMAtividades() {
             console.error("Erro ao buscar pipelines:", pipelinesError);
           }
 
-          const allowedPipelineIds = new Set(pipelinesData?.map((pipeline) => pipeline.id) || []);
-          console.log(`🔷 Pipelines encontrados: ${pipelinesData?.length || 0} de ${pipelineIds.length}`);
-
           const { data: columnsData } = await supabase
             .from("pipeline_columns")
             .select("id, name, pipeline_id")
@@ -245,24 +242,6 @@ export function CRMAtividades() {
           }
 
           cardsOnly.forEach((card) => {
-            if (!allowedPipelineIds.has(card.pipeline_id)) {
-              // Mesmo que o pipeline não esteja no workspace, ainda podemos usar os dados do card
-              // para mostrar informações básicas
-              const contactInfo = directContactsMap.get(card.contact_id || "");
-              pipelineCardsMap.set(card.id, {
-                description: card.description,
-                pipeline_id: card.pipeline_id,
-                pipeline_name: "-", // Pipeline não permitido
-                column_id: card.column_id,
-                column_name: "-",
-                contact_id: card.contact_id,
-                contact_name: contactInfo?.name || card.description || "-",
-                contact_phone: contactInfo?.phone || "-",
-                status: card.status,
-                pipeline_workspace_id: null,
-              });
-              return;
-            }
             const pipelineInfo = pipelinesData?.find((pipeline) => pipeline.id === card.pipeline_id);
             const columnInfo = columnsMapById.get(card.column_id);
             const contactInfo = directContactsMap.get(card.contact_id || "");
@@ -270,14 +249,14 @@ export function CRMAtividades() {
             pipelineCardsMap.set(card.id, {
               description: card.description,
               pipeline_id: card.pipeline_id,
-              pipeline_name: pipelineInfo?.name || "-",
+              pipeline_name: pipelineInfo?.name || card.description || "-",
               column_id: card.column_id,
               column_name: columnInfo?.name || "-",
               contact_id: card.contact_id,
               contact_name: contactInfo?.name || card.description || "-",
               contact_phone: contactInfo?.phone || "-",
               status: card.status,
-              pipeline_workspace_id: pipelineInfo?.workspace_id,
+              pipeline_workspace_id: pipelineInfo?.workspace_id ?? null,
             });
           });
         }
@@ -341,6 +320,7 @@ export function CRMAtividades() {
         .filter(Boolean) as ActivityData[];
 
       setActivities(formattedActivities);
+      setIsDataReady(true);
     } catch (error: any) {
       console.error("Erro ao buscar atividades:", error);
       toast({
@@ -348,6 +328,7 @@ export function CRMAtividades() {
         description: error?.message || "Não foi possível carregar as atividades.",
         variant: "destructive",
       });
+      setIsDataReady(false);
     } finally {
       setIsLoading(false);
     }
@@ -373,13 +354,22 @@ export function CRMAtividades() {
     <div className="flex flex-col h-full bg-white border border-gray-300 m-2 shadow-sm font-sans text-xs dark:bg-[#0e0e0e] dark:border-gray-700 dark:text-gray-100">
       {/* Toolbar */}
       <div className="flex flex-col border-b border-gray-300 bg-[#f8f9fa] dark:border-gray-700 dark:bg-[#141414]">
-        <div className="flex items-center justify-between px-4 pt-3 pb-2 h-auto">
+        <div
+          className="flex items-center justify-between px-4 pt-3 pb-2 h-auto"
+          style={{ fontSize: "15px" }}
+        >
           <div className="flex items-center gap-2">
-            <CalendarClock className="h-4 w-4 text-gray-700 dark:text-gray-200" />
-            <span className="font-semibold text-sm text-gray-900 dark:text-gray-100">Atividades</span>
+            <span
+              className="font-semibold text-gray-900 dark:text-gray-100"
+              style={{ fontSize: "1.5rem" }}
+            >
+              Atividades
+            </span>
           </div>
-          <div className="text-[10px] opacity-80 text-gray-600 dark:text-gray-200">
-            {isLoading ? "Carregando..." : `${filteredActivities.length} registros`}
+          <div className="flex-1 flex justify-end pr-8">
+            <div className="text-[15px] opacity-80 text-gray-600 dark:text-gray-200 text-center">
+              {isLoading ? "Carregando..." : `${filteredActivities.length} registros`}
+            </div>
           </div>
         </div>
 
@@ -450,25 +440,10 @@ export function CRMAtividades() {
                     <span>Telefone</span>
                   </div>
                 </th>
-                <th className="border border-[#d4d4d4] px-2 py-1 text-center font-semibold text-gray-700 w-10 dark:border-gray-700 dark:text-gray-200">
-                  <Checkbox
-                    checked={
-                      filteredActivities.length > 0 && filteredActivities.every((a) => selectedIds.includes(a.id))
-                    }
-                    onCheckedChange={(checked) => {
-                      if (checked) {
-                        setSelectedIds(filteredActivities.map((a) => a.id));
-                      } else {
-                        setSelectedIds([]);
-                      }
-                    }}
-                    className="h-3 w-3 rounded-[2px] border-gray-500 data-[state=checked]:bg-primary data-[state=checked]:border-primary"
-                  />
-                </th>
               </tr>
             </thead>
             <tbody>
-              {isLoading ? (
+              {isLoading || !isDataReady ? (
                 Array.from({ length: 5 }).map((_, i) => (
                   <tr key={i} className="hover:bg-gray-50 dark:hover:bg-[#1f1f1f]">
                     <td className="border border-[#e0e0e0] px-2 py-1 dark:border-gray-700">
@@ -529,38 +504,25 @@ export function CRMAtividades() {
                         {activity.stage_name}
                       </Badge>
                     </td>
-                    <td className="border border-[#e0e0e0] px-2 py-0 whitespace-nowrap dark:border-gray-700 dark:text-gray-200">
-                      {activity.pipeline_card_id ? (
-                        <button
-                          type="button"
-                          onClick={() => handleOpenDealDetails(activity)}
-                          className="text-primary hover:underline focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary rounded-sm dark:text-yellow-300"
-                          title="Ver detalhes do negócio"
-                        >
-                          {activity.contact_name || "-"}
-                        </button>
-                      ) : (
-                        activity.contact_name || "-"
-                      )}
-                    </td>
+                      <td className="border border-[#e0e0e0] px-2 py-0 whitespace-nowrap dark:border-gray-700 dark:text-gray-200">
+                        {activity.pipeline_card_id ? (
+                          <button
+                            type="button"
+                            onClick={() => handleOpenDealDetails(activity)}
+                            className="text-foreground hover:underline focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary rounded-sm dark:text-gray-100 underline"
+                            title="Ver detalhes do negócio"
+                          >
+                            {activity.contact_name || "-"}
+                          </button>
+                        ) : (
+                          activity.contact_name || "-"
+                        )}
+                      </td>
                     <td className="border border-[#e0e0e0] px-2 py-0 whitespace-nowrap dark:border-gray-700 dark:text-gray-200">
                       {activity.responsible_name}
                     </td>
                     <td className="border border-[#e0e0e0] px-2 py-0 text-center whitespace-nowrap font-mono dark:border-gray-700 dark:text-gray-200">
                       {activity.contact_phone}
-                    </td>
-                    <td className="border border-[#e0e0e0] px-1 py-0 text-center bg-gray-50 dark:bg-[#111111] dark:border-gray-700">
-                      <Checkbox
-                        checked={selectedIds.includes(activity.id)}
-                        onCheckedChange={(checked) => {
-                          if (checked) {
-                            setSelectedIds((prev) => [...prev, activity.id]);
-                          } else {
-                            setSelectedIds((prev) => prev.filter((id) => id !== activity.id));
-                          }
-                        }}
-                        className="h-3 w-3 rounded-[2px] border-gray-400 data-[state=checked]:bg-primary data-[state=checked]:border-primary dark:border-gray-500"
-                      />
                     </td>
                   </tr>
                 ))

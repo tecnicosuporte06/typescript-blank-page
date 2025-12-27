@@ -83,7 +83,12 @@ export function Dashboard({
 
   return <div className="flex flex-col h-full bg-white border border-[#d4d4d4] m-2 shadow-sm font-sans text-xs overflow-auto dark:bg-[#1f1f1f] dark:border-gray-700 transition-all duration-300 ease-in-out">
       <div className="px-4 pt-3 pb-2">
-        <h1 className="text-sm font-bold text-gray-900 dark:text-gray-100">Relatórios</h1>
+        <h1
+          className="font-bold text-gray-900 dark:text-gray-100"
+          style={{ fontSize: "1.5rem" }}
+        >
+          Relatórios
+        </h1>
       </div>
 
       <div className="p-4 space-y-4">

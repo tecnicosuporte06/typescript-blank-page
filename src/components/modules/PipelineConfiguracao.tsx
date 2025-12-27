@@ -4,8 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Plus, Trash2, Palette } from "lucide-react";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Trash2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { usePipelinesContext } from "@/contexts/PipelinesContext";
 import { useWorkspace } from "@/contexts/WorkspaceContext";
@@ -29,21 +28,23 @@ interface Action {
   buttonColor?: string;
 }
 
-// Inicializar sem ações - só aparecerá quando clicar em "Nova ação"
-const initialActions: Action[] = [];
+// Inicializar com as 3 ações padrão obrigatórias
+const STANDARD_ACTIONS = [
+  { name: 'Ganho', state: 'Ganho' },
+  { name: 'Perdido', state: 'Perda' },
+  { name: 'Reabrir', state: 'Aberto' }
+];
 
 export default function PipelineConfiguracao({
   isDarkMode,
   onColumnsReorder
 }: PipelineConfigProps) {
   const [activeTab, setActiveTab] = useState('geral');
-  const [actions, setActions] = useState<Action[]>(initialActions);
+  const [actions, setActions] = useState<Action[]>([]);
   const [actionColumns, setActionColumns] = useState<{[key: string]: any[]}>({});
   const { getHeaders } = useWorkspaceHeaders();
   const [isDeletePipelineModalOpen, setIsDeletePipelineModalOpen] = useState(false);
   const [isDeletingPipeline, setIsDeletingPipeline] = useState(false);
-  const [colorPickerOpen, setColorPickerOpen] = useState(false);
-  const [editingActionId, setEditingActionId] = useState<string | null>(null);
   const {
     columns,
     selectedPipeline,
@@ -67,32 +68,6 @@ export default function PipelineConfiguracao({
   const [selectedColumn, setSelectedColumn] = useState("qualificar");
   const [selectedAutomation, setSelectedAutomation] = useState("");
   const canConfigureOpenStatus = userRole === 'master' || userRole === 'admin';
-
-  const handleDeletePipeline = async () => {
-    if (!selectedPipeline) return;
-    
-    setIsDeletingPipeline(true);
-    
-    try {
-      await deletePipeline(selectedPipeline.id);
-      setIsDeletePipelineModalOpen(false);
-      
-      toast({
-        title: "Pipeline excluído",
-        description: "O pipeline foi excluído com sucesso.",
-      });
-      
-    } catch (error: any) {
-      console.error('❌ Erro ao deletar pipeline:', error);
-      toast({
-        title: "Erro ao excluir pipeline",
-        description: error.message || "Ocorreu um erro ao tentar excluir o pipeline.",
-        variant: "destructive",
-      });
-    } finally {
-      setIsDeletingPipeline(false);
-    }
-  };
 
   const deleteColumn = async (columnId: string) => {
     try {
@@ -138,20 +113,40 @@ export default function PipelineConfiguracao({
       }
     }
   };
-  
-  // Carregar ações salvas quando selecionar um pipeline
-  useEffect(() => {
-    if (selectedPipeline?.id) {
-      loadPipelineActions(selectedPipeline.id);
-    }
-  }, [selectedPipeline?.id]);
 
+  const handleDeletePipeline = async () => {
+    if (!selectedPipeline) return;
+    
+    setIsDeletingPipeline(true);
+    
+    try {
+      await deletePipeline(selectedPipeline.id);
+      setIsDeletePipelineModalOpen(false);
+      
+      toast({
+        title: "Pipeline excluído",
+        description: "O pipeline foi excluído com sucesso.",
+      });
+      
+    } catch (error: any) {
+      console.error('❌ Erro ao deletar pipeline:', error);
+      toast({
+        title: "Erro ao excluir pipeline",
+        description: error.message || "Ocorreu um erro ao tentar excluir o pipeline.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsDeletingPipeline(false);
+    }
+  };
+
+  // Carregar ações salvas e garantir as 3 padrão
   const loadPipelineActions = async (pipelineId: string) => {
     try {
       console.log('📥 Carregando ações para pipeline:', pipelineId);
       
       const headers = getHeaders();
-      const { data, error } = await supabase.functions.invoke(
+      const { data: dbActions, error } = await supabase.functions.invoke(
         `pipeline-management/actions?pipeline_id=${pipelineId}`,
         {
           method: 'GET',
@@ -159,103 +154,68 @@ export default function PipelineConfiguracao({
         }
       );
 
-      if (error) {
-        console.error('❌ Erro ao carregar ações:', error);
-        throw error;
-      }
+      if (error) throw error;
 
-      console.log('📦 Ações carregadas do banco:', data);
+      console.log('📦 Ações carregadas do banco:', dbActions);
 
-      if (data && data.length > 0) {
-        // Calcular ações formatadas usando o estado atual
-        setActions(prevActions => {
-          const prevActionsMap = new Map(prevActions.map(a => [a.id, a]));
-          
-          const formattedActions: Action[] = data.map(action => {
-            const existingAction = prevActionsMap.get(action.id);
-            
-            // Pegar a cor EXATAMENTE como está no banco de dados
-            // Não usar fallback - se não tem cor salva, deixar undefined
-            let buttonColor: string | undefined = undefined;
-            
-            // Verificar se button_color existe no objeto retornado do banco
-            const dbColor = action.button_color || action.buttonColor;
-            
-            if (dbColor && typeof dbColor === 'string' && dbColor.trim() !== '') {
-              // Se o banco tem uma cor salva válida, usar ela EXATAMENTE como está
-              buttonColor = dbColor.trim();
-              console.log(`✅ COR DO BANCO para ação ${action.id}:`, buttonColor);
-            } else if (existingAction && existingAction.id.startsWith('temp-')) {
-              // Só usar valor local se é uma ação temporária ainda não salva
-              buttonColor = existingAction.buttonColor;
-              console.log(`⚠️ Ação temporária ${action.id}, usando cor local:`, buttonColor);
-            } else {
-              // Se não tem cor no banco e não é temporária, deixar undefined (sem cor)
-              console.log(`ℹ️ Ação ${action.id} sem cor no banco. Dados recebidos:`, {
-                button_color: action.button_color,
-                buttonColor: action.buttonColor,
-                action_completa: JSON.stringify(action, null, 2)
-              });
-            }
-            
-            return {
-              id: action.id,
-              actionName: action.action_name,
-              nextPipeline: action.target_pipeline_id,
-              targetColumn: action.target_column_id,
-              dealState: action.deal_state,
-              buttonColor: buttonColor // Usar exatamente o que veio do banco ou undefined
-            };
+      // Mapear ações do banco ou criar temporárias para as 3 padrão
+      const finalActions: Action[] = STANDARD_ACTIONS.map((std, index) => {
+        const found = (dbActions || []).find((a: any) => 
+          a.action_name.toLowerCase() === std.name.toLowerCase() || 
+          a.deal_state === std.state
+        );
+
+        if (found) {
+          return {
+            id: found.id,
+            actionName: std.name, // Nome fixo
+            nextPipeline: found.target_pipeline_id || "",
+            targetColumn: found.target_column_id || "",
+            dealState: std.state, // Status fixo
+            buttonColor: found.button_color || undefined
+          };
+        }
+
+        // Se não existir no banco, cria uma temporária
+        return {
+          id: `temp-${std.name.toLowerCase()}`,
+          actionName: std.name,
+          nextPipeline: "",
+          targetColumn: "",
+          dealState: std.state,
+          buttonColor: undefined
+        };
+      });
+
+      setActions(finalActions);
+
+      // Carregar colunas para cada ação
+      finalActions.forEach(action => {
+        if (action.nextPipeline) {
+          fetchPipelineColumns(action.nextPipeline).then(columns => {
+            setActionColumns(prev => ({
+              ...prev,
+              [action.id]: columns
+            }));
           });
-          
-          // Adicionar ações temporárias que ainda não foram salvas
-          const tempActions = prevActions.filter(a => a.id.startsWith('temp-'));
-          const finalActions = [...formattedActions, ...tempActions];
-          
-          console.log('✅ Ações formatadas:', finalActions);
-          
-          // Carregar colunas para cada ação que já tem pipeline selecionado
-          formattedActions.forEach(action => {
-            if (action.nextPipeline) {
-              fetchPipelineColumns(action.nextPipeline).then(columns => {
-                setActionColumns(prev => ({
-                  ...prev,
-                  [action.id]: columns
-                }));
-              }).catch(error => {
-                console.error(`Erro ao carregar colunas para ação ${action.id}:`, error);
-              });
-            }
-          });
-          
-          return finalActions;
-        });
-      } else {
-        console.log('⚠️ Nenhuma ação encontrada, usando ações iniciais');
-        setActions(initialActions);
-      }
+        }
+      });
+
     } catch (error) {
       console.error('❌ Error loading pipeline actions:', error);
       toast({
         title: "Erro",
-        description: "Não foi possível carregar as ações do pipeline.",
+        description: "Não foi possível carregar as ações.",
         variant: "destructive",
       });
-      setActions(initialActions);
     }
   };
 
-  const addNewAction = () => {
-    const newAction: Action = {
-      id: `temp-${Date.now()}`,
-      actionName: "",
-      nextPipeline: "",
-      targetColumn: "",
-      dealState: "",
-      buttonColor: undefined // Sem cor padrão - usuário escolhe
-    };
-    setActions([...actions, newAction]);
-  };
+  useEffect(() => {
+    if (selectedPipeline?.id) {
+      loadPipelineActions(selectedPipeline.id);
+    }
+  }, [selectedPipeline?.id]);
 
   const updateAction = (id: string, field: keyof Action, value: string) => {
     console.log('🔄 updateAction chamado:', { id, field, value });
@@ -434,37 +394,6 @@ export default function PipelineConfiguracao({
       toast({
         title: "Erro ao salvar ação",
         description: error.message || "Não foi possível salvar a ação. Verifique suas permissões.",
-        variant: "destructive",
-      });
-    }
-  };
-
-  const deleteAction = async (actionId: string) => {
-    try {
-      if (!actionId.startsWith('temp-')) {
-        const headers = getHeaders();
-        const { error } = await supabase.functions.invoke(
-          `pipeline-management/actions?id=${actionId}`,
-          {
-            method: 'DELETE',
-            headers
-          }
-        );
-
-        if (error) throw error;
-      }
-
-      setActions(prev => prev.filter(a => a.id !== actionId));
-      
-      toast({
-        title: "Ação removida",
-        description: "A ação foi removida com sucesso.",
-      });
-    } catch (error) {
-      console.error('Error deleting action:', error);
-      toast({
-        title: "Erro",
-        description: "Não foi possível remover a ação.",
         variant: "destructive",
       });
     }
@@ -661,12 +590,8 @@ export default function PipelineConfiguracao({
               <div className="px-4 py-3 border-b border-gray-200 flex items-center justify-between dark:border-gray-700">
                 <div>
                   <p className="text-xs font-semibold text-gray-700 dark:text-gray-200">Ações do pipeline</p>
-                  <span className="text-[11px] text-gray-500 dark:text-gray-400">Configure botões rápidos para movimentar negócios</span>
+                  <span className="text-[11px] text-gray-500 dark:text-gray-400">Configure o destino dos botões padrões (Ganho, Perdido, Reabrir)</span>
                 </div>
-                <Button onClick={addNewAction} size="sm" className="rounded-none bg-primary text-primary-foreground hover:bg-primary/90">
-                  <Plus className="h-4 w-4 mr-1" />
-                  Nova ação
-                </Button>
               </div>
               {actions.length === 0 ? (
                 <div className="p-8 text-center text-gray-500 dark:text-gray-400">
@@ -678,35 +603,18 @@ export default function PipelineConfiguracao({
                   {actions.map((action) => (
                   <div key={action.id} className="p-4 grid gap-4 lg:grid-cols-[2.5fr,1.5fr,1.5fr,1fr,auto] items-start">
                     <div className="space-y-1">
-                      <span className="text-[11px] font-semibold text-gray-500 uppercase tracking-wide">Nome e cor</span>
-                      <div className="flex items-center gap-3">
-                        <Button
-                          type="button"
-                          variant="outline"
-                          size="icon"
-                          onClick={() => {
-                            setEditingActionId(action.id);
-                            setColorPickerOpen(true);
-                          }}
-                          className="w-10 h-10 rounded-none border-2 border-gray-400 hover:border-gray-600 dark:border-gray-500 dark:hover:border-gray-300 transition-colors"
-                          style={{ backgroundColor: action.buttonColor || undefined }}
-                          title={action.buttonColor ? `Cor salva: ${action.buttonColor}` : "Selecionar cor (nenhuma cor salva)"}
-                        >
-                          <Palette className={`h-4 w-4 ${action.buttonColor ? 'text-white' : 'text-gray-500'} drop-shadow-[0_1px_2px_rgba(0,0,0,0.5)]`} />
-                        </Button>
-                        <Input
-                          value={action.actionName}
-                          onChange={(e) => updateAction(action.id, 'actionName', e.target.value)}
-                          placeholder="Nome da ação"
-                          className="rounded-none text-sm dark:bg-[#161616] dark:border-gray-700"
-                        />
+                      <span className="text-[11px] font-semibold text-gray-500 uppercase tracking-wide">Nome da ação</span>
+                      <div className="flex items-center h-9">
+                        <span className="text-sm font-medium text-gray-900 dark:text-gray-100 bg-gray-50 dark:bg-[#161616] px-3 py-2 border border-[#d4d4d4] dark:border-gray-700 w-full cursor-not-allowed">
+                          {action.actionName}
+                        </span>
                       </div>
                     </div>
 
                     <div className="space-y-1">
                       <span className="text-[11px] font-semibold text-gray-500 uppercase tracking-wide">Próximo pipeline</span>
                       <Select value={action.nextPipeline} onValueChange={(value) => handlePipelineChange(action.id, value)}>
-                        <SelectTrigger className="rounded-none text-sm dark:bg-[#161616] dark:border-gray-700">
+                        <SelectTrigger className="rounded-none text-sm dark:bg-[#161616] dark:border-gray-700 h-9">
                           <SelectValue placeholder="Selecione um pipeline" />
                         </SelectTrigger>
                         <SelectContent className="max-h-60 rounded-none border border-gray-200 dark:border-gray-700 bg-white dark:bg-[#1b1b1b]">
@@ -730,7 +638,7 @@ export default function PipelineConfiguracao({
                         onValueChange={(value) => updateAction(action.id, 'targetColumn', value)}
                         disabled={!action.nextPipeline}
                       >
-                        <SelectTrigger className="rounded-none text-sm dark:bg-[#161616] dark:border-gray-700 disabled:opacity-60">
+                        <SelectTrigger className="rounded-none text-sm dark:bg-[#161616] dark:border-gray-700 disabled:opacity-60 h-9">
                           <SelectValue placeholder="Escolha a coluna" />
                         </SelectTrigger>
                         <SelectContent className="max-h-60 rounded-none border border-gray-200 dark:border-gray-700 bg-white dark:bg-[#1b1b1b]">
@@ -749,32 +657,11 @@ export default function PipelineConfiguracao({
 
                     <div className="space-y-1">
                       <span className="text-[11px] font-semibold text-gray-500 uppercase tracking-wide">Status do negócio</span>
-                      <Select value={action.dealState} onValueChange={(value) => updateAction(action.id, 'dealState', value)}>
-                        <SelectTrigger className="rounded-none text-sm dark:bg-[#161616] dark:border-gray-700">
-                          <SelectValue placeholder="Estado" />
-                        </SelectTrigger>
-                        <SelectContent className="rounded-none border border-gray-200 dark:border-gray-700 bg-white dark:bg-[#1b1b1b]">
-                          <SelectItem
-                            value="Aberto"
-                            disabled={!canConfigureOpenStatus}
-                            className="text-sm text-gray-900 dark:text-gray-100 focus:bg-gray-100 dark:focus:bg-[#2a2a2a]"
-                          >
-                            Aberto {!canConfigureOpenStatus ? "(restrito)" : ""}
-                          </SelectItem>
-                          <SelectItem
-                            value="Ganho"
-                            className="text-sm text-gray-900 dark:text-gray-100 focus:bg-gray-100 dark:focus:bg-[#2a2a2a]"
-                          >
-                            Ganho
-                          </SelectItem>
-                          <SelectItem
-                            value="Perda"
-                            className="text-sm text-gray-900 dark:text-gray-100 focus:bg-gray-100 dark:focus:bg-[#2a2a2a]"
-                          >
-                            Perda
-                          </SelectItem>
-                        </SelectContent>
-                      </Select>
+                      <div className="flex items-center h-9">
+                        <span className="text-sm font-medium text-gray-900 dark:text-gray-100 bg-gray-50 dark:bg-[#161616] px-3 py-2 border border-[#d4d4d4] dark:border-gray-700 w-full cursor-not-allowed">
+                          {action.dealState}
+                        </span>
+                      </div>
                     </div>
 
                     <div className="space-y-1">
@@ -787,14 +674,6 @@ export default function PipelineConfiguracao({
                           onClick={() => saveAction(action)}
                         >
                           Salvar
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant="destructive"
-                          className="rounded-none"
-                          onClick={() => deleteAction(action.id)}
-                        >
-                          <Trash2 className="h-4 w-4" />
                         </Button>
                       </div>
                     </div>
@@ -814,56 +693,6 @@ export default function PipelineConfiguracao({
         pipelineName={selectedPipeline?.name || ""}
         isDeleting={isDeletingPipeline}
       />
-
-      {/* Modal de seleção de cor */}
-      <Dialog open={colorPickerOpen} onOpenChange={setColorPickerOpen}>
-        <DialogContent className="rounded-none border border-gray-300 dark:border-gray-700 dark:bg-[#0b0b0b] dark:text-gray-100">
-          <DialogHeader>
-            <DialogTitle>Selecionar cor do botão</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-4 py-4">
-            <div className="grid grid-cols-8 gap-2">
-              {[
-                '#3b82f6', '#ef4444', '#f59e0b', '#10b981', '#8b5cf6',
-                '#ec4899', '#06b6d4', '#84cc16', '#f97316', '#6366f1',
-                '#14b8a6', '#a855f7', '#e11d48', '#f43f5e', '#fb923c',
-                '#fbbf24', '#a3e635', '#22c55e', '#2dd4bf', '#38bdf8',
-                '#60a5fa', '#818cf8', '#a78bfa', '#c084fc', '#d946ef',
-                '#f472b6', '#fb7185', '#fb7185', '#94a3b8', '#64748b'
-              ].map((color) => (
-                <button
-                  key={color}
-                  type="button"
-                  onClick={() => {
-                    if (editingActionId) {
-                      updateAction(editingActionId, 'buttonColor', color);
-                      setColorPickerOpen(false);
-                      setEditingActionId(null);
-                    }
-                  }}
-                  className="w-10 h-10 rounded border-2 border-gray-300 hover:border-gray-500 dark:border-gray-600 dark:hover:border-gray-400 transition-all"
-                  style={{ backgroundColor: color }}
-                  title={color}
-                />
-              ))}
-            </div>
-            <div className="flex items-center gap-2">
-              <label className="text-sm text-gray-700 dark:text-gray-200">Cor personalizada:</label>
-              <input
-                type="color"
-                onChange={(e) => {
-                  if (editingActionId) {
-                    updateAction(editingActionId, 'buttonColor', e.target.value);
-                    setColorPickerOpen(false);
-                    setEditingActionId(null);
-                  }
-                }}
-                className="w-12 h-10 rounded border border-gray-300 cursor-pointer dark:border-gray-600"
-              />
-            </div>
-          </div>
-        </DialogContent>
-      </Dialog>
     </Tabs>
   );
 }

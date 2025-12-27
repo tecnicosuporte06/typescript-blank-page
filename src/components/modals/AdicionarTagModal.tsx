@@ -33,7 +33,7 @@ export function AdicionarTagModal({ contactId, onAddTag, isDarkMode = false }: A
     try {
       let finalTagId = tagId;
       
-      // Se não tem ID, é uma tag nova - criar primeiro
+      // Se não tem ID, é uma etiqueta nova - criar primeiro
       if (!finalTagId) {
         const { data: existingTag } = await supabase
           .from('tags')
@@ -59,7 +59,7 @@ export function AdicionarTagModal({ contactId, onAddTag, isDarkMode = false }: A
         }
       }
 
-      // Associar tag ao contato
+      // Associar etiqueta ao contato
       const { error: linkError } = await supabase
         .from('contact_tags')
         .insert({
@@ -73,7 +73,7 @@ export function AdicionarTagModal({ contactId, onAddTag, isDarkMode = false }: A
 
       toast({
         title: "Tag adicionada",
-        description: `A tag "${tagName}" foi adicionada com sucesso.`,
+        description: `A etiqueta "${tagName}" foi adicionada com sucesso.`,
       });
 
       onAddTag(tagName);
@@ -143,7 +143,7 @@ export function AdicionarTagModal({ contactId, onAddTag, isDarkMode = false }: A
           </div>
         )}
 
-        {/* Opção de criar nova tag se não existir */}
+        {/* Opção de criar nova etiqueta se não existir */}
         {newTag.trim() && !filteredTags.some(tag => tag.name.toLowerCase() === newTag.toLowerCase()) && (
           <div className="mt-2 border-t pt-2">
             <div

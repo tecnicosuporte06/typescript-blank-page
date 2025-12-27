@@ -107,7 +107,7 @@ export function AddTagModal({
         tagId = newTag.id;
       }
 
-      // Associar tag ao contato
+      // Associar etiqueta ao contato
       const { error: linkError } = await supabase
         .from('contact_tags')
         .insert([{ contact_id: contactId, tag_id: tagId }]);
@@ -116,7 +116,7 @@ export function AddTagModal({
         throw linkError;
       }
 
-      // Buscar a tag completa para retornar
+      // Buscar a etiqueta completa para retornar
       const { data: tag, error: fetchError } = await supabase
         .from('tags')
         .select('*')
@@ -129,7 +129,7 @@ export function AddTagModal({
       
       toast({
         title: "Tag adicionada",
-        description: `A tag "${tagName}" foi adicionada ao contato.`,
+        description: `A etiqueta "${tagName}" foi adicionada ao contato.`,
       });
 
       setTagInput("");
@@ -138,7 +138,7 @@ export function AddTagModal({
       if (error.message.includes('duplicate')) {
         toast({
           title: "Tag já existe",
-          description: "Esta tag já está associada ao contato.",
+          description: "Esta etiqueta já está associada ao contato.",
           variant: "destructive",
         });
       } else {
@@ -174,7 +174,7 @@ export function AddTagModal({
           "text-lg font-semibold mb-4",
           isDarkMode ? "text-white" : "text-gray-900"
         )}>
-          Adicionar Tag
+          Adicionar Etiqueta
         </div>
 
         <div className="space-y-4">
@@ -248,7 +248,7 @@ export function AddTagModal({
                       "text-sm",
                       isDarkMode ? "text-gray-300" : "text-gray-700"
                     )}>
-                      + Criar nova tag "{tagInput}"
+                      + Criar nova etiqueta "{tagInput}"
                     </span>
                   </Button>
                 )}

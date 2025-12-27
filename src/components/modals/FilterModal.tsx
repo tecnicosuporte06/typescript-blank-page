@@ -109,10 +109,10 @@ export function FilterModal({ open, onOpenChange, onApplyFilters, isDarkMode = f
         </DialogHeader>
         
         <div className="space-y-4 p-6">
-          {/* Selecionar tags */}
+          {/* Selecionar etiquetas */}
           <div>
             <Label htmlFor="tags" className={`text-xs font-bold text-gray-700 dark:text-gray-200`}>
-              Selecionar tags
+              Selecionar etiquetas
             </Label>
             <Popover>
               <PopoverTrigger asChild>
@@ -122,11 +122,11 @@ export function FilterModal({ open, onOpenChange, onApplyFilters, isDarkMode = f
                   disabled={tagsLoading}
                 >
                   {tagsLoading ? (
-                    <span className="text-muted-foreground dark:text-gray-400">Carregando tags...</span>
+                    <span className="text-muted-foreground dark:text-gray-400">Carregando etiquetas...</span>
                   ) : selectedTags.length === 0 ? (
-                    <span className="text-muted-foreground dark:text-gray-400">Selecionar tags</span>
+                    <span className="text-muted-foreground dark:text-gray-400">Selecionar etiquetas</span>
                   ) : (
-                    <span>{selectedTags.length} tag(s) selecionada(s)</span>
+                    <span>{selectedTags.length} etiqueta(s) selecionada(s)</span>
                   )}
                 </Button>
               </PopoverTrigger>
@@ -134,11 +134,11 @@ export function FilterModal({ open, onOpenChange, onApplyFilters, isDarkMode = f
                 <div className="max-h-60 overflow-y-auto p-2 scrollbar-thin scrollbar-thumb-yellow-500 scrollbar-track-transparent">
                   {tagsLoading ? (
                     <div className={`p-4 text-center text-muted-foreground dark:text-gray-400 text-xs`}>
-                      Carregando tags...
+                      Carregando etiquetas...
                     </div>
                   ) : availableTags.length === 0 ? (
                     <div className={`p-4 text-center text-muted-foreground dark:text-gray-400 text-xs`}>
-                      Nenhuma tag encontrada
+                      Nenhuma etiqueta encontrada
                     </div>
                   ) : (
                     availableTags.map((tag) => (

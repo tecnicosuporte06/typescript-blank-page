@@ -25,8 +25,8 @@ export interface CardHistoryEvent {
   metadata?: any;
 }
 
-export const cardHistoryQueryKey = (cardId: string) =>
-  ['card-history', cardId] as const;
+export const cardHistoryQueryKey = (cardId: string, contactId?: string | null) =>
+  ['card-history', cardId, contactId || 'no-contact'] as const;
 
 export const useCardHistory = (cardId: string, contactId?: string) => {
   const { getHeaders } = useWorkspaceHeaders();
@@ -55,14 +55,17 @@ export const useCardHistory = (cardId: string, contactId?: string) => {
   }, [cardId, contactId, resolvedContactId]);
 
   const effectiveContactId = contactId || resolvedContactId;
-  const queryKey = useMemo(() => cardHistoryQueryKey(cardId), [cardId]);
+  const queryKey = useMemo(
+    () => cardHistoryQueryKey(cardId, effectiveContactId),
+    [cardId, effectiveContactId]
+  );
 
   return useQuery({
     queryKey,
     queryFn: async (): Promise<CardHistoryEvent[]> => {
       if (!effectiveContactId) {
-        console.log('⚠️ ContactId não disponível ainda, retornando vazio');
-        return [];
+        // Aguarda contactId para evitar retornar vazio e encerrar consulta
+        throw new Error('CONTACT_ID_NOT_READY');
       }
 
       const headers = getHeaders();
@@ -86,29 +89,37 @@ export const useCardHistory = (cardId: string, contactId?: string) => {
           if (event.action === 'column_changed') {
             const fromColumn = metadata.old_column_name || 'Etapa desconhecida';
             const toColumn = metadata.new_column_name || 'Etapa desconhecida';
-            description = `Negócio movido: ${fromColumn} → ${toColumn}`;
+            const changedBy = metadata.changed_by_name || 'Sistema';
+            description = `${fromColumn} → ${toColumn} - ${changedBy}`;
             eventTitle = 'Transferência de Etapa';
           } else if (event.action === 'pipeline_changed') {
             const fromPipeline = metadata.old_pipeline_name || 'Pipeline desconhecido';
             const toPipeline = metadata.new_pipeline_name || 'Pipeline desconhecido';
-            description = `Pipeline alterado: ${fromPipeline} → ${toPipeline}`;
+            const changedBy = metadata.changed_by_name || 'Sistema';
+            description = `${fromPipeline} → ${toPipeline} - ${changedBy}`;
             eventType = 'pipeline_transfer';
             eventTitle = 'Transferência de Pipeline';
           } else if (event.action === 'created') {
-            description = 'Negócio criado';
+            const changedBy = metadata.changed_by_name || 'Sistema';
+            description = `Negócio criado - ${changedBy}`;
             eventTitle = 'Criação do Negócio';
           } else if (event.action === 'status_changed') {
             const newStatus = metadata.new_status || 'Status desconhecido';
-            description = `Status alterado para: ${newStatus}`;
+            const changedBy = metadata.changed_by_name || 'Sistema';
+            description = `Status alterado para: ${newStatus} - ${changedBy}`;
             eventTitle = 'Status Atualizado';
           } else if (event.action === 'tag_removed') {
-            description = `Tag "${metadata.tag_name || 'sem nome'}" foi removida do contato`;
+            const tagName = metadata.tag_name || 'sem nome';
+            const changedBy = metadata.changed_by_name || 'Sistema';
+            description = `${tagName} - ${changedBy}`;
             eventType = 'tag';
-            eventTitle = 'Tag Removida';
+            eventTitle = 'Etiqueta Removida';
           } else if (event.action === 'tag_added') {
-            description = `Tag "${metadata.tag_name || 'sem nome'}" foi atribuída ao contato`;
+            const tagName = metadata.tag_name || 'sem nome';
+            const changedBy = metadata.changed_by_name || 'Sistema';
+            description = `${tagName} - ${changedBy}`;
             eventType = 'tag';
-            eventTitle = 'Tag Atribuída';
+            eventTitle = 'Etiqueta Atribuída';
           } else if (event.action === 'note_created') {
             description = metadata.description || metadata.content || 'Anotação adicionada';
             eventType = 'notes';
@@ -126,7 +137,8 @@ export const useCardHistory = (cardId: string, contactId?: string) => {
             user_name: metadata?.changed_by_name,
             metadata: {
               ...metadata,
-              event_title: eventTitle,
+              event_title: eventTitle || 'Registro de Alteração',
+              description: description // Garantir que a descrição esteja no metadata também
             },
           });
         }
@@ -159,13 +171,14 @@ export const useCardHistory = (cardId: string, contactId?: string) => {
         if (agentHistory) {
           for (const event of agentHistory) {
             let description = '';
+            const changedBy = (event.system_users as any)?.name || 'Sistema';
             
             if (event.action === 'activated') {
-              description = `Agente **${event.agent_name}** foi ativado para esse Negócio`;
+              description = `Agente **${event.agent_name}** foi ativado para esse Negócio - ${changedBy}`;
             } else if (event.action === 'deactivated') {
-              description = `Agente **${event.agent_name}** foi desativado para esse Negócio`;
+              description = `Agente **${event.agent_name}** foi desativado para esse Negócio - ${changedBy}`;
             } else if (event.action === 'changed') {
-              description = `Agente **${event.agent_name}** foi ativado para esse Negócio`;
+              description = `Agente **${event.agent_name}** foi ativado para esse Negócio - ${changedBy}`;
             }
 
             allEvents.push({
@@ -175,7 +188,11 @@ export const useCardHistory = (cardId: string, contactId?: string) => {
               description,
               timestamp: event.created_at || new Date().toISOString(),
               user_name: (event.system_users as any)?.name,
-              metadata: event.metadata
+              metadata: {
+                ...(event.metadata || {}),
+                event_title: 'Atividade de IA',
+                description: description
+              }
             });
           }
         }
@@ -246,22 +263,22 @@ export const useCardHistory = (cardId: string, contactId?: string) => {
             const changedByName = event.changed_by ? usersMap.get(event.changed_by) : undefined;
 
             if (event.action === 'transfer' || (event.action === 'assign' && event.from_assigned_user_id && event.to_assigned_user_id && event.from_assigned_user_id !== event.to_assigned_user_id)) {
-              description = `Conversa transferida de ${fromUserName} para ${toUserName}`;
+              description = `Conversa transferida de ${fromUserName} para ${toUserName} - ${changedByName || 'Sistema'}`;
               eventTitle = 'Conversa Transferida';
             } else if (event.action === 'assign' && event.to_assigned_user_id) {
-              description = `Conversa vinculada ao responsável ${toUserName}`;
+              description = `Conversa vinculada ao responsável ${toUserName} - ${changedByName || 'Sistema'}`;
               eventTitle = 'Conversa Vinculada';
             } else if (event.action === 'assign' && !event.to_assigned_user_id && event.from_assigned_user_id) {
-              description = `Conversa desvinculada do responsável ${fromUserName}`;
+              description = `Conversa desvinculada do responsável ${fromUserName} - ${changedByName || 'Sistema'}`;
               eventTitle = 'Conversa Desvinculada';
             } else if (event.action === 'queue_transfer') {
               const fromQueue = event.from_queue_id ? queuesMap.get(event.from_queue_id) || 'Sem fila' : 'Sem fila';
               const toQueue = event.to_queue_id ? queuesMap.get(event.to_queue_id) || 'Sem fila' : 'Sem fila';
-              description = `Conversa transferida de fila: ${fromQueue} → ${toQueue}`;
+              description = `${fromQueue} → ${toQueue} - ${changedByName || 'Sistema'}`;
               eventType = 'queue_transfer';
               eventTitle = 'Transferência de Fila';
             } else if (!event.to_assigned_user_id && !event.from_assigned_user_id) {
-              description = 'Conversa atualizada';
+              description = `Conversa atualizada - ${changedByName || 'Sistema'}`;
             }
 
             allEvents.push({
@@ -273,6 +290,7 @@ export const useCardHistory = (cardId: string, contactId?: string) => {
               user_name: changedByName,
               metadata: {
                 event_title: eventTitle,
+                description: description,
                 from_user_name: fromUserName,
                 to_user_name: toUserName,
                 changed_by_name: changedByName,
@@ -291,6 +309,7 @@ export const useCardHistory = (cardId: string, contactId?: string) => {
           id,
           type,
           subject,
+          description,
           scheduled_for,
           is_completed,
           created_at,
@@ -344,6 +363,7 @@ export const useCardHistory = (cardId: string, contactId?: string) => {
               activity_type: activity.type,
               scheduled_for: activity.scheduled_for,
               subject: activity.subject,
+              description: activity.description,
               status: 'created'
             }
           });
@@ -362,6 +382,7 @@ export const useCardHistory = (cardId: string, contactId?: string) => {
                 activity_type: activity.type,
                 scheduled_for: activity.scheduled_for,
                 subject: activity.subject,
+                description: activity.description,
                 status: 'completed'
               }
             });
@@ -385,7 +406,7 @@ export const useCardHistory = (cardId: string, contactId?: string) => {
 
       return allEvents;
     },
-    enabled: !!cardId, // Só precisa de cardId, o contactId é resolvido internamente
+    enabled: !!cardId && !!effectiveContactId, // só dispara quando já tem cardId e contactId resolvido
     staleTime: 0, // Sempre refetch para garantir dados atualizados
     refetchOnMount: true,
   });
