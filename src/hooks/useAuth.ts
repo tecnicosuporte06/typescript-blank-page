@@ -31,7 +31,8 @@ export const useAuth = () => {
 };
 
 const mapProfileToRole = (profile: string): 'master' | 'admin' | 'user' => {
-  switch (profile) {
+  const p = (profile || '').toLowerCase();
+  switch (p) {
     case 'master':
       return 'master';
     case 'admin':
