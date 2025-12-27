@@ -1,5 +1,5 @@
 import React, { useState, useCallback, useEffect, useMemo, useRef } from "react";
-import { differenceInHours } from 'date-fns';
+import { differenceInHours, differenceInDays, isAfter, startOfDay, format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { useParams, useNavigate } from 'react-router-dom';
 import { ConnectionBadge } from "@/components/chat/ConnectionBadge";
@@ -13,7 +13,7 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Settings, Search, Plus, ListFilter, Eye, MoreHorizontal, Phone, MessageCircle, MessageSquare, Calendar, DollarSign, EyeOff, Folder, AlertTriangle, Check, MoreVertical, Edit, Download, ArrowRight, X, Tag, Bot, Zap, ChevronLeft, ChevronRight, Menu, GripVertical } from "lucide-react";
+import { Settings, Search, Plus, ListFilter, Eye, MoreHorizontal, Phone, MessageCircle, MessageSquare, Calendar, Clock, DollarSign, EyeOff, Folder, AlertTriangle, AlertCircle, Check, MoreVertical, Edit, Download, ArrowRight, X, Tag, Bot, Zap, ChevronLeft, ChevronRight, Menu, GripVertical } from "lucide-react";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { AddColumnModal } from "@/components/modals/AddColumnModal";
 import { PipelineConfigModal } from "@/components/modals/PipelineConfigModal";
@@ -300,6 +300,55 @@ function DraggableDeal({
       supabase.removeChannel(channel);
     };
   }, [deal.contact?.id, resolvedWorkspaceId]);
+
+  // Estado para tarefa pendente (alerta)
+  const [pendingTask, setPendingTask] = useState<any>(null);
+
+  // Buscar tarefa pendente mais urgente para este negócio
+  useEffect(() => {
+    if (!deal.id || !resolvedWorkspaceId) return;
+
+    const fetchPendingTask = async () => {
+      try {
+        const { data, error } = await supabase
+          .from('activities')
+          .select('*')
+          .eq('pipeline_card_id', deal.id)
+          .eq('is_completed', false)
+          .order('scheduled_for', { ascending: true })
+          .limit(1);
+
+        if (error) throw error;
+        if (data && data.length > 0) {
+          setPendingTask(data[0]);
+        } else {
+          setPendingTask(null);
+        }
+      } catch (error) {
+        console.error('Erro ao buscar tarefa pendente:', error);
+      }
+    };
+
+    fetchPendingTask();
+    
+    // Escutar mudanças em tempo real para atividades deste card
+    const channel = supabase
+      .channel(`activities-deal-${deal.id}`)
+      .on('postgres_changes', { 
+        event: '*', 
+        schema: 'public', 
+        table: 'activities', 
+        filter: `pipeline_card_id=eq.${deal.id}` 
+      }, () => {
+        fetchPendingTask();
+      })
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [deal.id, resolvedWorkspaceId]);
+
   const {
     attributes,
     listeners,
@@ -350,6 +399,12 @@ function DraggableDeal({
   };
 
   const dragHandleProps = !isSelectionMode ? listeners : undefined;
+
+  // Nome/telefone exibido no card (limpa espaços e trata traço)
+  const contactName = (deal.contact?.name || "").trim();
+  const contactPhone = (deal.contact?.phone || "").trim();
+  const displayContact =
+    contactName && contactName !== "-" ? contactName : (contactPhone || "Sem contato");
 
   return (
       <div
@@ -427,7 +482,7 @@ function DraggableDeal({
           
           {/* Avatar do contato - SEGUNDO */}
           <div className="flex-shrink-0">
-            {deal.contact?.profile_image_url ? <img src={deal.contact.profile_image_url} alt={deal.contact.name || deal.name} className="w-6 h-6 md:w-7 md:h-7 rounded-full object-cover border border-primary/20" onError={e => {
+            {deal.contact?.profile_image_url ? <img src={deal.contact.profile_image_url} alt={displayContact} className="w-6 h-6 md:w-7 md:h-7 rounded-full object-cover border border-primary/20" onError={e => {
             // Fallback para iniciais se a imagem falhar
             const target = e.currentTarget as HTMLImageElement;
             target.style.display = 'none';
@@ -435,7 +490,7 @@ function DraggableDeal({
             if (fallback) fallback.style.display = 'flex';
           }} /> : null}
             <div className={cn("w-6 h-6 md:w-7 md:h-7 rounded-full flex items-center justify-center text-xs font-medium", "bg-gradient-to-br from-primary/20 to-primary/10 text-primary border border-primary/20", deal.contact?.profile_image_url ? "hidden" : "")}>
-              {getAvatarInitials(deal.contact?.name || deal.name || "Contato")}
+              {getAvatarInitials(displayContact || deal.name || "Contato")}
             </div>
           </div>
           
@@ -450,7 +505,7 @@ function DraggableDeal({
               {...dragHandleProps}
             >
               <h3 className={cn("text-xs font-medium truncate", "text-foreground dark:text-gray-100")}>
-                {deal.contact?.name || deal.name}
+                {displayContact || deal.name || 'Sem nome'}
               </h3>
             </div>
             
@@ -601,6 +656,82 @@ function DraggableDeal({
               </TooltipContent>
             </Tooltip>
 
+            {/* Ícone de Alerta de Tarefa Pendente */}
+            {pendingTask && (() => {
+              const taskDate = startOfDay(new Date(pendingTask.scheduled_for));
+              const today = startOfDay(new Date());
+              const daysDiff = differenceInDays(taskDate, today);
+              
+              if (daysDiff <= 1) {
+                const isOverdue = daysDiff < 0;
+                const isToday = daysDiff === 0;
+                const isTomorrow = daysDiff === 1;
+                
+                let iconColor = "text-yellow-500";
+                if (isOverdue) iconColor = "text-red-500";
+                else if (isToday) iconColor = "text-orange-500";
+                
+                return (
+                  <Popover>
+                    <PopoverTrigger asChild>
+                      <Button 
+                        size="icon" 
+                        variant="ghost" 
+                        className={cn("h-5 w-5 p-0", iconColor)}
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        <AlertCircle className="w-3.5 h-3.5" />
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent 
+                      className="w-72 p-0 bg-white dark:bg-[#1b1b1b] border-gray-200 dark:border-gray-700 shadow-xl z-[10000] overflow-hidden rounded-none" 
+                      onClick={(e) => e.stopPropagation()}
+                      align="start"
+                    >
+                      <div className="p-3 border-b border-gray-200 dark:border-gray-700 bg-gray-50/50 dark:bg-gray-800/50">
+                        <div className="flex items-center justify-between">
+                          <h3 className="font-semibold text-sm">Tarefa Pendente</h3>
+                          <Badge variant={isOverdue ? "destructive" : "secondary"} className="text-[10px] px-1.5 h-4 rounded-none">
+                            {isOverdue ? `${Math.abs(daysDiff)}d atrasado` : isToday ? "Hoje" : "Amanhã"}
+                          </Badge>
+                        </div>
+                      </div>
+                      <div className="p-3 space-y-3">
+                        <div className="space-y-1">
+                          {pendingTask.type && (
+                            <Badge variant="outline" className="text-[10px] uppercase tracking-wider rounded-none border-gray-300 dark:border-gray-600 font-normal">
+                              {pendingTask.type}
+                            </Badge>
+                          )}
+                          <h4 className="font-semibold text-sm text-gray-900 dark:text-gray-100 leading-tight">
+                            {pendingTask.subject || "Sem assunto"}
+                          </h4>
+                        </div>
+                        
+                        {pendingTask.description && (
+                          <p className="text-xs text-muted-foreground line-clamp-2 italic">
+                            "{pendingTask.description}"
+                          </p>
+                        )}
+
+                        <div className="flex flex-col gap-1.5 pt-2 border-t border-border/50">
+                          <div className="flex items-center gap-2 text-[10px] text-muted-foreground">
+                            <Clock className="w-3 h-3" />
+                            <span>{format(new Date(pendingTask.scheduled_for), "HH:mm")}</span>
+                          </div>
+                          <div className="flex items-center gap-2 text-[10px] text-muted-foreground">
+                            <Calendar className="w-3 h-3" />
+                            <span>{format(new Date(pendingTask.scheduled_for), "dd 'de' MMMM", { locale: ptBR })}</span>
+                          </div>
+                        </div>
+                      </div>
+                    </PopoverContent>
+                  </Popover>
+                );
+              }
+              return null;
+            })()}
+
             {/* Etiquetas (Tags) movidas do centro para o rodapé - Sem expansão */}
             <div className="flex items-center gap-1 overflow-x-auto scrollbar-none no-scrollbar ml-1">
               {contactTags && contactTags.length > 0 && (
@@ -672,7 +803,7 @@ function DraggableDeal({
                                   <div className="flex items-center gap-2 w-full">
                                     <div 
                                       className="w-2.5 h-2.5 rounded-none border border-gray-300" 
-                                      style={{ backgroundColor: tag.color }}
+                                      style={{ backgroundColor: tag.color ? `${tag.color}99` : 'rgba(0,0,0,0.06)' }}
                                     />
                                     <span>{tag.name}</span>
                                   </div>
@@ -1322,13 +1453,11 @@ const [selectedCardForProduct, setSelectedCardForProduct] = useState<{
     // Recolher sidebar para melhor visualização
     onCollapseSidebar?.();
     // Navegar para a página de detalhes ao invés de abrir modal
-    if (effectiveWorkspaceId) {
-      navigate(`/workspace/${effectiveWorkspaceId}/crm-negocios/${card.id}`);
-    } else {
-      // Fallback: abrir modal se não houver workspaceId
-      setSelectedCard(card);
-      setIsDealDetailsModalOpen(true);
-    }
+    const pathPrefix = (isMaster && effectiveWorkspaceId) 
+      ? `/workspace/${effectiveWorkspaceId}/pipeline` 
+      : '/pipeline';
+    
+    navigate(`${pathPrefix}/${card.id}`);
   };
   const handlePipelineCreate = async (nome: string) => {
     try {
@@ -1764,12 +1893,13 @@ const [selectedCardForProduct, setSelectedCardForProduct] = useState<{
                       {canManagePipelines(selectedWorkspace?.workspace_id || undefined) && (
                         <Button
                           variant="ghost"
-                          size="icon"
+                          size="sm"
                           onClick={() => setIsCriarPipelineModalOpen(true)}
-                          className={`h-7 w-7 rounded-none hover:bg-gray-200 dark:hover:bg-[#2a2a2a] text-gray-700 dark:text-gray-300 border border-transparent hover:border-gray-300 dark:hover:border-gray-700`}
+                          className="h-7 px-2 rounded-none hover:bg-gray-200 dark:hover:bg-[#2a2a2a] text-gray-700 dark:text-gray-300 border border-transparent hover:border-gray-300 dark:hover:border-gray-700 gap-1"
                           title="Criar Pipeline"
                         >
                           <Plus className="h-3.5 w-3.5" />
+                          <span className="text-xs font-medium">Criar Pipeline</span>
                         </Button>
                       )}
 
@@ -1843,7 +1973,7 @@ const [selectedCardForProduct, setSelectedCardForProduct] = useState<{
                           className={`h-7 px-2 hover:bg-gray-200 dark:hover:bg-[#2a2a2a] rounded-none flex items-center gap-1 text-black dark:text-white`}
                         >
                           <Plus className="h-3.5 w-3.5" />
-                          <span className="text-xs font-medium">Coluna</span>
+                          <span className="text-xs font-medium">Criar Etapa</span>
                         </Button>
                       )}
                     </div>
@@ -1883,7 +2013,9 @@ const [selectedCardForProduct, setSelectedCardForProduct] = useState<{
                 </div>
               )}
 
-              <div className="h-full px-2 md:px-4 overflow-x-auto overflow-y-hidden">
+              <div
+                className="h-full px-2 md:px-4 overflow-x-auto overflow-y-hidden [&::-webkit-scrollbar]:h-8 [&::-webkit-scrollbar-thumb]:h-8 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-gray-400/70 [&::-webkit-scrollbar-track]:bg-transparent"
+              >
                   {isLoading ? (
                     <div className="flex gap-4 h-full" style={{ minWidth: 'max-content' }}>
                       {[...Array(4)].map((_, index) => (
@@ -1922,7 +2054,7 @@ const [selectedCardForProduct, setSelectedCardForProduct] = useState<{
                         <p className={`text-muted-foreground dark:text-gray-400 mb-4`}>Nenhum pipeline selecionado</p>
                         <Button onClick={() => setIsCriarPipelineModalOpen(true)}>
                           <Plus className="h-4 w-4 mr-2" />
-                          Criar Pipeline
+                          <span className="text-xs font-medium">Criar Pipeline</span>
                         </Button>
                       </div>
                     </div>
@@ -2333,7 +2465,7 @@ const [selectedCardForProduct, setSelectedCardForProduct] = useState<{
 
                           const deal: Deal = {
                             id: card.id,
-                            name: card.title,
+                            name: card.title || (card as any).description || '',
                             value: effectiveValue,
                             stage: column.name,
                             status: card.status,

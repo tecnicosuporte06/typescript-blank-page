@@ -2030,7 +2030,7 @@ export function WhatsAppChat({
             <TooltipProvider>
               <Tooltip>
                 <TooltipTrigger asChild>
-                  <button onClick={() => setActiveTab('all')} className={cn("w-full flex items-center gap-2 px-2 py-1.5 rounded-none transition-all text-xs border", activeTab === 'all' ? "bg-yellow-50 border-yellow-200 text-yellow-700 font-semibold shadow-sm dark:bg-yellow-900/20 dark:border-yellow-800 dark:text-yellow-100" : "border-transparent text-gray-700 hover:bg-[#e1e1e1] hover:border-gray-300 dark:text-gray-200 dark:hover:bg-[#333] dark:hover:border-gray-600")}>
+                  <button onClick={() => setActiveTab('all')} className={cn("w-full flex items-center gap-2 px-2 py-1.5 rounded-none transition-all text-xs border", activeTab === 'all' ? "bg-gray-100 text-gray-900 font-semibold shadow-sm border-transparent dark:bg-[#2a2a2a] dark:text-white dark:border-transparent" : "border-transparent text-gray-700 hover:bg-[#e1e1e1] hover:border-gray-300 dark:text-gray-200 dark:hover:bg-[#333] dark:hover:border-gray-600")}>
                     <Circle className={cn("h-3.5 w-3.5", activeTab === 'all' ? "fill-yellow-600 text-yellow-600 dark:fill-yellow-400 dark:text-yellow-400" : "text-gray-500 dark:text-gray-400")} />
                     {!sidebarCollapsed && <>
                         <span className="flex-1 text-left">Todos</span>
@@ -2048,7 +2048,7 @@ export function WhatsAppChat({
             <TooltipProvider>
               <Tooltip>
                 <TooltipTrigger asChild>
-                  <button onClick={() => setActiveTab('mine')} className={cn("w-full flex items-center gap-2 px-2 py-1.5 rounded-none transition-all text-xs border", activeTab === 'mine' ? "bg-yellow-50 border-yellow-200 text-yellow-700 font-semibold shadow-sm dark:bg-yellow-900/20 dark:border-yellow-800 dark:text-yellow-100" : "border-transparent text-gray-700 hover:bg-[#e1e1e1] hover:border-gray-300 dark:text-gray-200 dark:hover:bg-[#333] dark:hover:border-gray-600")}>
+                  <button onClick={() => setActiveTab('mine')} className={cn("w-full flex items-center gap-2 px-2 py-1.5 rounded-none transition-all text-xs border", activeTab === 'mine' ? "bg-gray-100 text-gray-900 font-semibold shadow-sm border-transparent dark:bg-[#2a2a2a] dark:text-white dark:border-transparent" : "border-transparent text-gray-700 hover:bg-[#e1e1e1] hover:border-gray-300 dark:text-gray-200 dark:hover:bg-[#333] dark:hover:border-gray-600")}>
                     <UserCircle className={cn("h-3.5 w-3.5", activeTab === 'mine' ? "text-yellow-600 dark:text-yellow-400" : "text-gray-500")} />
                     {!sidebarCollapsed && <>
                         <span className="flex-1 text-left">Minhas conversas</span>
@@ -2066,7 +2066,7 @@ export function WhatsAppChat({
             <TooltipProvider>
               <Tooltip>
                 <TooltipTrigger asChild>
-                  <button onClick={() => setActiveTab('unassigned')} className={cn("w-full flex items-center gap-2 px-2 py-1.5 rounded-none transition-all text-xs border", activeTab === 'unassigned' ? "bg-yellow-50 border-yellow-200 text-yellow-700 font-semibold shadow-sm dark:bg-yellow-900/20 dark:border-yellow-800 dark:text-yellow-100" : "border-transparent text-gray-700 hover:bg-[#e1e1e1] hover:border-gray-300 dark:text-gray-200 dark:hover:bg-[#333] dark:hover:border-gray-600")}>
+                  <button onClick={() => setActiveTab('unassigned')} className={cn("w-full flex items-center gap-2 px-2 py-1.5 rounded-none transition-all text-xs border", activeTab === 'unassigned' ? "bg-gray-100 text-gray-900 font-semibold shadow-sm border-transparent dark:bg-[#2a2a2a] dark:text-white dark:border-transparent" : "border-transparent text-gray-700 hover:bg-[#e1e1e1] hover:border-gray-300 dark:text-gray-200 dark:hover:bg-[#333] dark:hover:border-gray-600")}>
                     <UserX className={cn("h-3.5 w-3.5", activeTab === 'unassigned' ? "text-yellow-600 dark:text-yellow-400" : "text-gray-500")} />
                     {!sidebarCollapsed && <>
                         <span className="flex-1 text-left">Não atribuídas</span>
@@ -2084,7 +2084,7 @@ export function WhatsAppChat({
             <TooltipProvider>
               <Tooltip>
                 <TooltipTrigger asChild>
-                  <button onClick={() => setActiveTab('unread')} className={cn("w-full flex items-center gap-2 px-2 py-1.5 rounded-none transition-all text-xs border", activeTab === 'unread' ? "bg-yellow-50 border-yellow-200 text-yellow-700 font-semibold shadow-sm dark:bg-yellow-900/20 dark:border-yellow-800 dark:text-yellow-100" : "border-transparent text-gray-700 hover:bg-[#e1e1e1] hover:border-gray-300 dark:text-gray-200 dark:hover:bg-[#333] dark:hover:border-gray-600")}>
+                  <button onClick={() => setActiveTab('unread')} className={cn("w-full flex items-center gap-2 px-2 py-1.5 rounded-none transition-all text-xs border", activeTab === 'unread' ? "bg-gray-100 text-gray-900 font-semibold shadow-sm border-transparent dark:bg-[#2a2a2a] dark:text-white dark:border-transparent" : "border-transparent text-gray-700 hover:bg-[#e1e1e1] hover:border-gray-300 dark:text-gray-200 dark:hover:bg-[#333] dark:hover:border-gray-600")}>
                     <MessageCircle className={cn("h-3.5 w-3.5", activeTab === 'unread' ? "text-yellow-600 dark:text-yellow-400" : "text-gray-500")} />
                     {!sidebarCollapsed && <>
                         <span className="flex-1 text-left">Não lidas</span>
@@ -2165,7 +2165,7 @@ export function WhatsAppChat({
                               <div className="flex items-center space-x-2 flex-1">
                                 <div
                                   className="w-2 h-2 rounded-full"
-                                  style={{ backgroundColor: tag.color || '#808080' }}
+                                  style={{ backgroundColor: tag.color ? `${tag.color}99` : 'rgba(0,0,0,0.06)' }}
                                 />
                                 <span className="text-xs text-gray-900 dark:text-gray-100">{tag.name}</span>
                               </div>
@@ -2248,8 +2248,8 @@ export function WhatsAppChat({
               {filteredConversations.map(conversation => {
                 // ✅ Removido lastMessage (lazy loading)
                 const lastActivity = getActivityDisplay(conversation);
-                const initials = getInitials(conversation.contact?.name || conversation.contact?.phone || 'U');
-                const avatarColor = getAvatarColor(conversation.contact?.name || conversation.contact?.phone || 'U');
+                const initials = getInitials(conversation.contact?.name && conversation.contact.name !== '-' ? conversation.contact.name : (conversation.contact?.phone || 'U'));
+                const avatarColor = getAvatarColor(conversation.contact?.name && conversation.contact.name !== '-' ? conversation.contact.name : (conversation.contact?.phone || 'U'));
                 // ✅ CRÍTICO: Key dinâmica para forçar re-render do card quando conversa atualizar
                 const cardKey = `${conversation.id}-${conversation._updated_at || 0}-${conversation.last_activity_at}`;
                 return (
@@ -2342,7 +2342,7 @@ export function WhatsAppChat({
                        {/* First line: Name with connection badge */}
                        <div className="flex items-center gap-1.5 mb-0.5 min-w-0">
                         <span className="text-xs font-bold text-gray-900 tracking-tight truncate whitespace-nowrap overflow-hidden text-ellipsis block dark:text-gray-100">
-                          {conversation.contact?.name || conversation.contact?.phone}
+                          {conversation.contact?.name && conversation.contact.name !== '-' ? conversation.contact.name : (conversation.contact?.phone || 'Sem nome')}
                         </span>
                           <ConnectionBadge 
                             connectionId={conversation.connection_id}
@@ -2396,7 +2396,7 @@ export function WhatsAppChat({
                             <div className="space-y-1">
                               {conversation.tags.map((tag: any) => <div key={tag.id} className="flex items-center gap-2">
                                   <div className="w-2.5 h-2.5 rounded-full" style={{
-                                    backgroundColor: tag.color || '#8B5CF6'
+                                    backgroundColor: tag.color ? `${tag.color}99` : 'rgba(0,0,0,0.06)'
                                   }} />
                                   <span className="text-xs">{tag.name}</span>
                                 </div>)}
@@ -2502,17 +2502,17 @@ export function WhatsAppChat({
                   )}
 
                    <Avatar className="w-9 h-9 cursor-pointer rounded-none border border-[#d4d4d4] shadow-sm dark:border-gray-600" onClick={() => setContactPanelOpen(true)}>
-                    {selectedConversation.contact?.profile_image_url && <AvatarImage src={selectedConversation.contact.profile_image_url} alt={selectedConversation.contact?.name} className="object-cover" />}
+                    {selectedConversation.contact?.profile_image_url && <AvatarImage src={selectedConversation.contact.profile_image_url} alt={selectedConversation.contact?.name && selectedConversation.contact.name !== '-' ? selectedConversation.contact.name : selectedConversation.contact?.phone} className="object-cover" />}
                     <AvatarFallback style={{
-                  backgroundColor: getAvatarColor(selectedConversation.contact?.name || '')
+                  backgroundColor: getAvatarColor(selectedConversation.contact?.name && selectedConversation.contact.name !== '-' ? selectedConversation.contact.name : (selectedConversation.contact?.phone || ''))
                 }} className="text-white font-bold text-xs rounded-none">
-                      {getInitials(selectedConversation.contact?.name || '')}
+                      {getInitials(selectedConversation.contact?.name && selectedConversation.contact.name !== '-' ? selectedConversation.contact.name : (selectedConversation.contact?.phone || ''))}
                     </AvatarFallback>
                   </Avatar>
                   
                   <div className="flex items-center gap-2">
                     <h3 className="font-bold text-gray-900 text-sm tracking-tight dark:text-gray-100">
-                      {selectedConversation.contact?.name}
+                      {selectedConversation.contact?.name && selectedConversation.contact.name !== '-' ? selectedConversation.contact.name : (selectedConversation.contact?.phone || 'Sem nome')}
                     </h3>
                     <div className="flex items-center gap-2">
                     <ContactTags 
@@ -2733,30 +2733,30 @@ export function WhatsAppChat({
                       </Avatar>}
                      
                      <div className={cn(
-                       "max-w-full group relative shadow-sm border",
-                       message.message_type === 'audio' ? "border-transparent shadow-none" : "rounded-none",
+                       "max-w-full group relative shadow-sm",
+                       message.message_type === 'audio' ? "shadow-none" : "rounded-none",
                        // Mensagens de contato
                        isContactMessage 
                          ? message.message_type === 'audio' 
                            ? "" 
                            : message.message_type === 'image' || message.message_type === 'video' 
                              ? "bg-transparent border-none shadow-none" 
-                             : "bg-white border-[#d4d4d4] dark:bg-[#2d2d2d] dark:border-gray-600"
+                             : "bg-white dark:bg-[#2d2d2d]"
                        // Mensagens do agente IA (origem_resposta: automatica)
                        : message.origem_resposta === 'automatica'
                          ? message.message_type === 'audio'
                            ? ""
                            : message.message_type === 'image' || message.message_type === 'video'
                              ? "bg-transparent border-none shadow-none"
-                             : "bg-[#f0fdf4] border-green-200 dark:bg-green-900/20 dark:border-green-800"
+                             : "bg-[#f0fdf4] dark:bg-green-900/20"
                        // Mensagens normais do agente
                       : message.message_type !== 'text' && message.file_url 
                           ? message.message_type === 'audio' 
                             ? "" 
                             : message.message_type === 'image' || message.message_type === 'video' 
                               ? "bg-transparent border-none shadow-none" 
-                              : "bg-[#e6f2ff] border-[#d4d4d4] dark:bg-blue-900/20 dark:border-transparent" 
-                          : "bg-[#e6f2ff] border-[#d4d4d4] dark:bg-blue-900/20 dark:border-transparent",
+                              : "bg-[#e6f2ff] dark:bg-blue-900/20" 
+                          : "bg-[#e6f2ff] dark:bg-blue-900/20",
                          // Padding base
                          message.message_type !== 'audio' && !(message.message_type === 'image' || message.message_type === 'video') && "px-3 py-2"
                      )}>

@@ -177,9 +177,9 @@ export function ColorPickerModal({ open, onOpenChange, onColorSelect, isDarkMode
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className={`sm:max-w-md ${isDarkMode ? 'bg-[#2d2d2d] border-gray-600' : 'bg-white'}`}>
-        <DialogHeader>
-          <DialogTitle className={isDarkMode ? 'text-white' : 'text-gray-900'}>
+      <DialogContent className={`sm:max-w-md ${isDarkMode ? 'bg-[#0f0f0f] border-gray-700 text-gray-100' : 'bg-white text-gray-900'}`}>
+        <DialogHeader className={`${isDarkMode ? 'bg-[#111111] border-b border-gray-700' : 'bg-transparent border-b border-gray-200'} px-6 pt-4 pb-3`}>
+          <DialogTitle className={`${isDarkMode ? 'text-white' : 'text-gray-900'} text-base font-semibold`}>
             Escolha uma cor
           </DialogTitle>
         </DialogHeader>
@@ -235,25 +235,25 @@ export function ColorPickerModal({ open, onOpenChange, onColorSelect, isDarkMode
           {/* Selected color preview */}
           <div className="flex items-center gap-2">
             <div 
-              className="w-8 h-8 border border-gray-300 rounded"
+              className={`w-8 h-8 border rounded ${isDarkMode ? 'border-gray-600' : 'border-gray-300'}`}
               style={{ backgroundColor: selectedColor }}
             />
-            <span className={`text-sm ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
+            <span className={`text-sm ${isDarkMode ? 'text-gray-100' : 'text-gray-900'}`}>
               {selectedColor}
             </span>
           </div>
           
-          <div className="flex justify-end gap-2 pt-4 border-t border-[#d4d4d4] mt-4 -mx-6 -mb-6 p-4 bg-gray-50">
+          <div className={`flex justify-end gap-2 pt-4 border-t mt-4 -mx-6 -mb-6 p-4 ${isDarkMode ? 'bg-[#0f0f0f] border-gray-700' : 'bg-gray-50 border-[#d4d4d4]'}`}>
             <Button 
               variant="outline"
               onClick={() => onOpenChange(false)}
-              className="h-8 text-xs rounded-none border-gray-300 bg-white hover:bg-gray-100 text-gray-700"
+              className={`h-8 text-xs rounded-none ${isDarkMode ? 'border-gray-700 bg-[#1b1b1b] hover:bg-[#2a2a2a] text-gray-200' : 'border-gray-300 bg-white hover:bg-gray-100 text-gray-700'}`}
             >
               Cancelar
             </Button>
             <Button 
               onClick={handleConfirm}
-              className="h-8 text-xs rounded-none bg-primary hover:bg-primary/90 text-primary-foreground"
+              className={`h-8 text-xs rounded-none bg-primary hover:bg-primary/90 text-primary-foreground`}
             >
               Concluir
             </Button>

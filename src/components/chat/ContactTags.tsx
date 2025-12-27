@@ -164,7 +164,7 @@ export function ContactTags({ contactId, conversationId, isDarkMode = false, onT
                 style={{
                   borderColor: tag.color,
                   color: tag.color,
-                  backgroundColor: tag.color ? `${tag.color}15` : 'transparent'
+                  backgroundColor: tag.color ? `${tag.color}99` : 'rgba(0,0,0,0.06)'
                 }}
               >
                 <span className="truncate max-w-[120px] text-black dark:text-white">{tag.name}</span>

@@ -30,7 +30,7 @@ const App = () => (
               <BrowserRouter>
           <Routes>
             <Route path="/login" element={<Login />} />
-            <Route path="/" element={<Navigate to="/dashboard" replace />} />
+            <Route path="/" element={<Navigate to="/relatorios" replace />} />
             <Route path="/master-dashboard" element={
               <ProtectedRoute>
                 <RoleProtectedRoute allowedRoles={['master']}>
@@ -39,7 +39,7 @@ const App = () => (
               </ProtectedRoute>
             } />
             {/* ========== ROTAS MASTER (via Visualizar Empresa) ========== */}
-            <Route path="/workspace/:workspaceId/dashboard" element={
+            <Route path="/workspace/:workspaceId/relatorios" element={
               <ProtectedRoute>
                 <RoleProtectedRoute allowedRoles={['master']}>
                   <TezeusCRM />
@@ -53,35 +53,35 @@ const App = () => (
                 </RoleProtectedRoute>
               </ProtectedRoute>
             } />
-            <Route path="/workspace/:workspaceId/ds-voice" element={
+            <Route path="/workspace/:workspaceId/mensagens-rapidas" element={
               <ProtectedRoute>
                 <RoleProtectedRoute allowedRoles={['master', 'admin', 'user']}>
                   <TezeusCRM />
                 </RoleProtectedRoute>
               </ProtectedRoute>
             } />
-            <Route path="/workspace/:workspaceId/crm-negocios" element={
+            <Route path="/workspace/:workspaceId/pipeline" element={
               <ProtectedRoute>
                 <RoleProtectedRoute allowedRoles={['master', 'admin', 'user']}>
                   <TezeusCRM />
                 </RoleProtectedRoute>
               </ProtectedRoute>
             } />
-            <Route path="/workspace/:workspaceId/crm-negocios/:cardId" element={
+            <Route path="/workspace/:workspaceId/pipeline/:cardId" element={
               <ProtectedRoute>
                 <RoleProtectedRoute allowedRoles={['master', 'admin', 'user']}>
                   <TezeusCRM />
                 </RoleProtectedRoute>
               </ProtectedRoute>
             } />
-            <Route path="/workspace/:workspaceId/crm-atividades" element={
+            <Route path="/workspace/:workspaceId/atividades" element={
               <ProtectedRoute>
                 <RoleProtectedRoute allowedRoles={['master', 'admin', 'user']}>
                   <TezeusCRM />
                 </RoleProtectedRoute>
               </ProtectedRoute>
             } />
-            <Route path="/workspace/:workspaceId/crm-agenda" element={
+            <Route path="/workspace/:workspaceId/agendas" element={
               <ProtectedRoute>
                 <RoleProtectedRoute allowedRoles={['master', 'admin', 'user']}>
                   <TezeusCRM />
@@ -95,21 +95,21 @@ const App = () => (
                 </RoleProtectedRoute>
               </ProtectedRoute>
             } />
-            <Route path="/workspace/:workspaceId/crm-contatos" element={
+            <Route path="/workspace/:workspaceId/contatos" element={
               <ProtectedRoute>
                 <RoleProtectedRoute allowedRoles={['master', 'admin', 'user']}>
                   <TezeusCRM />
                 </RoleProtectedRoute>
               </ProtectedRoute>
             } />
-            <Route path="/workspace/:workspaceId/crm-tags" element={
+            <Route path="/workspace/:workspaceId/etiquetas" element={
               <ProtectedRoute>
                 <RoleProtectedRoute allowedRoles={['master', 'admin', 'user']}>
                   <TezeusCRM />
                 </RoleProtectedRoute>
               </ProtectedRoute>
             } />
-            <Route path="/workspace/:workspaceId/crm-produtos" element={
+            <Route path="/workspace/:workspaceId/produtos" element={
               <ProtectedRoute>
                 <RoleProtectedRoute allowedRoles={['master', 'admin', 'user']}>
                   <TezeusCRM />
@@ -137,7 +137,7 @@ const App = () => (
                 </RoleProtectedRoute>
               </ProtectedRoute>
             } />
-            <Route path="/workspace/:workspaceId/automacoes-filas" element={
+            <Route path="/workspace/:workspaceId/filas" element={
               <ProtectedRoute>
                 <RoleProtectedRoute allowedRoles={['master', 'admin', 'user']}>
                   <TezeusCRM />
@@ -158,21 +158,21 @@ const App = () => (
                 </RoleProtectedRoute>
               </ProtectedRoute>
             } />
-            <Route path="/workspace/:workspaceId/workspace-empresas" element={
+            <Route path="/workspace/:workspaceId/empresa" element={
               <ProtectedRoute>
                 <RoleProtectedRoute allowedRoles={['master', 'admin', 'user']}>
                   <TezeusCRM />
                 </RoleProtectedRoute>
               </ProtectedRoute>
             } />
-            <Route path="/workspace/:workspaceId/workspace-relatorios" element={
+            <Route path="/workspace/:workspaceId/relatorios" element={
               <ProtectedRoute>
                 <RoleProtectedRoute allowedRoles={['master', 'admin', 'user']}>
                   <TezeusCRM />
                 </RoleProtectedRoute>
               </ProtectedRoute>
             } />
-            <Route path="/workspace/:workspaceId/workspace-empresas/:workspaceId/usuarios" element={
+            <Route path="/workspace/:workspaceId/empresa/:workspaceId/usuarios" element={
               <ProtectedRoute>
                 <RoleProtectedRoute allowedRoles={['master', 'admin', 'user']}>
                   <TezeusCRM />
@@ -221,7 +221,7 @@ const App = () => (
                 </RoleProtectedRoute>
               </ProtectedRoute>
             } />
-            <Route path="/workspace/:workspaceId/administracao-acoes" element={
+            <Route path="/workspace/:workspaceId/configuracao-acoes" element={
               <ProtectedRoute>
                 <RoleProtectedRoute allowedRoles={['master', 'admin', 'user']}>
                   <TezeusCRM />
@@ -251,134 +251,197 @@ const App = () => (
             } />
             
             {/* ========== ROTAS NORMAIS (Admin/User) ========== */}
-            <Route path="/dashboard" element={
+            <Route path="/relatorios" element={
               <ProtectedRoute>
-                <RoleProtectedRoute allowedRoles={['admin', 'user']}>
+                <RoleProtectedRoute allowedRoles={['master', 'admin', 'user']}>
                   <TezeusCRM />
                 </RoleProtectedRoute>
               </ProtectedRoute>
             } />
             <Route path="/conversas" element={
               <ProtectedRoute>
-                <RoleProtectedRoute allowedRoles={['admin', 'user']}>
+                <RoleProtectedRoute allowedRoles={['master', 'admin', 'user']}>
                   <TezeusCRM />
                 </RoleProtectedRoute>
               </ProtectedRoute>
             } />
-            <Route path="/ds-voice" element={
+            <Route path="/mensagens-rapidas" element={
               <ProtectedRoute>
-                <RoleProtectedRoute allowedRoles={['admin', 'user']}>
+                <RoleProtectedRoute allowedRoles={['master', 'admin', 'user']}>
                   <TezeusCRM />
                 </RoleProtectedRoute>
               </ProtectedRoute>
             } />
-            <Route path="/crm-negocios" element={
+            <Route path="/pipeline" element={
               <ProtectedRoute>
-                <RoleProtectedRoute allowedRoles={['admin', 'user']}>
+                <RoleProtectedRoute allowedRoles={['master', 'admin', 'user']}>
                   <TezeusCRM />
                 </RoleProtectedRoute>
               </ProtectedRoute>
             } />
-            <Route path="/crm-atividades" element={
+            <Route path="/pipeline/:cardId" element={
               <ProtectedRoute>
-                <RoleProtectedRoute allowedRoles={['admin', 'user']}>
+                <RoleProtectedRoute allowedRoles={['master', 'admin', 'user']}>
                   <TezeusCRM />
                 </RoleProtectedRoute>
               </ProtectedRoute>
             } />
-            <Route path="/crm-agenda" element={
+            <Route path="/atividades" element={
               <ProtectedRoute>
-                <RoleProtectedRoute allowedRoles={['admin', 'user']}>
+                <RoleProtectedRoute allowedRoles={['master', 'admin', 'user']}>
+                  <TezeusCRM />
+                </RoleProtectedRoute>
+              </ProtectedRoute>
+            } />
+            <Route path="/agendas" element={
+              <ProtectedRoute>
+                <RoleProtectedRoute allowedRoles={['master', 'admin', 'user']}>
                   <TezeusCRM />
                 </RoleProtectedRoute>
               </ProtectedRoute>
             } />
             <Route path="/crm-ligacoes" element={
               <ProtectedRoute>
-                <RoleProtectedRoute allowedRoles={['admin', 'user']}>
+                <RoleProtectedRoute allowedRoles={['master', 'admin', 'user']}>
                   <TezeusCRM />
                 </RoleProtectedRoute>
               </ProtectedRoute>
             } />
-            <Route path="/crm-contatos" element={
+            <Route path="/contatos" element={
               <ProtectedRoute>
-                <RoleProtectedRoute allowedRoles={['admin', 'user']}>
+                <RoleProtectedRoute allowedRoles={['master', 'admin', 'user']}>
                   <TezeusCRM />
                 </RoleProtectedRoute>
               </ProtectedRoute>
             } />
-            <Route path="/crm-tags" element={
+            <Route path="/etiquetas" element={
               <ProtectedRoute>
-                <RoleProtectedRoute allowedRoles={['admin', 'user']}>
+                <RoleProtectedRoute allowedRoles={['master', 'admin', 'user']}>
                   <TezeusCRM />
                 </RoleProtectedRoute>
               </ProtectedRoute>
             } />
-            <Route path="/crm-produtos" element={
+            <Route path="/produtos" element={
               <ProtectedRoute>
-                <RoleProtectedRoute allowedRoles={['admin', 'user']}>
+                <RoleProtectedRoute allowedRoles={['master', 'admin', 'user']}>
                   <TezeusCRM />
                 </RoleProtectedRoute>
               </ProtectedRoute>
             } />
             <Route path="/automacoes-agente" element={
               <ProtectedRoute>
-                <RoleProtectedRoute allowedRoles={['admin', 'user']}>
+                <RoleProtectedRoute allowedRoles={['master', 'admin', 'user']}>
                   <TezeusCRM />
                 </RoleProtectedRoute>
               </ProtectedRoute>
             } />
             <Route path="/automacoes-bot" element={
               <ProtectedRoute>
-                <RoleProtectedRoute allowedRoles={['admin', 'user']}>
+                <RoleProtectedRoute allowedRoles={['master', 'admin', 'user']}>
                   <TezeusCRM />
                 </RoleProtectedRoute>
               </ProtectedRoute>
             } />
             <Route path="/automacoes-integracoes" element={
               <ProtectedRoute>
-                <RoleProtectedRoute allowedRoles={['admin', 'user']}>
+                <RoleProtectedRoute allowedRoles={['master', 'admin', 'user']}>
                   <TezeusCRM />
                 </RoleProtectedRoute>
               </ProtectedRoute>
             } />
-            <Route path="/automacoes-filas" element={
+            <Route path="/filas" element={
               <ProtectedRoute>
-                <RoleProtectedRoute allowedRoles={['admin', 'user']}>
+                <RoleProtectedRoute allowedRoles={['master', 'admin', 'user']}>
                   <TezeusCRM />
                 </RoleProtectedRoute>
               </ProtectedRoute>
             } />
             <Route path="/automacoes-api" element={
               <ProtectedRoute>
-                <RoleProtectedRoute allowedRoles={['admin', 'user']}>
+                <RoleProtectedRoute allowedRoles={['master', 'admin', 'user']}>
                   <TezeusCRM />
                 </RoleProtectedRoute>
               </ProtectedRoute>
             } />
             <Route path="/parceiros-planos" element={
               <ProtectedRoute>
-                <RoleProtectedRoute allowedRoles={['admin', 'user']}>
-                  <TezeusCRM />
-                </RoleProtectedRoute>
-              </ProtectedRoute>
-            } />
-            <Route path="/workspace-relatorios" element={
-              <ProtectedRoute>
-                <RoleProtectedRoute allowedRoles={['admin', 'user']}>
+                <RoleProtectedRoute allowedRoles={['master', 'admin', 'user']}>
                   <TezeusCRM />
                 </RoleProtectedRoute>
               </ProtectedRoute>
             } />
             <Route path="/editar-agente/:agentId" element={
               <ProtectedRoute>
-                <RoleProtectedRoute allowedRoles={['admin', 'user']}>
+                <RoleProtectedRoute allowedRoles={['master', 'admin', 'user']}>
                   <TezeusCRM />
                 </RoleProtectedRoute>
               </ProtectedRoute>
             } />
             
             {/* Rotas que Master pode acessar diretamente */}
+            <Route path="/conexoes" element={
+              <ProtectedRoute>
+                <RoleProtectedRoute allowedRoles={['master', 'admin', 'user']}>
+                  <TezeusCRM />
+                </RoleProtectedRoute>
+              </ProtectedRoute>
+            } />
+            <Route path="/administracao-usuarios" element={
+              <ProtectedRoute>
+                <RoleProtectedRoute allowedRoles={['master', 'admin']}>
+                  <TezeusCRM />
+                </RoleProtectedRoute>
+              </ProtectedRoute>
+            } />
+            <Route path="/administracao-financeiro" element={
+              <ProtectedRoute>
+                <RoleProtectedRoute allowedRoles={['master']}>
+                  <TezeusCRM />
+                </RoleProtectedRoute>
+              </ProtectedRoute>
+            } />
+            <Route path="/administracao-configuracoes" element={
+              <ProtectedRoute>
+                <RoleProtectedRoute allowedRoles={['master']}>
+                  <TezeusCRM />
+                </RoleProtectedRoute>
+              </ProtectedRoute>
+            } />
+            <Route path="/administracao-dashboard" element={
+              <ProtectedRoute>
+                <RoleProtectedRoute allowedRoles={['master']}>
+                  <TezeusCRM />
+                </RoleProtectedRoute>
+              </ProtectedRoute>
+            } />
+            <Route path="/administracao-google-agenda" element={
+              <ProtectedRoute>
+                <RoleProtectedRoute allowedRoles={['master', 'admin', 'user']}>
+                  <TezeusCRM />
+                </RoleProtectedRoute>
+              </ProtectedRoute>
+            } />
+            <Route path="/configuracao-acoes" element={
+              <ProtectedRoute>
+                <RoleProtectedRoute allowedRoles={['master', 'admin', 'user']}>
+                  <TezeusCRM />
+                </RoleProtectedRoute>
+              </ProtectedRoute>
+            } />
+            <Route path="/empresa" element={
+              <ProtectedRoute>
+                <RoleProtectedRoute allowedRoles={['master', 'admin', 'user']}>
+                  <TezeusCRM />
+                </RoleProtectedRoute>
+              </ProtectedRoute>
+            } />
+            <Route path="/empresa/:workspaceId/usuarios" element={
+              <ProtectedRoute>
+                <RoleProtectedRoute allowedRoles={['master', 'admin', 'user']}>
+                  <TezeusCRM />
+                </RoleProtectedRoute>
+              </ProtectedRoute>
+            } />
             <Route path="/parceiros-clientes" element={
               <ProtectedRoute>
                 <RoleProtectedRoute allowedRoles={['master']}>
@@ -386,18 +449,11 @@ const App = () => (
                 </RoleProtectedRoute>
               </ProtectedRoute>
             } />
-            <Route path="/conexoes" element={<ProtectedRoute><RoleProtectedRoute allowedRoles={['master', 'admin', 'user']}><TezeusCRM /></RoleProtectedRoute></ProtectedRoute>} />
-            <Route path="/administracao-usuarios" element={<ProtectedRoute><RoleProtectedRoute allowedRoles={['master', 'admin']}><TezeusCRM /></RoleProtectedRoute></ProtectedRoute>} />
-            <Route path="/administracao-financeiro" element={<ProtectedRoute><RoleProtectedRoute allowedRoles={['master']}><TezeusCRM /></RoleProtectedRoute></ProtectedRoute>} />
-            <Route path="/administracao-configuracoes" element={<ProtectedRoute><RoleProtectedRoute allowedRoles={['master']}><TezeusCRM /></RoleProtectedRoute></ProtectedRoute>} />
-            <Route path="/administracao-dashboard" element={<ProtectedRoute><RoleProtectedRoute allowedRoles={['master']}><TezeusCRM /></RoleProtectedRoute></ProtectedRoute>} />
-            <Route path="/administracao-google-agenda" element={<ProtectedRoute><TezeusCRM /></ProtectedRoute>} />
-            <Route path="/administracao-acoes" element={<ProtectedRoute><RoleProtectedRoute allowedRoles={['master', 'admin', 'user']}><TezeusCRM /></RoleProtectedRoute></ProtectedRoute>} />
-            <Route path="/workspace-empresas" element={<ProtectedRoute><RoleProtectedRoute allowedRoles={['master', 'admin', 'user']}><TezeusCRM /></RoleProtectedRoute></ProtectedRoute>} />
-            <Route path="/workspace-empresas/:workspaceId/usuarios" element={<ProtectedRoute><RoleProtectedRoute allowedRoles={['master', 'admin', 'user']}><TezeusCRM /></RoleProtectedRoute></ProtectedRoute>} />
-            <Route path="/workspace-relatorios" element={<ProtectedRoute><TezeusCRM /></ProtectedRoute>} />
-            <Route path="/editar-agente/:agentId" element={<ProtectedRoute><TezeusCRM /></ProtectedRoute>} />
-            <Route path="/teste-notificacao" element={<ProtectedRoute><TesteNotificacao /></ProtectedRoute>} />
+            <Route path="/teste-notificacao" element={
+              <ProtectedRoute>
+                <TesteNotificacao />
+              </ProtectedRoute>
+            } />
             <Route path="/google-agenda/callback" element={
               <ProtectedRoute>
                 <RoleProtectedRoute allowedRoles={['master', 'admin', 'user']}>
@@ -405,6 +461,21 @@ const App = () => (
                 </RoleProtectedRoute>
               </ProtectedRoute>
             } />
+            
+            {/* Redirecionamentos de Legado */}
+            <Route path="/dashboard" element={<Navigate to="/relatorios" replace />} />
+            <Route path="/crm-negocios" element={<Navigate to="/pipeline" replace />} />
+            <Route path="/crm-negocios/:cardId" element={<TezeusCRM />} />
+            <Route path="/crm-atividades" element={<Navigate to="/atividades" replace />} />
+            <Route path="/crm-agenda" element={<Navigate to="/agendas" replace />} />
+            <Route path="/crm-contatos" element={<Navigate to="/contatos" replace />} />
+            <Route path="/crm-tags" element={<Navigate to="/etiquetas" replace />} />
+            <Route path="/crm-produtos" element={<Navigate to="/produtos" replace />} />
+            <Route path="/ds-voice" element={<Navigate to="/mensagens-rapidas" replace />} />
+            <Route path="/automacoes-filas" element={<Navigate to="/filas" replace />} />
+            <Route path="/administracao-acoes" element={<Navigate to="/configuracao-acoes" replace />} />
+            <Route path="/workspace-empresas" element={<Navigate to="/empresa" replace />} />
+            
             {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
             <Route path="*" element={<NotFound />} />
           </Routes>

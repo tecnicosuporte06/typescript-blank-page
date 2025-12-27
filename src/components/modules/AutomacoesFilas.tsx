@@ -9,6 +9,7 @@ import { AdicionarFilaModal } from "@/components/modals/AdicionarFilaModal";
 import { EditarFilaModal } from "@/components/modals/EditarFilaModal";
 import { useWorkspace } from "@/contexts/WorkspaceContext";
 import { cn } from "@/lib/utils";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 interface Fila {
   id: string;
@@ -38,6 +39,8 @@ const getDistributionLabel = (type?: string | null) => {
 };
 
 export function AutomacoesFilas() {
+  const DEFAULT_PAGE_SIZE = 100;
+  const MIN_PAGE_SIZE = 10;
   const { selectedWorkspace } = useWorkspace();
   const [filas, setFilas] = useState<Fila[]>([]);
   const [loading, setLoading] = useState(true);
@@ -126,6 +129,20 @@ export function AutomacoesFilas() {
     fila.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
     (fila.id && fila.id.toLowerCase().includes(searchTerm.toLowerCase()))
   );
+
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
+  const totalCount = filteredFilas.length;
+  const totalPages = Math.max(1, Math.ceil((totalCount || 0) / pageSize));
+  const startIndex = totalCount > 0 ? (page - 1) * pageSize + 1 : 0;
+  const endIndex = totalCount > 0 ? Math.min(page * pageSize, totalCount) : 0;
+
+  const handlePageSizeChange = (value: string) => {
+    const parsed = Number(value);
+    const normalized = Math.max(MIN_PAGE_SIZE, isNaN(parsed) ? DEFAULT_PAGE_SIZE : parsed);
+    setPageSize(normalized);
+    setPage(1);
+  };
 
   return (
     <div className="flex flex-col h-full bg-white border border-gray-300 m-2 shadow-sm font-sans text-xs dark:bg-[#0f0f0f] dark:border-gray-700 dark:text-gray-100">
@@ -225,7 +242,9 @@ export function AutomacoesFilas() {
                   </td>
                 </tr>
               ) : (
-                filteredFilas.map((fila) => (
+                filteredFilas
+                  .slice((page - 1) * pageSize, (page - 1) * pageSize + pageSize)
+                  .map((fila) => (
                   <tr key={fila.id} className="hover:bg-blue-50 group h-[32px] dark:hover:bg-[#1f2937]">
                     <td className="border border-[#e0e0e0] px-2 py-0 font-mono text-[10px] align-middle text-muted-foreground dark:border-gray-700 dark:text-gray-400">
                       {fila.id.substring(0, 8)}
@@ -274,22 +293,44 @@ export function AutomacoesFilas() {
         
         {/* Footer fixo com paginação */}
         <div className="sticky bottom-0 left-0 right-0 bg-[#f8f9fa] dark:bg-[#141414] border-t border-gray-300 dark:border-gray-700 px-4 py-2 z-20">
-          <div className="flex items-center justify-center gap-2 text-[11px] text-gray-600 dark:text-gray-400">
-            <button
-              className="px-2 py-1 border border-gray-300 rounded-sm disabled:opacity-50 dark:border-gray-700"
-              disabled={true}
-            >
-              Anterior
-            </button>
-            <span>
-              Página 1 • 1
-            </span>
-            <button
-              className="px-2 py-1 border border-gray-300 rounded-sm disabled:opacity-50 dark:border-gray-700"
-              disabled={true}
-            >
-              Próxima
-            </button>
+          <div className="flex flex-wrap items-center justify-between gap-3 text-[11px] text-gray-600 dark:text-gray-400">
+            <div className="flex flex-wrap items-center gap-3">
+              <span>
+                Linhas {startIndex}-{endIndex} de {totalCount}
+              </span>
+              <div className="flex items-center gap-1">
+                <span>Linhas/página:</span>
+                <Select value={String(pageSize)} onValueChange={handlePageSizeChange}>
+                  <SelectTrigger className="h-7 w-24 rounded-none">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {["10", "25", "50", "100", "200"].map((opt) => (
+                      <SelectItem key={opt} value={opt}>{opt}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                className="px-2 py-1 border border-gray-300 rounded-sm disabled:opacity-50 dark:border-gray-700"
+                onClick={() => setPage((p) => Math.max(1, p - 1))}
+                disabled={page === 1 || loading}
+              >
+                Anterior
+              </button>
+              <span>
+                Página {page} / {totalPages}
+              </span>
+              <button
+                className="px-2 py-1 border border-gray-300 rounded-sm disabled:opacity-50 dark:border-gray-700"
+                onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                disabled={loading || page >= totalPages}
+              >
+                Próxima
+              </button>
+            </div>
           </div>
         </div>
       </div>

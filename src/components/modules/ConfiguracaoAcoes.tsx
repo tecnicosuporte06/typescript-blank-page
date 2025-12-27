@@ -24,8 +24,15 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { Badge } from '@/components/ui/badge';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
-export const ConfiguracaoAcoes: React.FC = () => {
+type ConfiguracaoAcoesProps = {
+  hideTitle?: boolean;
+};
+
+export const ConfiguracaoAcoes: React.FC<ConfiguracaoAcoesProps> = ({ hideTitle = false }) => {
+  const DEFAULT_PAGE_SIZE = 100;
+  const MIN_PAGE_SIZE = 10;
   const { selectedWorkspace } = useWorkspace();
   const { workspaceId: urlWorkspaceId } = useParams<{ workspaceId: string }>();
 
@@ -57,6 +64,8 @@ export const ConfiguracaoAcoes: React.FC = () => {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editingName, setEditingName] = useState('');
   const [deleteReasonId, setDeleteReasonId] = useState<string | null>(null);
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
 
   const handleCreate = async () => {
     if (!newReasonName.trim()) return;
@@ -69,6 +78,18 @@ export const ConfiguracaoAcoes: React.FC = () => {
   const filteredLossReasons = lossReasons.filter(reason =>
     reason.name.toLowerCase().includes(searchTerm.toLowerCase())
   );
+
+  const totalCount = filteredLossReasons.length;
+  const totalPages = Math.max(1, Math.ceil((totalCount || 0) / pageSize));
+  const startIndex = totalCount > 0 ? (page - 1) * pageSize + 1 : 0;
+  const endIndex = totalCount > 0 ? Math.min(page * pageSize, totalCount) : 0;
+
+  const handlePageSizeChange = (value: string) => {
+    const parsed = Number(value);
+    const normalized = Math.max(MIN_PAGE_SIZE, isNaN(parsed) ? DEFAULT_PAGE_SIZE : parsed);
+    setPageSize(normalized);
+    setPage(1);
+  };
 
   const handleStartEdit = (id: string, name: string) => {
     setEditingId(id);
@@ -102,16 +123,18 @@ export const ConfiguracaoAcoes: React.FC = () => {
       {/* Excel-like Toolbar (Ribbon) */}
       <div className="flex flex-col border-b border-gray-300 bg-[#f8f9fa] dark:border-gray-700 dark:bg-[#141414]">
         {/* Title Bar */}
-        <div className="flex items-center justify-between px-4 pt-3 pb-2 h-auto">
-          <div className="flex items-center gap-2">
-            <span
-              className="font-semibold text-gray-900 dark:text-gray-100"
-              style={{ fontSize: "1.5rem" }}
-            >
-              Motivos de Perda
-            </span>
+        {!hideTitle && (
+          <div className="flex items-center justify-between px-4 pt-3 pb-2 h-auto">
+            <div className="flex items-center gap-2">
+              <span
+                className="font-semibold text-gray-900 dark:text-gray-100"
+                style={{ fontSize: "1.5rem" }}
+              >
+                Motivos de Perda
+              </span>
+            </div>
           </div>
-        </div>
+        )}
 
         {/* Tools Bar */}
         <div className="flex items-center gap-2 p-2 overflow-x-auto">
@@ -183,7 +206,9 @@ export const ConfiguracaoAcoes: React.FC = () => {
                   </td>
                 </tr>
               ) : (
-                filteredLossReasons.map((reason) => (
+                filteredLossReasons
+                  .slice((page - 1) * pageSize, (page - 1) * pageSize + pageSize)
+                  .map((reason) => (
                   <tr key={reason.id} className="hover:bg-blue-50 group h-[32px] dark:hover:bg-[#1f2937]">
                     {editingId === reason.id ? (
                       <>
@@ -276,22 +301,44 @@ export const ConfiguracaoAcoes: React.FC = () => {
         
         {/* Footer fixo com paginação */}
         <div className="sticky bottom-0 left-0 right-0 bg-[#f8f9fa] dark:bg-[#141414] border-t border-gray-300 dark:border-gray-700 px-4 py-2 z-20">
-          <div className="flex items-center justify-center gap-2 text-[11px] text-gray-600 dark:text-gray-400">
-            <button
-              className="px-2 py-1 border border-gray-300 rounded-sm disabled:opacity-50 dark:border-gray-700"
-              disabled={true}
-            >
-              Anterior
-            </button>
-            <span>
-              Página 1 • 1
-            </span>
-            <button
-              className="px-2 py-1 border border-gray-300 rounded-sm disabled:opacity-50 dark:border-gray-700"
-              disabled={true}
-            >
-              Próxima
-            </button>
+          <div className="flex flex-wrap items-center justify-between gap-3 text-[11px] text-gray-600 dark:text-gray-400">
+            <div className="flex flex-wrap items-center gap-3">
+              <span>
+                Linhas {startIndex}-{endIndex} de {totalCount}
+              </span>
+              <div className="flex items-center gap-1">
+                <span>Linhas/página:</span>
+                <Select value={String(pageSize)} onValueChange={handlePageSizeChange}>
+                  <SelectTrigger className="h-7 w-24 rounded-none">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {["10", "25", "50", "100", "200"].map((opt) => (
+                      <SelectItem key={opt} value={opt}>{opt}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                className="px-2 py-1 border border-gray-300 rounded-sm disabled:opacity-50 dark:border-gray-700"
+                onClick={() => setPage((p) => Math.max(1, p - 1))}
+                disabled={page === 1 || isLoading}
+              >
+                Anterior
+              </button>
+              <span>
+                Página {page} / {totalPages}
+              </span>
+              <button
+                className="px-2 py-1 border border-gray-300 rounded-sm disabled:opacity-50 dark:border-gray-700"
+                onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                disabled={isLoading || page >= totalPages}
+              >
+                Próxima
+              </button>
+            </div>
           </div>
         </div>
       </div>

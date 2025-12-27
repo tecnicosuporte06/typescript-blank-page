@@ -13,6 +13,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { useWorkspaceHeaders } from "@/lib/workspaceHeaders";
 import { DeletarPipelineModal } from "@/components/modals/DeletarPipelineModal";
+import { ConfiguracaoAcoes } from "@/components/modules/ConfiguracaoAcoes";
 
 interface PipelineConfigProps {
   isDarkMode?: boolean;
@@ -453,12 +454,15 @@ export default function PipelineConfiguracao({
             {selectedPipeline ? selectedPipeline.name : "Selecione um pipeline"}
           </span>
         </div>
-        <TabsList className="grid w-full grid-cols-2 rounded-none bg-gray-100 dark:bg-[#1a1a1a]">
+        <TabsList className="grid w-full grid-cols-3 rounded-none bg-gray-100 dark:bg-[#1a1a1a]">
           <TabsTrigger value="geral" className="rounded-none data-[state=active]:bg-white data-[state=active]:text-primary dark:data-[state=active]:bg-[#111111] dark:data-[state=active]:text-gray-100">
             Configurações Gerais
           </TabsTrigger>
           <TabsTrigger value="acoes" className="rounded-none data-[state=active]:bg-white data-[state=active]:text-primary dark:data-[state=active]:bg-[#111111] dark:data-[state=active]:text-gray-100">
             Ações
+          </TabsTrigger>
+          <TabsTrigger value="motivos" className="rounded-none data-[state=active]:bg-white data-[state=active]:text-primary dark:data-[state=active]:bg-[#111111] dark:data-[state=active]:text-gray-100">
+            Motivos de Perda
           </TabsTrigger>
         </TabsList>
       </div>
@@ -681,6 +685,14 @@ export default function PipelineConfiguracao({
                   ))}
                 </div>
               )}
+            </div>
+          </TabsContent>
+
+          <TabsContent value="motivos" className="space-y-4">
+            <div className="bg-white border border-gray-200 shadow-sm dark:bg-[#111111] dark:border-gray-700">
+              <div className="p-4">
+                <ConfiguracaoAcoes hideTitle />
+              </div>
             </div>
           </TabsContent>
         </div>

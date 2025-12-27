@@ -3,9 +3,6 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Pipette } from "lucide-react";
-import { ColorPickerModal } from "./ColorPickerModal";
-import { IconSelector } from "@/components/ui/icon-selector";
 
 interface AddColumnModalProps {
   open: boolean;
@@ -16,107 +13,61 @@ interface AddColumnModalProps {
 
 export function AddColumnModal({ open, onOpenChange, onAddColumn, isDarkMode = false }: AddColumnModalProps) {
   const [name, setName] = useState("");
-  const [color, setColor] = useState("#ff0000");
-  const [icon, setIcon] = useState("Circle");
-  const [showColorPicker, setShowColorPicker] = useState(false);
+  const icon = "Circle";
+  const color = "#ff0000";
 
   const handleSubmit = () => {
-    if (name.trim() && icon) {
+    if (name.trim()) {
       console.log('🔍 Criando coluna com dados:', { name: name.trim(), color, icon });
       onAddColumn(name.trim(), color, icon);
       setName("");
-      setColor("#ff0000");
-      setIcon("Circle");
       onOpenChange(false);
     }
-  };
-
-  const handleColorSelect = (selectedColor: string) => {
-    setColor(selectedColor);
-    setShowColorPicker(false);
   };
 
   return (
     <>
       <Dialog open={open} onOpenChange={onOpenChange}>
-        <DialogContent className={`sm:max-w-md p-0 gap-0 border border-[#d4d4d4] dark:border-gray-700 shadow-sm rounded-none bg-white dark:bg-[#0f0f0f] ${isDarkMode ? 'dark' : ''}`}>
+        <DialogContent className={`sm:max-w-md p-0 gap-0 border border-[#d4d4d4] dark:border-gray-700 shadow-sm rounded-none bg-white dark:bg-[#0f0f0f] overflow-hidden overflow-y-auto text-card-foreground ${isDarkMode ? 'dark' : ''}`}>
           <DialogHeader className="bg-primary p-4 rounded-none m-0 border-b border-[#d4d4d4] dark:border-gray-700">
-            <DialogTitle className="text-primary-foreground text-base font-bold">
-              Adicionar Coluna
+            <DialogTitle className="text-primary-foreground dark:text-white text-base font-bold">
+              Adicionar Etapa
             </DialogTitle>
           </DialogHeader>
-          
+
           <div className="space-y-4 p-6">
             <div className="space-y-2">
-              <Label htmlFor="column-name" className={`text-xs font-bold text-gray-700 dark:text-gray-200`}>Nome da Coluna *</Label>
+              <Label htmlFor="column-name" className="peer-disabled:cursor-not-allowed peer-disabled:opacity-70 text-xs font-bold text-gray-700 dark:text-gray-200">
+                Nome da Etapa *
+              </Label>
               <Input
                 id="column-name"
-                placeholder="Nome"
+                placeholder="Digite o nome da etapa"
                 value={name}
                 onChange={(e) => setName(e.target.value)}
-                className={`h-8 text-xs rounded-none border-gray-300 dark:border-gray-700 bg-white dark:bg-[#1b1b1b] text-gray-900 dark:text-gray-100 focus-visible:ring-0`}
+                className="flex w-full border px-3 py-2 ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium file:text-foreground placeholder:text-muted-foreground focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-50 md:text-sm h-8 text-xs rounded-none border-gray-300 dark:border-gray-700 bg-white dark:bg-[#1b1b1b] text-gray-900 dark:text-gray-100 focus-visible:ring-0 dark:placeholder:text-gray-500"
               />
             </div>
+          </div>
 
-            <div className="space-y-2">
-              <Label className={`text-xs font-bold text-gray-700 dark:text-gray-200`}>Ícone *</Label>
-              <IconSelector 
-                selectedIcon={icon}
-                onIconSelect={setIcon}
-              />
-              <p className={`text-[10px] text-muted-foreground dark:text-gray-400`}>
-                Selecione um ícone para representar esta etapa do pipeline
-              </p>
-            </div>
-            
-            <div className="space-y-2">
-              <Label className={`text-xs font-bold text-gray-700 dark:text-gray-200`}>Cor</Label>
-              <div className="flex items-center gap-2">
-                <div 
-                  className="w-8 h-8 rounded-none border border-gray-300 dark:border-gray-700 cursor-pointer flex items-center justify-center"
-                  style={{ backgroundColor: color }}
-                  onClick={() => setShowColorPicker(true)}
-                >
-                  <Pipette 
-                    className="w-3.5 h-3.5 text-white drop-shadow-lg" 
-                    onClick={() => setShowColorPicker(true)}
-                  />
-                </div>
-                <Input
-                  value={color}
-                  onChange={(e) => setColor(e.target.value)}
-                  className={`flex-1 h-8 text-xs rounded-none border-gray-300 dark:border-gray-700 bg-white dark:bg-[#1b1b1b] text-gray-900 dark:text-gray-100 focus-visible:ring-0`}
-                  placeholder="#000000"
-                />
-              </div>
-            </div>
-            
-            <div className={`flex justify-end gap-2 pt-4 border-t border-[#d4d4d4] dark:border-gray-700 mt-4 -mx-6 -mb-6 p-4 bg-gray-50 dark:bg-[#1a1a1a]`}>
-              <Button 
-                variant="outline" 
-                onClick={() => onOpenChange(false)}
-                className={`h-8 text-xs rounded-none border-gray-300 dark:border-gray-700 bg-white dark:bg-[#1b1b1b] hover:bg-gray-100 dark:hover:bg-[#2a2a2a] text-gray-700 dark:text-gray-300`}
-              >
-                Cancelar
-              </Button>
-              <Button 
-                onClick={handleSubmit}
-                className="h-8 text-xs rounded-none bg-primary hover:bg-primary/90 text-primary-foreground"
-                disabled={!name.trim() || !icon}
-              >
-                Adicionar
-              </Button>
-            </div>
+          <div className="flex justify-end gap-2 border-t border-[#d4d4d4] dark:border-gray-700 px-4 py-3">
+            <Button 
+              variant="outline" 
+              onClick={() => onOpenChange(false)}
+              className="h-8 text-xs rounded-none border-gray-300 dark:border-gray-700 bg-white dark:bg-[#1b1b1b] hover:bg-gray-100 dark:hover:bg-[#2a2a2a] text-gray-700 dark:text-gray-300 px-4 py-2"
+            >
+              Cancelar
+            </Button>
+            <Button 
+              onClick={handleSubmit}
+              className="h-8 text-xs rounded-none bg-primary hover:bg-primary/90 text-primary-foreground px-4 py-2 dark:bg-primary dark:hover:bg-primary/90"
+              disabled={!name.trim()}
+            >
+              Adicionar
+            </Button>
           </div>
         </DialogContent>
       </Dialog>
-
-      <ColorPickerModal
-        open={showColorPicker}
-        onOpenChange={setShowColorPicker}
-        onColorSelect={handleColorSelect}
-        isDarkMode={isDarkMode}
-      />
     </>
   );
 }

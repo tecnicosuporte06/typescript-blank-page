@@ -38,7 +38,7 @@ export const AccessDenied = () => {
               </Button>
               
               <Button
-                onClick={() => navigate('/dashboard')}
+                onClick={() => navigate('/relatorios')}
                 className="w-full"
               >
                 Ir para Dashboard

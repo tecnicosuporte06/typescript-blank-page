@@ -202,7 +202,7 @@ function ActivityItem({
       const { error } = await supabase
         .from('activities')
         .update({
-          subject: editActivityForm.subject,
+          subject: editActivityForm.subject.trim() || activity.type,
           description: editActivityForm.description,
           scheduled_for: scheduledDateTime.toISOString()
         })
@@ -236,6 +236,7 @@ function ActivityItem({
               Assunto
             </label>
             <Input
+              placeholder={activity.type}
               value={editActivityForm.subject}
               onChange={(e) => setEditActivityForm({...editActivityForm, subject: e.target.value})}
               className={cn("h-8 text-xs rounded-none border-gray-300", isDarkMode ? "bg-[#2d2d2d] border-gray-600 text-white" : "")}
@@ -534,6 +535,22 @@ export function DealDetailsModal({
   const [showTimePicker, setShowTimePicker] = useState(false);
   const [showMinutePicker, setShowMinutePicker] = useState(false);
   const [selectedAttachment, setSelectedAttachment] = useState<{ url: string; name: string; type?: string } | null>(null);
+  const renderFileBadge = (fileName?: string) => {
+    const ext = fileName?.split('.').pop()?.toLowerCase();
+    const label = (ext || 'file').slice(0, 4).toUpperCase();
+    return (
+      <div
+        className={cn(
+          "w-10 h-10 rounded-md border flex items-center justify-center text-[10px] font-semibold uppercase tracking-wide",
+          isDarkMode
+            ? "border-gray-700 bg-[#1f1f1f] text-gray-200"
+            : "border-gray-200 bg-gray-100 text-gray-700"
+        )}
+      >
+        {label}
+      </div>
+    );
+  };
   const [currentSystemUser, setCurrentSystemUser] = useState<{ id: string | null; name: string } | null>(null);
   const [activityToDelete, setActivityToDelete] = useState<Activity | null>(null);
   const [isDeletingActivity, setIsDeletingActivity] = useState(false);
@@ -1435,6 +1452,10 @@ export function DealDetailsModal({
   }, [contactId, currentSystemUser?.id]);
   const handleActivityCreated = (activity: Activity) => {
     setActivities(prev => [...prev, activity]);
+    // Recarregar histórico unificado para mostrar a nova atividade
+    if (typeof refetchHistory === 'function') {
+      refetchHistory();
+    }
   };
 
   const handleRequestDeleteActivity = (activity: Activity) => {
@@ -1460,6 +1481,11 @@ export function DealDetailsModal({
         title: "Atividade excluída",
         description: "A atividade foi removida com sucesso."
       });
+
+      // Recarregar histórico unificado
+      if (typeof refetchHistory === 'function') {
+        refetchHistory();
+      }
 
       if (contactId) {
         await fetchActivities(contactId);
@@ -1550,10 +1576,10 @@ export function DealDetailsModal({
         return;
       }
     } else {
-      if (!selectedDate || !activityForm.responsibleId || !activityForm.subject.trim()) {
+      if (!selectedDate || !activityForm.responsibleId) {
         toast({
           title: "Campos obrigatórios",
-          description: "Preencha todos os campos obrigatórios.",
+          description: "Preencha o responsável e a data.",
           variant: "destructive",
         });
         return;
@@ -1678,7 +1704,7 @@ export function DealDetailsModal({
         workspace_id: contactDataForActivity.workspace_id,
         type: activityForm.type,
         responsible_id: activityForm.responsibleId,
-        subject: activityForm.subject,
+        subject: activityForm.subject.trim() || activityForm.type,
         description: activityForm.description || null,
         scheduled_for: scheduledDateTime.toISOString(),
         duration_minutes: activityForm.durationMinutes,
@@ -1858,7 +1884,7 @@ export function DealDetailsModal({
             <div className="flex items-start gap-4 flex-1 min-w-0">
               <div className="flex flex-col min-w-0">
                 <DialogTitle className={cn("text-xl font-bold text-left truncate text-primary-foreground")}>
-                  {contactData?.name || dealName}
+                  {contactData?.name || dealName || contactData?.phone || contactNumber || "Sem nome"}
                 </DialogTitle>
                 <div className="flex items-center gap-2 text-primary-foreground/80">
                   <p className="text-sm text-left">
@@ -2258,7 +2284,7 @@ export function DealDetailsModal({
                         Assunto
                       </label>
                       <Input 
-                        placeholder="Digite o assunto da atividade" 
+                        placeholder={activityForm.type} 
                         value={activityForm.subject}
                         onChange={(e) => setActivityForm({...activityForm, subject: e.target.value})}
                         className={cn("h-8 text-xs rounded-none border-gray-300", isDarkMode ? "bg-[#2d2d2d] border-gray-600 text-white" : "bg-white")} 
@@ -2692,12 +2718,7 @@ export function DealDetailsModal({
                                 )}
                                 onClick={() => window.open(item.attachment_url!, '_blank')}
                               >
-                                <div className={cn(
-                                  "w-8 h-8 rounded-none flex items-center justify-center flex-shrink-0",
-                                  isDarkMode ? "bg-gray-700" : "bg-white border border-[#d4d4d4]"
-                                )}>
-                                  <FileText className={cn("w-4 h-4", isDarkMode ? "text-blue-400" : "text-blue-600")} />
-                                </div>
+                                {renderFileBadge(item.attachment_name || item.attachment_url || "file")}
                                 <div className="flex-1 min-w-0">
                                   <p className={cn("text-xs font-medium truncate", isDarkMode ? "text-gray-200" : "text-gray-700")}>
                                     {item.attachment_name || "Anexo"}
@@ -2744,12 +2765,7 @@ export function DealDetailsModal({
                                 )}
                                 onClick={() => window.open(item.file_url!, '_blank')}
                               >
-                                <div className={cn(
-                                  "w-8 h-8 rounded-none flex items-center justify-center flex-shrink-0",
-                                  isDarkMode ? "bg-gray-700" : "bg-white border border-[#d4d4d4]"
-                                )}>
-                                  <FileText className={cn("w-4 h-4", isDarkMode ? "text-blue-400" : "text-blue-600")} />
-                                </div>
+                                {renderFileBadge(item.file_name || item.file_url || "file")}
                                 <div className="flex-1 min-w-0">
                                   <p className={cn("text-xs font-medium truncate", isDarkMode ? "text-gray-200" : "text-gray-700")}>
                                     {item.file_name || "Anexo"}

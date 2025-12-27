@@ -18,7 +18,10 @@ import { useWorkspace } from "@/contexts/WorkspaceContext";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/useAuth";
-import { DealDetailsModal } from "@/components/modals/DealDetailsModal";
+import { DealDetailsPage } from "@/pages/DealDetailsPage";
+import { Sheet, SheetContent } from "@/components/ui/sheet";
+import { cn } from "@/lib/utils";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 interface ActivityData {
   id: string;
@@ -49,8 +52,10 @@ interface SelectedDealDetails {
   dealName?: string;
 }
 
+const DEFAULT_PAGE_SIZE = 100;
+const MIN_PAGE_SIZE = 10;
+
 export function CRMAtividades() {
-  const PAGE_SIZE = 50;
   const { selectedWorkspace } = useWorkspace();
   const { user, userRole } = useAuth();
   const [activities, setActivities] = useState<ActivityData[]>([]);
@@ -59,8 +64,12 @@ export function CRMAtividades() {
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedDealDetails, setSelectedDealDetails] = useState<SelectedDealDetails | null>(null);
   const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
   const [totalCount, setTotalCount] = useState(0);
   const { toast } = useToast();
+  const totalPages = Math.max(1, Math.ceil((totalCount || 0) / pageSize));
+  const startIndex = totalCount > 0 ? (page - 1) * pageSize + 1 : 0;
+  const endIndex = totalCount > 0 ? Math.min(page * pageSize, totalCount) : 0;
 
   const handleOpenDealDetails = (activity: ActivityData) => {
     if (!activity.pipeline_card_id) {
@@ -87,8 +96,8 @@ export function CRMAtividades() {
       setIsDataReady(false);
       console.log("🔄 Buscando atividades...");
 
-      const start = (page - 1) * PAGE_SIZE;
-      const end = start + PAGE_SIZE - 1;
+      const start = (page - 1) * pageSize;
+      const end = start + pageSize - 1;
 
       let query = supabase
         .from("activities")
@@ -183,81 +192,39 @@ export function CRMAtividades() {
       }
 
       if (pipelineCardIds.length > 0) {
-        const { data: cardsOnly, error: cardsError } = await supabase
-          .from("pipeline_cards")
-          .select("id, description, pipeline_id, column_id, contact_id, status")
-          .in("id", [...new Set(pipelineCardIds)]);
+        const { data: cardsPositions, error: cardsError } = await supabase
+          .from("v_card_positions")
+          .select("*")
+          .in("card_id", [...new Set(pipelineCardIds)]);
 
         if (cardsError) {
-          console.error("Erro ao buscar pipeline cards:", cardsError);
+          console.error("Erro ao buscar posições dos cards:", cardsError);
         }
 
-        if (cardsOnly && cardsOnly.length > 0) {
-          console.log(`📋 Pipeline cards encontrados: ${cardsOnly.length} de ${pipelineCardIds.length}`);
-          const pipelineIds = Array.from(new Set(cardsOnly.map((card) => card.pipeline_id).filter(Boolean))) as string[];
-          const columnIds = Array.from(new Set(cardsOnly.map((card) => card.column_id).filter(Boolean))) as string[];
-          const cardContactIds = Array.from(new Set(cardsOnly.map((card) => card.contact_id).filter(Boolean))) as string[];
+        if (cardsPositions && cardsPositions.length > 0) {
+          console.log(`📋 Posições de cards encontradas: ${cardsPositions.length}`);
+          
+          cardsPositions.forEach((card: any) => {
+            pipelineCardsMap.set(card.card_id, {
+              description: card.description || card.contact_name,
+              pipeline_id: card.pipeline_id,
+              pipeline_name: card.pipeline_name || "-",
+              column_id: card.column_id,
+              column_name: card.column_name || "-",
+              contact_id: card.contact_id,
+              contact_name: card.contact_name || "-",
+              contact_phone: card.contact_phone || "-",
+              status: card.card_status,
+              pipeline_workspace_id: card.workspace_id,
+            });
 
-          // Adicionar contact_ids dos cards ao conjunto
-          cardContactIds.forEach(id => allContactIds.add(id));
-
-          const { data: pipelinesData, error: pipelinesError } = await supabase
-            .from("pipelines")
-            .select("id, name, workspace_id")
-            .in("id", pipelineIds)
-            .eq("workspace_id", selectedWorkspace.workspace_id);
-
-          if (pipelinesError) {
-            console.error("Erro ao buscar pipelines:", pipelinesError);
-          }
-
-          const { data: columnsData } = await supabase
-            .from("pipeline_columns")
-            .select("id, name, pipeline_id")
-            .in("id", columnIds);
-
-          const columnsMapById = new Map(columnsData?.map((column) => [column.id, column]));
-
-          // Buscar contatos dos cards (se ainda não foram buscados)
-          if (cardContactIds.length > 0) {
-            const missingContactIds = cardContactIds.filter(id => !directContactsMap.has(id));
-            if (missingContactIds.length > 0) {
-              const { data: cardContactsData, error: cardContactsError } = await supabase
-                .from("contacts")
-                .select("id, name, phone")
-                .in("id", missingContactIds)
-                .eq("workspace_id", selectedWorkspace.workspace_id);
-
-              if (cardContactsError) {
-                console.error("Erro ao buscar contatos dos cards:", cardContactsError);
-              }
-
-              cardContactsData?.forEach((contact) => {
-                directContactsMap.set(contact.id, {
-                  name: contact.name || "-",
-                  phone: contact.phone || "-",
-                });
+            // Também atualizar o mapa de contatos diretos se tivermos dados mais frescos
+            if (card.contact_id && card.contact_name) {
+              directContactsMap.set(card.contact_id, {
+                name: card.contact_name,
+                phone: card.contact_phone || "-",
               });
             }
-          }
-
-          cardsOnly.forEach((card) => {
-            const pipelineInfo = pipelinesData?.find((pipeline) => pipeline.id === card.pipeline_id);
-            const columnInfo = columnsMapById.get(card.column_id);
-            const contactInfo = directContactsMap.get(card.contact_id || "");
-
-            pipelineCardsMap.set(card.id, {
-              description: card.description,
-              pipeline_id: card.pipeline_id,
-              pipeline_name: pipelineInfo?.name || card.description || "-",
-              column_id: card.column_id,
-              column_name: columnInfo?.name || "-",
-              contact_id: card.contact_id,
-              contact_name: contactInfo?.name || card.description || "-",
-              contact_phone: contactInfo?.phone || "-",
-              status: card.status,
-              pipeline_workspace_id: pipelineInfo?.workspace_id ?? null,
-            });
           });
         }
       }
@@ -336,7 +303,7 @@ export function CRMAtividades() {
 
   useEffect(() => {
     fetchActivities();
-  }, [selectedWorkspace?.workspace_id, page]);
+  }, [selectedWorkspace?.workspace_id, page, pageSize]);
 
   const filteredActivities = useMemo(() => {
     const term = searchTerm.toLowerCase();
@@ -504,13 +471,13 @@ export function CRMAtividades() {
                           <button
                             type="button"
                             onClick={() => handleOpenDealDetails(activity)}
-                            className="text-foreground hover:underline focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary rounded-sm dark:text-gray-100 underline"
+                            className="text-black dark:text-white underline hover:opacity-80 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary rounded-sm"
                             title="Ver detalhes do negócio"
                           >
-                            {activity.contact_name || "-"}
+                            {activity.contact_name && activity.contact_name !== '-' ? activity.contact_name : (activity.contact_phone || 'Sem nome')}
                           </button>
                         ) : (
-                          activity.contact_name || "-"
+                          activity.contact_name && activity.contact_name !== '-' ? activity.contact_name : (activity.contact_phone || 'Sem nome')
                         )}
                       </td>
                     <td className="border border-[#e0e0e0] px-2 py-0 whitespace-nowrap dark:border-gray-700 dark:text-gray-200">
@@ -528,44 +495,66 @@ export function CRMAtividades() {
         
         {/* Footer fixo com paginação */}
         <div className="sticky bottom-0 left-0 right-0 bg-[#f8f9fa] dark:bg-[#141414] border-t border-gray-300 dark:border-gray-700 px-4 py-2 z-20">
-          <div className="flex items-center justify-center gap-2 text-[11px] text-gray-600 dark:text-gray-400">
-            <button
-              className="px-2 py-1 border border-gray-300 rounded-sm disabled:opacity-50 dark:border-gray-700"
-              onClick={() => setPage((p) => Math.max(1, p - 1))}
-              disabled={page === 1 || isLoading}
-            >
-              Anterior
-            </button>
-            <span>
-              Página {page} • {Math.ceil((totalCount || 0) / PAGE_SIZE) || 1}
-            </span>
-            <button
-              className="px-2 py-1 border border-gray-300 rounded-sm disabled:opacity-50 dark:border-gray-700"
-              onClick={() => setPage((p) => (p * PAGE_SIZE < totalCount ? p + 1 : p))}
-              disabled={isLoading || page * PAGE_SIZE >= totalCount}
-            >
-              Próxima
-            </button>
+          <div className="flex flex-wrap items-center justify-between gap-3 text-[11px] text-gray-600 dark:text-gray-400">
+            <div className="flex flex-wrap items-center gap-3">
+              <span>
+                Linhas {startIndex}-{endIndex} de {totalCount || 0}
+              </span>
+              <div className="flex items-center gap-1">
+                <span>Linhas/página:</span>
+                <Select value={String(pageSize)} onValueChange={(value) => {
+                  const parsed = Number(value);
+                  const normalized = Math.max(MIN_PAGE_SIZE, isNaN(parsed) ? DEFAULT_PAGE_SIZE : parsed);
+                  setPageSize(normalized);
+                  setPage(1);
+                }}>
+                  <SelectTrigger className="h-7 w-24 rounded-none">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {["10", "25", "50", "100", "200"].map((opt) => (
+                      <SelectItem key={opt} value={opt}>{opt}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                className="px-2 py-1 border border-gray-300 rounded-sm disabled:opacity-50 dark:border-gray-700"
+                onClick={() => setPage((p) => Math.max(1, p - 1))}
+                disabled={page === 1 || isLoading}
+              >
+                Anterior
+              </button>
+              <span>
+                Página {page} / {totalPages}
+              </span>
+              <button
+                className="px-2 py-1 border border-gray-300 rounded-sm disabled:opacity-50 dark:border-gray-700"
+                onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                disabled={isLoading || page >= totalPages}
+              >
+                Próxima
+              </button>
+            </div>
           </div>
         </div>
       </div>
-      {selectedDealDetails && (
-        <DealDetailsModal
-          isOpen={Boolean(selectedDealDetails)}
-          onClose={handleCloseDealDetails}
-          dealName={selectedDealDetails.dealName || "Negócio"}
-          contactNumber={selectedDealDetails.contactPhone || ""}
-          cardId={selectedDealDetails.cardId}
-          currentColumnId={selectedDealDetails.columnId || ""}
-          currentPipelineId={selectedDealDetails.pipelineId || ""}
-          contactData={{
-            id: selectedDealDetails.contactId || "",
-            name: selectedDealDetails.contactName || "Contato",
-            phone: selectedDealDetails.contactPhone || "",
-          }}
-          defaultTab="atividades"
-        />
-      )}
+      <Sheet open={Boolean(selectedDealDetails)} onOpenChange={(open) => !open && handleCloseDealDetails()}>
+        <SheetContent 
+          side="right" 
+          className="p-0 sm:max-w-[90vw] w-[90vw] border-l border-gray-200 dark:border-gray-800 shadow-2xl transition-all duration-500 ease-in-out"
+        >
+          {selectedDealDetails && (
+            <DealDetailsPage 
+              cardId={selectedDealDetails.cardId} 
+              workspaceId={selectedWorkspace?.workspace_id}
+              onClose={handleCloseDealDetails}
+            />
+          )}
+        </SheetContent>
+      </Sheet>
     </div>
   );
 }

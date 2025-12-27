@@ -75,7 +75,7 @@ export function AddContactTagButton({ contactId, isDarkMode = false, onTagAdded 
                     <div className="flex items-center gap-2 w-full">
                       <div 
                         className="w-2.5 h-2.5 rounded-none border border-gray-300" 
-                        style={{ backgroundColor: tag.color }}
+                        style={{ backgroundColor: tag.color ? `${tag.color}99` : 'rgba(0,0,0,0.06)' }}
                       />
                       <span>{tag.name}</span>
                     </div>

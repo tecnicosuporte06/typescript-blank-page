@@ -1,4 +1,4 @@
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useWorkspaceHeaders } from '@/lib/workspaceHeaders';
 import { useEffect, useMemo, useState } from 'react';
@@ -30,6 +30,7 @@ export const cardHistoryQueryKey = (cardId: string, contactId?: string | null) =
 
 export const useCardHistory = (cardId: string, contactId?: string) => {
   const { getHeaders } = useWorkspaceHeaders();
+  const queryClient = useQueryClient();
   const [resolvedContactId, setResolvedContactId] = useState<string | null>(contactId || null);
 
   // Buscar contactId se não for fornecido
@@ -59,6 +60,66 @@ export const useCardHistory = (cardId: string, contactId?: string) => {
     () => cardHistoryQueryKey(cardId, effectiveContactId),
     [cardId, effectiveContactId]
   );
+
+  // Listener em tempo real para atualizações automáticas do histórico
+  useEffect(() => {
+    if (!cardId) return;
+
+    console.log('📡 [useCardHistory] Iniciando canal realtime para card:', cardId);
+    
+    const channel = supabase
+      .channel(`card-history-refresh-${cardId}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'activities',
+          filter: `pipeline_card_id=eq.${cardId}`
+        },
+        () => {
+          console.log('🔄 [useCardHistory] Atividades mudaram, invalidando cache...');
+          queryClient.invalidateQueries({ queryKey });
+        }
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'pipeline_card_history',
+          filter: `card_id=eq.${cardId}`
+        },
+        () => {
+          console.log('🔄 [useCardHistory] Histórico do card mudou, invalidando cache...');
+          queryClient.invalidateQueries({ queryKey });
+        }
+      );
+
+    // Se tivermos o contactId, também monitorar mudanças em observações e conversas
+    if (effectiveContactId) {
+      channel.on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'contact_observations',
+          filter: `contact_id=eq.${effectiveContactId}`
+        },
+        () => {
+          console.log('🔄 [useCardHistory] Observações do contato mudaram, invalidando cache...');
+          queryClient.invalidateQueries({ queryKey });
+        }
+      );
+    }
+
+    channel.subscribe();
+
+    return () => {
+      console.log('🔌 [useCardHistory] Removendo canal realtime para card:', cardId);
+      supabase.removeChannel(channel);
+    };
+  }, [cardId, effectiveContactId, queryClient, queryKey]);
 
   return useQuery({
     queryKey,

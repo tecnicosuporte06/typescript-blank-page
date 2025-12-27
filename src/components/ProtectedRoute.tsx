@@ -33,7 +33,7 @@ export const ProtectedRoute = ({ children }: ProtectedRouteProps) => {
       '/administracao-financeiro', 
       '/administracao-configuracoes',
       '/administracao-dashboard',
-      '/workspace-empresas',
+      '/empresa',
       '/parceiros-clientes'
     ];
     

@@ -37,7 +37,7 @@ export function ImpersonateWorkspaceModal({ open, onOpenChange }: ImpersonateWor
       onOpenChange(false);
       
       // Navega para o dashboard sem reload
-      navigate('/dashboard');
+      navigate('/relatorios');
     }
   };
 

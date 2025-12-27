@@ -41,7 +41,7 @@ export const Login = () => {
         // Master SEMPRE vai para master-dashboard após login
         navigate('/master-dashboard');
       } else {
-        navigate('/dashboard');
+        navigate('/relatorios');
       }
     }
   }, [loginSuccess, user, userRole, navigate]);
@@ -52,7 +52,7 @@ export const Login = () => {
       // Master SEMPRE vai para master-dashboard
       return <Navigate to="/master-dashboard" replace />;
     }
-    return <Navigate to="/dashboard" replace />;
+    return <Navigate to="/relatorios" replace />;
   }
 
   const handleSubmit = async (e: React.FormEvent) => {

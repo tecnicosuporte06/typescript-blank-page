@@ -34,7 +34,7 @@ export function WorkspaceSelector() {
     localStorage.setItem('selectedWorkspace', JSON.stringify(workspace));
     
     // Força refresh completo da página e vai para o dashboard
-    window.location.href = '/dashboard';
+    window.location.href = '/relatorios';
   };
 
 

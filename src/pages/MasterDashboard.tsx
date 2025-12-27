@@ -101,7 +101,7 @@ export default function MasterDashboard() {
 
   // Verificar se o usuário é realmente master
   if (userRole !== 'master') {
-    navigate('/dashboard');
+    navigate('/relatorios');
     return null;
   }
 
@@ -119,7 +119,7 @@ export default function MasterDashboard() {
   const handleLogin = (workspace: Workspace) => {
     setSelectedWorkspace(workspace);
     localStorage.setItem('selectedWorkspace', JSON.stringify(workspace));
-    navigate(`/workspace/${workspace.workspace_id}/dashboard`);
+    navigate(`/workspace/${workspace.workspace_id}/relatorios`);
   };
 
   const handleViewUsers = (workspace: Workspace) => {
@@ -130,7 +130,7 @@ export default function MasterDashboard() {
   const handleViewWorkspace = (workspace: Workspace) => {
     setSelectedWorkspace(workspace);
     localStorage.setItem('selectedWorkspace', JSON.stringify(workspace));
-    navigate(`/workspace/${workspace.workspace_id}/dashboard`);
+    navigate(`/workspace/${workspace.workspace_id}/relatorios`);
   };
 
   const handleViewConfig = (workspace: Workspace) => {

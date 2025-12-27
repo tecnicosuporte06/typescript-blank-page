@@ -50,7 +50,7 @@ export function WorkspaceEmpresas({ onNavigateToUsers, onNavigateToConfig }: Wor
   const [workspaceToDelete, setWorkspaceToDelete] = useState<any>(null);
 
   const handleUsersClick = (workspace: { workspace_id: string; name: string }) => {
-    navigate(`/workspace-empresas/${workspace.workspace_id}/usuarios`);
+    navigate(`/empresa/${workspace.workspace_id}/usuarios`);
   };
 
   const handleConfigClick = (workspace: { workspace_id: string; name: string }) => {

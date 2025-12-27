@@ -166,11 +166,11 @@ export function Sidebar({
     group?: string;
     masterOnly?: boolean;
   })[] = [{
-    id: "dashboard" as ModuleType,
+    id: "relatorios" as ModuleType,
     label: "Relatórios",
     icon: <LayoutDashboard className="w-5 h-5" />
   }, {
-    id: "crm-negocios" as ModuleType,
+    id: "pipeline" as ModuleType,
     label: "Pipeline",
     icon: <DollarSign className="w-5 h-5" />,
     group: "crm"
@@ -179,48 +179,42 @@ export function Sidebar({
     label: "Conversas",
     icon: <MessageCircle className="w-5 h-5" />
   }, {
-    id: "crm-atividades" as ModuleType,
+    id: "atividades" as ModuleType,
     label: "Atividades",
     icon: <CheckSquare className="w-5 h-5" />,
     group: "crm"
   }, {
-    id: "crm-agenda" as ModuleType,
-    label: "Agenda",
+    id: "agendas" as ModuleType,
+    label: "Agendas",
     icon: <Calendar className="w-5 h-5" />,
     group: "crm"
   }, {
-    id: "crm-contatos" as ModuleType,
+    id: "contatos" as ModuleType,
     label: "Contatos",
     icon: <Users className="w-5 h-5" />,
     group: "crm"
   }, {
-    id: "crm-tags" as ModuleType,
+    id: "etiquetas" as ModuleType,
     label: "Etiquetas",
     icon: <Target className="w-5 h-5" />,
     group: "crm"
   }, {
-    id: "crm-produtos" as ModuleType,
+    id: "produtos" as ModuleType,
     label: "Produtos",
     icon: <Package className="w-5 h-5" />,
     group: "crm"
   }, {
-    id: "administracao-acoes" as ModuleType,
-    label: "Configuração de Ações",
-    icon: <Settings className="w-5 h-5" />,
-    group: "administracao",
-    masterOnly: false
-  }, {
-    id: "automacoes-filas" as ModuleType,
+    id: "filas" as ModuleType,
     label: "Filas",
     icon: <Users className="w-5 h-5" />,
     group: "administracao"
   }, {
-    id: "ds-voice" as ModuleType,
+    id: "mensagens-rapidas" as ModuleType,
     label: "Mensagens Rápidas",
     icon: <AudioLines className="w-5 h-5" />
   }, {
-    id: "workspace-empresas" as ModuleType,
-    label: "Minha Empresa",
+    id: "empresa" as ModuleType,
+    label: "Empresa",
     icon: <Building2 className="w-5 h-5" />
   }].filter(item => {
     // Filtrar itens masterOnly se o usuário não for master
@@ -370,14 +364,14 @@ export function Sidebar({
       {/* Navigation */}
       <nav className="flex-1 overflow-y-auto">
         {menuItems.filter(item => {
-          if (item.id === 'dashboard') return canView('dashboard-item');
+          if (item.id === 'relatorios') return canView('dashboard-item');
           if (item.id === 'conversas') return canView('conversas-item');
-          if (item.id === 'ds-voice') return true;
-          if (item.id === 'workspace-empresas') return hasRole(['master', 'admin']);
-          if (item.id === 'crm-negocios') return canView('crm-negocios-item');
-          if (item.id === 'crm-contatos') return canView('crm-contatos-item');
-          if (item.id === 'crm-tags') return canView('crm-tags-item');
-          if (item.id === 'crm-produtos') return canView('crm-produtos-item');
+          if (item.id === 'mensagens-rapidas') return true;
+          if (item.id === 'empresa') return hasRole(['master', 'admin']);
+          if (item.id === 'pipeline') return canView('crm-negocios-item');
+          if (item.id === 'contatos') return canView('crm-contatos-item');
+          if (item.id === 'etiquetas') return canView('crm-tags-item');
+          if (item.id === 'produtos') return canView('crm-produtos-item');
           if (item.group === 'administracao') return hasRole(['master', 'admin']);
           return true;
         }).map(renderMenuItem)}

@@ -61,7 +61,8 @@ interface Contact {
   profile_image_url?: string;
   extra_info?: Record<string, any>;
 }
-const PAGE_SIZE = 50;
+const DEFAULT_PAGE_SIZE = 100;
+const MIN_PAGE_SIZE = 10;
 
 export function CRMContatos() {
   const { selectedWorkspace } = useWorkspace();
@@ -72,6 +73,7 @@ export function CRMContatos() {
   const [contacts, setContacts] = useState<Contact[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
   const [totalCount, setTotalCount] = useState(0);
   const [customFields, setCustomFields] = useState<
     Array<{
@@ -103,6 +105,15 @@ export function CRMContatos() {
   const headerCheckboxRef = useRef<HTMLButtonElement>(null);
   const { tags } = useTags();
   const { toast } = useToast();
+  const totalPages = Math.max(1, Math.ceil((totalCount || 0) / pageSize));
+  const startIndex = totalCount > 0 ? (page - 1) * pageSize + 1 : 0;
+  const endIndex = totalCount > 0 ? Math.min(page * pageSize, totalCount) : 0;
+  const handlePageSizeChange = (value: string) => {
+    const parsed = Number(value);
+    const normalized = Math.max(MIN_PAGE_SIZE, isNaN(parsed) ? DEFAULT_PAGE_SIZE : parsed);
+    setPageSize(normalized);
+    setPage(1);
+  };
 
   // Hook para campos obrigatórios do workspace
   const { fields: workspaceFields, refetch: refetchWorkspaceFields } = useWorkspaceContactFields(
@@ -303,7 +314,7 @@ export function CRMContatos() {
   // Resetar página ao mudar termo de busca
   useEffect(() => {
     setPage(1);
-  }, [searchTerm]);
+  }, [searchTerm, pageSize]);
 
   // ✅ CARREGAR CONTATOS AUTOMATICAMENTE quando workspace ou página mudar
   useEffect(() => {
@@ -326,8 +337,8 @@ export function CRMContatos() {
       // Get contacts com suporte a busca (ilike) e paginação apenas quando sem busca
         console.log("🔍 [CRMContatos] Fazendo query com workspace_id:", selectedWorkspace.workspace_id, "search:", searchTerm, "page:", page);
         
-        const start = (page - 1) * PAGE_SIZE;
-        const end = start + PAGE_SIZE - 1;
+        const start = (page - 1) * pageSize;
+        const end = start + pageSize - 1;
 
         const search = searchTerm.trim();
 
@@ -457,7 +468,7 @@ export function CRMContatos() {
     };
 
     loadContacts();
-  }, [selectedWorkspace?.workspace_id, toast, page]); // ✅ workspace_id, página e toast como dependências
+  }, [selectedWorkspace?.workspace_id, toast, page, searchTerm, pageSize]); // ✅ workspace_id, página, busca, tamanho de página e toast como dependências
 
   // Real-time subscription for contacts changes
   useEffect(() => {
@@ -1435,16 +1446,6 @@ export function CRMContatos() {
               <span className="text-[9px]">Exportar</span>
             </Button>
 
-            <Button 
-              size="sm" 
-              variant="ghost"
-              className="h-8 px-2 hover:bg-gray-200 rounded-sm flex flex-col items-center justify-center gap-0.5 text-gray-700 dark:text-gray-200 dark:hover:bg-[#2a2a2a]"
-              onClick={handleDownloadTemplate}
-            >
-              <FileSpreadsheet className="h-4 w-4 text-black dark:text-white" />
-              <span className="text-[9px]">Modelo</span>
-            </Button>
-
              <Button 
               size="sm" 
               variant="ghost"
@@ -1598,11 +1599,11 @@ export function CRMContatos() {
                             <img src={contact.profile_image_url} alt="" className="w-full h-full object-cover" />
                           ) : (
                             <span className="text-[9px] font-bold text-gray-500 dark:text-gray-200">
-                              {contact.name.charAt(0).toUpperCase()}
+                              {(contact.name && contact.name !== '-' ? contact.name : (contact.phone || "?")).charAt(0).toUpperCase()}
                             </span>
                           )}
                         </div>
-                        <span className="text-gray-900 font-medium truncate dark:text-gray-100">{contact.name}</span>
+                        <span className="text-gray-900 font-medium truncate dark:text-gray-100">{contact.name && contact.name !== '-' ? contact.name : (contact.phone || 'Sem nome')}</span>
                       </div>
                     </td>
                     <td className="border border-[#e0e0e0] px-2 py-0 whitespace-nowrap align-top dark:border-gray-700">
@@ -1615,7 +1616,7 @@ export function CRMContatos() {
                                 variant="outline"
                                 className="h-5 rounded-none text-[10px] font-semibold tracking-tight px-2 py-0 flex items-center gap-1 border-none text-black dark:text-white"
                                 style={{
-                                  backgroundColor: tag.color ? `${tag.color}15` : 'transparent'
+                                  backgroundColor: tag.color ? `${tag.color}99` : 'rgba(0,0,0,0.06)'
                                 }}
                               >
                                 <span className="truncate max-w-[120px] text-black dark:text-white">{tag.name}</span>
@@ -1729,28 +1730,48 @@ export function CRMContatos() {
         
         {/* Footer fixo com paginação */}
         <div className="sticky bottom-0 left-0 right-0 bg-[#f8f9fa] dark:bg-[#141414] border-t border-gray-300 dark:border-gray-700 px-4 py-2 z-20">
-          <div className="flex items-center justify-center gap-2 text-[11px] text-gray-600 dark:text-gray-400">
-            <Button
-              variant="outline"
-              size="sm"
-              className="h-7 px-2 rounded-none"
-              onClick={() => setPage((p) => Math.max(1, p - 1))}
-              disabled={page === 1 || isLoading}
-            >
-              Anterior
-            </Button>
-            <span>
-              Página {page} • {Math.ceil((totalCount || 0) / PAGE_SIZE) || 1}
-            </span>
-            <Button
-              variant="outline"
-              size="sm"
-              className="h-7 px-2 rounded-none"
-              onClick={() => setPage((p) => (p * PAGE_SIZE < totalCount ? p + 1 : p))}
-              disabled={isLoading || page * PAGE_SIZE >= totalCount}
-            >
-              Próxima
-            </Button>
+          <div className="flex flex-wrap items-center justify-between gap-3 text-[11px] text-gray-600 dark:text-gray-400">
+            <div className="flex flex-wrap items-center gap-3">
+              <span>
+                Linhas {startIndex}-{endIndex} de {totalCount || 0}
+              </span>
+              <div className="flex items-center gap-1">
+                <span>Linhas/página:</span>
+                <Select value={String(pageSize)} onValueChange={handlePageSizeChange}>
+                  <SelectTrigger className="h-7 w-24 rounded-none">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {["10", "25", "50", "100", "200"].map((opt) => (
+                      <SelectItem key={opt} value={opt}>{opt}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-7 px-2 rounded-none"
+                onClick={() => setPage((p) => Math.max(1, p - 1))}
+                disabled={page === 1 || isLoading}
+              >
+                Anterior
+              </Button>
+              <span>
+                Página {page} / {totalPages}
+              </span>
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-7 px-2 rounded-none"
+                onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                disabled={isLoading || page >= totalPages}
+              >
+                Próxima
+              </Button>
+            </div>
           </div>
         </div>
       </div>

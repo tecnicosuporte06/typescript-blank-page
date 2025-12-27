@@ -17,8 +17,11 @@ import { DeletarTagModal } from "@/components/modals/DeletarTagModal";
 import { useWorkspaceMembers } from "@/hooks/useWorkspaceMembers";
 import { useWorkspace } from "@/contexts/WorkspaceContext";
 import { useAuth } from "@/hooks/useAuth";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 export function CRMTags() {
+  const DEFAULT_PAGE_SIZE = 100;
+  const MIN_PAGE_SIZE = 10;
   const [selectedUserId, setSelectedUserId] = useState<string>("");
   const [startDate, setStartDate] = useState<Date>();
   const [endDate, setEndDate] = useState<Date>();
@@ -30,6 +33,9 @@ export function CRMTags() {
   
   const { selectedWorkspace } = useWorkspace();
   const { userRole } = useAuth();
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
+  const [totalCount, setTotalCount] = useState(0);
   
   const shouldFetchMembers = userRole === 'admin' || userRole === 'master';
   const { members: fetchedMembers, isLoading: loadingMembers } = useWorkspaceMembers(
@@ -37,6 +43,11 @@ export function CRMTags() {
   );
   const members = fetchedMembers || [];
   const { tags, isLoading, error, refetch } = useTags(selectedWorkspace?.workspace_id, startDate, endDate, selectedUserId);
+
+  // Derivados de paginação
+  const totalPages = Math.max(1, Math.ceil((totalCount || 0) / pageSize));
+  const startIndex = totalCount > 0 ? (page - 1) * pageSize + 1 : 0;
+  const endIndex = totalCount > 0 ? Math.min(page * pageSize, totalCount) : 0;
 
   const selectedUser = members.find(m => m.user_id === selectedUserId);
   
@@ -47,6 +58,13 @@ export function CRMTags() {
     setSelectedUserId("");
     setStartDate(undefined);
     setEndDate(undefined);
+  };
+
+  const handlePageSizeChange = (value: string) => {
+    const parsed = Number(value);
+    const normalized = Math.max(MIN_PAGE_SIZE, isNaN(parsed) ? DEFAULT_PAGE_SIZE : parsed);
+    setPageSize(normalized);
+    setPage(1);
   };
   
   const handleEditTag = (tag: { id: string; name: string; color: string }) => {
@@ -295,14 +313,16 @@ export function CRMTags() {
                   </td>
                 </tr>
               ) : (
-                tags.map((tag) => (
+                tags
+                  .slice((page - 1) * pageSize, (page - 1) * pageSize + pageSize)
+                  .map((tag) => (
                   <tr key={tag.id} className="hover:bg-blue-50 group h-[32px] dark:hover:bg-[#1f2937]">
                     {/* Name */}
                     <td className="border border-[#e0e0e0] px-2 py-0 whitespace-nowrap dark:border-gray-700">
                       <Badge 
                         variant="outline" 
                         style={{ 
-                          backgroundColor: `${tag.color}15`,
+                          backgroundColor: tag.color ? `${tag.color}99` : 'rgba(0,0,0,0.06)',
                         }}
                         className="rounded-none px-2 py-0.5 text-[11px] font-semibold h-5 inline-flex items-center gap-1 text-black dark:text-white border-none"
                       >
@@ -345,22 +365,44 @@ export function CRMTags() {
         
         {/* Footer fixo com paginação */}
         <div className="sticky bottom-0 left-0 right-0 bg-[#f8f9fa] dark:bg-[#141414] border-t border-gray-300 dark:border-gray-700 px-4 py-2 z-20">
-          <div className="flex items-center justify-center gap-2 text-[11px] text-gray-600 dark:text-gray-400">
-            <button
-              className="px-2 py-1 border border-gray-300 rounded-sm disabled:opacity-50 dark:border-gray-700"
-              disabled={true}
-            >
-              Anterior
-            </button>
-            <span>
-              Página 1 • 1
-            </span>
-            <button
-              className="px-2 py-1 border border-gray-300 rounded-sm disabled:opacity-50 dark:border-gray-700"
-              disabled={true}
-            >
-              Próxima
-            </button>
+          <div className="flex flex-wrap items-center justify-between gap-3 text-[11px] text-gray-600 dark:text-gray-400">
+            <div className="flex flex-wrap items-center gap-3">
+              <span>
+                Linhas {startIndex}-{endIndex} de {tags.length || 0}
+              </span>
+              <div className="flex items-center gap-1">
+                <span>Linhas/página:</span>
+                <Select value={String(pageSize)} onValueChange={handlePageSizeChange}>
+                  <SelectTrigger className="h-7 w-24 rounded-none">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {["10", "25", "50", "100", "200"].map((opt) => (
+                      <SelectItem key={opt} value={opt}>{opt}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                className="px-2 py-1 border border-gray-300 rounded-sm disabled:opacity-50 dark:border-gray-700"
+                onClick={() => setPage((p) => Math.max(1, p - 1))}
+                disabled={page === 1 || isLoading}
+              >
+                Anterior
+              </button>
+              <span>
+                Página {page} / {totalPages}
+              </span>
+              <button
+                className="px-2 py-1 border border-gray-300 rounded-sm disabled:opacity-50 dark:border-gray-700"
+                onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                disabled={isLoading || page >= totalPages}
+              >
+                Próxima
+              </button>
+            </div>
           </div>
         </div>
       </div>

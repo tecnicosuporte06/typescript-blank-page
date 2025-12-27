@@ -35,7 +35,7 @@ export function ContactTagSelector({ contactId, onTagAdded }: ContactTagSelector
               <div className="flex items-center gap-2 w-full">
                 <div 
                   className="w-3 h-3 rounded-full" 
-                  style={{ backgroundColor: tag.color }}
+                  style={{ backgroundColor: tag.color ? `${tag.color}99` : 'rgba(0,0,0,0.06)' }}
                 />
                 <span>{tag.name}</span>
               </div>

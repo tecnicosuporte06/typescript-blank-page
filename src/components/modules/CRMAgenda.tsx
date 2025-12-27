@@ -19,7 +19,8 @@ import { useWorkspace } from "@/contexts/WorkspaceContext";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/useAuth";
-import { DealDetailsModal } from "@/components/modals/DealDetailsModal";
+import { DealDetailsPage } from "@/pages/DealDetailsPage";
+import { Sheet, SheetContent } from "@/components/ui/sheet";
 import { cn } from "@/lib/utils";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 
@@ -27,6 +28,7 @@ interface ActivityData {
   id: string;
   subject: string;
   scheduled_for: string;
+  duration_minutes?: number;
   is_completed: boolean;
   responsible_id: string | null;
   responsible_name?: string;
@@ -198,96 +200,37 @@ export function CRMAgenda() {
       }
 
       if (pipelineCardIds.length > 0) {
-        const { data: cardsOnly, error: cardsError } = await supabase
-          .from("pipeline_cards")
-          .select("id, description, pipeline_id, column_id, contact_id, status")
-          .in("id", [...new Set(pipelineCardIds)]);
+        const { data: cardsPositions, error: cardsError } = await supabase
+          .from("v_card_positions")
+          .select("*")
+          .in("card_id", [...new Set(pipelineCardIds)]);
 
         if (cardsError) {
-          console.error("Erro ao buscar pipeline cards:", cardsError);
+          console.error("Erro ao buscar posições dos cards:", cardsError);
         }
 
-        if (cardsOnly && cardsOnly.length > 0) {
-          const pipelineIds = Array.from(new Set(cardsOnly.map((card) => card.pipeline_id).filter(Boolean))) as string[];
-          const columnIds = Array.from(new Set(cardsOnly.map((card) => card.column_id).filter(Boolean))) as string[];
-          const cardContactIds = Array.from(new Set(cardsOnly.map((card) => card.contact_id).filter(Boolean))) as string[];
-
-          cardContactIds.forEach(id => allContactIds.add(id));
-
-          const { data: pipelinesData, error: pipelinesError } = await supabase
-            .from("pipelines")
-            .select("id, name, workspace_id")
-            .in("id", pipelineIds)
-            .eq("workspace_id", selectedWorkspace.workspace_id);
-
-          if (pipelinesError) {
-            console.error("Erro ao buscar pipelines:", pipelinesError);
-          }
-
-          const allowedPipelineIds = new Set(pipelinesData?.map((pipeline) => pipeline.id) || []);
-
-          const { data: columnsData } = await supabase
-            .from("pipeline_columns")
-            .select("id, name, pipeline_id")
-            .in("id", columnIds);
-
-          const columnsMapById = new Map(columnsData?.map((column) => [column.id, column]));
-
-          if (cardContactIds.length > 0) {
-            const missingContactIds = cardContactIds.filter(id => !directContactsMap.has(id));
-            if (missingContactIds.length > 0) {
-              const { data: cardContactsData, error: cardContactsError } = await supabase
-                .from("contacts")
-                .select("id, name, phone")
-                .in("id", missingContactIds)
-                .eq("workspace_id", selectedWorkspace.workspace_id);
-
-              if (cardContactsError) {
-                console.error("Erro ao buscar contatos dos cards:", cardContactsError);
-              }
-
-              cardContactsData?.forEach((contact) => {
-                directContactsMap.set(contact.id, {
-                  name: contact.name || "-",
-                  phone: contact.phone || "-",
-                });
-              });
-            }
-          }
-
-          cardsOnly.forEach((card) => {
-            if (!allowedPipelineIds.has(card.pipeline_id)) {
-              const contactInfo = directContactsMap.get(card.contact_id || "");
-              pipelineCardsMap.set(card.id, {
-                description: card.description,
-                pipeline_id: card.pipeline_id,
-                pipeline_name: "-",
-                column_id: card.column_id,
-                column_name: "-",
-                contact_id: card.contact_id,
-                contact_name: contactInfo?.name || card.description || "-",
-                contact_phone: contactInfo?.phone || "-",
-                status: card.status,
-                pipeline_workspace_id: null,
-              });
-              return;
-            }
-            const pipelineInfo = pipelinesData?.find((pipeline) => pipeline.id === card.pipeline_id);
-            const columnInfo = columnsMapById.get(card.column_id);
-            const contactInfo = directContactsMap.get(card.contact_id || "");
-
-            pipelineCardsMap.set(card.id, {
-              description: card.description,
+        if (cardsPositions && cardsPositions.length > 0) {
+          cardsPositions.forEach((card: any) => {
+            pipelineCardsMap.set(card.card_id, {
+              description: card.description || card.contact_name,
               pipeline_id: card.pipeline_id,
-              pipeline_name: pipelineInfo?.name || "-",
+              pipeline_name: card.pipeline_name || "-",
               column_id: card.column_id,
-              column_name: columnInfo?.name || "-",
+              column_name: card.column_name || "-",
               contact_id: card.contact_id,
-              contact_name: contactInfo?.name || card.description || "-",
-              contact_phone: contactInfo?.phone || "-",
-              status: card.status,
-              pipeline_workspace_id: pipelineInfo?.workspace_id,
+              contact_name: card.contact_name || "-",
+              contact_phone: card.contact_phone || "-",
+              status: card.card_status,
+              pipeline_workspace_id: card.workspace_id,
             });
+
+            // Atualizar contatos diretos se necessário
+            if (card.contact_id && card.contact_name) {
+              directContactsMap.set(card.contact_id, {
+                name: card.contact_name,
+                phone: card.contact_phone || "-",
+              });
+            }
           });
         }
       }
@@ -332,6 +275,7 @@ export function CRMAgenda() {
             pipeline_id: card?.pipeline_id ?? null,
             column_id: card?.column_id ?? null,
             contact_id: contactId,
+            duration_minutes: item.duration_minutes,
             type: item.type,
           };
         })
@@ -415,7 +359,8 @@ export function CRMAgenda() {
 
     sorted.forEach(activity => {
       const start = new Date(activity.scheduled_for).getTime();
-      const end = start + 60 * 60 * 1000; // Duração de 1h para cálculo de colisão
+      const duration = (activity.duration_minutes || 60) * 60 * 1000;
+      const end = start + duration;
 
       if (currentGroup.length > 0 && start < groupEnd) {
         currentGroup.push(activity);
@@ -440,7 +385,8 @@ export function CRMAgenda() {
           const lastIdInCol = columns[i][columns[i].length - 1];
           const lastInCol = group.find(a => a.id === lastIdInCol);
           if (lastInCol) {
-            const lastEnd = new Date(lastInCol.scheduled_for).getTime() + 60 * 60 * 1000;
+            const lastDuration = (lastInCol.duration_minutes || 60) * 60 * 1000;
+            const lastEnd = new Date(lastInCol.scheduled_for).getTime() + lastDuration;
             if (start >= lastEnd) {
               colIndex = i;
               break;
@@ -634,7 +580,7 @@ export function CRMAgenda() {
                     style={{ 
                       top: `${topPercent}%`, 
                       left: `calc(64px + (100% - 64px) * ${activity.leftOffset})`,
-                      width: `calc((100% - 64px) * ${activity.widthPercent} * ${activity.isLastInGroup ? '1' : '1.2'})`,
+                      width: `calc((100% - 64px) * ${activity.widthPercent})`,
                       zIndex: activity.zIndex,
                       minHeight: '40px'
                     }}
@@ -650,8 +596,8 @@ export function CRMAgenda() {
                           </div>
                         </div>
                       </PopoverTrigger>
-                      <PopoverContent className="w-80 p-0" align="start">
-                        <div className="p-3 border-b border-gray-200 dark:border-gray-700">
+                      <PopoverContent className="w-80 p-0 bg-white dark:bg-[#1b1b1b] border-gray-200 dark:border-gray-700 shadow-xl" align="start">
+                        <div className="p-3 border-b border-gray-200 dark:border-gray-700 bg-gray-50/50 dark:bg-gray-800/50">
                           <div className="flex items-center justify-between">
                             <h3 className="font-semibold text-sm text-gray-900 dark:text-gray-100">
                               Detalhes da Atividade
@@ -695,13 +641,13 @@ export function CRMAgenda() {
                                       <button
                                         type="button"
                                         onClick={() => handleOpenDealDetails(activity)}
-                                        className="text-primary hover:underline focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary rounded-sm dark:text-yellow-300"
+                                        className="text-black dark:text-white underline hover:opacity-80 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary rounded-sm"
                                         title="Ver detalhes do negócio"
                                       >
-                                        {activity.contact_name}
+                                        {activity.contact_name && activity.contact_name !== '-' ? activity.contact_name : (activity.contact_phone || 'Sem nome')}
                                       </button>
                                     ) : (
-                                      <span>{activity.contact_name}</span>
+                                      <span>{activity.contact_name && activity.contact_name !== '-' ? activity.contact_name : (activity.contact_phone || 'Sem nome')}</span>
                                     )}
                                   </div>
                                 )}
@@ -804,7 +750,7 @@ export function CRMAgenda() {
                       style={{
                         top: `${topPercent}%`,
                         left: `calc(64px + (100% - 64px) * ${dayIndex} / 7 + ((100% - 64px) / 7) * ${activity.leftOffset})`,
-                        width: `calc(((100% - 64px) / 7) * ${activity.widthPercent} * ${activity.isLastInGroup ? '1' : '1.2'})`,
+                        width: `calc(((100% - 64px) / 7) * ${activity.widthPercent})`,
                         zIndex: activity.zIndex,
                         minHeight: '30px'
                       }}
@@ -820,15 +766,15 @@ export function CRMAgenda() {
                             </div>
                           </div>
                         </PopoverTrigger>
-                        <PopoverContent className="w-80 p-0" align="start">
-                          <div className="p-3 border-b border-gray-200 dark:border-gray-700">
+                        <PopoverContent className="w-80 p-0 bg-white dark:bg-[#1b1b1b] border-gray-200 dark:border-gray-700 shadow-xl" align="start">
+                          <div className="p-3 border-b border-gray-200 dark:border-gray-700 bg-gray-50/50 dark:bg-gray-800/50">
                             <div className="flex items-center justify-between">
                               <h3 className="font-semibold text-sm text-gray-900 dark:text-gray-100">
                                 Detalhes da Atividade
                               </h3>
                             </div>
                           </div>
-                          <div className="p-3 border-b border-gray-200 dark:border-gray-700">
+                          <div className="p-3 border-b border-gray-200 dark:border-gray-700 bg-gray-50/50 dark:bg-gray-800/50">
                             <div className="flex items-start gap-2">
                               <div className="flex-shrink-0 mt-0.5">
                                 <Clock className="h-3.5 w-3.5 text-gray-500 dark:text-gray-400" />
@@ -865,7 +811,7 @@ export function CRMAgenda() {
                                         <button
                                           type="button"
                                           onClick={() => handleOpenDealDetails(activity)}
-                                          className="text-primary hover:underline focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary rounded-sm dark:text-yellow-300"
+                                          className="text-black dark:text-white underline hover:opacity-80 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary rounded-sm"
                                           title="Ver detalhes do negócio"
                                         >
                                           {activity.contact_name}
@@ -975,8 +921,8 @@ export function CRMAgenda() {
                       </button>
                     </PopoverTrigger>
                     {dayActivities.length > 0 && (
-                      <PopoverContent className="w-80 p-0" align="start">
-                        <div className="p-3 border-b border-gray-200 dark:border-gray-700">
+                      <PopoverContent className="w-80 p-0 bg-white dark:bg-[#1b1b1b] border-gray-200 dark:border-gray-700 shadow-xl" align="start">
+                        <div className="p-3 border-b border-gray-200 dark:border-gray-700 bg-gray-50/50 dark:bg-gray-800/50">
                           <div className="flex items-center justify-between">
                             <h3 className="font-semibold text-sm text-gray-900 dark:text-gray-100">
                               {format(day, "EEEE, dd 'de' MMMM", { locale: ptBR })}
@@ -1036,7 +982,7 @@ export function CRMAgenda() {
                                           <button
                                             type="button"
                                             onClick={() => handleOpenDealDetails(activity)}
-                                            className="text-primary hover:underline focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary rounded-sm dark:text-yellow-300"
+                                            className="text-black dark:text-white underline hover:opacity-80 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary rounded-sm"
                                             title="Ver detalhes do negócio"
                                           >
                                             {activity.contact_name}
@@ -1074,23 +1020,20 @@ export function CRMAgenda() {
         )}
       </div>
 
-      {selectedDealDetails && (
-        <DealDetailsModal
-          isOpen={Boolean(selectedDealDetails)}
-          onClose={handleCloseDealDetails}
-          dealName={selectedDealDetails.dealName || "Negócio"}
-          contactNumber={selectedDealDetails.contactPhone || ""}
-          cardId={selectedDealDetails.cardId}
-          currentColumnId={selectedDealDetails.columnId || ""}
-          currentPipelineId={selectedDealDetails.pipelineId || ""}
-          contactData={{
-            id: selectedDealDetails.contactId || "",
-            name: selectedDealDetails.contactName || "Contato",
-            phone: selectedDealDetails.contactPhone || "",
-          }}
-          defaultTab="atividades"
-        />
-      )}
+      <Sheet open={Boolean(selectedDealDetails)} onOpenChange={(open) => !open && handleCloseDealDetails()}>
+        <SheetContent 
+          side="right" 
+          className="p-0 sm:max-w-[90vw] w-[90vw] border-l border-gray-200 dark:border-gray-800 shadow-2xl transition-all duration-500 ease-in-out"
+        >
+          {selectedDealDetails && (
+            <DealDetailsPage 
+              cardId={selectedDealDetails.cardId} 
+              workspaceId={selectedWorkspace?.workspace_id}
+              onClose={handleCloseDealDetails}
+            />
+          )}
+        </SheetContent>
+      </Sheet>
     </div>
   );
 }

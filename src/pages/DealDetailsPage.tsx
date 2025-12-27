@@ -1,6 +1,6 @@
 import { useParams, useNavigate } from "react-router-dom";
 import { useWorkspace } from "@/contexts/WorkspaceContext";
-import { useEffect, useState, useCallback, useRef } from "react";
+import { useEffect, useState, useCallback, useRef, useMemo } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
@@ -38,8 +38,18 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { AddContactTagButton } from "@/components/chat/AddContactTagButton";
 import { AttachmentPreviewModal } from "@/components/modals/AttachmentPreviewModal";
 
-export function DealDetailsPage() {
-  const { cardId, workspaceId: urlWorkspaceId } = useParams<{ cardId: string; workspaceId: string }>();
+interface DealDetailsPageProps {
+  cardId?: string;
+  workspaceId?: string;
+  onClose?: () => void;
+}
+
+export function DealDetailsPage({ cardId: propCardId, workspaceId: propWorkspaceId, onClose }: DealDetailsPageProps = {}) {
+  const { cardId: paramCardId, workspaceId: paramWorkspaceId } = useParams<{ cardId: string; workspaceId: string }>();
+  
+  const cardId = propCardId || paramCardId;
+  const urlWorkspaceId = propWorkspaceId || paramWorkspaceId;
+  
   const navigate = useNavigate();
   const { selectedWorkspace } = useWorkspace();
   const { user: authUser, userRole } = useAuth();
@@ -56,6 +66,7 @@ export function DealDetailsPage() {
   const [currentColumn, setCurrentColumn] = useState<any>(null);
   const [owner, setOwner] = useState<any>(null);
   const [contact, setContact] = useState<any>(null);
+  const [contactExtraInfo, setContactExtraInfo] = useState<{ field_name: string; field_value: string | null }[]>([]);
   const [activities, setActivities] = useState<any[]>([]);
   const [isLoadingActivities, setIsLoadingActivities] = useState(false);
   const [selectedCalendarDate, setSelectedCalendarDate] = useState<Date>(new Date());
@@ -165,6 +176,47 @@ const formatTime = (date: Date) => {
   return format(date, "HH:mm");
 };
 
+const humanizeLabel = (label: string) => {
+  if (!label) return "";
+  const cleaned = label.replace(/[_-]+/g, " ").trim();
+  return cleaned.charAt(0).toUpperCase() + cleaned.slice(1);
+};
+
+  const additionalContactInfo = useMemo(() => {
+    const entries: { label: string; value: string }[] = [];
+
+    const pushFromObject = (obj?: Record<string, any>) => {
+      if (obj && typeof obj === "object") {
+        Object.entries(obj).forEach(([key, value]) => {
+          if (value === null || value === undefined) return;
+          const strValue = String(value).trim();
+          if (!strValue) return;
+          entries.push({
+            label: humanizeLabel(key),
+            value: strValue,
+          });
+        });
+      }
+    };
+
+    pushFromObject(contact?.extra_info as Record<string, any>);
+    pushFromObject(contact?.additional_info as Record<string, any>);
+    pushFromObject(contact?.custom_fields as Record<string, any>);
+
+    contactExtraInfo.forEach((field) => {
+      if (!field.field_name) return;
+      const val = field.field_value ?? "";
+      const strValue = String(val).trim();
+      if (!strValue) return;
+      entries.push({
+        label: humanizeLabel(field.field_name),
+        value: strValue,
+      });
+    });
+
+    return entries;
+  }, [contact, contactExtraInfo]);
+
   // Buscar dados do card
   const fetchCardData = useCallback(async () => {
     if (!cardId || !effectiveWorkspaceId) return;
@@ -226,6 +278,8 @@ const formatTime = (date: Date) => {
       }
 
       // Buscar contato
+      setContactExtraInfo([]);
+
       if (card.contact_id) {
         const { data: contactData, error: contactError } = await supabase
           .from('contacts')
@@ -235,6 +289,21 @@ const formatTime = (date: Date) => {
         
         if (!contactError && contactData) {
           setContact(contactData);
+
+          // Buscar campos extras dinâmicos do contato
+          try {
+            const { data: extraInfoData, error: extraInfoError } = await supabase
+              .from("contact_extra_info")
+              .select("field_name, field_value")
+              .eq("contact_id", card.contact_id)
+              .order("created_at", { ascending: true });
+
+            if (!extraInfoError && extraInfoData) {
+              setContactExtraInfo(extraInfoData.filter((f) => f.field_name));
+            }
+          } catch (extraErr) {
+            console.error("Erro ao buscar campos extras do contato:", extraErr);
+          }
           
           // Buscar tags do contato
           const { data: tagsData } = await supabase
@@ -290,11 +359,14 @@ const formatTime = (date: Date) => {
         variant: "destructive",
       });
       // Redirecionar para o pipeline
-      if (effectiveWorkspaceId) {
-        navigate(`/workspace/${effectiveWorkspaceId}/crm-negocios`);
-      } else {
-        navigate('/crm-negocios');
+      if (onClose) {
+        onClose();
+        return;
       }
+      const pipelinePath = (userRole === 'master' && effectiveWorkspaceId) 
+        ? `/workspace/${effectiveWorkspaceId}/pipeline` 
+        : '/pipeline';
+      navigate(pipelinePath);
     } finally {
       setIsLoading(false);
     }
@@ -326,11 +398,14 @@ const formatTime = (date: Date) => {
       });
 
       // Redirecionar para o pipeline
-      if (effectiveWorkspaceId) {
-        navigate(`/workspace/${effectiveWorkspaceId}/crm-negocios`);
-      } else {
-        navigate('/crm-negocios');
+      if (onClose) {
+        onClose();
+        return;
       }
+      const pipelinePath = (userRole === 'master' && effectiveWorkspaceId) 
+        ? `/workspace/${effectiveWorkspaceId}/pipeline` 
+        : '/pipeline';
+      navigate(pipelinePath);
     } catch (error: any) {
       console.error('Erro ao excluir card:', error);
       toast({
@@ -555,20 +630,21 @@ const formatTime = (date: Date) => {
       <div className="h-screen flex flex-col bg-white dark:bg-[#0f0f0f]">
         <div className={cn("px-6 py-4 border-b shrink-0 bg-white dark:bg-[#0f0f0f] border-gray-200 dark:border-gray-700")}>
           <div className="flex items-center gap-4">
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={() => {
-                if (effectiveWorkspaceId) {
-                  navigate(`/workspace/${effectiveWorkspaceId}/crm-negocios`);
-                } else {
-                  navigate('/crm-negocios');
-                }
-              }}
-              className="h-8 w-8"
-            >
-              <ArrowLeft className="h-4 w-4" />
-            </Button>
+            {!onClose && (
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={() => {
+                  const pipelinePath = (userRole === 'master' && effectiveWorkspaceId) 
+                    ? `/workspace/${effectiveWorkspaceId}/pipeline` 
+                    : '/pipeline';
+                  navigate(pipelinePath);
+                }}
+                className="h-8 w-8"
+              >
+                <ArrowLeft className="h-4 w-4" />
+              </Button>
+            )}
             <span className="text-sm font-medium">Voltar ao Pipeline</span>
           </div>
         </div>
@@ -584,7 +660,7 @@ const formatTime = (date: Date) => {
   const generateTimeOptions = () => {
     const times = [];
     for (let hour = 0; hour < 24; hour++) {
-      for (let minute = 0; minute < 60; minute += 15) {
+      for (let minute = 0; minute < 60; minute += 5) {
         const h = hour.toString().padStart(2, '0');
         const m = minute.toString().padStart(2, '0');
         times.push(`${h}:${m}`);
@@ -907,10 +983,10 @@ const formatTime = (date: Date) => {
 
   // Salvar atividade
   const handleSaveActivity = async () => {
-    if (!cardId || !contact?.id || !activityForm.responsibleId || !activityForm.subject.trim()) {
+    if (!cardId || !contact?.id || !activityForm.responsibleId) {
       toast({
         title: "Campos obrigatórios",
-        description: "Preencha o assunto e o responsável.",
+        description: "Preencha o responsável.",
         variant: "destructive",
       });
       return;
@@ -936,7 +1012,7 @@ const formatTime = (date: Date) => {
         pipeline_card_id: cardId,
         type: activityForm.type,
         responsible_id: activityForm.responsibleId,
-        subject: activityForm.subject,
+        subject: activityForm.subject.trim() || activityForm.type,
         description: activityForm.description || null,
         priority: activityForm.priority,
         availability: activityForm.availability,
@@ -960,7 +1036,8 @@ const formatTime = (date: Date) => {
       await fetchActivities();
 
       // Invalidar histórico para que a nova atividade apareça
-      queryClient.invalidateQueries({ queryKey: cardHistoryQueryKey(cardId) });
+      // Usamos apenas o prefixo da chave para invalidar todas as variações (com ou sem contactId)
+      queryClient.invalidateQueries({ queryKey: ['card-history', cardId] });
 
       // Resetar formulário
       setActivityForm({
@@ -1040,7 +1117,7 @@ const formatTime = (date: Date) => {
     if (!selectedActivityForEdit || !contact?.id || !cardId || !activityEditForm.responsibleId) {
       toast({
         title: "Campos obrigatórios",
-        description: "Preencha responsável e assunto.",
+        description: "Preencha o responsável.",
         variant: "destructive",
       });
       return;
@@ -1062,7 +1139,7 @@ const formatTime = (date: Date) => {
         .update({
           type: activityEditForm.type,
           responsible_id: activityEditForm.responsibleId,
-          subject: activityEditForm.subject,
+          subject: activityEditForm.subject.trim() || activityEditForm.type,
           description: activityEditForm.description || null,
           priority: activityEditForm.priority,
           availability: activityEditForm.availability,
@@ -1082,7 +1159,8 @@ const formatTime = (date: Date) => {
       setIsActivityEditModalOpen(false);
       setSelectedActivityForEdit(null);
       await fetchActivities();
-      queryClient.invalidateQueries({ queryKey: cardHistoryQueryKey(cardId) });
+      // Invalidar histórico para que a atividade atualizada apareça corretamente
+      queryClient.invalidateQueries({ queryKey: ['card-history', cardId] });
     } catch (error: any) {
       console.error("Erro ao atualizar atividade:", error);
       toast({
@@ -1098,7 +1176,7 @@ const formatTime = (date: Date) => {
       const { error } = await supabase.from("activities").delete().eq("id", activityId);
       if (error) throw error;
       await fetchActivities();
-      queryClient.invalidateQueries({ queryKey: cardHistoryQueryKey(cardId!) });
+      queryClient.invalidateQueries({ queryKey: ['card-history', cardId] });
     },
     [cardId, fetchActivities, queryClient]
   );
@@ -1149,7 +1227,7 @@ const formatTime = (date: Date) => {
 
       // Recarregar atividades para atualizar a lista de arquivos
       await fetchActivities();
-      queryClient.invalidateQueries({ queryKey: cardHistoryQueryKey(cardId) });
+      queryClient.invalidateQueries({ queryKey: ['card-history', cardId] });
     } catch (error: any) {
       console.error('Erro ao fazer upload:', error);
       toast({
@@ -1165,11 +1243,20 @@ const formatTime = (date: Date) => {
 
   const getFileIconComponent = (fileName: string) => {
     const ext = fileName.split('.').pop()?.toLowerCase();
-    if (['jpg', 'jpeg', 'png', 'gif', 'webp'].includes(ext || '')) return <ImageIcon className="h-8 w-8 text-blue-500" />;
-    if (ext === 'pdf') return <FileTextIcon className="h-8 w-8 text-red-500" />;
-    if (['doc', 'docx'].includes(ext || '')) return <FileTextIcon className="h-8 w-8 text-blue-600" />;
-    if (['xls', 'xlsx', 'csv'].includes(ext || '')) return <FileTextIcon className="h-8 w-8 text-green-600" />;
-    return <FileIcon className="h-8 w-8 text-gray-500" />;
+    const label = (ext || 'file').slice(0, 4).toUpperCase();
+    const isImage = ['jpg', 'jpeg', 'png', 'gif', 'webp'].includes(ext || '');
+
+    return (
+      <div className="w-12 h-12 rounded-md border border-gray-200 dark:border-gray-700 bg-gray-100 dark:bg-[#1f1f1f] flex items-center justify-center text-gray-700 dark:text-gray-200">
+        {isImage ? (
+          <ImageIcon className="h-5 w-5 text-gray-500 dark:text-gray-300" />
+        ) : (
+          <span className="text-[10px] font-semibold uppercase tracking-wide">
+            {label}
+          </span>
+        )}
+      </div>
+    );
   };
 
   const handleDownloadFile = (url: string, name: string) => {
@@ -1289,7 +1376,7 @@ const formatTime = (date: Date) => {
       setSelectedNoteForEdit(null);
       setEditingNoteId(null);
       setEditingNoteContent("");
-      queryClient.invalidateQueries({ queryKey: cardHistoryQueryKey(cardId) });
+      queryClient.invalidateQueries({ queryKey: ['card-history', cardId] });
     } catch (error: any) {
       console.error("Erro ao atualizar anotação:", error);
       toast({
@@ -1341,7 +1428,7 @@ const formatTime = (date: Date) => {
         .delete()
         .eq("card_id", cardId)
         .eq("metadata->>note_id", noteId);
-      queryClient.invalidateQueries({ queryKey: cardHistoryQueryKey(cardId!) });
+      queryClient.invalidateQueries({ queryKey: ['card-history', cardId] });
     },
     [cardId, queryClient]
   );
@@ -1590,20 +1677,21 @@ const formatTime = (date: Date) => {
       <div className="h-screen flex flex-col bg-white dark:bg-[#0f0f0f]">
         <div className={cn("px-6 py-4 border-b shrink-0 bg-white dark:bg-[#0f0f0f] border-gray-200 dark:border-gray-700")}>
           <div className="flex items-center gap-4">
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={() => {
-                if (effectiveWorkspaceId) {
-                  navigate(`/workspace/${effectiveWorkspaceId}/crm-negocios`);
-                } else {
-                  navigate('/crm-negocios');
-                }
-              }}
-              className="h-8 w-8"
-            >
-              <ArrowLeft className="h-4 w-4" />
-            </Button>
+            {!onClose && (
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={() => {
+                  const pipelinePath = (userRole === 'master' && effectiveWorkspaceId) 
+                    ? `/workspace/${effectiveWorkspaceId}/pipeline` 
+                    : '/pipeline';
+                  navigate(pipelinePath);
+                }}
+                className="h-8 w-8"
+              >
+                <ArrowLeft className="h-4 w-4" />
+              </Button>
+            )}
             <span className="text-sm font-medium">Voltar ao Pipeline</span>
           </div>
         </div>
@@ -1659,20 +1747,23 @@ const formatTime = (date: Date) => {
         <div className="px-6 py-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-4 flex-1">
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={() => {
-                  if (effectiveWorkspaceId) {
-                    navigate(`/workspace/${effectiveWorkspaceId}/crm-negocios`);
-                  } else {
-                    navigate('/crm-negocios');
-                  }
-                }}
-                className="h-8 w-8"
-              >
-                <ArrowLeft className="h-4 w-4" />
-              </Button>
+              {!onClose && (
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={() => {
+                    const pipelineParam = cardData?.pipeline_id ? `?pipelineId=${cardData.pipeline_id}` : '';
+                    if (effectiveWorkspaceId) {
+                      navigate(`/workspace/${effectiveWorkspaceId}/pipeline${pipelineParam}`);
+                    } else {
+                      navigate(`/pipeline${pipelineParam}`);
+                    }
+                  }}
+                  className="h-8 w-8"
+                >
+                  <ArrowLeft className="h-4 w-4" />
+                </Button>
+              )}
               
               {/* Título */}
               <h1 className="text-lg font-semibold px-2 py-1">
@@ -1872,7 +1963,7 @@ const formatTime = (date: Date) => {
                           Etapa do funil
                         </label>
                         {columns && columns.length > 0 ? (
-                          <div className="flex items-center" role="listbox" style={{ gap: 0 }}>
+                          <div className="flex items-center gap-0.5" role="listbox">
                             {columns.map((column, index) => {
                               const selectedIndex = columns.findIndex(c => c.id === selectedColumnId);
                               // Verde do segmento 0 até o índice selecionado (inclusive)
@@ -1979,6 +2070,70 @@ const formatTime = (date: Date) => {
                   </div>
                 )}
 
+                {/* Pessoa/Contato */}
+                {contact && (
+                  <>
+                    <div className="flex items-center gap-2 text-sm">
+                      <User className="h-4 w-4 text-gray-400" />
+                      <div className="flex-1">
+                        {isEditingContactName ? (
+                          <div className="flex items-center gap-1">
+                            <Input
+                              value={tempContactName}
+                              onChange={(e) => setTempContactName(e.target.value)}
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter') handleUpdateContactName();
+                                if (e.key === 'Escape') setIsEditingContactName(false);
+                              }}
+                              className="h-7 text-xs py-0"
+                              autoFocus
+                            />
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-6 w-6 text-green-600"
+                              onClick={handleUpdateContactName}
+                            >
+                              <Check className="h-3 w-3" />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-6 w-6 text-red-600"
+                              onClick={() => setIsEditingContactName(false)}
+                            >
+                              <X className="h-3 w-3" />
+                            </Button>
+                          </div>
+                        ) : (
+                          <span className="text-gray-900 dark:text-gray-100">
+                            {contact.name || contact.phone || 'Sem contato'}
+                          </span>
+                        )}
+                      </div>
+                      {!isEditingContactName && (
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-6 w-6"
+                          onClick={() => {
+                            setTempContactName(contact.name || "");
+                            setIsEditingContactName(true);
+                          }}
+                      >
+                        <Pencil className="h-3 w-3" />
+                      </Button>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-2 text-sm">
+                      <Phone className="h-4 w-4 text-gray-400" />
+                      <span className="text-gray-700 dark:text-gray-300">
+                        {contact.phone || 'Sem telefone'}
+                      </span>
+                    </div>
+                  </>
+                )}
+
                 {/* Valor */}
                 <div className="flex items-center gap-2 text-sm">
                   <DollarSign className="h-4 w-4 text-gray-400" />
@@ -2036,62 +2191,6 @@ const formatTime = (date: Date) => {
                   </div>
                 </div>
 
-                {/* Pessoa/Contato */}
-                {contact && (
-                  <div className="flex items-center gap-2 text-sm">
-                    <User className="h-4 w-4 text-gray-400" />
-                    <div className="flex-1">
-                      {isEditingContactName ? (
-                        <div className="flex items-center gap-1">
-                          <Input
-                            value={tempContactName}
-                            onChange={(e) => setTempContactName(e.target.value)}
-                            onKeyDown={(e) => {
-                              if (e.key === 'Enter') handleUpdateContactName();
-                              if (e.key === 'Escape') setIsEditingContactName(false);
-                            }}
-                            className="h-7 text-xs py-0"
-                            autoFocus
-                          />
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-6 w-6 text-green-600"
-                            onClick={handleUpdateContactName}
-                          >
-                            <Check className="h-3 w-3" />
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-6 w-6 text-red-600"
-                            onClick={() => setIsEditingContactName(false)}
-                          >
-                            <X className="h-3 w-3" />
-                          </Button>
-                        </div>
-                      ) : (
-                        <span className="text-gray-900 dark:text-gray-100">
-                        {contact.name}
-                        </span>
-                      )}
-                    </div>
-                    {!isEditingContactName && (
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-6 w-6"
-                        onClick={() => {
-                          setTempContactName(contact.name || "");
-                          setIsEditingContactName(true);
-                        }}
-                    >
-                      <Pencil className="h-3 w-3" />
-                    </Button>
-                    )}
-                  </div>
-                )}
-
                 {/* Etiquetas */}
                 <div className="flex items-start gap-2 text-sm">
                   <Tag className="h-4 w-4 text-gray-400 mt-0.5" />
@@ -2101,10 +2200,10 @@ const formatTime = (date: Date) => {
                         <Badge
                           key={tag.id}
                           variant="outline"
-                          className="text-[11px] font-semibold h-5 rounded-none border-none px-2 py-0.5 inline-flex items-center gap-1 text-black dark:text-white"
-                          style={{
-                            backgroundColor: tag.color ? `${tag.color}15` : 'transparent'
-                          }}
+                                className="text-[11px] font-semibold h-5 rounded-none border-none px-2 py-0.5 inline-flex items-center gap-1 text-black dark:text-white"
+                                style={{
+                                  backgroundColor: tag.color ? `${tag.color}99` : 'rgba(0,0,0,0.06)'
+                                }}
                         >
                           <span>{tag.name}</span>
                           <button
@@ -2302,9 +2401,21 @@ const formatTime = (date: Date) => {
                   <Badge className="ml-2">{cardData.status || 'aberto'}</Badge>
                 </div>
                 {contact && (
-                  <div>
-                    <span className="text-gray-500 dark:text-gray-400">Contato:</span>
-                    <span className="ml-2">{contact.name}</span>
+                  <div className="space-y-1.5">
+                    <div>
+                      <span className="text-gray-500 dark:text-gray-400">Contato:</span>
+                      <span className="ml-2">{contact.phone || contact.name || 'Sem contato'}</span>
+                    </div>
+                    {additionalContactInfo.length > 0 && (
+                      <div className="space-y-1">
+                        {additionalContactInfo.map((item, idx) => (
+                          <div key={`${item.label}-${idx}`} className="flex items-start gap-1.5">
+                            <span className="text-gray-500 dark:text-gray-400">{item.label}:</span>
+                            <span className="text-gray-900 dark:text-gray-100 break-words">{item.value}</span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 )}
               </CollapsibleContent>
@@ -2636,7 +2747,7 @@ const formatTime = (date: Date) => {
                           onClick={() => setHistoryFilter("all")}
                           className={cn(
                             "text-xs h-8 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-none transition-colors",
-                            historyFilter === "all" && "bg-yellow-50 dark:bg-yellow-900/30 border border-yellow-200 dark:border-yellow-800 text-yellow-700 dark:text-yellow-400 font-semibold hover:bg-yellow-100 dark:hover:bg-yellow-900/50"
+                            historyFilter === "all" && "bg-yellow-50 dark:bg-yellow-900/30 border border-yellow-200 dark:border-yellow-800 text-black dark:text-white font-semibold hover:bg-yellow-100 dark:hover:bg-yellow-900/50"
                           )}
                         >
                           Todos
@@ -2647,7 +2758,7 @@ const formatTime = (date: Date) => {
                           onClick={() => setHistoryFilter("notes")}
                           className={cn(
                             "text-xs h-8 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-none transition-colors",
-                            historyFilter === "notes" && "bg-yellow-50 dark:bg-yellow-900/30 border border-yellow-200 dark:border-yellow-800 text-yellow-700 dark:text-yellow-400 font-semibold hover:bg-yellow-100 dark:hover:bg-yellow-900/50"
+                            historyFilter === "notes" && "bg-yellow-50 dark:bg-yellow-900/30 border border-yellow-200 dark:border-yellow-800 text-black dark:text-white font-semibold hover:bg-yellow-100 dark:hover:bg-yellow-900/50"
                           )}
                         >
                           Anotações ({historyEvents.filter(e => e.type === "notes").length})
@@ -2658,7 +2769,7 @@ const formatTime = (date: Date) => {
                           onClick={() => setHistoryFilter("activities")}
                           className={cn(
                             "text-xs h-8 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-none transition-colors",
-                            historyFilter === "activities" && "bg-yellow-50 dark:bg-yellow-900/30 border border-yellow-200 dark:border-yellow-800 text-yellow-700 dark:text-yellow-400 font-semibold hover:bg-yellow-100 dark:hover:bg-yellow-900/50"
+                            historyFilter === "activities" && "bg-yellow-50 dark:bg-yellow-900/30 border border-yellow-200 dark:border-yellow-800 text-black dark:text-white font-semibold hover:bg-yellow-100 dark:hover:bg-yellow-900/50"
                           )}
                         >
                           Atividades ({historyEvents.filter(e => e.type?.startsWith("activity_")).length})
@@ -2669,7 +2780,7 @@ const formatTime = (date: Date) => {
                           onClick={() => setHistoryFilter("activities_done")}
                           className={cn(
                             "text-xs h-8 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-none transition-colors",
-                            historyFilter === "activities_done" && "bg-yellow-50 dark:bg-yellow-900/30 border border-yellow-200 dark:border-yellow-800 text-yellow-700 dark:text-yellow-400 font-semibold hover:bg-yellow-100 dark:hover:bg-yellow-900/50"
+                            historyFilter === "activities_done" && "bg-yellow-50 dark:bg-yellow-900/30 border border-yellow-200 dark:border-yellow-800 text-black dark:text-white font-semibold hover:bg-yellow-100 dark:hover:bg-yellow-900/50"
                           )}
                         >
                           Atividades Realizadas ({historyEvents.filter(e => e.type?.startsWith("activity_") && e.metadata?.status === 'completed').length})
@@ -2680,7 +2791,7 @@ const formatTime = (date: Date) => {
                           onClick={() => setHistoryFilter("activities_future")}
                           className={cn(
                             "text-xs h-8 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-none transition-colors",
-                            historyFilter === "activities_future" && "bg-yellow-50 dark:bg-yellow-900/30 border border-yellow-200 dark:border-yellow-800 text-yellow-700 dark:text-yellow-400 font-semibold hover:bg-yellow-100 dark:hover:bg-yellow-900/50"
+                            historyFilter === "activities_future" && "bg-yellow-50 dark:bg-yellow-900/30 border border-yellow-200 dark:border-yellow-800 text-black dark:text-white font-semibold hover:bg-yellow-100 dark:hover:bg-yellow-900/50"
                           )}
                         >
                           Atividades Futuras ({historyEvents.filter(e => e.type?.startsWith("activity_") && e.metadata?.status !== 'completed').length})
@@ -2691,7 +2802,7 @@ const formatTime = (date: Date) => {
                           onClick={() => setHistoryFilter("files")}
                           className={cn(
                             "text-xs h-8 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-none transition-colors",
-                            historyFilter === "files" && "bg-yellow-50 dark:bg-yellow-900/30 border border-yellow-200 dark:border-yellow-800 text-yellow-700 dark:text-yellow-400 font-semibold hover:bg-yellow-100 dark:hover:bg-yellow-900/50"
+                            historyFilter === "files" && "bg-yellow-50 dark:bg-yellow-900/30 border border-yellow-200 dark:border-yellow-800 text-black dark:text-white font-semibold hover:bg-yellow-100 dark:hover:bg-yellow-900/50"
                           )}
                         >
                           Arquivos ({historyEvents.filter(e => (e.type as any) === "files").length})
@@ -2702,7 +2813,7 @@ const formatTime = (date: Date) => {
                           onClick={() => setHistoryFilter("changelog")}
                           className={cn(
                             "text-xs h-8 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-none transition-colors",
-                            historyFilter === "changelog" && "bg-yellow-50 dark:bg-yellow-900/30 border border-yellow-200 dark:border-yellow-800 text-yellow-700 dark:text-yellow-400 font-semibold hover:bg-yellow-100 dark:hover:bg-yellow-900/50"
+                            historyFilter === "changelog" && "bg-yellow-50 dark:bg-yellow-900/30 border border-yellow-200 dark:border-yellow-800 text-black dark:text-white font-semibold hover:bg-yellow-100 dark:hover:bg-yellow-900/50"
                           )}
                         >
                           Registro de alterações ({historyEvents.filter(e => ["column_transfer", "pipeline_transfer", "tag", "user_assigned", "queue_transfer", "agent_activity"].includes(e.type)).length})
@@ -2820,7 +2931,11 @@ const formatTime = (date: Date) => {
                               selected={activityForm.startDate}
                               onSelect={(date) => {
                                 if (date) {
-                                  setActivityForm({...activityForm, startDate: date});
+                                  setActivityForm({
+                                    ...activityForm,
+                                    startDate: date,
+                                    endDate: date,
+                                  });
                                   setShowStartDatePicker(false);
                                 }
                               }}
@@ -2850,10 +2965,27 @@ const formatTime = (date: Date) => {
                                       activityForm.startTime === time && "bg-primary text-primary-foreground font-semibold"
                                     )}
                                     onClick={() => {
-                                      const [hour] = time.split(':').map(Number);
-                                setSelectedStartHour(hour);
-                                      setActivityForm({ ...activityForm, startTime: time });
-                                setShowStartTimePicker(false);
+                                      const [hour, minute] = time.split(':').map(Number);
+                                      setSelectedStartHour(hour);
+                                      setSelectedStartMinute(minute);
+                                      
+                                      // Calcular hora fim (5 minutos depois)
+                                      let endHour = hour;
+                                      let endMinute = minute + 5;
+                                      if (endMinute >= 60) {
+                                        endMinute -= 60;
+                                        endHour = (endHour + 1) % 24;
+                                      }
+                                      const endTime = `${endHour.toString().padStart(2, '0')}:${endMinute.toString().padStart(2, '0')}`;
+                                      
+                                      setActivityForm({ 
+                                        ...activityForm, 
+                                        startTime: time,
+                                        endTime: endTime 
+                                      });
+                                      setSelectedEndHour(endHour);
+                                      setSelectedEndMinute(endMinute);
+                                      setShowStartTimePicker(false);
                                     }}
                                   >
                                     {time}
@@ -2887,8 +3019,9 @@ const formatTime = (date: Date) => {
                                       activityForm.endTime === time && "bg-primary text-primary-foreground font-semibold"
                                     )}
                                     onClick={() => {
-                                      const [hour] = time.split(':').map(Number);
+                                      const [hour, minute] = time.split(':').map(Number);
                                       setSelectedEndHour(hour);
+                                      setSelectedEndMinute(minute);
                                       setActivityForm({ ...activityForm, endTime: time });
                                       setShowEndTimePicker(false);
                                     }}
@@ -3514,7 +3647,7 @@ const formatTime = (date: Date) => {
                     </Button>
                   </PopoverTrigger>
                     <PopoverContent className="w-auto p-0 bg-[#1b1b1b] border-gray-700" align="start">
-                      <Calendar mode="single" selected={activityEditForm.startDate} onSelect={(date) => { if (date) { setActivityEditForm({ ...activityEditForm, startDate: date }); setShowEditStartDatePicker(false); } }} initialFocus />
+                      <Calendar mode="single" selected={activityEditForm.startDate} onSelect={(date) => { if (date) { setActivityEditForm({ ...activityEditForm, startDate: date, endDate: date }); setShowEditStartDatePicker(false); } }} initialFocus />
                   </PopoverContent>
                 </Popover>
               </div>
@@ -3532,7 +3665,32 @@ const formatTime = (date: Date) => {
                       <ScrollArea className="h-60">
                         <div className="p-1">
                           {timeOptions.map((time) => (
-                            <button key={time} className={cn("w-full text-left px-3 py-2 text-sm rounded-sm hover:bg-gray-800 transition-colors text-gray-100", activityEditForm.startTime === time && "bg-primary text-primary-foreground font-semibold")} onClick={() => { setActivityEditForm({ ...activityEditForm, startTime: time }); setShowEditStartTimePicker(false); }}>
+                            <button 
+                              key={time} 
+                              className={cn(
+                                "w-full text-left px-3 py-2 text-sm rounded-sm hover:bg-gray-800 transition-colors text-gray-100", 
+                                activityEditForm.startTime === time && "bg-primary text-primary-foreground font-semibold"
+                              )} 
+                              onClick={() => { 
+                                const [hour, minute] = time.split(':').map(Number);
+                                
+                                // Calcular hora fim (5 minutos depois)
+                                let endHour = hour;
+                                let endMinute = minute + 5;
+                                if (endMinute >= 60) {
+                                  endMinute -= 60;
+                                  endHour = (endHour + 1) % 24;
+                                }
+                                const endTime = `${endHour.toString().padStart(2, '0')}:${endMinute.toString().padStart(2, '0')}`;
+
+                                setActivityEditForm({ 
+                                  ...activityEditForm, 
+                                  startTime: time,
+                                  endTime: endTime 
+                                }); 
+                                setShowEditStartTimePicker(false); 
+                              }}
+                            >
                               {time}
                             </button>
                           ))}
@@ -3834,6 +3992,11 @@ function HistoryTimelineItem({
   const descIsLong =
     typeof descriptionHtml === "string" &&
     (descriptionHtml.length > 180 || descriptionHtml.includes("\n"));
+  const cleanNoteText = (text?: string) =>
+    (text || "")
+      .replace(/^Anotação adicionada:\s*/i, "")
+      .replace(/^Anotação adicionada\s*/i, "")
+      .trim();
   
   return (
     <div className="flex gap-4 relative">
@@ -3866,14 +4029,26 @@ function HistoryTimelineItem({
           <div className="flex items-start justify-between mb-2">
             <div className="flex-1">
               {isNote ? (
-                <div className="flex items-center gap-2 text-xs text-gray-600 dark:text-gray-400">
-                  <span>{format(eventDate, "d 'de' MMMM 'às' HH:mm", { locale: ptBR })}</span>
-                  {event.user_name && (
-                    <>
-                      <span className="text-gray-400">•</span>
-                      <span className="font-medium text-gray-700 dark:text-gray-200">{event.user_name}</span>
-                    </>
-                  )}
+                <div className="space-y-1">
+                  <div className="flex items-center gap-2">
+                    <span className="text-[11px] px-2 py-0.5 rounded bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-200">
+                      Anotação
+                    </span>
+                    {event.metadata?.subject && (
+                      <span className="font-semibold text-sm text-gray-900 dark:text-gray-100">
+                        {event.metadata.subject}
+                      </span>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-2 text-xs text-gray-600 dark:text-gray-400">
+                    <span>{format(eventDate, "d 'de' MMMM 'às' HH:mm", { locale: ptBR })}</span>
+                    {event.user_name && (
+                      <>
+                        <span className="text-gray-400">•</span>
+                        <span className="font-medium text-gray-700 dark:text-gray-200">{event.user_name}</span>
+                      </>
+                    )}
+                  </div>
                 </div>
               ) : isActivity ? (
                 <div className="space-y-2">
@@ -3905,7 +4080,7 @@ function HistoryTimelineItem({
                           <span>•</span>
                           <div className="flex items-center gap-1">
                             <User className="h-3 w-3" />
-                            <span>{contact.name}</span>
+                            <span>{contact.name || contact.phone}</span>
                           </div>
                         </>
                       )}
@@ -3917,7 +4092,7 @@ function HistoryTimelineItem({
                     <div className="relative -mx-4 -mb-4 border-t border-amber-100 dark:border-amber-900/30">
                       <div
                         className={cn(
-                          "text-xs text-gray-700 dark:text-gray-300 font-sans p-3 bg-[#fffde7] dark:bg-amber-950/20 transition-all duration-200 prose dark:prose-invert prose-sm max-w-none note-editor cursor-pointer",
+                          "text-xs text-gray-900 dark:text-white font-sans p-3 bg-[#fffde7] dark:bg-amber-950/20 transition-all duration-200 prose dark:prose-invert prose-sm max-w-none note-editor cursor-pointer",
                           !isDescExpanded && "max-h-[40px] overflow-hidden pr-10"
                         )}
                         onClick={() => {
@@ -3932,10 +4107,10 @@ function HistoryTimelineItem({
                         }}
                       >
                         {looksLikeHtml ? (
-                          <div dangerouslySetInnerHTML={{ __html: descriptionHtml }} />
+                          <div dangerouslySetInnerHTML={{ __html: cleanNoteText(descriptionHtml as string) }} />
                         ) : (
                           <pre className="whitespace-pre-wrap font-sans">
-                            {descriptionHtml}
+                            {cleanNoteText(descriptionHtml as string)}
                           </pre>
                         )}
                       </div>
@@ -4013,7 +4188,7 @@ function HistoryTimelineItem({
             <div className="mt-2">
               {!isEditingNote && (
                 <div 
-                  className="text-sm leading-relaxed break-words prose dark:prose-invert max-w-none note-editor"
+                  className="text-sm leading-relaxed break-words prose dark:prose-invert max-w-none note-editor text-gray-900 dark:text-white"
                   dangerouslySetInnerHTML={{ 
                     __html: event.metadata?.description || event.metadata?.content || event.description || "" 
                   }}

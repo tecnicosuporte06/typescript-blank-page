@@ -281,6 +281,7 @@ export function MeuPerfilModal({ isOpen, onClose }: MeuPerfilModalProps) {
                 <Input
                   id="newPassword"
                   type={showPassword ? "text" : "password"}
+                  autoComplete="new-password"
                   value={formData.newPassword}
                   onChange={(e) => setFormData({ ...formData, newPassword: e.target.value })}
                   placeholder="Digite a nova senha"
@@ -301,6 +302,7 @@ export function MeuPerfilModal({ isOpen, onClose }: MeuPerfilModalProps) {
                 <Input
                   id="confirmPassword"
                   type={showConfirmPassword ? "text" : "password"}
+                  autoComplete="new-password"
                   value={formData.confirmPassword}
                   onChange={(e) => setFormData({ ...formData, confirmPassword: e.target.value })}
                   placeholder="Confirme a nova senha"

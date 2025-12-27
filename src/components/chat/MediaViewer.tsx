@@ -63,12 +63,13 @@ export const MediaViewer: React.FC<MediaViewerProps> = ({
                        /\.(mp3|wav|ogg|aac|flac|webm|m4a|opus)$/i.test(fileName || fileUrl || ''));
   
   // Verificar tipos específicos de documentos PRIMEIRO (antes do PDF genérico)
-  const isExcelFile = /\.(xlsx|xls)$/i.test(fileName || '') || /\.(xlsx|xls)$/i.test(fileUrl);
+  const isExcelFile = /\.(xlsx|xls|csv)$/i.test(fileName || '') || /\.(xlsx|xls|csv)$/i.test(fileUrl);
   const isWordFile = /\.(docx|doc)$/i.test(fileName || '') || /\.(docx|doc)$/i.test(fileUrl);
   const isPowerPointFile = /\.(pptx|ppt)$/i.test(fileName || '') || /\.(pptx|ppt)$/i.test(fileUrl);
+  const isOfficeFile = isExcelFile || isWordFile || isPowerPointFile;
                       
   // PDF só se for realmente PDF (não todos os documentos)
-  const isPdfFile = !isExcelFile && !isWordFile && !isPowerPointFile && 
+  const isPdfFile = !isOfficeFile && 
                     (/\.pdf$/i.test(fileName || '') || /\.pdf$/i.test(fileUrl) || 
                      (messageType === 'document' && (fileName?.toLowerCase().includes('pdf') || fileUrl?.toLowerCase().includes('pdf'))));
                       
@@ -79,6 +80,14 @@ export const MediaViewer: React.FC<MediaViewerProps> = ({
   const isVideoFile = messageType === 'video' ||
                       (messageType !== 'audio' && messageType !== 'document' && messageType !== 'image' &&
                        /\.(mp4|avi|mov|wmv|flv|webm)$/i.test(fileName || fileUrl || ''));
+
+  const renderNeutralBadge = (label: string) => (
+    <div className="relative">
+      <div className="w-10 h-10 rounded-md border border-gray-300 dark:border-gray-700 bg-gray-100 dark:bg-[#1f1f1f] text-gray-700 dark:text-gray-200 flex items-center justify-center text-[10px] font-semibold uppercase">
+        {label}
+      </div>
+    </div>
+  );
 
   // Log específico para detecções
   console.log('🔍 DETECÇÃO FINAL:', {
@@ -119,12 +128,7 @@ export const MediaViewer: React.FC<MediaViewerProps> = ({
         <div className="relative inline-block">
           <div className="flex items-center gap-3 p-2 bg-muted rounded-lg max-w-[300px] cursor-pointer hover:bg-muted/80 transition-colors border border-border" 
                onClick={handleDownload}>
-            <div className="relative">
-              <FileText className="h-10 w-10 text-green-600" />
-              <div className="absolute -top-1 -right-1 bg-green-600 text-white text-xs px-1 rounded font-medium">
-                XLS
-              </div>
-            </div>
+            {renderNeutralBadge('XLS')}
             <div className="flex-1 min-w-0">
               <p className="font-medium text-sm truncate">
                 {fileName || 'Planilha Excel'}
@@ -158,12 +162,7 @@ export const MediaViewer: React.FC<MediaViewerProps> = ({
         <div className="relative inline-block">
           <div className="flex items-center gap-3 p-2 bg-muted rounded-lg max-w-[300px] cursor-pointer hover:bg-muted/80 transition-colors border border-border" 
                onClick={handleDownload}>
-            <div className="relative">
-              <FileText className="h-10 w-10 text-blue-600" />
-              <div className="absolute -top-1 -right-1 bg-blue-600 text-white text-xs px-1 rounded font-medium">
-                DOC
-              </div>
-            </div>
+            {renderNeutralBadge('DOC')}
             <div className="flex-1 min-w-0">
               <p className="font-medium text-sm truncate">
                 {fileName || 'Documento Word'}
@@ -197,12 +196,7 @@ export const MediaViewer: React.FC<MediaViewerProps> = ({
         <div className="relative inline-block">
           <div className="flex items-center gap-3 p-2 bg-muted rounded-lg max-w-[300px] cursor-pointer hover:bg-muted/80 transition-colors border border-border" 
                onClick={handleDownload}>
-            <div className="relative">
-              <FileText className="h-10 w-10 text-orange-600" />
-              <div className="absolute -top-1 -right-1 bg-orange-600 text-white text-xs px-1 rounded font-medium">
-                PPT
-              </div>
-            </div>
+            {renderNeutralBadge('PPT')}
             <div className="flex-1 min-w-0">
               <p className="font-medium text-sm truncate">
                 {fileName || 'Apresentação PowerPoint'}
@@ -229,9 +223,10 @@ export const MediaViewer: React.FC<MediaViewerProps> = ({
     );
   }
 
-  // QUARTA VERIFICAÇÃO: PDF (genérico para documentos)
-  if (isPdfFile) {
-    console.log('🔴 RENDERIZANDO PDF:', { fileName, fileUrl, messageType, extension: fileName?.split('.').pop()?.toLowerCase() });
+  // QUARTA VERIFICAÇÃO: PDF (genérico para documentos) e outros documentos
+  if (isPdfFile || isOfficeFile) {
+    console.log('🔴 RENDERIZANDO DOC/PDF:', { fileName, fileUrl, messageType, extension: fileName?.split('.').pop()?.toLowerCase() });
+    const label = (fileName?.split('.').pop() || 'file').slice(0,4).toUpperCase();
     return (
       <div className={className}>
         <div className="relative inline-block">
@@ -239,15 +234,10 @@ export const MediaViewer: React.FC<MediaViewerProps> = ({
             className="flex items-center gap-3 p-2 bg-muted rounded-lg max-w-[300px] cursor-pointer hover:bg-muted/80 transition-colors border border-border" 
             onClick={() => setIsPdfModalOpen(true)}
           >
-            <div className="relative">
-              <FileText className="h-10 w-10 text-red-600" />
-              <div className="absolute -top-1 -right-1 bg-red-600 text-white text-xs px-1 rounded font-medium">
-                PDF
-              </div>
-            </div>
+            {renderNeutralBadge(label)}
             <div className="flex-1 min-w-0">
               <p className="font-medium text-sm truncate">
-                {fileName || 'Documento PDF'}
+                {fileName || 'Documento'}
               </p>
               <p className="text-xs text-muted-foreground flex items-center gap-1">
                 <Eye className="h-3 w-3" />

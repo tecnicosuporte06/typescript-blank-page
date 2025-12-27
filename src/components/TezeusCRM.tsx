@@ -39,25 +39,25 @@ import { WorkspaceApiKeys } from "./modules/WorkspaceApiKeys";
 import { DealDetailsPage } from "@/pages/DealDetailsPage";
 
 export type ModuleType = 
-  | "dashboard"
+  | "relatorios"
   | "conversas"
-  | "ds-voice"
-  | "crm-negocios"
-  | "crm-negocios-detail"
-  | "crm-atividades"
-  | "crm-agenda"
-  | "crm-contatos"
-  | "crm-tags"
-  | "crm-produtos"
+  | "mensagens-rapidas"
+  | "pipeline"
+  | "pipeline-detail"
+  | "atividades"
+  | "agendas"
+  | "contatos"
+  | "etiquetas"
+  | "produtos"
   
   | "automacoes-agente"
   | "automacoes-bot"
   | "automacoes-integracoes"
-  | "automacoes-filas"
+  | "filas"
   | "automacoes-api"
   | "automacoes-webhooks"
   | "conexoes"
-  | "workspace-empresas"
+  | "empresa"
   | "workspace-usuarios"
   | "workspace-api-keys"
   | "workspace-relatorios"
@@ -67,7 +67,7 @@ export type ModuleType =
   | "administracao-configuracoes"
   | "administracao-dashboard"
   | "administracao-google-agenda"
-  | "administracao-acoes"
+  | "configuracao-acoes"
   | "editar-agente";
 
 export function TezeusCRM() {
@@ -100,6 +100,8 @@ export function TezeusCRM() {
 
   // Convert URL path to module type
   const getModuleFromPath = (pathname: string): ModuleType => {
+    console.log('📍 [TezeusCRM] Identificando módulo para:', pathname);
+    
     // Remover prefixo /workspace/:workspaceId se existir
     let path = pathname;
     const workspaceMatch = pathname.match(/^\/workspace\/[^/]+\/(.+)/);
@@ -107,17 +109,36 @@ export function TezeusCRM() {
       path = `/${workspaceMatch[1]}`;
     }
     
-    path = path.substring(1); // Remove leading slash
-    if (!path || path === "dashboard") return "dashboard";
-    if (path.startsWith("editar-agente/")) return "editar-agente";
-    if (path.includes("/usuarios")) return "workspace-usuarios";
-    // Verificar se é a página de detalhes do negócio - deve ter formato crm-negocios/:cardId
-    const pathParts = path.split("/");
-    if (pathParts[0] === "crm-negocios" && pathParts.length > 1 && pathParts[1]) {
-      return "crm-negocios-detail";
+    // Normalizar o path removendo a primeira barra
+    const cleanPath = path.startsWith('/') ? path.substring(1) : path;
+    const pathParts = cleanPath.split("/");
+    
+    // 1. Verificar se é a página de detalhes do negócio (prioridade alta)
+    // Suporta /pipeline/:id ou /crm-negocios/:id
+    if ((pathParts[0] === "pipeline" || pathParts[0] === "crm-negocios") && pathParts.length > 1 && pathParts[1]) {
+      console.log('📑 [TezeusCRM] Módulo identificado: pipeline-detail');
+      return "pipeline-detail";
     }
     
-    return path as ModuleType;
+    // 2. Mapeamento de legados e nomes amigáveis
+    if (cleanPath === "" || cleanPath === "relatorios" || cleanPath === "dashboard") return "relatorios";
+    if (cleanPath.startsWith("editar-agente/")) return "editar-agente";
+    if (cleanPath.includes("/usuarios")) return "workspace-usuarios";
+    
+    // Mapeamento direto
+    if (cleanPath === "crm-negocios" || cleanPath === "pipeline") return "pipeline";
+    if (cleanPath === "crm-atividades" || cleanPath === "atividades") return "atividades";
+    if (cleanPath === "crm-agenda" || cleanPath === "agendas") return "agendas";
+    if (cleanPath === "crm-contatos" || cleanPath === "contatos") return "contatos";
+    if (cleanPath === "crm-tags" || cleanPath === "etiquetas") return "etiquetas";
+    if (cleanPath === "crm-produtos" || cleanPath === "produtos") return "produtos";
+    if (cleanPath === "ds-voice" || cleanPath === "mensagens-rapidas") return "mensagens-rapidas";
+    if (cleanPath === "workspace-empresas" || cleanPath === "empresa") return "empresa";
+    if (cleanPath === "automacoes-filas" || cleanPath === "filas") return "filas";
+    if (cleanPath === "administracao-acoes" || cleanPath === "configuracao-acoes") return "configuracao-acoes";
+    
+    console.log('🧩 [TezeusCRM] Módulo identificado via fallback:', cleanPath);
+    return cleanPath as ModuleType;
   };
 
   const activeModule = getModuleFromPath(location.pathname);
@@ -152,25 +173,27 @@ export function TezeusCRM() {
 
   const renderModule = () => {
     switch (activeModule) {
+      case "relatorios":
+      case "workspace-relatorios":
       case "dashboard":
         return <Dashboard />;
       case "conversas":
         return <Conversas selectedConversationId={selectedConversationId} />;
-      case "ds-voice":
+      case "mensagens-rapidas":
         return <DSVoice />;
-      case "crm-negocios":
+      case "pipeline":
         return <CRMNegocios onCollapseSidebar={() => setIsCollapsed(true)} />;
-      case "crm-negocios-detail":
+      case "pipeline-detail":
         return <DealDetailsPage />;
-      case "crm-atividades":
+      case "atividades":
         return <CRMAtividades />;
-      case "crm-agenda":
+      case "agendas":
         return <CRMAgenda />;
-      case "crm-contatos":
+      case "contatos":
         return <CRMContatos />;
-      case "crm-tags":
+      case "etiquetas":
         return <CRMTags />;
-      case "crm-produtos":
+      case "produtos":
         return <CRMProdutos />;
       case "automacoes-agente":
         return <DSAgente />;
@@ -178,13 +201,13 @@ export function TezeusCRM() {
         return <AutomacoesBot />;
       case "automacoes-integracoes":
         return <AutomacoesIntegracoes />;
-      case "automacoes-filas":
+      case "filas":
         return <AutomacoesFilas />;
       case "automacoes-api":
         return <AutomacoesAPI />;
       case "conexoes":
         return <Conexoes />;
-      case "workspace-empresas":
+      case "empresa":
         return <WorkspaceEmpresas />;
       case "workspace-usuarios":
         return <WorkspaceUsersPage />;
@@ -203,7 +226,7 @@ export function TezeusCRM() {
         return <AdministracaoDashboard />;
       case "administracao-google-agenda":
         return <AdministracaoGoogleAgenda />;
-      case "administracao-acoes":
+      case "configuracao-acoes":
         return <ConfiguracaoAcoes />;
       case "editar-agente":
         return editingAgentId ? <EditarAgente agentId={editingAgentId} /> : <Dashboard />;
@@ -222,7 +245,7 @@ export function TezeusCRM() {
               // Handle editar-agente navigation differently since it needs agentId
               return;
             }
-            navigate(getRoutePath(`/${module === 'dashboard' ? 'dashboard' : module}`));
+            navigate(getRoutePath(`/${module === 'relatorios' ? 'relatorios' : module}`));
           }}
           isCollapsed={isCollapsed}
           onToggleCollapse={() => setIsCollapsed(!isCollapsed)}

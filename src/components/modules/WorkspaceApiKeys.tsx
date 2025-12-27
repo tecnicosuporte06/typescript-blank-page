@@ -1004,7 +1004,7 @@ X-API-Key: sua_api_key_aqui
 
                     {/* Column Select */}
                   <div className="space-y-2">
-                    <Label className="text-xs font-medium text-gray-700 dark:text-gray-300">Coluna</Label>
+                    <Label className="text-xs font-medium text-gray-700 dark:text-gray-300">Etapa</Label>
                     <Select
                       value={selectedColumnId}
                       onValueChange={setSelectedColumnId}

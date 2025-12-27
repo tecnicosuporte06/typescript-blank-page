@@ -113,10 +113,10 @@ export function CreateActivityModal({
         return;
       }
     } else {
-      if (!selectedDate || !formData.responsibleId || !formData.subject.trim()) {
+      if (!selectedDate || !formData.responsibleId) {
         toast({
           title: "Campos obrigatórios",
-          description: "Preencha todos os campos obrigatórios.",
+          description: "Preencha o responsável e a data.",
           variant: "destructive",
         });
         return;
@@ -176,7 +176,7 @@ export function CreateActivityModal({
         workspace_id: contactData.workspace_id,
         type: formData.type,
         responsible_id: formData.responsibleId,
-        subject: formData.subject,
+        subject: formData.subject.trim() || formData.type,
         description: formData.description || null,
         scheduled_for: scheduledDateTime.toISOString(),
         duration_minutes: formData.durationMinutes,
@@ -334,7 +334,7 @@ export function CreateActivityModal({
                 Assunto *
               </label>
               <Input
-                placeholder="Assunto da atividade"
+                placeholder={formData.type}
                 value={formData.subject}
                 onChange={(e) => setFormData({...formData, subject: e.target.value})}
                 className={cn(

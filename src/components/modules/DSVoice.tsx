@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -19,6 +19,7 @@ import { useQuickFunnels, FunnelStep, Funnel } from "@/hooks/useQuickFunnels";
 import { ImageModal } from '@/components/chat/ImageModal';
 import { VideoModal } from '@/components/chat/VideoModal';
 import { DocumentPreviewModal } from '@/components/chat/DocumentPreviewModal';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 import { useAuth } from "@/hooks/useAuth";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -99,6 +100,8 @@ function SortableFunnelStep({ step, index, itemDetails, onDelete }: SortableFunn
 }
 
 export function DSVoice() {
+  const DEFAULT_PAGE_SIZE = 100;
+  const MIN_PAGE_SIZE = 10;
   const [activeCategory, setActiveCategory] = useState("mensagens");
   const [searchTerm, setSearchTerm] = useState("");
   const { userRole } = useAuth();
@@ -160,6 +163,10 @@ export function DSVoice() {
       coordinateGetter: sortableKeyboardCoordinates,
     })
   );
+
+  // Paginação unificada por categoria ativa
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
 
   const handleDragEnd = (event: DragEndEvent) => {
     const { active, over } = event;
@@ -516,6 +523,36 @@ export function DSVoice() {
   const filteredDocuments = documents.filter(doc => doc.title.toLowerCase().includes(searchTerm.toLowerCase()));
   const filteredFunnels = funnels.filter(funnel => funnel.title.toLowerCase().includes(searchTerm.toLowerCase()));
 
+  // Derivar dados ativos e paginação
+  const getActiveData = () => {
+    switch (activeCategory) {
+      case "mensagens":
+        return filteredMessages;
+      case "audios":
+        return filteredAudios;
+      case "midias":
+        return filteredMedia;
+      case "documentos":
+        return filteredDocuments;
+      case "funis":
+        return filteredFunnels;
+      default:
+        return [];
+    }
+  };
+
+  const totalCount = getActiveData().length;
+  const totalPages = Math.max(1, Math.ceil((totalCount || 0) / pageSize));
+  const startIndex = totalCount > 0 ? (page - 1) * pageSize + 1 : 0;
+  const endIndex = totalCount > 0 ? Math.min(page * pageSize, totalCount) : 0;
+
+  const handlePageSizeChange = (value: string) => {
+    const parsed = Number(value);
+    const normalized = Math.max(MIN_PAGE_SIZE, isNaN(parsed) ? DEFAULT_PAGE_SIZE : parsed);
+    setPageSize(normalized);
+    setPage(1);
+  };
+
   // Renderizador de tabelas Excel
   const renderTable = (headers: string[], data: any[], renderRow: (item: any) => React.ReactNode) => {
     return (
@@ -566,11 +603,14 @@ export function DSVoice() {
         </div>;
     }
 
+    const data = getActiveData();
+    const paginatedData = data.slice((page - 1) * pageSize, (page - 1) * pageSize + pageSize);
+
     switch (activeCategory) {
       case "mensagens":
         return renderTable(
           ["Título", "Conteúdo"],
-          filteredMessages,
+          paginatedData,
           (message) => (
             <tr key={message.id} className="hover:bg-blue-50 group h-[32px] dark:hover:bg-[#1f2937]">
               <td className="border border-[#e0e0e0] px-2 py-0 whitespace-nowrap font-medium dark:border-gray-700 dark:text-gray-100">{message.title}</td>
@@ -591,7 +631,7 @@ export function DSVoice() {
       case "audios":
         return renderTable(
           ["Título", "Arquivo", "Preview"],
-          filteredAudios,
+          paginatedData,
           (audio) => (
             <tr key={audio.id} className="hover:bg-blue-50 group h-[40px] dark:hover:bg-[#1f2937]">
               <td className="border border-[#e0e0e0] px-2 py-0 whitespace-nowrap font-medium dark:border-gray-700 dark:text-gray-100">{audio.title}</td>
@@ -619,7 +659,7 @@ export function DSVoice() {
       case "midias":
         return renderTable(
           ["Preview", "Título", "Arquivo", "Tipo"],
-          filteredMedia,
+          paginatedData,
           (mediaItem) => (
             <tr key={mediaItem.id} className="hover:bg-blue-50 group h-[40px] dark:hover:bg-[#1f2937]">
               <td className="border border-[#e0e0e0] px-2 py-0 w-[50px] dark:border-gray-700">
@@ -670,17 +710,15 @@ export function DSVoice() {
       case "documentos":
         return renderTable(
           ["Preview", "Título", "Arquivo", "Tamanho"],
-          filteredDocuments,
+          paginatedData,
           (document) => {
              const getDocIcon = () => {
-              if (document.file_type.includes('pdf')) return <FileText className="w-4 h-4 text-red-600" />;
-              if (document.file_type.includes('excel') || document.file_type.includes('spreadsheet'))
-                return <FileText className="w-4 h-4 text-green-600" />;
-              if (document.file_type.includes('word') || document.file_type.includes('document'))
-                return <FileText className="w-4 h-4 text-blue-600" />;
-              if (document.file_type.includes('powerpoint') || document.file_type.includes('presentation'))
-                return <FileText className="w-4 h-4 text-orange-600" />;
-              return <FileText className="w-4 h-4 text-gray-600" />;
+              const ext = (document.file_name?.split('.').pop() || document.file_type || 'file').slice(0,4).toUpperCase();
+              return (
+                <div className="w-8 h-8 rounded-md border border-gray-200 dark:border-gray-700 bg-gray-100 dark:bg-[#1f1f1f] text-gray-700 dark:text-gray-200 flex items-center justify-center text-[10px] font-semibold uppercase">
+                  {ext}
+                </div>
+              );
             };
             return (
               <tr key={document.id} className="hover:bg-blue-50 group h-[32px] dark:hover:bg-[#1f2937]">
@@ -723,7 +761,7 @@ export function DSVoice() {
       case "funis":
         return renderTable(
           ["Nome do Funil", "Qtd. Etapas"],
-          filteredFunnels,
+          paginatedData,
           (funnel) => (
             <tr key={funnel.id} className="hover:bg-blue-50 group h-[32px] dark:hover:bg-[#1f2937]">
               <td className="border border-[#e0e0e0] px-2 py-0 font-medium dark:border-gray-700 dark:text-gray-100">{funnel.title}</td>
@@ -759,6 +797,11 @@ export function DSVoice() {
         return null;
     }
   };
+
+  // Resetar página ao trocar categoria, busca ou pageSize
+  useEffect(() => {
+    setPage(1);
+  }, [activeCategory, searchTerm, pageSize]);
 
   return (
     <div className="flex flex-col h-full bg-white border border-gray-300 m-2 shadow-sm font-sans text-xs dark:bg-[#0f0f0f] dark:border-gray-700">
@@ -839,6 +882,47 @@ export function DSVoice() {
       {/* Content Area (Table) */}
       <div className="flex-1 overflow-auto bg-[#e6e6e6] dark:bg-[#050505]">
         {renderContent()}
+      </div>
+      <div className="sticky bottom-0 left-0 right-0 bg-[#f8f9fa] dark:bg-[#141414] border-t border-gray-300 dark:border-gray-700 px-4 py-2 z-20">
+        <div className="flex flex-wrap items-center justify-between gap-3 text-[11px] text-gray-600 dark:text-gray-400">
+          <div className="flex flex-wrap items-center gap-3">
+            <span>
+              Linhas {startIndex}-{endIndex} de {totalCount}
+            </span>
+            <div className="flex items-center gap-1">
+              <span>Linhas/página:</span>
+              <Select value={String(pageSize)} onValueChange={handlePageSizeChange}>
+                <SelectTrigger className="h-7 w-24 rounded-none">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {["10", "25", "50", "100", "200"].map((opt) => (
+                    <SelectItem key={opt} value={opt}>{opt}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              className="px-2 py-1 border border-gray-300 rounded-sm disabled:opacity-50 dark:border-gray-700"
+              onClick={() => setPage((p) => Math.max(1, p - 1))}
+              disabled={page === 1}
+            >
+              Anterior
+            </button>
+            <span>
+              Página {page} / {totalPages}
+            </span>
+            <button
+              className="px-2 py-1 border border-gray-300 rounded-sm disabled:opacity-50 dark:border-gray-700"
+              onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+              disabled={page >= totalPages}
+            >
+              Próxima
+            </button>
+          </div>
+        </div>
       </div>
 
       {/* Modals - Mantidos iguais */}

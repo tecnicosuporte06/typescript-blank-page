@@ -90,7 +90,7 @@ export function WorkspaceUsersPage({
   // Check if user can manage this workspace
   const canManageWorkspace = userRole === 'master' || isMaster || isAdmin(workspaceId) || userRole === 'admin';
   if (!workspaceId) {
-    navigate('/workspace-empresas');
+    navigate('/empresa');
     return null;
   }
 
@@ -388,7 +388,7 @@ export function WorkspaceUsersPage({
   };
   return <div className="p-6 space-y-6">
       <div className="flex items-center gap-4">
-        <Button variant="ghost" size="sm" onClick={() => navigate('/workspace-empresas')} className="gap-2">
+        <Button variant="ghost" size="sm" onClick={() => navigate('/empresa')} className="gap-2">
           <ArrowLeft className="w-4 h-4" />
           
         </Button>
