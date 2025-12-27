@@ -111,9 +111,6 @@ export const ConfiguracaoAcoes: React.FC = () => {
               Motivos de Perda
             </span>
           </div>
-          <div className="text-[10px] opacity-80 text-gray-600 dark:text-gray-300">
-            {isLoading ? "Carregando..." : `${filteredLossReasons.length} motivos`}
-          </div>
         </div>
 
         {/* Tools Bar */}
@@ -139,7 +136,7 @@ export const ConfiguracaoAcoes: React.FC = () => {
               className="h-8 px-2 hover:bg-gray-200 rounded-sm flex flex-col items-center justify-center gap-0.5 text-gray-700 dark:text-gray-200 dark:hover:bg-[#2a2a2a]"
               onClick={() => setIsAddModalOpen(true)}
             >
-              <Plus className="h-4 w-4 text-primary" />
+              <Plus className="h-4 w-4" />
               <span className="text-[9px]">Novo Motivo</span>
             </Button>
           </div>
@@ -295,9 +292,6 @@ export const ConfiguracaoAcoes: React.FC = () => {
             >
               Próxima
             </button>
-            <span className="opacity-70">
-              {filteredLossReasons.length} registros
-            </span>
           </div>
         </div>
       </div>

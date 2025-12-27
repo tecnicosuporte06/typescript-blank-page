@@ -472,7 +472,7 @@ function DraggableDeal({
         </div>
         
         {/* Footer com ícones de ação e prioridade */}
-        <div className={`flex items-center pt-1 border-t border-border/50 dark:border-gray-700/50`}>
+        <div className={`flex items-center pt-[1.25rem] border-t border-border/50 dark:border-gray-700/50`}>
           <div className="flex items-center gap-1 overflow-hidden flex-1 min-w-0">
             <Button 
               size="icon" 
@@ -796,6 +796,7 @@ function CRMNegociosContent({
     cards,
     isLoading,
     isLoadingColumns,
+    isLoadingCards,
     createPipeline,
     selectPipeline,
     createColumn,
@@ -1522,10 +1523,7 @@ const [selectedCardForProduct, setSelectedCardForProduct] = useState<{
   if (isLoading || pipelines.length === 0) {
     return (
       <div className={`p-6 bg-white dark:bg-[#0f0f0f] ${isDarkMode ? 'dark' : ''}`}>
-        <div className="flex items-center justify-between mb-6">
-          <div>
-            <h1 className={`text-2xl font-bold text-foreground dark:text-gray-100`}>Pipeline</h1>
-          </div>
+        <div className="flex items-center justify-end mb-6">
           {!isLoading && canManagePipelines(effectiveWorkspaceId) && (
             <Button onClick={() => setIsCriarPipelineModalOpen(true)} className="bg-primary hover:bg-primary/90">
               <Plus className="h-4 w-4 mr-2" />
@@ -1572,6 +1570,18 @@ const [selectedCardForProduct, setSelectedCardForProduct] = useState<{
       <div className={`flex flex-col h-full bg-white dark:bg-[#0f0f0f] border border-gray-300 dark:border-gray-700 m-2 shadow-sm font-sans text-xs ${isDarkMode ? 'dark' : ''}`}>
         {/* Sticky Header - Fixo no topo, sem scroll horizontal */}
         <div className={`flex-shrink-0 bg-background dark:bg-[#1a1a1a] border-b border-border dark:border-gray-700 w-full`}>
+          {/* Title Bar */}
+          <div className="flex items-center justify-between px-4 pt-3 pb-2 h-auto">
+            <div className="flex items-center gap-2">
+              <span
+                className="font-semibold text-gray-900 dark:text-gray-100"
+                style={{ fontSize: "1.5rem" }}
+              >
+                Pipeline
+              </span>
+            </div>
+          </div>
+
           <div className="px-2 md:px-4 py-2">
             <div className={`w-full border border-[#d4d4d4] dark:border-gray-700 rounded-none p-2 md:p-3 shadow-sm bg-background dark:bg-[#1a1a1a]`}>
                   
@@ -2009,7 +2019,33 @@ const [selectedCardForProduct, setSelectedCardForProduct] = useState<{
                                   {/* Cards Area */}
                                   <div className={`flex-1 p-2 overflow-y-auto bg-white dark:bg-[#111111] scrollbar-thin scrollbar-thumb-gray-column scrollbar-track-transparent`}>
                                      <SortableContext items={columnCards.map(card => `card-${card.id}`)} strategy={verticalListSortingStrategy}>
-                                       {columnCards.length > 0 ? columnCards.map(card => {
+                                       {isLoadingCards ? (
+                                         <div className="space-y-3">
+                                           {[...Array(3)].map((_, cardIndex) => (
+                                             <div key={cardIndex} className={`bg-muted/20 dark:bg-gray-800/20 rounded-lg p-4 space-y-2`}>
+                                               <div className="flex items-start gap-3 mb-3">
+                                                 <Skeleton className="w-10 h-10 rounded-full bg-gray-300 dark:bg-gray-700" />
+                                                 <div className="flex-1">
+                                                   <div className="flex justify-between items-start mb-2">
+                                                     <Skeleton className="h-5 w-32 bg-gray-300 dark:bg-gray-700" />
+                                                     <Skeleton className="h-5 w-20 bg-gray-300 dark:bg-gray-700" />
+                                                   </div>
+                                                 </div>
+                                               </div>
+                                               <div className="mb-3">
+                                                 <Skeleton className="h-4 w-16 bg-gray-300 dark:bg-gray-700" />
+                                               </div>
+                                               <div className="flex justify-between items-center pt-2">
+                                                 <div className="flex gap-1">
+                                                   <Skeleton className="h-6 w-6 bg-gray-300 dark:bg-gray-700" />
+                                                   <Skeleton className="h-6 w-6 bg-gray-300 dark:bg-gray-700" />
+                                                 </div>
+                                                 <Skeleton className="h-4 w-12 bg-gray-300 dark:bg-gray-700" />
+                                               </div>
+                                             </div>
+                                           ))}
+                                         </div>
+                                       ) : columnCards.length > 0 ? columnCards.map(card => {
                                          const deal: Deal = {
                                            id: card.id,
                                            name: card.title,
@@ -2249,7 +2285,33 @@ const [selectedCardForProduct, setSelectedCardForProduct] = useState<{
                           "flex-1 p-2 overflow-y-auto min-h-0 bg-[#f9f9f9] dark:bg-[#0a0a0a] transition-all duration-200 scrollbar-thin scrollbar-thumb-gray-column scrollbar-track-transparent",
                           !draggedColumn && dragOverColumn === column.id && "ring-1 ring-primary/10 bg-primary/5 dark:bg-primary/10"
                         )}>
-                        {columnCards.length === 0 ? (
+                        {isLoadingCards ? (
+                          <div className="space-y-3">
+                            {[...Array(3)].map((_, cardIndex) => (
+                              <div key={cardIndex} className={`bg-muted/20 dark:bg-gray-800/20 rounded-lg p-4 space-y-2`}>
+                                <div className="flex items-start gap-3 mb-3">
+                                  <Skeleton className="w-10 h-10 rounded-full bg-gray-300 dark:bg-gray-700" />
+                                  <div className="flex-1">
+                                    <div className="flex justify-between items-start mb-2">
+                                      <Skeleton className="h-5 w-32 bg-gray-300 dark:bg-gray-700" />
+                                      <Skeleton className="h-5 w-20 bg-gray-300 dark:bg-gray-700" />
+                                    </div>
+                                  </div>
+                                </div>
+                                <div className="mb-3">
+                                  <Skeleton className="h-4 w-16 bg-gray-300 dark:bg-gray-700" />
+                                </div>
+                                <div className="flex justify-between items-center pt-2">
+                                  <div className="flex gap-1">
+                                    <Skeleton className="h-6 w-6 bg-gray-300 dark:bg-gray-700" />
+                                    <Skeleton className="h-6 w-6 bg-gray-300 dark:bg-gray-700" />
+                                  </div>
+                                  <Skeleton className="h-4 w-12 bg-gray-300 dark:bg-gray-700" />
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        ) : columnCards.length === 0 ? (
                           <div className="flex items-center justify-center h-32 text-center">
                             <p className={`text-muted-foreground dark:text-gray-400 text-sm`}>
                               Nenhum negócio encontrado nesta etapa

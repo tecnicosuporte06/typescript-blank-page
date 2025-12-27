@@ -89,6 +89,7 @@ interface PipelinesContextType {
   cards: PipelineCard[];
   isLoading: boolean;
   isLoadingColumns: boolean;
+  isLoadingCards: boolean;
   fetchPipelines: () => Promise<void>;
   createPipeline: (name: string, type: string) => Promise<Pipeline>;
   deletePipeline: (pipelineId: string) => Promise<void>;
@@ -113,6 +114,7 @@ export function PipelinesProvider({ children }: { children: React.ReactNode }) {
   const [cards, setCards] = useState<PipelineCard[]>([]);
   const [isLoading, setIsLoading] = useState(true); // Start as loading
   const [isLoadingColumns, setIsLoadingColumns] = useState(false);
+  const [isLoadingCards, setIsLoadingCards] = useState(false);
   const { selectedWorkspace } = useWorkspace();
   const { toast } = useToast();
   const { user, userRole } = useAuth();
@@ -232,6 +234,11 @@ export function PipelinesProvider({ children }: { children: React.ReactNode }) {
     try {
       console.log(`🔍 [fetchCards] Buscando cards para pipeline: ${pipelineId} (tentativa ${retryCount + 1})`);
       
+      // Só mostrar loading na primeira tentativa para não piscar no retry
+      if (retryCount === 0) {
+        setIsLoadingCards(true);
+      }
+      
       const { data, error } = await supabase.functions.invoke(`pipeline-management/cards?pipeline_id=${pipelineId}`, {
         method: 'GET',
         headers: getHeaders
@@ -296,6 +303,8 @@ export function PipelinesProvider({ children }: { children: React.ReactNode }) {
         description: "Erro ao carregar cards. Tente recarregar a página.",
         variant: "destructive",
       });
+    } finally {
+      setIsLoadingCards(false);
     }
   }, [getHeaders, toast]);
 
@@ -370,6 +379,7 @@ export function PipelinesProvider({ children }: { children: React.ReactNode }) {
     // Clear columns immediately when switching pipelines to trigger skeleton
     setColumns([]);
     setCards([]);
+    setIsLoadingCards(true);
   }, []);
 
   // New function to refresh the current pipeline data
@@ -1209,6 +1219,7 @@ export function PipelinesProvider({ children }: { children: React.ReactNode }) {
       setColumns([]);
       setCards([]);
       setSelectedPipeline(null);
+      setIsLoadingCards(true);
       
       // Buscar novos pipelines e forçar seleção do primeiro
       fetchPipelines(true);
@@ -1330,6 +1341,7 @@ export function PipelinesProvider({ children }: { children: React.ReactNode }) {
     cards,
     isLoading,
     isLoadingColumns,
+    isLoadingCards,
     fetchPipelines,
     createPipeline,
     deletePipeline,
@@ -1350,6 +1362,7 @@ export function PipelinesProvider({ children }: { children: React.ReactNode }) {
     cards,
     isLoading,
     isLoadingColumns,
+    isLoadingCards,
     fetchPipelines,
     createPipeline,
     deletePipeline,

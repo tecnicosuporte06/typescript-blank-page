@@ -774,9 +774,6 @@ export function DSVoice() {
               Mensagens Rápidas
             </span>
           </div>
-          <div className="text-[15px] opacity-80 text-gray-600 dark:text-gray-200">
-             {activeCategory.charAt(0).toUpperCase() + activeCategory.slice(1)}
-          </div>
         </div>
 
         {/* Tools Bar */}
@@ -808,7 +805,7 @@ export function DSVoice() {
                 else if (activeCategory === "funis") setIsFunnelModalOpen(true);
               }}
             >
-              <Plus className="h-4 w-4 text-primary" />
+              <Plus className="h-4 w-4" />
               <span className="text-[9px]">Novo Item</span>
             </Button>
 

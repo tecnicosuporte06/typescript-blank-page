@@ -118,9 +118,6 @@ export function CRMProdutos() {
               Produtos
             </span>
           </div>
-          <div className="text-[15px] opacity-80 text-gray-600 dark:text-gray-300">
-            {isLoading ? "Carregando..." : `${filteredProducts.length} itens`}
-          </div>
         </div>
 
         {/* Tools Bar */}
@@ -149,7 +146,7 @@ export function CRMProdutos() {
                 setIsCreateModalOpen(true);
               }}
             >
-              <Plus className="h-4 w-4 text-primary" />
+              <Plus className="h-4 w-4" />
               <span className="text-[9px]">Novo Produto</span>
             </Button>
           </div>
@@ -239,9 +236,6 @@ export function CRMProdutos() {
             >
               Próxima
             </button>
-            <span className="opacity-70">
-              {filteredProducts.length} registros
-            </span>
           </div>
         </div>
       </div>

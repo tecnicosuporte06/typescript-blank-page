@@ -366,11 +366,6 @@ export function CRMAtividades() {
               Atividades
             </span>
           </div>
-          <div className="flex-1 flex justify-end pr-8">
-            <div className="text-[15px] opacity-80 text-gray-600 dark:text-gray-200 text-center">
-              {isLoading ? "Carregando..." : `${filteredActivities.length} registros`}
-            </div>
-          </div>
         </div>
 
         <div className="flex items-center gap-2 p-2 overflow-x-auto">
@@ -551,9 +546,6 @@ export function CRMAtividades() {
             >
               Próxima
             </button>
-            <span className="opacity-70">
-              {filteredActivities.length} registros
-            </span>
           </div>
         </div>
       </div>

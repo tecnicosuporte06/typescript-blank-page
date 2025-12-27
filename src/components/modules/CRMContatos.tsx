@@ -1327,9 +1327,6 @@ export function CRMContatos() {
               Contatos
             </span>
           </div>
-          <div className="text-[15px] opacity-80 text-gray-600 dark:text-gray-200">
-            {isLoading ? "Carregando..." : `${filteredContacts.length} registros`}
-          </div>
         </div>
 
         {/* Tools Bar */}
@@ -1424,7 +1421,7 @@ export function CRMContatos() {
               className="h-8 px-2 hover:bg-gray-200 rounded-sm flex flex-col items-center justify-center gap-0.5 text-gray-700 dark:text-gray-200 dark:hover:bg-[#2a2a2a]"
               onClick={handleAddContact}
             >
-              <Plus className="h-4 w-4 text-black dark:text-white" />
+              <Plus className="h-4 w-4" />
               <span className="text-[9px]">Novo</span>
             </Button>
 
@@ -1754,12 +1751,6 @@ export function CRMContatos() {
             >
               Próxima
             </Button>
-            <span
-              className="text-[15px] opacity-80 text-gray-600 dark:text-gray-400 text-center"
-              style={{ paddingRight: "256px" }}
-            >
-              {totalCount} registros
-            </span>
           </div>
         </div>
       </div>

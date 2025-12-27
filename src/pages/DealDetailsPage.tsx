@@ -2636,7 +2636,7 @@ const formatTime = (date: Date) => {
                           onClick={() => setHistoryFilter("all")}
                           className={cn(
                             "text-xs h-8 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-none transition-colors",
-                            historyFilter === "all" && "bg-blue-50 dark:bg-blue-950 border border-blue-200 dark:border-blue-800 text-blue-600 dark:text-blue-400 font-semibold hover:bg-blue-100 dark:hover:bg-blue-900"
+                            historyFilter === "all" && "bg-yellow-50 dark:bg-yellow-900/30 border border-yellow-200 dark:border-yellow-800 text-yellow-700 dark:text-yellow-400 font-semibold hover:bg-yellow-100 dark:hover:bg-yellow-900/50"
                           )}
                         >
                           Todos
@@ -2647,7 +2647,7 @@ const formatTime = (date: Date) => {
                           onClick={() => setHistoryFilter("notes")}
                           className={cn(
                             "text-xs h-8 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-none transition-colors",
-                            historyFilter === "notes" && "bg-blue-50 dark:bg-blue-950 border border-blue-200 dark:border-blue-800 text-blue-600 dark:text-blue-400 font-semibold hover:bg-blue-100 dark:hover:bg-blue-900"
+                            historyFilter === "notes" && "bg-yellow-50 dark:bg-yellow-900/30 border border-yellow-200 dark:border-yellow-800 text-yellow-700 dark:text-yellow-400 font-semibold hover:bg-yellow-100 dark:hover:bg-yellow-900/50"
                           )}
                         >
                           Anotações ({historyEvents.filter(e => e.type === "notes").length})
@@ -2658,7 +2658,7 @@ const formatTime = (date: Date) => {
                           onClick={() => setHistoryFilter("activities")}
                           className={cn(
                             "text-xs h-8 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-none transition-colors",
-                            historyFilter === "activities" && "bg-blue-50 dark:bg-blue-950 border border-blue-200 dark:border-blue-800 text-blue-600 dark:text-blue-400 font-semibold hover:bg-blue-100 dark:hover:bg-blue-900"
+                            historyFilter === "activities" && "bg-yellow-50 dark:bg-yellow-900/30 border border-yellow-200 dark:border-yellow-800 text-yellow-700 dark:text-yellow-400 font-semibold hover:bg-yellow-100 dark:hover:bg-yellow-900/50"
                           )}
                         >
                           Atividades ({historyEvents.filter(e => e.type?.startsWith("activity_")).length})
@@ -2669,7 +2669,7 @@ const formatTime = (date: Date) => {
                           onClick={() => setHistoryFilter("activities_done")}
                           className={cn(
                             "text-xs h-8 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-none transition-colors",
-                            historyFilter === "activities_done" && "bg-blue-50 dark:bg-blue-950 border border-blue-200 dark:border-blue-800 text-blue-600 dark:text-blue-400 font-semibold hover:bg-blue-100 dark:hover:bg-blue-900"
+                            historyFilter === "activities_done" && "bg-yellow-50 dark:bg-yellow-900/30 border border-yellow-200 dark:border-yellow-800 text-yellow-700 dark:text-yellow-400 font-semibold hover:bg-yellow-100 dark:hover:bg-yellow-900/50"
                           )}
                         >
                           Atividades Realizadas ({historyEvents.filter(e => e.type?.startsWith("activity_") && e.metadata?.status === 'completed').length})
@@ -2680,7 +2680,7 @@ const formatTime = (date: Date) => {
                           onClick={() => setHistoryFilter("activities_future")}
                           className={cn(
                             "text-xs h-8 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-none transition-colors",
-                            historyFilter === "activities_future" && "bg-blue-50 dark:bg-blue-950 border border-blue-200 dark:border-blue-800 text-blue-600 dark:text-blue-400 font-semibold hover:bg-blue-100 dark:hover:bg-blue-900"
+                            historyFilter === "activities_future" && "bg-yellow-50 dark:bg-yellow-900/30 border border-yellow-200 dark:border-yellow-800 text-yellow-700 dark:text-yellow-400 font-semibold hover:bg-yellow-100 dark:hover:bg-yellow-900/50"
                           )}
                         >
                           Atividades Futuras ({historyEvents.filter(e => e.type?.startsWith("activity_") && e.metadata?.status !== 'completed').length})
@@ -2691,7 +2691,7 @@ const formatTime = (date: Date) => {
                           onClick={() => setHistoryFilter("files")}
                           className={cn(
                             "text-xs h-8 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-none transition-colors",
-                            historyFilter === "files" && "bg-blue-50 dark:bg-blue-950 border border-blue-200 dark:border-blue-800 text-blue-600 dark:text-blue-400 font-semibold hover:bg-blue-100 dark:hover:bg-blue-900"
+                            historyFilter === "files" && "bg-yellow-50 dark:bg-yellow-900/30 border border-yellow-200 dark:border-yellow-800 text-yellow-700 dark:text-yellow-400 font-semibold hover:bg-yellow-100 dark:hover:bg-yellow-900/50"
                           )}
                         >
                           Arquivos ({historyEvents.filter(e => (e.type as any) === "files").length})
@@ -2702,7 +2702,7 @@ const formatTime = (date: Date) => {
                           onClick={() => setHistoryFilter("changelog")}
                           className={cn(
                             "text-xs h-8 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-none transition-colors",
-                            historyFilter === "changelog" && "bg-blue-50 dark:bg-blue-950 border border-blue-200 dark:border-blue-800 text-blue-600 dark:text-blue-400 font-semibold hover:bg-blue-100 dark:hover:bg-blue-900"
+                            historyFilter === "changelog" && "bg-yellow-50 dark:bg-yellow-900/30 border border-yellow-200 dark:border-yellow-800 text-yellow-700 dark:text-yellow-400 font-semibold hover:bg-yellow-100 dark:hover:bg-yellow-900/50"
                           )}
                         >
                           Registro de alterações ({historyEvents.filter(e => ["column_transfer", "pipeline_transfer", "tag", "user_assigned", "queue_transfer", "agent_activity"].includes(e.type)).length})
@@ -3217,7 +3217,7 @@ const formatTime = (date: Date) => {
                             onClick={() => setHistoryFilter("all")}
                             className={cn(
                               "text-xs h-8",
-                              historyFilter === "all" && "bg-blue-50 dark:bg-blue-950 text-blue-600 dark:text-blue-400 font-semibold hover:bg-blue-100 dark:hover:bg-blue-900"
+                              historyFilter === "all" && "bg-yellow-50 dark:bg-yellow-900/30 text-yellow-700 dark:text-yellow-400 font-semibold hover:bg-yellow-100 dark:hover:bg-yellow-900/50"
                             )}
                           >
                             Todos
@@ -3228,7 +3228,7 @@ const formatTime = (date: Date) => {
                             onClick={() => setHistoryFilter("notes")}
                             className={cn(
                               "text-xs h-8 hover:bg-gray-100 dark:hover:bg-gray-800",
-                              historyFilter === "notes" && "bg-blue-50 dark:bg-blue-950 text-blue-600 dark:text-blue-400 font-semibold hover:bg-blue-100 dark:hover:bg-blue-900"
+                              historyFilter === "notes" && "bg-yellow-50 dark:bg-yellow-900/30 text-yellow-700 dark:text-yellow-400 font-semibold hover:bg-yellow-100 dark:hover:bg-yellow-900/50"
                             )}
                           >
                             Anotações ({historyEvents.filter(e => e.type === "notes").length})
@@ -3239,7 +3239,7 @@ const formatTime = (date: Date) => {
                             onClick={() => setHistoryFilter("activities")}
                             className={cn(
                               "text-xs h-8",
-                              historyFilter === "activities" && "bg-blue-50 dark:bg-blue-950 text-blue-600 dark:text-blue-400 font-semibold hover:bg-blue-100 dark:hover:bg-blue-900"
+                              historyFilter === "activities" && "bg-yellow-50 dark:bg-yellow-900/30 text-yellow-700 dark:text-yellow-400 font-semibold hover:bg-yellow-100 dark:hover:bg-yellow-900/50"
                             )}
                           >
                             Atividades ({historyEvents.filter(e => e.type?.startsWith("activity_")).length})
@@ -3250,7 +3250,7 @@ const formatTime = (date: Date) => {
                             onClick={() => setHistoryFilter("activities_done")}
                             className={cn(
                               "text-xs h-8 hover:bg-gray-100 dark:hover:bg-gray-800",
-                              historyFilter === "activities_done" && "bg-blue-50 dark:bg-blue-950 text-blue-600 dark:text-blue-400 font-semibold hover:bg-blue-100 dark:hover:bg-blue-900"
+                              historyFilter === "activities_done" && "bg-yellow-50 dark:bg-yellow-900/30 text-yellow-700 dark:text-yellow-400 font-semibold hover:bg-yellow-100 dark:hover:bg-yellow-900/50"
                             )}
                           >
                             Atividades Realizadas ({historyEvents.filter(e => e.type?.startsWith("activity_") && e.metadata?.status === 'completed').length})
@@ -3261,7 +3261,7 @@ const formatTime = (date: Date) => {
                             onClick={() => setHistoryFilter("activities_future")}
                             className={cn(
                               "text-xs h-8 hover:bg-gray-100 dark:hover:bg-gray-800",
-                              historyFilter === "activities_future" && "bg-blue-50 dark:bg-blue-950 text-blue-600 dark:text-blue-400 font-semibold hover:bg-blue-100 dark:hover:bg-blue-900"
+                              historyFilter === "activities_future" && "bg-yellow-50 dark:bg-yellow-900/30 text-yellow-700 dark:text-yellow-400 font-semibold hover:bg-yellow-100 dark:hover:bg-yellow-900/50"
                             )}
                           >
                             Atividades Futuras ({historyEvents.filter(e => e.type?.startsWith("activity_") && e.metadata?.status !== 'completed').length})
@@ -3272,7 +3272,7 @@ const formatTime = (date: Date) => {
                             onClick={() => setHistoryFilter("files")}
                             className={cn(
                               "text-xs h-8",
-                              historyFilter === "files" && "bg-blue-50 dark:bg-blue-950 text-blue-600 dark:text-blue-400 font-semibold hover:bg-blue-100 dark:hover:bg-blue-900"
+                              historyFilter === "files" && "bg-yellow-50 dark:bg-yellow-900/30 text-yellow-700 dark:text-yellow-400 font-semibold hover:bg-yellow-100 dark:hover:bg-yellow-900/50"
                             )}
                           >
                             Arquivos ({historyEvents.filter(e => (e.type as any) === "files").length})
@@ -3283,7 +3283,7 @@ const formatTime = (date: Date) => {
                             onClick={() => setHistoryFilter("changelog")}
                             className={cn(
                               "text-xs h-8",
-                              historyFilter === "changelog" && "bg-blue-50 dark:bg-blue-950 text-blue-600 dark:text-blue-400 font-semibold hover:bg-blue-100 dark:hover:bg-blue-900"
+                              historyFilter === "changelog" && "bg-yellow-50 dark:bg-yellow-900/30 text-yellow-700 dark:text-yellow-400 font-semibold hover:bg-yellow-100 dark:hover:bg-yellow-900/50"
                             )}
                           >
                             Registro de alterações ({historyEvents.filter(e => ["column_transfer", "pipeline_transfer", "tag", "user_assigned", "queue_transfer", "agent_activity"].includes(e.type)).length})

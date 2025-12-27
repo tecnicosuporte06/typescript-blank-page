@@ -2030,11 +2030,11 @@ export function WhatsAppChat({
             <TooltipProvider>
               <Tooltip>
                 <TooltipTrigger asChild>
-                  <button onClick={() => setActiveTab('all')} className={cn("w-full flex items-center gap-2 px-2 py-1.5 rounded-none transition-all text-xs border", activeTab === 'all' ? "bg-gray-100 border-gray-300 text-gray-900 font-semibold shadow-sm dark:bg-gray-800 dark:border-gray-700 dark:text-gray-100" : "border-transparent text-gray-700 hover:bg-[#e1e1e1] hover:border-gray-300 dark:text-gray-200 dark:hover:bg-[#333] dark:hover:border-gray-600")}>
-                    <Circle className={cn("h-3.5 w-3.5", activeTab === 'all' ? "fill-black text-black dark:fill-primary-foreground dark:text-primary-foreground" : "text-gray-500 dark:text-gray-400")} />
+                  <button onClick={() => setActiveTab('all')} className={cn("w-full flex items-center gap-2 px-2 py-1.5 rounded-none transition-all text-xs border", activeTab === 'all' ? "bg-yellow-50 border-yellow-200 text-yellow-700 font-semibold shadow-sm dark:bg-yellow-900/20 dark:border-yellow-800 dark:text-yellow-100" : "border-transparent text-gray-700 hover:bg-[#e1e1e1] hover:border-gray-300 dark:text-gray-200 dark:hover:bg-[#333] dark:hover:border-gray-600")}>
+                    <Circle className={cn("h-3.5 w-3.5", activeTab === 'all' ? "fill-yellow-600 text-yellow-600 dark:fill-yellow-400 dark:text-yellow-400" : "text-gray-500 dark:text-gray-400")} />
                     {!sidebarCollapsed && <>
                         <span className="flex-1 text-left">Todos</span>
-                        <span className={cn("text-[10px] px-1 py-0 rounded-none border", activeTab === 'all' ? "bg-white border-gray-300 dark:bg-black/20 dark:border-primary-foreground/20" : "bg-gray-200 border-transparent dark:bg-[#333] dark:text-gray-200")}>
+                        <span className={cn("text-[10px] px-1 py-0 rounded-none border", activeTab === 'all' ? "bg-white border-yellow-200 dark:bg-black/20 dark:border-yellow-800/20" : "bg-gray-200 border-transparent dark:bg-[#333] dark:text-gray-200")}>
                           {conversations.filter(c => c.status !== 'closed').length}
                         </span>
                       </>}
@@ -2048,11 +2048,11 @@ export function WhatsAppChat({
             <TooltipProvider>
               <Tooltip>
                 <TooltipTrigger asChild>
-                  <button onClick={() => setActiveTab('mine')} className={cn("w-full flex items-center gap-2 px-2 py-1.5 rounded-none transition-all text-xs border", activeTab === 'mine' ? "bg-gray-100 border-gray-300 text-gray-900 font-semibold shadow-sm dark:bg-gray-800 dark:border-gray-700 dark:text-gray-100" : "border-transparent text-gray-700 hover:bg-[#e1e1e1] hover:border-gray-300 dark:text-gray-200 dark:hover:bg-[#333] dark:hover:border-gray-600")}>
-                    <UserCircle className={cn("h-3.5 w-3.5", activeTab === 'mine' ? "text-black" : "text-gray-500")} />
+                  <button onClick={() => setActiveTab('mine')} className={cn("w-full flex items-center gap-2 px-2 py-1.5 rounded-none transition-all text-xs border", activeTab === 'mine' ? "bg-yellow-50 border-yellow-200 text-yellow-700 font-semibold shadow-sm dark:bg-yellow-900/20 dark:border-yellow-800 dark:text-yellow-100" : "border-transparent text-gray-700 hover:bg-[#e1e1e1] hover:border-gray-300 dark:text-gray-200 dark:hover:bg-[#333] dark:hover:border-gray-600")}>
+                    <UserCircle className={cn("h-3.5 w-3.5", activeTab === 'mine' ? "text-yellow-600 dark:text-yellow-400" : "text-gray-500")} />
                     {!sidebarCollapsed && <>
                         <span className="flex-1 text-left">Minhas conversas</span>
-                        <span className={cn("text-[10px] px-1 py-0 rounded-none border", activeTab === 'mine' ? "bg-white border-gray-300 dark:bg-black/20 dark:border-primary-foreground/20" : "bg-gray-200 border-transparent dark:bg-[#333] dark:text-gray-200")}>
+                        <span className={cn("text-[10px] px-1 py-0 rounded-none border", activeTab === 'mine' ? "bg-white border-yellow-200 dark:bg-black/20 dark:border-yellow-800/20" : "bg-gray-200 border-transparent dark:bg-[#333] dark:text-gray-200")}>
                           {conversations.filter(c => c.assigned_user_id === user?.id && c.status !== 'closed').length}
                         </span>
                       </>}
@@ -2066,11 +2066,11 @@ export function WhatsAppChat({
             <TooltipProvider>
               <Tooltip>
                 <TooltipTrigger asChild>
-                  <button onClick={() => setActiveTab('unassigned')} className={cn("w-full flex items-center gap-2 px-2 py-1.5 rounded-none transition-all text-xs border", activeTab === 'unassigned' ? "bg-gray-100 border-gray-300 text-gray-900 font-semibold shadow-sm dark:bg-gray-800 dark:border-gray-700 dark:text-gray-100" : "border-transparent text-gray-700 hover:bg-[#e1e1e1] hover:border-gray-300 dark:text-gray-200 dark:hover:bg-[#333] dark:hover:border-gray-600")}>
-                    <UserX className={cn("h-3.5 w-3.5", activeTab === 'unassigned' ? "text-black" : "text-gray-500")} />
+                  <button onClick={() => setActiveTab('unassigned')} className={cn("w-full flex items-center gap-2 px-2 py-1.5 rounded-none transition-all text-xs border", activeTab === 'unassigned' ? "bg-yellow-50 border-yellow-200 text-yellow-700 font-semibold shadow-sm dark:bg-yellow-900/20 dark:border-yellow-800 dark:text-yellow-100" : "border-transparent text-gray-700 hover:bg-[#e1e1e1] hover:border-gray-300 dark:text-gray-200 dark:hover:bg-[#333] dark:hover:border-gray-600")}>
+                    <UserX className={cn("h-3.5 w-3.5", activeTab === 'unassigned' ? "text-yellow-600 dark:text-yellow-400" : "text-gray-500")} />
                     {!sidebarCollapsed && <>
                         <span className="flex-1 text-left">Não atribuídas</span>
-                        <span className={cn("text-[10px] px-1 py-0 rounded-none border", activeTab === 'unassigned' ? "bg-white border-gray-300 dark:bg-black/20 dark:border-primary-foreground/20" : "bg-gray-200 border-transparent dark:bg-[#333] dark:text-gray-200")}>
+                        <span className={cn("text-[10px] px-1 py-0 rounded-none border", activeTab === 'unassigned' ? "bg-white border-yellow-200 dark:bg-black/20 dark:border-yellow-800/20" : "bg-gray-200 border-transparent dark:bg-[#333] dark:text-gray-200")}>
                           {conversations.filter(c => !c.assigned_user_id && c.status !== 'closed').length}
                         </span>
                       </>}
@@ -2084,11 +2084,11 @@ export function WhatsAppChat({
             <TooltipProvider>
               <Tooltip>
                 <TooltipTrigger asChild>
-                  <button onClick={() => setActiveTab('unread')} className={cn("w-full flex items-center gap-2 px-2 py-1.5 rounded-none transition-all text-xs border", activeTab === 'unread' ? "bg-gray-100 border-gray-300 text-gray-900 font-semibold shadow-sm dark:bg-gray-800 dark:border-gray-700 dark:text-gray-100" : "border-transparent text-gray-700 hover:bg-[#e1e1e1] hover:border-gray-300 dark:text-gray-200 dark:hover:bg-[#333] dark:hover:border-gray-600")}>
-                    <MessageCircle className={cn("h-3.5 w-3.5", activeTab === 'unread' ? "text-black" : "text-gray-500")} />
+                  <button onClick={() => setActiveTab('unread')} className={cn("w-full flex items-center gap-2 px-2 py-1.5 rounded-none transition-all text-xs border", activeTab === 'unread' ? "bg-yellow-50 border-yellow-200 text-yellow-700 font-semibold shadow-sm dark:bg-yellow-900/20 dark:border-yellow-800 dark:text-yellow-100" : "border-transparent text-gray-700 hover:bg-[#e1e1e1] hover:border-gray-300 dark:text-gray-200 dark:hover:bg-[#333] dark:hover:border-gray-600")}>
+                    <MessageCircle className={cn("h-3.5 w-3.5", activeTab === 'unread' ? "text-yellow-600 dark:text-yellow-400" : "text-gray-500")} />
                     {!sidebarCollapsed && <>
                         <span className="flex-1 text-left">Não lidas</span>
-                        <span className={cn("text-[10px] px-1 py-0 rounded-none border", activeTab === 'unread' ? "bg-white border-gray-300 dark:bg-black/20 dark:border-primary-foreground/20" : "bg-gray-200 border-transparent dark:bg-[#333] dark:text-gray-200")}>
+                        <span className={cn("text-[10px] px-1 py-0 rounded-none border", activeTab === 'unread' ? "bg-white border-yellow-200 dark:bg-black/20 dark:border-yellow-800/20" : "bg-gray-200 border-transparent dark:bg-[#333] dark:text-gray-200")}>
                           {conversations.filter(c => conversationNotifications.has(c.id) && c.status !== 'closed').length}
                         </span>
                       </>}

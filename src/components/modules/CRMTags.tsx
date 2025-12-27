@@ -73,9 +73,6 @@ export function CRMTags() {
               Etiquetas
             </span>
           </div>
-          <div className="text-[15px] opacity-80 text-gray-600 dark:text-gray-300">
-            {isLoading ? "Carregando..." : `${tags.length} registros`}
-          </div>
         </div>
 
         {/* Tools Bar */}
@@ -222,7 +219,7 @@ export function CRMTags() {
               className="h-8 px-2 hover:bg-gray-200 rounded-sm flex flex-col items-center justify-center gap-0.5 text-gray-700 dark:text-gray-200 dark:hover:bg-[#2a2a2a]"
               onClick={() => setIsCreateModalOpen(true)}
             >
-              <Plus className="h-4 w-4 text-black dark:text-white" />
+              <Plus className="h-4 w-4" />
               <span className="text-[9px]">Nova Etiqueta</span>
             </Button>
           </div>
@@ -364,9 +361,6 @@ export function CRMTags() {
             >
               Próxima
             </button>
-            <span className="opacity-70">
-              {tags.length} registros
-            </span>
           </div>
         </div>
       </div>
