@@ -436,69 +436,10 @@ function DraggableDeal({
           onToggleSelection?.();
         }} onClick={e => e.stopPropagation()} className="w-5 h-5 cursor-pointer accent-primary" />
         </div>}
-      {/* Header com menu, avatar, nome e produto/valor */}
+      {/* Header apenas com nome */}
       <div className="flex items-center gap-2 mb-2">
-          {/* Menu de ações - PRIMEIRO */}
-          {!isSelectionMode && <DropdownMenu>
-              <DropdownMenuTrigger asChild onClick={e => e.stopPropagation()}>
-                <Button size="icon" variant="ghost" className="h-5 w-5 text-muted-foreground hover:text-foreground flex-shrink-0">
-                  <MoreVertical className="h-3.5 w-3.5" />
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className={`w-48 bg-popover dark:bg-[#1b1b1b] z-50 border-gray-300 dark:border-gray-700`} onClick={e => e.stopPropagation()}>
-                <DropdownMenuItem onClick={e => {
-              e.stopPropagation();
-              onVincularResponsavel?.(deal.id, deal.conversation?.id, deal.responsible_user_id, deal.contact?.id);
-            }}>
-                  Vincular Responsável
-                </DropdownMenuItem>
-                <DropdownMenuItem onClick={e => {
-              e.stopPropagation();
-              onOpenTransferModal?.(deal.id);
-            }}>
-                  Transferir Negócio
-                </DropdownMenuItem>
-                <DropdownMenuItem onClick={e => {
-              e.stopPropagation();
-              if (deal.contact?.id) {
-                onEditContact?.(deal.contact.id);
-              }
-            }}>
-                  Editar Contato
-                </DropdownMenuItem>
-                <DropdownMenuItem onClick={e => {
-              e.stopPropagation();
-              onLinkProduct?.(deal.id, deal.value, deal.product_id || null);
-            }}>
-                  Vincular Produto
-                </DropdownMenuItem>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem onClick={e => {
-              e.stopPropagation();
-              onDeleteCard?.(deal.id);
-            }} className="text-destructive focus:text-destructive">
-                  Excluir
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>}
-          
-          {/* Avatar do contato - SEGUNDO */}
-          <div className="flex-shrink-0">
-            {deal.contact?.profile_image_url ? <img src={deal.contact.profile_image_url} alt={displayContact} className="w-6 h-6 md:w-7 md:h-7 rounded-full object-cover border border-primary/20" onError={e => {
-            // Fallback para iniciais se a imagem falhar
-            const target = e.currentTarget as HTMLImageElement;
-            target.style.display = 'none';
-            const fallback = target.nextElementSibling as HTMLElement;
-            if (fallback) fallback.style.display = 'flex';
-          }} /> : null}
-            <div className={cn("w-6 h-6 md:w-7 md:h-7 rounded-full flex items-center justify-center text-xs font-medium", "bg-gradient-to-br from-primary/20 to-primary/10 text-primary border border-primary/20", deal.contact?.profile_image_url ? "hidden" : "")}>
-              {getAvatarInitials(displayContact || deal.name || "Contato")}
-            </div>
-          </div>
-          
-          {/* Nome + Produto/Valor na MESMA LINHA */}
           <div className="flex-1 min-w-0 flex items-center justify-between gap-2">
-            {/* Nome do cliente à esquerda */}
+            {/* Nome do cliente */}
             <div
               className={cn(
                 "flex items-center gap-1.5 flex-1 min-w-0",
@@ -506,35 +447,35 @@ function DraggableDeal({
               )}
               {...dragHandleProps}
             >
-              <h3 className={cn("text-xs font-medium truncate", "text-foreground dark:text-gray-100")}>
+              <h3 className={cn("text-xs font-semibold whitespace-normal break-words", "text-foreground dark:text-gray-100")}>
                 {displayContact || deal.name || 'Sem nome'}
               </h3>
             </div>
-            
-            {/* Preço à direita (não exibir nome do produto aqui) */}
-            <div className="flex items-center gap-1 text-xs flex-shrink-0">
-              {deal.value ? <span className={`text-primary font-medium cursor-pointer hover:text-primary/80 transition-colors`} onClick={(e) => {
-                e.stopPropagation();
-                onValueClick?.(deal);
-              }}>
-                  R$ {deal.value.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                </span> : <span className={`text-xs text-muted-foreground/60 dark:text-gray-500 hover:text-primary/70 cursor-pointer transition-colors`} onClick={(e) => {
-              e.stopPropagation();
-              onValueClick?.(deal);
-            }}>
-                  +preço
-                </span>}
-            </div>
           </div>
         </div>
-        
-        {/* Footer com ícones de ação e prioridade */}
-        <div className={`flex items-center pt-[1.25rem] border-t border-border/50 dark:border-gray-700/50`}>
-          <div className="flex items-center gap-1 overflow-hidden flex-1 min-w-0">
-            <Button 
-              size="icon" 
-              variant="ghost" 
-              className={`h-5 w-5 p-0 hover:bg-green-100 dark:hover:bg-green-900 hover:text-green-600 dark:hover:text-green-400 relative`} 
+
+        {/* Footer com valor e ícones */}
+        <div className={`flex flex-col items-start gap-2 pt-[1.25rem] border-t border-border/50 dark:border-gray-700/50`}>
+          <span
+            className="text-[11px] font-medium text-black dark:text-white cursor-pointer hover:text-primary/80 transition-colors flex-shrink-0"
+            onClick={(e) => {
+              e.stopPropagation();
+              onValueClick?.(deal);
+            }}
+          >
+            {`R$ ${(
+              (!!deal.product_id && typeof deal.value === 'number' ? deal.value : 0) ||
+              0
+            ).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
+          </span>
+
+          <div className="flex items-center gap-2 w-full">
+            {/* Grupo de ícones à esquerda */}
+            <div className="flex items-center gap-2 overflow-hidden flex-1 min-w-0">
+            <Button
+              size="icon"
+              variant="ghost"
+              className={`h-5 w-5 p-0 hover:bg-green-100 dark:hover:bg-green-900 hover:text-green-600 dark:hover:text-green-400 relative`}
               onClick={async e => {
             e.stopPropagation();
             console.log('🎯 Clique no botão de chat - Deal:', deal);
@@ -733,103 +674,19 @@ function DraggableDeal({
               }
               return null;
             })()}
-
-            {/* Etiquetas (Tags) movidas do centro para o rodapé - Sem expansão */}
-            <div className="flex items-center gap-1 overflow-x-auto scrollbar-none no-scrollbar ml-1">
-              {contactTags && contactTags.length > 0 && (
-                <>
-                  {contactTags.slice(0, 5).map((tag) => {
-                    return (
-                      <div key={tag.id} className="flex items-center shrink-0">
-                        <Tooltip delayDuration={1000}>
-                          <TooltipTrigger asChild>
-                            <div className="w-3.5 h-3.5 rounded-full border border-gray-300 dark:border-gray-700 flex items-center justify-center hover:bg-gray-100 dark:hover:bg-[#2a2a2a] transition-colors shrink-0 cursor-help">
-                              <Tag className="w-2.5 h-2.5" style={{ color: tag.color }} fill={tag.color} />
-                            </div>
-                          </TooltipTrigger>
-                          <TooltipContent 
-                            className="z-[99999] bg-white dark:bg-[#1b1b1b] text-gray-900 dark:text-gray-100 px-2 py-1 text-[10px] font-medium border border-gray-200 dark:border-gray-700 shadow-lg" 
-                            side="top" 
-                            sideOffset={8}
-                          >
-                            <p>{tag.name}</p>
-                          </TooltipContent>
-                        </Tooltip>
-                      </div>
-                    );
-                  })}
-                </>
-              )}
-                {deal.contact?.id && (
-                  <Popover open={isTagPopoverOpen} onOpenChange={setIsTagPopoverOpen}>
-                    <PopoverTrigger asChild onClick={(e) => e.stopPropagation()}>
-                      <Button 
-                        variant="ghost" 
-                        className="h-4 w-4 p-0 rounded-none border border-[#d4d4d4] dark:border-gray-700 bg-white dark:bg-[#1b1b1b] hover:bg-[#e6f2ff] dark:hover:bg-[#2a2a2a] text-gray-700 dark:text-gray-300 shadow-sm shrink-0"
-                      >
-                        <Plus className="w-2.5 h-2.5" />
-                      </Button>
-                    </PopoverTrigger>
-                    <PopoverContent 
-                      className="w-64 p-0 rounded-none border-[#d4d4d4] dark:border-gray-700 bg-white dark:bg-[#1b1b1b]" 
-                      align="start"
-                      onClick={(e) => e.stopPropagation()}
-                    >
-                      <Command className="rounded-none bg-white dark:bg-[#1b1b1b]">
-                        <CommandInput 
-                          placeholder="Buscar etiquetas..." 
-                          value={searchTerm}
-                          onValueChange={setSearchTerm}
-                          className="h-9 text-xs rounded-none border-b border-[#d4d4d4] dark:border-gray-700" 
-                        />
-                        <CommandList className="max-h-[200px] overflow-y-auto">
-                          <CommandEmpty className="text-xs py-4 text-gray-500 dark:text-gray-400">Nenhuma etiqueta encontrada.</CommandEmpty>
-                          <CommandGroup className="p-1">
-                            {getFilteredTags(searchTerm).map((tag) => {
-                              const isAssigned = contactTags.some(ct => ct.id === tag.id);
-                              return (
-                                <CommandItem
-                                  key={tag.id}
-                                  onSelect={() => {
-                                    if (!isAssigned && deal.contact?.id) {
-                                      addTagToContact(tag.id).then(() => {
-                                        refreshTags();
-                                      });
-                                    }
-                                    setIsTagPopoverOpen(false);
-                                    setSearchTerm("");
-                                  }}
-                                  disabled={isAssigned}
-                                  className={`rounded-none text-xs px-2 py-1.5 cursor-pointer ${isAssigned ? 'opacity-50 cursor-not-allowed' : 'hover:bg-[#EAA900] hover:text-black'}`}
-                                >
-                                  <div className="flex items-center gap-2 w-full">
-                                    <div 
-                                      className="w-2.5 h-2.5 rounded-none border border-gray-300" 
-                                      style={{ backgroundColor: tag.color ? `${tag.color}99` : 'rgba(0,0,0,0.06)' }}
-                                    />
-                                    <span>{tag.name}</span>
-                                  </div>
-                                </CommandItem>
-                              );
-                            })}
-                          </CommandGroup>
-                        </CommandList>
-                      </Command>
-                    </PopoverContent>
-                  </Popover>
-                )}
-              </div>
+            {/* Etiquetas removidas do card */}
             </div>
-            <div className="ml-auto flex items-center gap-2 text-[10px] md:text-xs text-muted-foreground pr-1">
-              <span>
-                {formatTimeAgo(deal.created_at)}
-              </span>
+
+            {/* Contador de tempo separado à direita */}
+            <div className="flex items-center gap-1 text-[10px] md:text-xs text-muted-foreground pr-1 flex-shrink-0">
+              <span>{formatTimeAgo(deal.created_at)}</span>
               {deal.priority === 'high' && (
                 <div className="flex items-center justify-center w-4 h-4 md:w-5 md:h-5 rounded-full bg-destructive/10 text-destructive">
                   <AlertTriangle className="w-2.5 h-2.5" />
                 </div>
               )}
             </div>
+          </div>
         </div>
       </div>
     </div>
@@ -987,6 +844,8 @@ const [selectedCardForProduct, setSelectedCardForProduct] = useState<{
   value: number;
   productId?: string | null;
 } | null>(null);
+  const boardContainerRef = useRef<HTMLDivElement | null>(null);
+  const [columnWidth, setColumnWidth] = useState<number | null>(null);
   const unassignedCount = useMemo(() => cards.filter(card => !card.responsible_user_id).length, [cards]);
   const responsibleOptions = useMemo(() => {
     const optionsMap = new Map<string, {
@@ -1065,6 +924,37 @@ const [selectedCardForProduct, setSelectedCardForProduct] = useState<{
   useEffect(() => {
     setResponsibleFilter('ALL');
   }, [selectedPipeline?.id]);
+
+  // Ajustar largura das colunas para caber no container sem scroll horizontal
+  useEffect(() => {
+    if (isMobile) return;
+    const node = boardContainerRef.current;
+    if (!node) return;
+
+    const calculateWidth = (containerWidth: number) => {
+      const count = Math.max(columns.length, 1);
+      const gap = 16; // gap-4 entre colunas
+      const totalGap = gap * Math.max(count - 1, 0);
+      const available = Math.max(containerWidth - totalGap, 0);
+      const baseWidth = count > 0 ? available / count : 0;
+      const fallbackWidth = count > 0 ? containerWidth / count : containerWidth;
+      const maxWidth = 360; // evita colunas largas demais
+      const computedWidth = baseWidth > 0
+        ? Math.min(baseWidth, maxWidth)
+        : Math.min(Math.max(fallbackWidth, 0), maxWidth);
+      setColumnWidth(computedWidth);
+    };
+
+    const observer = new ResizeObserver((entries) => {
+      const width = entries[0]?.contentRect.width || node.clientWidth;
+      calculateWidth(width);
+    });
+
+    calculateWidth(node.clientWidth);
+    observer.observe(node);
+
+    return () => observer.disconnect();
+  }, [isMobile, columns.length]);
 
   // Buscar agent_active_id quando selectedConversationForAgent mudar
   useEffect(() => {
@@ -2022,10 +1912,11 @@ const [selectedCardForProduct, setSelectedCardForProduct] = useState<{
               )}
 
               <div
-                className="h-full px-2 md:px-4 overflow-x-auto overflow-y-hidden [&::-webkit-scrollbar]:h-8 [&::-webkit-scrollbar-thumb]:h-8 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-gray-400/70 [&::-webkit-scrollbar-track]:bg-transparent"
+                ref={!isMobile ? boardContainerRef : undefined}
+                className="h-full px-2 md:px-4 overflow-hidden"
               >
                   {isLoading ? (
-                    <div className="flex gap-4 h-full" style={{ minWidth: 'max-content' }}>
+                    <div className="flex gap-4 h-full w-full">
                       {[...Array(4)].map((_, index) => (
                         <div key={index} className="w-60 sm:w-72 flex-shrink-0 h-full">
                           <div className={`bg-card dark:bg-[#111111] rounded-lg border border-t-4 border-t-gray-400 dark:border-t-gray-700 h-full`}>
@@ -2111,13 +2002,12 @@ const [selectedCardForProduct, setSelectedCardForProduct] = useState<{
                       ))}
                     </div>
                   ) : (
-                    <div className={cn(
-                      "h-full",
-                      isMobile && "flex justify-center",
-                      !isMobile && "flex gap-4",
-                      !isMobile && isTablet && "overflow-x-auto",
-                      !isMobile && !isTablet && "overflow-x-auto"
-                    )} style={!isMobile ? { minWidth: 'max-content' } : undefined}>
+                    <div
+                      className={cn(
+                        "h-full w-full",
+                        isMobile ? "flex justify-center" : "flex gap-4 items-start"
+                      )}
+                    >
                       {/* Mobile: Single Column */}
                       {isMobile ? (
                         columns[currentColumnIndex] ? (() => {
@@ -2303,12 +2193,22 @@ const [selectedCardForProduct, setSelectedCardForProduct] = useState<{
               <SortableColumnWrapper key={column.id} id={`column-${column.id}`}>
                 <DroppableColumn id={`column-${column.id}`}>
                     {/* Coluna individual - responsiva */}
-                    <div className={cn(
-                      "flex-shrink-0 h-full flex flex-col pb-2 transition-all duration-200",
-                      isTablet ? "w-[calc(50%-0.5rem)] min-w-[220px]" : "w-[240px]",
-                      isColumnBeingDragged && "scale-[1.02] ring-2 ring-primary/50 shadow-2xl",
-                      isColumnDropTarget && "ring-2 ring-primary/40 bg-primary/5"
-                    )}>
+                    <div
+                      className={cn(
+                        "flex-shrink-0 h-full flex flex-col pb-2 transition-all duration-200",
+                        isColumnBeingDragged && "scale-[1.02] ring-2 ring-primary/50 shadow-2xl",
+                        isColumnDropTarget && "ring-2 ring-primary/40 bg-primary/5"
+                      )}
+                      style={
+                        !isMobile
+                          ? {
+                              width: `${columnWidth ?? 240}px`,
+                              minWidth: `${columnWidth ?? 240}px`,
+                              flexBasis: `${columnWidth ?? 240}px`
+                            }
+                          : undefined
+                      }
+                    >
                        <div className={`bg-white dark:bg-[#111111] border border-[#d4d4d4] dark:border-gray-700 border-t-[3px] border-t-[#d4d4d4] dark:border-t-gray-700 shadow-sm h-full flex flex-col overflow-hidden transition-colors duration-200`}>
                         {/* Cabeçalho da coluna - fundo branco/claro */}
                         <div className={`bg-[#f3f3f3] dark:bg-[#1f1f1f] p-2 flex-shrink-0 border-b border-[#d4d4d4] dark:border-gray-700`}>

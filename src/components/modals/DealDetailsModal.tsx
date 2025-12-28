@@ -1789,6 +1789,13 @@ export function DealDetailsModal({
       loadUsers();
     }
   }, [activeTab, users.length, loadUsers, workspaceId, isLoadingUsers]);
+
+  // Preselecionar responsável para usuários não master
+  useEffect(() => {
+    if (authUser?.id && userRole !== 'master') {
+      setActivityForm(prev => prev.responsibleId ? prev : { ...prev, responsibleId: authUser.id });
+    }
+  }, [authUser?.id, userRole]);
   const handleCompleteActivity = async (activityId: string) => {
     try {
       const completionTimestamp = new Date().toISOString();

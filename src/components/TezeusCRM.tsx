@@ -37,6 +37,7 @@ import { WorkspaceEmpresas } from "./modules/WorkspaceEmpresas";
 import { WorkspaceUsersPage } from "./modules/WorkspaceUsersPage";
 import { WorkspaceApiKeys } from "./modules/WorkspaceApiKeys";
 import { DealDetailsPage } from "@/pages/DealDetailsPage";
+import { RelatoriosAvancados } from "@/components/relatorios-avancados/RelatoriosAvancados";
 
 export type ModuleType = 
   | "relatorios"
@@ -175,6 +176,7 @@ export function TezeusCRM() {
     switch (activeModule) {
       case "relatorios":
       case "workspace-relatorios":
+        return <RelatoriosAvancados />;
       case "dashboard":
         return <Dashboard />;
       case "conversas":

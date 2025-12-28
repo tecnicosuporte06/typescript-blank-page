@@ -1993,20 +1993,8 @@ export function WhatsAppChat({
       {/* Sidebar de Filtros */}
       {(!onlyMessages) && (
       <div className={cn("border-r border-[#d4d4d4] flex flex-col transition-all duration-300 bg-[#f0f0f0] dark:bg-[#1a1a1a] dark:border-gray-700", sidebarCollapsed ? "w-14" : "w-40 lg:w-48")}>
-        {/* Header da sidebar */}
-        <div className="p-3 border-b border-[#d4d4d4] flex items-center justify-between bg-[#f0f0f0] dark:bg-[#1a1a1a] dark:border-gray-700">
-          {!sidebarCollapsed && (
-            <h2 
-              className="font-bold text-gray-800 dark:text-gray-200"
-              style={{ fontSize: "1.5rem" }}
-            >
-              Conversas
-            </h2>
-          )}
-          <Button variant="ghost" size="icon" onClick={() => setSidebarCollapsed(!sidebarCollapsed)} className="h-6 w-6 hover:bg-gray-200 dark:hover:bg-gray-800 rounded-none">
-            <PanelLeft className="h-3.5 w-3.5 text-gray-600 dark:text-gray-400" />
-          </Button>
-        </div>
+        {/* Header da sidebar removido (headline já na página) */}
+        <div className="p-1" />
 
         {/* Select de Canais */}
         {!sidebarCollapsed && <div className="p-3 border-b border-[#d4d4d4] bg-[#f0f0f0] dark:bg-[#1a1a1a] dark:border-gray-700">

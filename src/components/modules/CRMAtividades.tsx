@@ -322,7 +322,7 @@ export function CRMAtividades() {
       {/* Toolbar */}
       <div className="flex flex-col border-b border-gray-300 bg-[#f8f9fa] dark:border-gray-700 dark:bg-[#141414]">
         <div
-          className="flex items-center justify-between px-4 pt-3 pb-2 h-auto"
+          className="flex flex-wrap items-center justify-between px-4 pt-3 pb-2 gap-2 h-auto"
           style={{ fontSize: "15px" }}
         >
           <div className="flex items-center gap-2">
@@ -333,17 +333,17 @@ export function CRMAtividades() {
               Atividades
             </span>
           </div>
-        </div>
 
-        <div className="flex items-center gap-2 p-2 overflow-x-auto">
-          <div className="relative w-48">
-            <Search className="absolute left-2 top-1/2 transform -translate-y-1/2 text-gray-500 h-3 w-3 dark:text-gray-400" />
-            <Input
-              placeholder="Pesquisar..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="pl-8 h-7 text-xs border-gray-300 rounded-none focus-visible:ring-1 focus-visible:ring-primary dark:bg-[#1b1b1b] dark:border-gray-700 dark:text-gray-100 dark:placeholder:text-gray-500"
-            />
+          <div className="flex items-center gap-2">
+            <div className="relative w-64 max-w-sm">
+              <Search className="absolute left-2 top-1/2 transform -translate-y-1/2 text-gray-500 h-3 w-3 dark:text-gray-400" />
+              <Input
+                placeholder="Pesquisar..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="pl-8 h-7 text-xs border-gray-300 rounded-none focus-visible:ring-1 focus-visible:ring-primary dark:bg-[#1b1b1b] dark:border-gray-700 dark:text-gray-100 dark:placeholder:text-gray-500"
+              />
+            </div>
           </div>
         </div>
       </div>

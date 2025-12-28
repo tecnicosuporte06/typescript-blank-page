@@ -12,6 +12,7 @@ import { ptBR } from "date-fns/locale";
 import { cn } from "@/lib/utils";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/hooks/useAuth";
 
 interface User {
   id: string;
@@ -43,6 +44,7 @@ export function CreateActivityModal({
   isDarkMode = false,
   pipelineCardId 
 }: CreateActivityModalProps) {
+  const { user } = useAuth();
   const [formData, setFormData] = useState({
     type: "Lembrete",
     responsibleId: "",
@@ -65,6 +67,12 @@ export function CreateActivityModal({
       setSelectedDate(new Date());
     }
   }, [isOpen]);
+
+  useEffect(() => {
+    if (isOpen && user?.id) {
+      setFormData((prev) => prev.responsibleId ? prev : { ...prev, responsibleId: user.id });
+    }
+  }, [isOpen, user?.id]);
 
   const fetchUsers = async () => {
     try {

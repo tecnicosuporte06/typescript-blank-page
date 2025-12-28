@@ -4,7 +4,6 @@ import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
-import { ScrollArea } from '@/components/ui/scroll-area';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Calendar } from '@/components/ui/calendar';
 import { Separator } from '@/components/ui/separator';
@@ -69,18 +68,18 @@ export function QueryBuilderSidebar({ pipelines, tags, agents, selectedWorkspace
   ];
 
   return (
-    <div className="w-64 bg-[#f0f0f0] dark:bg-[#1a1a1a] border-r border-[#d4d4d4] dark:border-gray-700 flex flex-col h-full">
-      <div className="px-3 py-2 border-b border-[#d4d4d4] dark:border-gray-700 bg-white dark:bg-[#1f1f1f]">
+    <div className="w-64 bg-white dark:bg-[#1a1a1a] border border-gray-200 dark:border-gray-700 flex flex-col h-full min-h-0">
+      <div className="px-3 py-2 border-b border-gray-200 dark:border-gray-700 bg-white dark:bg-[#1f1f1f]">
         <h3 className="text-xs font-semibold text-gray-700 dark:text-gray-300 flex items-center gap-2 uppercase tracking-wide">
           <Filter className="h-3.5 w-3.5" />
           Filtros Avançados
         </h3>
       </div>
 
-      <ScrollArea className="flex-1 p-3">
-        <div className="space-y-3">
+      <div className="flex-1 min-h-0 p-3 bg-white dark:bg-[#1a1a1a] overflow-y-auto">
+        <div className="space-y-3 pb-3">
           {filters.map((filter, index) => (
-            <div key={index} className="p-2 bg-white dark:bg-[#1f1f1f] border border-[#d4d4d4] dark:border-gray-700 rounded-none space-y-2 relative group">
+            <div key={index} className="p-2 bg-white dark:bg-[#1f1f1f] border border-gray-200 dark:border-gray-700 rounded-none space-y-2 relative group shadow-sm">
               <Button
                 variant="ghost"
                 size="icon"
@@ -258,7 +257,7 @@ export function QueryBuilderSidebar({ pipelines, tags, agents, selectedWorkspace
             </PopoverContent>
           </Popover>
         </div>
-      </ScrollArea>
+      </div>
 
       <div className="p-3 border-t border-[#d4d4d4] dark:border-gray-700 bg-white dark:bg-[#1f1f1f] space-y-2">
         <Button 

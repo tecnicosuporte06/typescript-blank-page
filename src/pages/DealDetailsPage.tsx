@@ -38,6 +38,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { AddContactTagButton } from "@/components/chat/AddContactTagButton";
 import { AttachmentPreviewModal } from "@/components/modals/AttachmentPreviewModal";
 import { MarkAsLostModal } from "@/components/modals/MarkAsLostModal";
+import { WhatsAppChat } from "@/components/modules/WhatsAppChat";
 
 interface DealDetailsPageProps {
   cardId?: string;
@@ -118,7 +119,51 @@ const [selectedNoteForEdit, setSelectedNoteForEdit] = useState<any | null>(null)
 const [noteEditContent, setNoteEditContent] = useState("");
 const [editingNoteId, setEditingNoteId] = useState<string | null>(null);
 const [editingNoteContent, setEditingNoteContent] = useState("");
+const [conversationId, setConversationId] = useState<string | null>(null);
+
+  const getUserDisplayName = () =>
+    authUser?.user_metadata?.full_name ||
+    authUser?.email ||
+    authUser?.id ||
+    'Sistema';
+
+  const logStatusHistory = async (newStatus: string, valueAtStatus?: number | null) => {
+    if (!cardId) return;
+    try {
+      await supabase.from('pipeline_card_history').insert({
+        card_id: cardId,
+        action: 'status_changed',
+        changed_at: new Date().toISOString(),
+        metadata: {
+          new_status: newStatus,
+          changed_by_id: authUser?.id || null,
+          changed_by_name: getUserDisplayName(),
+          status_value: valueAtStatus ?? null,
+          status_value_currency: 'BRL',
+        },
+      });
+    } catch (err) {
+      console.error('Erro ao registrar histórico de status:', err);
+    }
+  };
+
+  const formatPhone = (raw?: string | null) => {
+    if (!raw) return '';
+    // remove non-digits
+    const digits = raw.replace(/\D/g, '');
+    // remove leading 55 (código Brasil) se presente
+    const withoutCountry = digits.startsWith('55') ? digits.slice(2) : digits;
+    // aplicar máscara (xx)xxxxx-xxxx ou (xx)xxxx-xxxx dependendo do tamanho
+    if (withoutCountry.length === 10) {
+      return `(${withoutCountry.slice(0,2)}) ${withoutCountry.slice(2,6)}-${withoutCountry.slice(6)}`;
+    }
+    if (withoutCountry.length >= 11) {
+      return `(${withoutCountry.slice(0,2)}) ${withoutCountry.slice(2,7)}-${withoutCountry.slice(7,11)}`;
+    }
+    return withoutCountry;
+  };
   const [pipelineActions, setPipelineActions] = useState<any[]>([]);
+  const [isLoadingActions, setIsLoadingActions] = useState(false);
   const [isExecutingAction, setIsExecutingAction] = useState(false);
 const [confirmLossAction, setConfirmLossAction] = useState<any | null>(null);
 const [isMarkAsLostModalOpen, setIsMarkAsLostModalOpen] = useState(false);
@@ -226,6 +271,7 @@ const humanizeLabel = (label: string) => {
     if (!cardId || !effectiveWorkspaceId) return;
 
     setIsLoading(true);
+    setConversationId(null);
     try {
       const headers = getHeaders();
       if (!headers) {
@@ -323,6 +369,22 @@ const humanizeLabel = (label: string) => {
               .map((ct: any) => ct.tags)
               .filter(Boolean);
             setContactTags(tags);
+          }
+
+          // Buscar conversa mais recente do contato
+          try {
+            const { data: conversationData, error: conversationError } = await supabase
+              .from('conversations')
+              .select('id')
+              .eq('contact_id', card.contact_id)
+              .order('updated_at', { ascending: false })
+              .limit(1);
+
+            if (!conversationError && conversationData && conversationData.length > 0) {
+              setConversationId(conversationData[0].id);
+            }
+          } catch (convErr) {
+            console.error("Erro ao buscar conversa do contato:", convErr);
           }
         }
       }
@@ -483,6 +545,13 @@ const humanizeLabel = (label: string) => {
 
     fetchUsers();
   }, []);
+
+  // Preselecionar responsável para usuários não master
+  useEffect(() => {
+    if (authUser?.id && userRole !== 'master') {
+      setActivityForm(prev => prev.responsibleId ? prev : { ...prev, responsibleId: authUser.id });
+    }
+  }, [authUser?.id, userRole]);
 
   // Buscar produtos disponíveis
   useEffect(() => {
@@ -835,9 +904,35 @@ const humanizeLabel = (label: string) => {
   };
 
   const fetchPipelineActions = useCallback(async (pipelineId: string) => {
+    // Sempre garantir ações padrão, mesmo se a chamada falhar
+    const standardStates = [
+      { state: 'Ganho', defaultName: 'Ganho', id: 'std-ganho' },
+      { state: 'Perda', defaultName: 'Perdido', id: 'std-perdido' },
+      { state: 'Aberto', defaultName: 'Reabrir', id: 'std-reabrir' }
+    ];
+
+    const normalizeState = (value: string | null | undefined) => {
+      const lower = (value || '').toLowerCase();
+      if (lower.includes('ganh')) return 'Ganho';
+      if (lower.includes('perd')) return 'Perda';
+      if (lower.includes('aberto') || lower.includes('reabr')) return 'Aberto';
+      return value || '';
+    };
+
+    setIsLoadingActions(true);
     try {
       const headers = getHeaders();
-      if (!headers) return;
+      if (!headers) {
+        console.warn('fetchPipelineActions: headers ausentes, usando apenas ações padrão.');
+        setPipelineActions(standardStates.map(std => ({
+          id: std.id,
+          action_name: std.defaultName,
+          deal_state: std.state,
+          target_pipeline_id: null,
+          target_column_id: null
+        })));
+        return;
+      }
 
       const { data, error } = await supabase.functions.invoke(
         `pipeline-management/actions?pipeline_id=${pipelineId}`,
@@ -847,35 +942,50 @@ const humanizeLabel = (label: string) => {
         }
       );
 
-      if (!error) {
-        // Garantir que as 3 ações padrão existam, preservando configurações do banco
-        const standardStates = [
-          { state: 'Ganho', defaultName: 'Ganho', id: 'std-ganho' },
-          { state: 'Perda', defaultName: 'Perdido', id: 'std-perdido' },
-          { state: 'Aberto', defaultName: 'Reabrir', id: 'std-reabrir' }
-        ];
-
-        const dbActions = data || [];
-        const finalActions = [...dbActions];
-
-        // Verificar quais estados padrão estão faltando e adicionar
-        standardStates.forEach(std => {
-          const exists = dbActions.some((a: any) => a.deal_state === std.state);
-          if (!exists) {
-            finalActions.push({
-              id: std.id,
-              action_name: std.defaultName,
-              deal_state: std.state,
-              target_pipeline_id: null,
-              target_column_id: null
-            });
-          }
-        });
-
-        setPipelineActions(finalActions);
+      if (error) {
+        console.error('Erro ao buscar ações do pipeline:', error);
+        setPipelineActions(standardStates.map(std => ({
+          id: std.id,
+          action_name: std.defaultName,
+          deal_state: std.state,
+          target_pipeline_id: null,
+          target_column_id: null
+        })));
+        return;
       }
+
+      const dbActions = (data || []).map((a: any) => ({
+        ...a,
+        deal_state: normalizeState(a.deal_state)
+      }));
+      const finalActions = [...dbActions];
+
+      // Verificar quais estados padrão estão faltando e adicionar
+      standardStates.forEach(std => {
+        const exists = dbActions.some((a: any) => a.deal_state === std.state);
+        if (!exists) {
+          finalActions.push({
+            id: std.id,
+            action_name: std.defaultName,
+            deal_state: std.state,
+            target_pipeline_id: null,
+            target_column_id: null
+          });
+        }
+      });
+
+      setPipelineActions(finalActions);
     } catch (error) {
       console.error('Erro ao buscar ações do pipeline:', error);
+      setPipelineActions(standardStates.map(std => ({
+        id: std.id,
+        action_name: std.defaultName,
+        deal_state: std.state,
+        target_pipeline_id: null,
+        target_column_id: null
+      })));
+    } finally {
+      setIsLoadingActions(false);
     }
   }, [getHeaders]);
 
@@ -905,7 +1015,9 @@ const humanizeLabel = (label: string) => {
       if (!headers) throw new Error('Não foi possível obter headers do workspace');
 
       const body: any = {
-        id: cardId
+        id: cardId,
+        executed_by: authUser?.id || null,
+        executed_by_name: authUser?.user_metadata?.full_name || authUser?.email || authUser?.id || 'Sistema'
       };
 
       // Determinar o novo status baseado na regra da ação
@@ -940,6 +1052,8 @@ const humanizeLabel = (label: string) => {
       });
 
       if (error) throw error;
+
+      await logStatusHistory(newStatus, cardData?.value ?? null);
 
       toast({
         title: "Sucesso",
@@ -976,7 +1090,9 @@ const humanizeLabel = (label: string) => {
 
       const body: any = {
         id: cardId,
-        status: 'perda'
+        status: 'perda',
+        executed_by: authUser?.id || null,
+        executed_by_name: authUser?.user_metadata?.full_name || authUser?.email || authUser?.id || 'Sistema'
       };
 
       if (confirmLossAction.target_pipeline_id && confirmLossAction.target_pipeline_id.trim() !== "") {
@@ -995,6 +1111,8 @@ const humanizeLabel = (label: string) => {
       });
 
       if (actionError) throw actionError;
+
+      await logStatusHistory('perda', cardData?.value ?? null);
 
       // Depois salvar motivo e observação
       const { error: updateError } = await supabase
@@ -1883,6 +2001,7 @@ const humanizeLabel = (label: string) => {
                     const isWin = action.deal_state === 'Ganho';
                     const isLoss = action.deal_state === 'Perda';
                     const shouldDisable = isExecutingAction;
+                    const isReopen = action.deal_state === 'Aberto';
 
                     return (
               <Button
@@ -1894,12 +2013,14 @@ const humanizeLabel = (label: string) => {
                         }}
                         disabled={shouldDisable}
                         className={cn(
-                          "h-8 px-4 text-xs font-medium rounded-none shadow-sm transition-all",
+                          "h-9 px-4 text-sm font-semibold rounded-none shadow-sm transition-all",
                           isWin 
-                            ? "bg-green-600 hover:bg-green-700 text-white border-transparent dark:bg-green-600 dark:hover:bg-green-700 dark:text-white" 
+                            ? "bg-green-600 hover:bg-green-700 text-white border-transparent dark:bg-green-600 dark:hover=h-green-700 dark:text-white" 
                             : isLoss 
                               ? "bg-red-600 hover:bg-red-700 text-white border-transparent dark:bg-red-600 dark:hover:bg-red-700 dark:text-white" 
-                              : "bg-white text-gray-900 border border-gray-300 hover:bg-gray-100 dark:bg-[#1b1b1b] dark:text-gray-100 dark:border-gray-700"
+                              : isReopen
+                                ? "bg-blue-600 hover:bg-blue-700 text-white border-transparent dark:bg-blue-600 dark:hover:bg-blue-700 dark:text-white"
+                                : "bg-white text-gray-900 border border-gray-300 hover:bg-gray-100 dark:bg-[#1b1b1b] dark:text-gray-100 dark:border-gray-700"
                         )}
                       >
                         {isExecutingAction ? '...' : action.action_name}
@@ -2181,7 +2302,7 @@ const humanizeLabel = (label: string) => {
                     <div className="flex items-center gap-2 text-sm">
                       <Phone className="h-4 w-4 text-gray-400" />
                       <span className="text-gray-700 dark:text-gray-300">
-                        {contact.phone || 'Sem telefone'}
+                        {formatPhone(contact.phone) || 'Sem telefone'}
                       </span>
                     </div>
                   </>
@@ -2457,7 +2578,7 @@ const humanizeLabel = (label: string) => {
                   <div className="space-y-1.5">
                     <div>
                       <span className="text-gray-500 dark:text-gray-400">Contato:</span>
-                      <span className="ml-2">{contact.phone || contact.name || 'Sem contato'}</span>
+                      <span className="ml-2">{formatPhone(contact.phone) || contact.name || 'Sem contato'}</span>
                     </div>
                     {additionalContactInfo.length > 0 && (
                       <div className="space-y-1">
@@ -2478,6 +2599,18 @@ const humanizeLabel = (label: string) => {
 
         {/* Área Principal */}
         <div className="flex-1 flex flex-col overflow-hidden">
+          {/* Bloqueio se ações não carregaram */}
+          {(!pipelineActions.length || isLoadingActions) ? (
+            <div className="flex-1 flex flex-col items-center justify-center gap-3 text-sm text-gray-600 dark:text-gray-300">
+              <div className="flex flex-col items-center gap-2">
+                <div className="h-9 w-32 bg-gray-200 dark:bg-gray-700 animate-pulse rounded" />
+                <div className="h-9 w-32 bg-gray-200 dark:bg-gray-700 animate-pulse rounded" />
+                <div className="h-9 w-32 bg-gray-200 dark:bg-gray-700 animate-pulse rounded" />
+              </div>
+              <span>Carregando ações...</span>
+            </div>
+          ) : (
+          <>
           {/* Tabs */}
           <Tabs defaultValue="anotacoes" className="flex-1 flex flex-col overflow-hidden">
             <div className="border-b border-gray-200 dark:border-gray-700 px-6">
@@ -2494,7 +2627,7 @@ const humanizeLabel = (label: string) => {
                   className="flex items-center gap-2 rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:shadow-none dark:text-gray-400 dark:data-[state=active]:text-white"
                 >
                   <CalendarIconLucide className="h-4 w-4" />
-                  <span>Atividade</span>
+                  <span>Atividades</span>
                 </TabsTrigger>
                 <TabsTrigger 
                   value="arquivos" 
@@ -2502,6 +2635,13 @@ const humanizeLabel = (label: string) => {
                 >
                   <File className="h-4 w-4" />
                   <span>Arquivos</span>
+                </TabsTrigger>
+                <TabsTrigger 
+                  value="mensagens" 
+                  className="flex items-center gap-2 rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:shadow-none dark:text-gray-400 dark:data-[state=active]:text-white"
+                >
+                  <MessageSquareIcon className="h-4 w-4" />
+                  <span>Mensagens</span>
                 </TabsTrigger>
               </TabsList>
             </div>
@@ -2998,94 +3138,60 @@ const humanizeLabel = (label: string) => {
                         </Popover>
 
                         {/* Hora Início */}
-                        <Popover open={showStartTimePicker} onOpenChange={setShowStartTimePicker}>
-                          <PopoverTrigger asChild>
-                            <Button
-                              variant="outline"
-                              className="h-9 px-3 py-1 text-sm font-normal border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-[#1b1b1b] min-w-[70px]"
-                            >
-                              {activityForm.startTime || "HH:mm"}
-                            </Button>
-                          </PopoverTrigger>
-                          <PopoverContent className="w-32 p-0 bg-white dark:bg-[#1b1b1b] border border-gray-200 dark:border-gray-700 shadow-md" align="start">
-                            <ScrollArea className="h-60">
-                              <div className="p-1">
-                                {timeOptions.map((time) => (
-                                  <button
-                                    key={time}
-                                    className={cn(
-                                      "w-full text-left px-3 py-2 text-sm rounded-sm hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors",
-                                      activityForm.startTime === time && "bg-primary text-primary-foreground font-semibold"
-                                    )}
-                                    onClick={() => {
-                                      const [hour, minute] = time.split(':').map(Number);
-                                      setSelectedStartHour(hour);
-                                      setSelectedStartMinute(minute);
-                                      
-                                      // Calcular hora fim (5 minutos depois)
-                                      let endHour = hour;
-                                      let endMinute = minute + 5;
-                                      if (endMinute >= 60) {
-                                        endMinute -= 60;
-                                        endHour = (endHour + 1) % 24;
-                                      }
-                                      const endTime = `${endHour.toString().padStart(2, '0')}:${endMinute.toString().padStart(2, '0')}`;
-                                      
-                                      setActivityForm({ 
-                                        ...activityForm, 
-                                        startTime: time,
-                                        endTime: endTime 
-                                      });
-                                      setSelectedEndHour(endHour);
-                                      setSelectedEndMinute(endMinute);
-                                      setShowStartTimePicker(false);
-                                    }}
-                                  >
-                                    {time}
-                                  </button>
-                                ))}
-                              </div>
-                            </ScrollArea>
-                          </PopoverContent>
-                        </Popover>
+                        <select
+                          className="h-9 px-3 py-1 text-sm font-normal border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-[#1b1b1b] min-w-[90px]"
+                          value={activityForm.startTime}
+                          onChange={(e) => {
+                            const time = e.target.value;
+                            const [hour, minute] = time.split(':').map(Number);
+                            setSelectedStartHour(hour);
+                            setSelectedStartMinute(minute);
+                            
+                            // Calcular hora fim (5 minutos depois)
+                            let endHour = hour;
+                            let endMinute = minute + 5;
+                            if (endMinute >= 60) {
+                              endMinute -= 60;
+                              endHour = (endHour + 1) % 24;
+                            }
+                            const endTime = `${endHour.toString().padStart(2, '0')}:${endMinute.toString().padStart(2, '0')}`;
+                            
+                            setActivityForm({ 
+                              ...activityForm, 
+                              startTime: time,
+                              endTime: endTime 
+                            });
+                            setSelectedEndHour(endHour);
+                            setSelectedEndMinute(endMinute);
+                          }}
+                        >
+                          {timeOptions.map((time) => (
+                            <option key={time} value={time}>
+                              {time}
+                            </option>
+                          ))}
+                        </select>
 
                         <span className="text-gray-400 mx-0.5">–</span>
 
                         {/* Hora Fim */}
-                        <Popover open={showEndTimePicker} onOpenChange={setShowEndTimePicker}>
-                          <PopoverTrigger asChild>
-                            <Button
-                              variant="outline"
-                              className="h-9 px-3 py-1 text-sm font-normal border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-[#1b1b1b] min-w-[70px]"
-                            >
-                              {activityForm.endTime || "HH:mm"}
-                            </Button>
-                          </PopoverTrigger>
-                          <PopoverContent className="w-32 p-0 bg-white dark:bg-[#1b1b1b] border border-gray-200 dark:border-gray-700 shadow-md" align="start">
-                            <ScrollArea className="h-60">
-                              <div className="p-1">
-                                {timeOptions.map((time) => (
-                                  <button
-                                    key={time}
-                                    className={cn(
-                                      "w-full text-left px-3 py-2 text-sm rounded-sm hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors",
-                                      activityForm.endTime === time && "bg-primary text-primary-foreground font-semibold"
-                                    )}
-                                    onClick={() => {
-                                      const [hour, minute] = time.split(':').map(Number);
-                                      setSelectedEndHour(hour);
-                                      setSelectedEndMinute(minute);
-                                      setActivityForm({ ...activityForm, endTime: time });
-                                      setShowEndTimePicker(false);
-                                    }}
-                                  >
-                                    {time}
-                                  </button>
-                                ))}
-                      </div>
-                            </ScrollArea>
-                          </PopoverContent>
-                        </Popover>
+                        <select
+                          className="h-9 px-3 py-1 text-sm font-normal border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-[#1b1b1b] min-w-[90px]"
+                          value={activityForm.endTime}
+                          onChange={(e) => {
+                            const time = e.target.value;
+                            const [hour, minute] = time.split(':').map(Number);
+                            setSelectedEndHour(hour);
+                            setSelectedEndMinute(minute);
+                            setActivityForm({ ...activityForm, endTime: time });
+                          }}
+                        >
+                          {timeOptions.map((time) => (
+                            <option key={time} value={time}>
+                              {time}
+                            </option>
+                          ))}
+                        </select>
 
                         {/* Data Fim */}
                         <Popover open={showEndDatePicker} onOpenChange={setShowEndDatePicker}>
@@ -3621,8 +3727,39 @@ const humanizeLabel = (label: string) => {
                   </div>
                 </div>
               </TabsContent>
+
+              <TabsContent value="mensagens" className="mt-0">
+                <div className="border border-gray-200 dark:border-gray-700 bg-white dark:bg-[#0f0f0f] shadow-sm rounded-none h-[80vh] flex flex-col">
+                  <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200 dark:border-gray-700">
+                    <div className="flex items-center gap-2">
+                      <MessageSquareIcon className="h-4 w-4 text-primary" />
+                      <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100">Mensagens</h3>
+                    </div>
+                    {contact?.name && (
+                      <span className="text-xs text-gray-600 dark:text-gray-400">
+                        Contato: {contact.name}
+                      </span>
+                    )}
+                  </div>
+                  <div className="flex-1 overflow-hidden">
+                    {conversationId ? (
+                      <WhatsAppChat
+                        isDarkMode={false}
+                        selectedConversationId={conversationId}
+                        onlyMessages={true}
+                      />
+                    ) : (
+                      <div className="flex h-full items-center justify-center text-sm text-gray-500 dark:text-gray-400 px-4 text-center">
+                        Nenhuma conversa vinculada a este contato. Abra uma conversa na aba Conversas e volte aqui para visualizar.
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </TabsContent>
             </div>
           </Tabs>
+          </>
+          )}
         </div>
       </div>
       
@@ -3987,7 +4124,7 @@ const humanizeLabel = (label: string) => {
           }
         }}
         onConfirm={handleMarkAsLost}
-        workspaceId={effectiveWorkspaceId || ""}
+        workspaceId={cardData?.workspace_id || effectiveWorkspaceId || selectedWorkspace?.workspace_id || ""}
         isLoading={isMarkingAsLost}
       />
 
@@ -4112,9 +4249,9 @@ function HistoryTimelineItem({
                       <>
                         <span className="text-gray-400">•</span>
                         <span className="font-medium text-gray-700 dark:text-gray-200">{event.user_name}</span>
-                      </>
-                    )}
-                  </div>
+          </>
+          )}
+        </div>
                 </div>
               ) : isActivity ? (
                 <div className="space-y-2">
@@ -4146,7 +4283,7 @@ function HistoryTimelineItem({
                           <span>•</span>
                           <div className="flex items-center gap-1">
                             <User className="h-3 w-3" />
-                            <span>{contact.name || contact.phone}</span>
+                            <span>{contact.name || formatPhone(contact.phone)}</span>
                           </div>
                         </>
                       )}
