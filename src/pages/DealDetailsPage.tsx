@@ -37,6 +37,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/comp
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { AddContactTagButton } from "@/components/chat/AddContactTagButton";
 import { AttachmentPreviewModal } from "@/components/modals/AttachmentPreviewModal";
+import { MarkAsLostModal } from "@/components/modals/MarkAsLostModal";
 
 interface DealDetailsPageProps {
   cardId?: string;
@@ -119,6 +120,9 @@ const [editingNoteId, setEditingNoteId] = useState<string | null>(null);
 const [editingNoteContent, setEditingNoteContent] = useState("");
   const [pipelineActions, setPipelineActions] = useState<any[]>([]);
   const [isExecutingAction, setIsExecutingAction] = useState(false);
+const [confirmLossAction, setConfirmLossAction] = useState<any | null>(null);
+const [isMarkAsLostModalOpen, setIsMarkAsLostModalOpen] = useState(false);
+const [isMarkingAsLost, setIsMarkingAsLost] = useState(false);
 
   // Estados para visão geral
   const [overviewData, setOverviewData] = useState<{
@@ -830,42 +834,6 @@ const humanizeLabel = (label: string) => {
     }
   };
 
-  const handleMarkAsLost = async () => {
-    // Manter por compatibilidade se necessário, mas vamos preferir executeAction
-    if (!cardId) return;
-    
-    try {
-      const headers = getHeaders();
-      const { error } = await supabase.functions.invoke(
-        'pipeline-management/cards',
-        {
-          method: 'PUT',
-          headers,
-          body: {
-            id: cardId,
-            status: 'perda'
-          }
-        }
-      );
-
-      if (error) throw error;
-
-      toast({
-        title: "Sucesso",
-        description: "Negócio marcado como perdido.",
-      });
-      
-      fetchCardData();
-    } catch (error) {
-      console.error('Erro ao marcar como perdido:', error);
-      toast({
-        title: "Erro",
-        description: "Não foi possível marcar o negócio como perdido.",
-        variant: "destructive",
-      });
-    }
-  };
-
   const fetchPipelineActions = useCallback(async (pipelineId: string) => {
     try {
       const headers = getHeaders();
@@ -913,6 +881,23 @@ const humanizeLabel = (label: string) => {
 
   const executeAction = async (action: any) => {
     if (!cardId || isExecutingAction) return;
+
+    const actionState = (action?.deal_state || '').toString().toLowerCase();
+    const actionName = (action?.action_name || '').toString().toLowerCase();
+    const isLossAction =
+      actionState === 'perda' ||
+      actionState === 'perdido' ||
+      actionState.includes('perda') ||
+      actionName.includes('perda') ||
+      actionName.includes('perdido');
+
+    // Abrir modal para ações de perda
+    if (isLossAction) {
+      setConfirmLossAction(action);
+      setIsMarkAsLostModalOpen(true);
+      return;
+    }
+
     setIsExecutingAction(true);
 
     try {
@@ -978,6 +963,72 @@ const humanizeLabel = (label: string) => {
       });
     } finally {
       setIsExecutingAction(false);
+    }
+  };
+
+  const handleMarkAsLost = async (lossReasonId: string | null, comments: string) => {
+    if (!cardId || !confirmLossAction) return;
+
+    setIsMarkingAsLost(true);
+    try {
+      const headers = getHeaders();
+      if (!headers) throw new Error('Não foi possível obter headers do workspace');
+
+      const body: any = {
+        id: cardId,
+        status: 'perda'
+      };
+
+      if (confirmLossAction.target_pipeline_id && confirmLossAction.target_pipeline_id.trim() !== "") {
+        body.pipeline_id = confirmLossAction.target_pipeline_id;
+      }
+
+      if (confirmLossAction.target_column_id && confirmLossAction.target_column_id.trim() !== "") {
+        body.column_id = confirmLossAction.target_column_id;
+      }
+
+      // Primeiro executar a ação de perda (status/transferência)
+      const { error: actionError } = await supabase.functions.invoke(`pipeline-management/cards?id=${cardId}`, {
+        method: 'PUT',
+        headers,
+        body
+      });
+
+      if (actionError) throw actionError;
+
+      // Depois salvar motivo e observação
+      const { error: updateError } = await supabase
+        .from('pipeline_cards')
+        .update({
+          loss_reason_id: lossReasonId,
+          loss_comments: comments,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', cardId);
+
+      if (updateError) throw updateError;
+
+      toast({
+        title: "Sucesso",
+        description: "Negócio marcado como perdido.",
+      });
+
+      await fetchCardData();
+
+      if (body.pipeline_id && body.pipeline_id !== cardData?.pipeline_id) {
+        await fetchPipelineActions(body.pipeline_id);
+      }
+    } catch (error: any) {
+      console.error('Erro ao marcar como perdido:', error);
+      toast({
+        title: "Erro ao executar ação",
+        description: error.message || "Não foi possível realizar a ação.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsMarkingAsLost(false);
+      setConfirmLossAction(null);
+      setIsMarkAsLostModalOpen(false);
     }
   };
 
@@ -1747,23 +1798,25 @@ const humanizeLabel = (label: string) => {
         <div className="px-6 py-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-4 flex-1">
-              {!onClose && (
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  onClick={() => {
-                    const pipelineParam = cardData?.pipeline_id ? `?pipelineId=${cardData.pipeline_id}` : '';
-                    if (effectiveWorkspaceId) {
-                      navigate(`/workspace/${effectiveWorkspaceId}/pipeline${pipelineParam}`);
-                    } else {
-                      navigate(`/pipeline${pipelineParam}`);
-                    }
-                  }}
-                  className="h-8 w-8"
-                >
-                  <ArrowLeft className="h-4 w-4" />
-                </Button>
-              )}
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={() => {
+                  if (onClose) {
+                    onClose();
+                    return;
+                  }
+                  const pipelineParam = cardData?.pipeline_id ? `?pipelineId=${cardData.pipeline_id}` : '';
+                  if (effectiveWorkspaceId) {
+                    navigate(`/workspace/${effectiveWorkspaceId}/pipeline${pipelineParam}`);
+                  } else {
+                    navigate(`/pipeline${pipelineParam}`);
+                  }
+                }}
+                className="h-8 w-8"
+              >
+                <ArrowLeft className="h-4 w-4" />
+              </Button>
               
               {/* Título */}
               <h1 className="text-lg font-semibold px-2 py-1">
@@ -3924,6 +3977,19 @@ const humanizeLabel = (label: string) => {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <MarkAsLostModal
+        open={isMarkAsLostModalOpen}
+        onOpenChange={(open) => {
+          setIsMarkAsLostModalOpen(open);
+          if (!open) {
+            setConfirmLossAction(null);
+          }
+        }}
+        onConfirm={handleMarkAsLost}
+        workspaceId={effectiveWorkspaceId || ""}
+        isLoading={isMarkingAsLost}
+      />
 
       <AttachmentPreviewModal
         isOpen={Boolean(selectedFileForPreview)}

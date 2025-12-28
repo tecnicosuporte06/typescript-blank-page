@@ -9,7 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Calendar } from "@/components/ui/calendar";
-import { ArrowLeft, MessageSquare, User, Phone, Plus, Check, X, Clock, Upload, CalendarIcon, Mail, FileText, Info, FileSpreadsheet, File as FileIcon, MessageCircle } from "lucide-react";
+import { ArrowLeft, MessageSquare, User, Phone, Plus, Check, X, Clock, Upload, CalendarIcon, Mail, FileText, Info, FileSpreadsheet, File as FileIcon, MessageCircle, ChevronRight } from "lucide-react";
 import { ChatModal } from "./ChatModal";
 import { Progress } from "@/components/ui/progress";
 import { Badge } from "@/components/ui/badge";
@@ -534,6 +534,7 @@ export function DealDetailsModal({
   const [isCreatingActivity, setIsCreatingActivity] = useState(false);
   const [showTimePicker, setShowTimePicker] = useState(false);
   const [showMinutePicker, setShowMinutePicker] = useState(false);
+  const [selectedCalendarDate, setSelectedCalendarDate] = useState<Date>(new Date());
   const [selectedAttachment, setSelectedAttachment] = useState<{ url: string; name: string; type?: string } | null>(null);
   const renderFileBadge = (fileName?: string) => {
     const ext = fileName?.split('.').pop()?.toLowerCase();
@@ -851,8 +852,18 @@ export function DealDetailsModal({
   };
 
   const executeAction = async (action: any) => {
+    const actionState = (action?.deal_state || '').toString().toLowerCase();
+    const actionName = (action?.action_name || '').toString().toLowerCase();
+
+    const isLossAction =
+      actionState === 'perda' ||
+      actionState === 'perdido' ||
+      actionState.includes('perda') ||
+      actionName.includes('perdido') ||
+      actionName.includes('perda');
+
     // Se for ação de "Perda", abrir modal de motivo de perda
-    if (action.deal_state === 'Perda') {
+    if (isLossAction) {
       setConfirmLossAction(action);
       setIsMarkAsLostModalOpen(true);
       return;
@@ -1818,6 +1829,16 @@ export function DealDetailsModal({
   };
   const pendingActivities = activities.filter(activity => !activity.is_completed);
   const completedActivities = activities.filter(activity => activity.is_completed);
+  const activitiesForSelectedDate = activities.filter(activity => {
+    if (!activity.scheduled_for) return false;
+    try {
+      const activityDate = new Date(activity.scheduled_for);
+      return format(activityDate, "yyyy-MM-dd") === format(selectedCalendarDate, "yyyy-MM-dd");
+    } catch (error) {
+      console.error('Erro ao processar data da atividade:', error, activity);
+      return false;
+    }
+  });
   
   // Combinar atividades concluídas com comentários para o histórico
   const completedActivitiesWithComments = [
@@ -2149,56 +2170,58 @@ export function DealDetailsModal({
 
             </div>}
 
-          {activeTab === "atividades" && <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              {/* Histórico de Atividades */}
-              <div className="space-y-4">
-                <div
-                  className={cn(
-                    "flex items-center gap-3 border p-3 rounded-none",
-                    isDarkMode ? "bg-[#1f1f1f] border-gray-700" : "bg-[#f0f0f0] border-[#d4d4d4]"
-                  )}
-                >
-                  <h3 className={cn("text-sm font-bold", isDarkMode ? "text-white" : "text-gray-800")}>
-                    Histórico de Atividades
+          {activeTab === "atividades" && (
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+              <div className="lg:col-span-2 grid grid-cols-1 md:grid-cols-2 gap-6">
+                {/* Histórico de Atividades */}
+                <div className="space-y-4">
+                  <div
+                    className={cn(
+                      "flex items-center gap-3 border p-3 rounded-none",
+                      isDarkMode ? "bg-[#1f1f1f] border-gray-700" : "bg-[#f0f0f0] border-[#d4d4d4]"
+                    )}
+                  >
+                    <h3 className={cn("text-sm font-bold", isDarkMode ? "text-white" : "text-gray-800")}>
+                      Histórico de Atividades
+                    </h3>
+                    
+                  </div>
+                  
+                  {pendingActivities.length > 0 ? <div className="space-y-3">
+                      {pendingActivities.map(activity => (
+                        <ActivityItem
+                          key={activity.id}
+                          activity={activity}
+                          isDarkMode={isDarkMode}
+                          contactId={contactId}
+                          onComplete={handleCompleteActivity}
+                          onUpdate={fetchActivities}
+                          onAttachmentClick={setSelectedAttachment}
+                          onDelete={handleRequestDeleteActivity}
+                        />
+                      ))}
+                    </div> : <div className={cn("text-center py-8 border rounded-none", isDarkMode ? "bg-[#1b1b1b] border-gray-700 text-gray-400" : "bg-white border-[#d4d4d4] text-gray-500")}>
+                      <p className="text-sm">Nenhuma atividade pendente encontrada</p>
+                    </div>}
+                </div>
+
+                {/* Formulário Criar Atividade - Integrado */}
+                <div className="space-y-4">
+                  <h3
+                    className={cn(
+                      "text-sm font-bold mb-4 border p-3 rounded-none",
+                      isDarkMode ? "text-white bg-[#1f1f1f] border-gray-700" : "text-gray-800 bg-[#f0f0f0] border-[#d4d4d4]"
+                    )}
+                  >
+                    Criar atividade
                   </h3>
                   
-                </div>
-                
-                {pendingActivities.length > 0 ? <div className="space-y-3">
-                    {pendingActivities.map(activity => (
-                      <ActivityItem
-                        key={activity.id}
-                        activity={activity}
-                        isDarkMode={isDarkMode}
-                        contactId={contactId}
-                        onComplete={handleCompleteActivity}
-                        onUpdate={fetchActivities}
-                        onAttachmentClick={setSelectedAttachment}
-                        onDelete={handleRequestDeleteActivity}
-                      />
-                    ))}
-                  </div> : <div className={cn("text-center py-8 border rounded-none", isDarkMode ? "bg-[#1b1b1b] border-gray-700 text-gray-400" : "bg-white border-[#d4d4d4] text-gray-500")}>
-                    <p className="text-sm">Nenhuma atividade pendente encontrada</p>
-                  </div>}
-              </div>
-
-              {/* Formulário Criar Atividade - Integrado */}
-              <div className="space-y-4">
-                <h3
-                  className={cn(
-                    "text-sm font-bold mb-4 border p-3 rounded-none",
-                    isDarkMode ? "text-white bg-[#1f1f1f] border-gray-700" : "text-gray-800 bg-[#f0f0f0] border-[#d4d4d4]"
-                  )}
-                >
-                  Criar atividade
-                </h3>
-                
-                <div
-                  className={cn(
-                    "space-y-4 p-4 border shadow-sm rounded-none",
-                    isDarkMode ? "bg-[#121212] border-gray-700" : "bg-white border-[#d4d4d4]"
-                  )}
-                >
+                  <div
+                    className={cn(
+                      "space-y-4 p-4 border shadow-sm rounded-none",
+                      isDarkMode ? "bg-[#121212] border-gray-700" : "bg-white border-[#d4d4d4]"
+                    )}
+                  >
                   {/* Tipo */}
                   <div className="space-y-2">
                     <label className={cn("text-xs font-medium", isDarkMode ? "text-gray-300" : "text-gray-700")}>
@@ -2390,7 +2413,141 @@ export function DealDetailsModal({
                   </Button>
                 </div>
               </div>
-            </div>}
+            </div>
+
+            {/* Calendário diário de atividades */}
+            <div className={cn(
+              "w-full border p-4 rounded-none flex flex-col",
+              isDarkMode ? "bg-[#121212] border-gray-700 text-gray-100" : "bg-white border-[#d4d4d4] text-gray-900"
+            )}>
+              <div className="flex items-center justify-between mb-4">
+                <div className="flex items-center gap-2">
+                  <h3 className="text-sm font-semibold">
+                    {format(selectedCalendarDate, "EEEE, 'de' MMMM", { locale: ptBR })}
+                  </h3>
+                  <span className={cn("text-xs", isDarkMode ? "text-gray-400" : "text-gray-500")}>
+                    {format(selectedCalendarDate, "dd", { locale: ptBR })}°
+                  </span>
+                </div>
+                <div className="flex items-center gap-1">
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-7 w-7"
+                    onClick={() => {
+                      const prevDay = new Date(selectedCalendarDate);
+                      prevDay.setDate(prevDay.getDate() - 1);
+                      setSelectedCalendarDate(prevDay);
+                    }}
+                  >
+                    <ChevronRight className="h-4 w-4 rotate-180" />
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-7 w-7"
+                    onClick={() => {
+                      const nextDay = new Date(selectedCalendarDate);
+                      nextDay.setDate(nextDay.getDate() + 1);
+                      setSelectedCalendarDate(nextDay);
+                    }}
+                  >
+                    <ChevronRight className="h-4 w-4" />
+                  </Button>
+                </div>
+              </div>
+
+              <div className="relative flex-1 overflow-hidden" style={{ minHeight: '560px' }}>
+                <div className="relative h-full">
+                  {/* Linhas de hora */}
+                  {Array.from({ length: 24 }, (_, i) => {
+                    const hour = i;
+                    const hourPosition = (hour / 23) * 100;
+                    return (
+                      <div
+                        key={hour}
+                        className="absolute left-0 right-0 flex items-start"
+                        style={{ top: `${hourPosition}%` }}
+                      >
+                        <div className={cn("w-12 text-[11px] mr-2 mt-0.5 font-normal", isDarkMode ? "text-gray-500" : "text-gray-400")}>
+                          {hour.toString().padStart(2, '0')}:00
+                        </div>
+                        <div className={cn("flex-1 border-t", isDarkMode ? "border-gray-700" : "border-gray-200")}></div>
+                      </div>
+                    );
+                  })}
+
+                  {/* Linha do tempo atual */}
+                  {format(selectedCalendarDate, "yyyy-MM-dd") === format(new Date(), "yyyy-MM-dd") && (() => {
+                    const now = new Date();
+                    const currentHour = now.getHours();
+                    const currentMinute = now.getMinutes();
+                    const currentTimeInMinutes = currentHour * 60 + currentMinute;
+                    const totalMinutesInDay = 24 * 60;
+                    const topPosition = (currentTimeInMinutes / totalMinutesInDay) * 100;
+                    
+                    return (
+                      <div
+                        className="absolute left-0 right-0 z-10 flex items-center"
+                        style={{ top: `${topPosition}%` }}
+                      >
+                        <div className="flex items-center w-full">
+                          <span className="w-12 text-[11px] font-medium text-red-600 dark:text-red-400 mr-2 whitespace-nowrap">
+                            {format(now, "HH:mm")}
+                          </span>
+                          <div className="flex-1 h-0.5 bg-red-600 dark:bg-red-400"></div>
+                        </div>
+                      </div>
+                    );
+                  })()}
+
+                  {/* Atividades do dia */}
+                  <div className="absolute left-14 right-0" style={{ top: 0, bottom: 0 }}>
+                    {activitiesForSelectedDate.map(activity => {
+                      const activityDate = new Date(activity.scheduled_for);
+                      const startHour = activityDate.getHours();
+                      const startMinute = activityDate.getMinutes();
+                      const durationMinutes = activity.duration_minutes || activity.durationMinutes || 30;
+                      const startTimeInMinutes = startHour * 60 + startMinute;
+                      const totalMinutesInDay = 24 * 60;
+                      const topPercent = (startTimeInMinutes / totalMinutesInDay) * 100;
+                      const heightPercent = (durationMinutes / totalMinutesInDay) * 100;
+
+                      const getActivityColor = () => {
+                        if (activity.priority === 'alta') return 'bg-red-500 dark:bg-red-600';
+                        if (activity.priority === 'baixa') return 'bg-green-500 dark:bg-green-600';
+                        return 'bg-blue-500 dark:bg-blue-600';
+                      };
+
+                      return (
+                        <div
+                          key={activity.id}
+                          className={cn(
+                            "absolute left-0 right-2 rounded px-2 py-1 text-[11px] shadow-sm z-20 cursor-pointer hover:opacity-90 transition-opacity text-white",
+                            getActivityColor()
+                          )}
+                          style={{
+                            top: `${topPercent}%`,
+                            height: `${Math.max(heightPercent, 1.5)}%`,
+                            minHeight: '28px'
+                          }}
+                        >
+                          <div className="flex items-center gap-1 mb-0.5">
+                            <Phone className="h-3 w-3 flex-shrink-0" />
+                            <span className="font-semibold truncate">{activity.subject || activity.type}</span>
+                          </div>
+                          <div className="text-[10px] opacity-90">
+                            {format(activityDate, "HH:mm")} → {format(new Date(activityDate.getTime() + durationMinutes * 60000), "HH:mm")}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+          )}
 
           {activeTab === "historico" && (
             <div className="space-y-6">

@@ -22,6 +22,7 @@ import { FilterModal } from "@/components/modals/FilterModal";
 import { CriarPipelineModal } from "@/components/modals/CriarPipelineModal";
 import { CriarNegocioModal } from "@/components/modals/CriarNegocioModal";
 import { DealDetailsModal } from "@/components/modals/DealDetailsModal";
+import { DealDetailsPage } from "@/pages/DealDetailsPage";
 import { ChatModal } from "@/components/modals/ChatModal";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator } from "@/components/ui/dropdown-menu";
 import { TransferirModal } from "@/components/modals/TransferirModal";
@@ -50,6 +51,7 @@ import { useWorkspaceHeaders } from '@/lib/workspaceHeaders';
 import { ChangeAgentModal } from "@/components/modals/ChangeAgentModal";
 import { useWorkspaceAgent } from "@/hooks/useWorkspaceAgent";
 import { getInitials as getAvatarInitials } from "@/lib/avatarUtils";
+import { Sheet, SheetContent } from "@/components/ui/sheet";
 
 type ResponsibleFilterValue = 'ALL' | 'UNASSIGNED' | (string & {});
 
@@ -956,6 +958,7 @@ function CRMNegociosContent({
   const [isCriarNegocioModalOpen, setIsCriarNegocioModalOpen] = useState(false);
   const [isDealDetailsModalOpen, setIsDealDetailsModalOpen] = useState(false);
   const [isChatModalOpen, setIsChatModalOpen] = useState(false);
+  const [selectedDealDetailsForSheet, setSelectedDealDetailsForSheet] = useState<any | null>(null);
   const [activeId, setActiveId] = useState<string | null>(null);
   const [dragOverColumn, setDragOverColumn] = useState<string | null>(null);
   const [draggedColumn, setDraggedColumn] = useState<string | null>(null);
@@ -1452,12 +1455,17 @@ const [selectedCardForProduct, setSelectedCardForProduct] = useState<{
     });
     // Recolher sidebar para melhor visualização
     onCollapseSidebar?.();
-    // Navegar para a página de detalhes ao invés de abrir modal
-    const pathPrefix = (isMaster && effectiveWorkspaceId) 
-      ? `/workspace/${effectiveWorkspaceId}/pipeline` 
-      : '/pipeline';
-    
-    navigate(`${pathPrefix}/${card.id}`);
+    // Abrir modal deslizante de detalhes (sheet)
+    setSelectedCard(card);
+    setSelectedDealDetailsForSheet({
+      id: card.id,
+      pipelineId: card.pipeline_id,
+      columnId: card.column_id,
+      contactId: card.contact?.id,
+      contactName: card.contact?.name || card.description || card.name,
+      contactPhone: card.contact?.phone,
+    });
+    setIsDealDetailsModalOpen(true);
   };
   const handlePipelineCreate = async (nome: string) => {
     try {
@@ -2670,7 +2678,33 @@ const [selectedCardForProduct, setSelectedCardForProduct] = useState<{
       refreshActiveUsers();
     }} />
 
-      {selectedCard && <DealDetailsModal isOpen={isDealDetailsModalOpen} onClose={() => setIsDealDetailsModalOpen(false)} dealName={selectedCard.description || "Negócio"} contactNumber={selectedCard.contact?.phone || ""} isDarkMode={isDarkMode} cardId={selectedCard.id} currentColumnId={selectedCard.column_id} currentPipelineId={selectedCard.pipeline_id} contactData={selectedCard.contact} />}
+      <Sheet
+        open={isDealDetailsModalOpen && Boolean(selectedDealDetailsForSheet)}
+        onOpenChange={(open) => {
+          if (!open) {
+            setIsDealDetailsModalOpen(false);
+            setSelectedCard(null);
+            setSelectedDealDetailsForSheet(null);
+          }
+        }}
+      >
+        <SheetContent
+          side="right"
+          className="p-0 sm:max-w-[95vw] w-[95vw] max-w-[1400px] h-full border-l border-gray-200 dark:border-gray-800 shadow-2xl transition-all duration-500 ease-in-out [&>button]:hidden"
+        >
+          {selectedDealDetailsForSheet && (
+            <DealDetailsPage
+              cardId={selectedDealDetailsForSheet.id}
+              workspaceId={effectiveWorkspaceId}
+              onClose={() => {
+                setIsDealDetailsModalOpen(false);
+                setSelectedCard(null);
+                setSelectedDealDetailsForSheet(null);
+              }}
+            />
+          )}
+        </SheetContent>
+      </Sheet>
 
       <ChatModal isOpen={isChatModalOpen} onClose={() => {
       console.log('🔽 Fechando ChatModal');
