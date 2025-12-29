@@ -2659,7 +2659,37 @@ const humanizeLabel = (label: string) => {
                   <div className="space-y-1.5">
                     <div>
                       <span className="text-gray-500 dark:text-gray-400">Contato:</span>
-                      <span className="ml-2">{formatPhone(contact.phone) || contact.name || 'Sem contato'}</span>
+                      <span className="ml-2 inline-flex items-center gap-2">
+                        <span>{formatPhone(contact.phone) || contact.name || 'Sem contato'}</span>
+                        {contact.phone && (
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon"
+                            className="h-6 w-6 rounded-none"
+                            onClick={async () => {
+                              try {
+                                const digits = String(contact.phone).replace(/\D/g, '');
+                                await navigator.clipboard.writeText(digits);
+                                toast({
+                                  title: "Copiado",
+                                  description: "Número copiado sem formatação."
+                                });
+                              } catch (e) {
+                                console.error('Erro ao copiar número:', e);
+                                toast({
+                                  title: "Erro",
+                                  description: "Não foi possível copiar o número.",
+                                  variant: "destructive"
+                                });
+                              }
+                            }}
+                            title="Copiar número"
+                          >
+                            <Copy className="h-3.5 w-3.5" />
+                          </Button>
+                        )}
+                      </span>
                     </div>
                     {additionalContactInfo.length > 0 && (
                       <div className="space-y-1">
