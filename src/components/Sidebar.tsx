@@ -305,27 +305,21 @@ export function Sidebar({
     >
       {/* Title Bar (Logo) */}
       <div className={cn(
-        "flex-shrink-0 flex items-center bg-primary text-primary-foreground h-14 transition-all duration-300",
-        isCollapsed ? "justify-center px-0" : "justify-between px-2"
+        "flex-shrink-0 flex items-center bg-primary text-primary-foreground transition-all duration-300 justify-center overflow-hidden",
+        isCollapsed ? "h-20 p-2" : "h-36 p-4"
       )}>
         {/* Logo ou Texto */}
         {customization.logo_url ? (
           <img 
             src={customization.logo_url} 
             alt="Logo" 
-            className={cn(
-              "object-contain transition-all duration-300", 
-              isCollapsed ? "h-10 w-10" : "h-10"
-            )} 
+            className="w-full h-full object-contain transition-all duration-300"
           />
         ) : (
           <img 
             src={isCollapsed ? logoEnc : logoEx} 
             alt="TEZEUS" 
-            className={cn(
-              "object-contain transition-all duration-300",
-              isCollapsed ? "h-12 w-12" : "h-12"
-            )} 
+            className="w-full h-full object-contain transition-all duration-300"
           />
         )}
       </div>
@@ -348,13 +342,13 @@ export function Sidebar({
       {selectedWorkspace && (
         <div className={cn(
           "flex-shrink-0 border-b border-gray-300 bg-white/50 transition-all duration-300 dark:border-gray-700 dark:bg-[#2d2d2d]",
-          isCollapsed ? 'p-1 flex justify-center' : 'px-2 py-1.5'
+          isCollapsed ? 'p-1 flex justify-center' : 'px-3 py-2.5'
         )}>
           <div className="flex items-center gap-2">
             <Building2 className="w-3.5 h-3.5 text-gray-500 flex-shrink-0 dark:text-gray-400" />
             {!isCollapsed && (
               <div className="flex-1 min-w-0">
-                <p className="text-[15px] font-medium text-gray-800 truncate leading-tight dark:text-gray-200">
+                <p className="text-[14px] font-medium text-gray-800 truncate leading-tight dark:text-gray-200">
                   {selectedWorkspace.name}
                 </p>
                 {selectedWorkspace.cnpj && (
