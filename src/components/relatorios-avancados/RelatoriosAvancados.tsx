@@ -119,7 +119,7 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
     }
     const { data, error } = await supabase
       .from('workspace_members')
-      .select('user_id, system_users(id, name)')
+      .select('user_id, role, system_users(id, name, profile)')
       .eq('workspace_id', workspaceId);
     if (error) {
       console.error('Erro ao buscar usuários do workspace:', error);
@@ -127,6 +127,12 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
       return;
     }
     const agentsList = (data || [])
+      .filter((wm: any) => {
+        // NUNCA incluir usuários masters (seja no role do workspace ou no perfil global)
+        const isMasterRole = wm.role === 'master';
+        const isMasterProfile = wm.system_users?.profile === 'master';
+        return !isMasterRole && !isMasterProfile;
+      })
       .map((wm: any) => wm.system_users)
       .filter(Boolean)
       .map((su: any) => ({ id: su.id, name: su.name }))
@@ -1071,24 +1077,16 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
                 </tr>
               </thead>
               <tbody>
-                {rankingVendas.length === 0 ? (
-                  <tr className="border-t border-gray-200 dark:border-gray-800">
-                    <td className="px-3 py-3 text-center text-gray-500 dark:text-gray-300" colSpan={6}>
-                      Nenhum dado encontrado para os filtros/período selecionados.
-                    </td>
+                {rankingVendas.map((row) => (
+                  <tr key={row.id} className="border-t border-gray-200 dark:border-gray-800">
+                    <td className="px-3 py-2">{row.name}</td>
+                    <td className="px-3 py-2 text-right">{row.revenue.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</td>
+                    <td className="px-3 py-2 text-right">{row.sales}</td>
+                    <td className="px-3 py-2 text-right">{row.products}</td>
+                    <td className="px-3 py-2 text-right">{row.pa}</td>
+                    <td className="px-3 py-2 text-right">{row.ticket.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</td>
                   </tr>
-                ) : (
-                  rankingVendas.map((row) => (
-                    <tr key={row.id} className="border-t border-gray-200 dark:border-gray-800">
-                      <td className="px-3 py-2">{row.name}</td>
-                      <td className="px-3 py-2 text-right">{row.revenue.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</td>
-                      <td className="px-3 py-2 text-right">{row.sales}</td>
-                      <td className="px-3 py-2 text-right">{row.products}</td>
-                      <td className="px-3 py-2 text-right">{row.pa}</td>
-                      <td className="px-3 py-2 text-right">{row.ticket.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</td>
-                    </tr>
-                  ))
-                )}
+                ))}
               </tbody>
             </table>
           </div>
@@ -1121,32 +1119,24 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
                 </tr>
               </thead>
               <tbody>
-                {rankingTrabalho.length === 0 ? (
-                  <tr className="border-t border-gray-200 dark:border-gray-800">
-                    <td className="px-3 py-3 text-center text-gray-500 dark:text-gray-300" colSpan={14}>
-                      Nenhum dado encontrado para os filtros/período selecionados.
-                    </td>
+                {rankingTrabalho.map((row) => (
+                  <tr key={row.id} className="border-t border-gray-200 dark:border-gray-800">
+                    <td className="px-3 py-2">{row.name}</td>
+                    <td className="px-3 py-2 text-right">{row.messages}</td>
+                    <td className="px-3 py-2 text-right">{row.whatsappSent}</td>
+                    <td className="px-3 py-2 text-right">{row.calls}</td>
+                    <td className="px-3 py-2 text-right">{row.callsAttended}</td>
+                    <td className="px-3 py-2 text-right">{row.callsNotAttended}</td>
+                    <td className="px-3 py-2 text-right">{row.callsApproached}</td>
+                    <td className="px-3 py-2 text-right">{row.callsFollowUp}</td>
+                    <td className="px-3 py-2 text-right">{row.meetings}</td>
+                    <td className="px-3 py-2 text-right">{row.meetingsDone}</td>
+                    <td className="px-3 py-2 text-right">{row.meetingsNotDone}</td>
+                    <td className="px-3 py-2 text-right">{row.meetingsRescheduled}</td>
+                    <td className="px-3 py-2 text-right">{row.proposals}</td>
+                    <td className="px-3 py-2 text-right font-semibold">{row.total}</td>
                   </tr>
-                ) : (
-                  rankingTrabalho.map((row) => (
-                    <tr key={row.id} className="border-t border-gray-200 dark:border-gray-800">
-                      <td className="px-3 py-2">{row.name}</td>
-                      <td className="px-3 py-2 text-right">{row.messages}</td>
-                      <td className="px-3 py-2 text-right">{row.whatsappSent}</td>
-                      <td className="px-3 py-2 text-right">{row.calls}</td>
-                      <td className="px-3 py-2 text-right">{row.callsAttended}</td>
-                      <td className="px-3 py-2 text-right">{row.callsNotAttended}</td>
-                      <td className="px-3 py-2 text-right">{row.callsApproached}</td>
-                      <td className="px-3 py-2 text-right">{row.callsFollowUp}</td>
-                      <td className="px-3 py-2 text-right">{row.meetings}</td>
-                      <td className="px-3 py-2 text-right">{row.meetingsDone}</td>
-                      <td className="px-3 py-2 text-right">{row.meetingsNotDone}</td>
-                      <td className="px-3 py-2 text-right">{row.meetingsRescheduled}</td>
-                      <td className="px-3 py-2 text-right">{row.proposals}</td>
-                      <td className="px-3 py-2 text-right font-semibold">{row.total}</td>
-                    </tr>
-                  ))
-                )}
+                ))}
               </tbody>
             </table>
           </div>

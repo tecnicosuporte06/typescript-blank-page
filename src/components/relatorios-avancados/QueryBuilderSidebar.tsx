@@ -123,7 +123,7 @@ export function QueryBuilderSidebar({ pipelines, tags, agents, onFiltersChange }
             >
               <span className="flex items-center gap-1">
                 <Tag className="h-3.5 w-3.5" />
-                {selectedTags.length > 0 ? `${selectedTags.length} tag(s)` : 'Tags'}
+                {selectedTags.length > 0 ? `${selectedTags.length} etiqueta(s)` : 'Etiquetas'}
               </span>
               <span className="text-[10px] text-gray-500 dark:text-gray-400">{selectedTags.length > 0 ? 'editar' : 'selecionar'}</span>
             </Button>
@@ -146,7 +146,7 @@ export function QueryBuilderSidebar({ pipelines, tags, agents, onFiltersChange }
                   </label>
                 );
               })}
-              {(!tags || tags.length === 0) && <div className="text-[11px] text-gray-500">Nenhuma tag disponível</div>}
+              {(!tags || tags.length === 0) && <div className="text-[11px] text-gray-500">Nenhuma etiqueta disponível</div>}
             </div>
           </PopoverContent>
         </Popover>

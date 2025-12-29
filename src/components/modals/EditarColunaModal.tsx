@@ -8,7 +8,6 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Checkbox } from "@/components/ui/checkbox";
 import { useToast } from "@/hooks/use-toast";
-import { IconSelector } from "@/components/ui/icon-selector";
 import { supabase } from '@/integrations/supabase/client';
 import { useWorkspaceHeaders } from '@/lib/workspaceHeaders';
 import { ColumnAutomationsTab } from "./ColumnAutomationsTab";
@@ -87,15 +86,6 @@ export function EditarColunaModal({
       toast({
         title: "Erro",
         description: "O nome da coluna não pode estar vazio",
-        variant: "destructive",
-      });
-      return;
-    }
-
-    if (!icon || icon.trim() === '') {
-      toast({
-        title: "Erro",
-        description: "Você precisa selecionar um ícone para a coluna",
         variant: "destructive",
       });
       return;
@@ -213,8 +203,8 @@ export function EditarColunaModal({
     <>
       <Dialog open={open} onOpenChange={onOpenChange}>
         <DialogContent className={`sm:max-w-[700px] max-h-[90vh] overflow-y-auto p-0 gap-0 border border-[#d4d4d4] dark:border-gray-700 bg-white dark:bg-[#0f0f0f] shadow-sm rounded-none ${isDarkMode ? 'dark' : ''}`}>
-          <DialogHeader className="bg-primary p-4 rounded-none m-0">
-            <DialogTitle className="text-primary-foreground">Editar Coluna</DialogTitle>
+          <DialogHeader className="bg-primary dark:bg-transparent p-4 rounded-none m-0 border-b border-transparent dark:border-gray-700">
+            <DialogTitle className="text-primary-foreground dark:text-white">Editar Coluna</DialogTitle>
           </DialogHeader>
 
           <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
@@ -236,17 +226,6 @@ export function EditarColunaModal({
                 />
               </div>
 
-              <div className="space-y-2">
-                <Label className={`text-xs font-bold text-gray-700 dark:text-gray-200`}>Ícone *</Label>
-                <IconSelector 
-                  selectedIcon={icon}
-                  onIconSelect={setIcon}
-                />
-                <p className={`text-[10px] text-muted-foreground dark:text-gray-400`}>
-                  O ícone será exibido no timeline do pipeline
-                </p>
-              </div>
-
 
               <DialogFooter className={`pt-4 flex-col sm:flex-row gap-2 bg-gray-50 dark:bg-[#1a1a1a] border-t border-[#d4d4d4] dark:border-gray-700 -mx-6 -mb-6 p-4 mt-4`}>
                 <div className="flex gap-2 sm:mr-auto">
@@ -263,7 +242,7 @@ export function EditarColunaModal({
                   <Button variant="outline" onClick={() => onOpenChange(false)} className={`h-8 text-xs rounded-none border-gray-300 dark:border-gray-600 bg-white dark:bg-[#1b1b1b] text-gray-700 dark:text-gray-200 hover:bg-gray-200 dark:hover:bg-[#353535]`}>
                     Fechar
                   </Button>
-                  <Button onClick={handleSave} disabled={isLoading || !icon || !name.trim()} className="h-8 text-xs rounded-none bg-primary hover:bg-primary/90">
+                  <Button onClick={handleSave} disabled={isLoading || !name.trim()} className="h-8 text-xs rounded-none bg-primary hover:bg-primary/90">
                     {isLoading ? "Salvando..." : "Salvar Configurações"}
                   </Button>
                 </div>
