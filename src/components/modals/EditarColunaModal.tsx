@@ -325,6 +325,7 @@ export function EditarColunaModal({
         onClose={() => setIsDeleteModalOpen(false)}
         onConfirm={handleDelete}
         columnName={name}
+        isDarkMode={isDarkMode}
       />
     </>
   );
