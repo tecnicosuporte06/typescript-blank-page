@@ -1,6 +1,7 @@
 // @ts-nocheck
 import { useEffect, useMemo, useState } from 'react';
-import { Workspace } from '@/contexts/WorkspaceContext';
+import { Workspace, useWorkspace } from '@/contexts/WorkspaceContext';
+import { usePipelinesContext } from '@/contexts/PipelinesContext';
 import { useAuth } from '@/hooks/useAuth';
 import { supabase } from '@/integrations/supabase/client';
 import { format, subDays, startOfDay, endOfDay } from 'date-fns';
@@ -57,12 +58,19 @@ interface TagRecord {
 const pieColors = ['#10B981', '#3B82F6', '#F59E0B', '#EF4444', '#8B5CF6', '#14B8A6', '#6366F1'];
 
 export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProps) {
+  const { selectedWorkspace, workspaces: ctxWorkspaces } = useWorkspace();
   const { user, userRole } = useAuth();
+  const { pipelines: ctxPipelines, fetchPipelines: fetchCtxPipelines } = usePipelinesContext();
 
   const [periodPreset, setPeriodPreset] = useState<PeriodPreset>('last30');
   const [startDate, setStartDate] = useState<Date>(startOfDay(subDays(new Date(), 29)));
   const [endDate, setEndDate] = useState<Date>(endOfDay(new Date()));
-  const [selectedWorkspaceId, setSelectedWorkspaceId] = useState<string>('');
+  const [selectedWorkspaceId, setSelectedWorkspaceId] = useState<string>(
+    selectedWorkspace?.workspace_id ||
+      workspaces?.[0]?.workspace_id ||
+      ctxWorkspaces?.[0]?.workspace_id ||
+      ''
+  ); // mantido para compatibilidade mas sem seletor
   const [selectedFunnel, setSelectedFunnel] = useState<string>('all');
   const [selectedAgent, setSelectedAgent] = useState<string>('all');
   const [selectedTag, setSelectedTag] = useState<string>('all');
@@ -99,17 +107,20 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
   };
 
   const fetchAgents = async (workspaceId?: string | null) => {
+    // Sempre filtra pelo workspace atual para respeitar o escopo
     if (!workspaceId) {
-      // Se não há workspace selecionado, busca todos os usuários (master admin)
-      const { data } = await supabase.from('system_users').select('id, name').order('name');
-      setAgents(data || []);
+      setAgents([]);
       return;
     }
-    // Busca apenas usuários que pertencem ao workspace
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from('workspace_members')
       .select('user_id, system_users(id, name)')
       .eq('workspace_id', workspaceId);
+    if (error) {
+      console.error('Erro ao buscar usuários do workspace:', error);
+      setAgents([]);
+      return;
+    }
     const agentsList = (data || [])
       .map((wm: any) => wm.system_users)
       .filter(Boolean)
@@ -262,15 +273,24 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
         }
       }
 
-      const contactIdsFromCards = new Set(cardsFiltered.map((c) => c.contact_id).filter(Boolean) as string[]);
+      // Não restringe por funil (funnel) para garantir visão geral; somente tags filtram contatos.
+      const finalContacts = contactsFiltered;
 
-      const finalContacts =
-        selectedFunnel !== 'all'
-          ? contactsFiltered.filter((c) => contactIdsFromCards.has(c.id))
-          : contactsFiltered;
+      // Atividades: só recorta por tag se houver filtro de tag; funil não limita para manter dados gerais.
+      const allowedContactIds = new Set<string>();
+      if (selectedTag !== 'all') {
+        ((tagsData || []) as any[]).forEach((t: any) => {
+          if (t.contact_id) allowedContactIds.add(t.contact_id);
+        });
+      }
+
+      const activitiesFiltered = (((activitiesData as unknown) as ActivityRecord[]) || []).filter((a) => {
+        if (allowedContactIds.size === 0) return true;
+        return a.contact_id ? allowedContactIds.has(a.contact_id) : false;
+      });
 
       setContacts(finalContacts);
-      setActivities((((activitiesData as unknown) as ActivityRecord[]) || []).filter((a) => finalContacts.some((c) => c.id === a.contact_id)));
+      setActivities(activitiesFiltered);
       setCards(cardsFiltered);
       setTags(
         ((tagsData || []) as any[]).map((t) => ({
@@ -287,15 +307,26 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
   };
 
   useEffect(() => {
-    const firstWs = workspaces?.[0]?.workspace_id || '';
-    if (!selectedWorkspaceId && firstWs) {
-      setSelectedWorkspaceId(firstWs);
+    // Prioriza o workspace do contexto; se faltar, usa o primeiro disponível das props ou contexto.
+    const fallbackWs =
+      selectedWorkspace?.workspace_id ||
+      workspaces?.[0]?.workspace_id ||
+      ctxWorkspaces?.[0]?.workspace_id ||
+      '';
+    if (fallbackWs && fallbackWs !== selectedWorkspaceId) {
+      setSelectedWorkspaceId(fallbackWs);
     }
-  }, [workspaces, selectedWorkspaceId]);
+  }, [selectedWorkspace, workspaces, ctxWorkspaces, selectedWorkspaceId]);
 
   useEffect(() => {
     if (selectedWorkspaceId) {
-      fetchPipelines(selectedWorkspaceId);
+      // Pipelines: usar contexto se já carregado; caso contrário, buscar direto.
+      if (ctxPipelines && ctxPipelines.length > 0) {
+        setPipelines(ctxPipelines);
+      } else {
+        fetchPipelines(selectedWorkspaceId);
+        fetchCtxPipelines?.(); // dispara fetch global do contexto
+      }
       fetchTags(selectedWorkspaceId);
       fetchAgents(selectedWorkspaceId);
       // Reset filtros quando workspace mudar
@@ -306,7 +337,7 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
     } else {
       setPipelines([]);
       setAvailableTags([]);
-      fetchAgents(null); // Busca todos os usuários se não há workspace
+      setAgents([]);
       setSidebarFilters([]);
     }
   }, [selectedWorkspaceId]);
@@ -357,12 +388,17 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
     return Array.from(map.entries()).map(([name, value]) => ({ name, value }));
   }, [cards]);
 
-  const calls = activities.filter((a) => (a.type || '').toLowerCase().includes('ligação'));
+  const calls = activities.filter((a) => (a.type || '').toLowerCase().includes('ligação') || (a.type || '').toLowerCase().includes('chamada'));
   const callsAttended = calls.filter((a) => (a.status || '').toLowerCase().includes('atendida'));
-  const callsNotAttended = calls.filter((a) => (a.status || '').toLowerCase().includes('não atendida'));
+  const callsNotAttended = calls.filter((a) => (a.status || '').toLowerCase().includes('não atendida') || (a.status || '').toLowerCase().includes('nao atendida'));
   const callsApproached = calls.filter((a) => (a.status || '').toLowerCase().includes('abordada'));
-  const messages = activities.filter((a) => (a.type || '').toLowerCase().includes('mensagem'));
-  const meetings = activities.filter((a) => (a.type || '').toLowerCase().includes('reunião'));
+  const callsFollowUp = calls.filter((a) => (a.status || '').toLowerCase().includes('follow') || (a.type || '').toLowerCase().includes('follow'));
+  const messages = activities.filter((a) => (a.type || '').toLowerCase().includes('mensagem') || (a.type || '').toLowerCase().includes('whatsapp'));
+  const whatsappSent = activities.filter((a) => (a.type || '').toLowerCase().includes('whatsapp'));
+  const meetings = activities.filter((a) => (a.type || '').toLowerCase().includes('reunião') || (a.type || '').toLowerCase().includes('reuniao'));
+  const meetingsDone = meetings.filter((a) => (a.status || '').toLowerCase().includes('realizada'));
+  const meetingsNotDone = meetings.filter((a) => (a.status || '').toLowerCase().includes('não realizada') || (a.status || '').toLowerCase().includes('nao realizada'));
+  const meetingsRescheduled = meetings.filter((a) => (a.status || '').toLowerCase().includes('reagendada') || (a.type || '').toLowerCase().includes('reagenda'));
   const proposals = activities.filter((a) => (a.type || '').toLowerCase().includes('proposta'));
   const activeConversations = messages.reduce((set, m) => {
     if (m.contact_id) set.add(m.contact_id);
@@ -391,9 +427,13 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
           callsAttended: 0,
           callsNotAttended: 0,
           callsApproached: 0,
+          callsFollowUp: 0,
           messages: 0,
+          whatsappSent: 0,
           meetings: 0,
           meetingsDone: 0,
+          meetingsNotDone: 0,
+          meetingsRescheduled: 0,
           proposals: 0,
           sales: 0,
           revenue: 0,
@@ -407,24 +447,41 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
       ensure(c.responsible_id).leads += 1;
     });
 
-    calls.forEach((c) => {
-      const target = ensure(c.responsible_id);
-      target.calls += 1;
-      if ((c.status || '').toLowerCase().includes('atendida')) target.callsAttended += 1;
-      if ((c.status || '').toLowerCase().includes('não atendida')) target.callsNotAttended += 1;
-      if ((c.status || '').toLowerCase().includes('abordada')) target.callsApproached += 1;
+    activities.forEach((act) => {
+      const target = ensure(act.responsible_id);
+      const t = (act.type || '').toLowerCase();
+      const s = (act.status || '').toLowerCase();
+
+      // Mensagens / WhatsApp
+      if (t.includes('mensagem') || t.includes('whatsapp')) {
+        target.messages += 1;
+        if (t.includes('whatsapp') || s.includes('whatsapp')) target.whatsappSent += 1;
+      }
+
+      // Ligações
+      if (t.includes('ligação') || t.includes('chamada')) {
+        target.calls += 1;
+        if (s.includes('atendida')) target.callsAttended += 1;
+        if (s.includes('não atendida') || s.includes('nao atendida')) target.callsNotAttended += 1;
+        if (s.includes('abordada') || t.includes('abordada')) target.callsApproached += 1;
+        if (s.includes('follow') || t.includes('follow')) target.callsFollowUp += 1;
+      }
+
+      // Reuniões
+      if (t.includes('reunião') || t.includes('reuniao')) {
+        target.meetings += 1;
+        if (s.includes('realizada')) target.meetingsDone += 1;
+        if (s.includes('não realizada') || s.includes('nao realizada')) target.meetingsNotDone += 1;
+        if (s.includes('reagendada') || t.includes('reagenda')) target.meetingsRescheduled += 1;
+      }
+
+      // Propostas (atividades)
+      if (t.includes('proposta')) {
+        target.proposals += 1;
+      }
     });
 
-    messages.forEach((m) => {
-      ensure(m.responsible_id).messages += 1;
-    });
-
-    meetings.forEach((m) => {
-      const target = ensure(m.responsible_id);
-      target.meetings += 1;
-      if ((m.status || '').toLowerCase().includes('realizada')) target.meetingsDone += 1;
-    });
-
+    // Propostas provenientes da coleção dedicada (compatibilidade)
     proposals.forEach((p) => {
       ensure(p.responsible_id).proposals += 1;
     });
@@ -451,7 +508,23 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
   }, [teamAggregates]);
 
   const rankingTrabalho = useMemo<any[]>(() => {
-    return [...teamAggregates].sort((a, b) => (b.calls || 0) - (a.calls || 0));
+    const list = [...teamAggregates].map((row) => {
+      const total =
+        (row.calls || 0) +
+        (row.callsAttended || 0) +
+        (row.callsNotAttended || 0) +
+        (row.callsApproached || 0) +
+        (row.callsFollowUp || 0) +
+        (row.messages || 0) +
+        (row.whatsappSent || 0) +
+        (row.meetings || 0) +
+        (row.meetingsDone || 0) +
+        (row.meetingsNotDone || 0) +
+        (row.meetingsRescheduled || 0) +
+        (row.proposals || 0);
+      return { ...row, total };
+    });
+    return list.sort((a, b) => (b.total || 0) - (a.total || 0));
   }, [teamAggregates]);
 
   const periodLabel =
@@ -481,9 +554,9 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
         {/* Corpo */}
         <div className="flex-1 overflow-auto bg-[#e6e6e6] dark:bg-[#050505] relative">
           <div className="inline-block min-w-full align-middle bg-white dark:bg-[#111111]">
-            <div className="grid grid-cols-1 lg:grid-cols-[300px,1fr] gap-3 p-4 min-h-0">
-              {/* Filtros avançados (sidebar) */}
-              <div className="border border-[#d4d4d4] dark:border-gray-800 bg-white dark:bg-[#0f0f0f] shadow-sm p-3 h-full min-h-0">
+            <div className="p-4 space-y-4">
+              {/* Filtros avançados no topo */}
+              <div className="border border-[#d4d4d4] dark:border-gray-800 bg-white dark:bg-[#0f0f0f] shadow-sm">
                 <QueryBuilderSidebar
                   pipelines={pipelines || []}
                   tags={availableTags || []}
@@ -702,26 +775,48 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
               <thead className="bg-gray-100 dark:bg-[#1a1a1a] text-gray-700 dark:text-gray-200">
                 <tr>
                   <th className="px-3 py-2 text-left">Usuário</th>
-                  <th className="px-3 py-2 text-right">Ligações realizadas</th>
-                  <th className="px-3 py-2 text-right">Ligações atendidas</th>
-                  <th className="px-3 py-2 text-right">Ligações abordadas</th>
-                  <th className="px-3 py-2 text-right">Reuniões agendadas</th>
-                  <th className="px-3 py-2 text-right">Reuniões realizadas</th>
-                  <th className="px-3 py-2 text-right">Propostas enviadas</th>
+                  <th className="px-3 py-2 text-right">Msgs</th>
+                  <th className="px-3 py-2 text-right">WhatsApp</th>
+                  <th className="px-3 py-2 text-right">Lig. realizadas</th>
+                  <th className="px-3 py-2 text-right">Lig. atendidas</th>
+                  <th className="px-3 py-2 text-right">Lig. não atendidas</th>
+                  <th className="px-3 py-2 text-right">Lig. abordadas</th>
+                  <th className="px-3 py-2 text-right">Lig. follow-up</th>
+                  <th className="px-3 py-2 text-right">Reun. agendadas</th>
+                  <th className="px-3 py-2 text-right">Reun. realizadas</th>
+                  <th className="px-3 py-2 text-right">Reun. não realizadas</th>
+                  <th className="px-3 py-2 text-right">Reun. reagendadas</th>
+                  <th className="px-3 py-2 text-right">Propostas</th>
+                  <th className="px-3 py-2 text-right">Total</th>
                 </tr>
               </thead>
               <tbody>
-                {rankingTrabalho.map((row) => (
-                  <tr key={row.id} className="border-t border-gray-200 dark:border-gray-800">
-                    <td className="px-3 py-2">{row.name}</td>
-                    <td className="px-3 py-2 text-right">{row.calls}</td>
-                    <td className="px-3 py-2 text-right">{row.callsAttended}</td>
-                    <td className="px-3 py-2 text-right">{row.callsApproached}</td>
-                    <td className="px-3 py-2 text-right">{row.meetings}</td>
-                    <td className="px-3 py-2 text-right">{row.meetingsDone}</td>
-                    <td className="px-3 py-2 text-right">{row.proposals}</td>
+                {rankingTrabalho.length === 0 ? (
+                  <tr className="border-t border-gray-200 dark:border-gray-800">
+                    <td className="px-3 py-3 text-center text-gray-500 dark:text-gray-300" colSpan={14}>
+                      Nenhum dado encontrado para os filtros/período selecionados.
+                    </td>
                   </tr>
-                ))}
+                ) : (
+                  rankingTrabalho.map((row) => (
+                    <tr key={row.id} className="border-t border-gray-200 dark:border-gray-800">
+                      <td className="px-3 py-2">{row.name}</td>
+                      <td className="px-3 py-2 text-right">{row.messages}</td>
+                      <td className="px-3 py-2 text-right">{row.whatsappSent}</td>
+                      <td className="px-3 py-2 text-right">{row.calls}</td>
+                      <td className="px-3 py-2 text-right">{row.callsAttended}</td>
+                      <td className="px-3 py-2 text-right">{row.callsNotAttended}</td>
+                      <td className="px-3 py-2 text-right">{row.callsApproached}</td>
+                      <td className="px-3 py-2 text-right">{row.callsFollowUp}</td>
+                      <td className="px-3 py-2 text-right">{row.meetings}</td>
+                      <td className="px-3 py-2 text-right">{row.meetingsDone}</td>
+                      <td className="px-3 py-2 text-right">{row.meetingsNotDone}</td>
+                      <td className="px-3 py-2 text-right">{row.meetingsRescheduled}</td>
+                      <td className="px-3 py-2 text-right">{row.proposals}</td>
+                      <td className="px-3 py-2 text-right font-semibold">{row.total}</td>
+                    </tr>
+                  ))
+                )}
               </tbody>
             </table>
           </div>
