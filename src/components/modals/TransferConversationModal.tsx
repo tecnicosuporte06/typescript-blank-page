@@ -270,9 +270,9 @@ export function TransferConversationModal({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-[480px] p-0 gap-0 border border-[#d4d4d4] dark:border-gray-700 bg-white dark:bg-[#0f0f0f] shadow-sm rounded-none">
-        <DialogHeader className="bg-primary text-primary-foreground p-4 m-0 rounded-none border-b border-[#d4d4d4] dark:border-gray-700">
-          <DialogTitle className="text-base font-bold text-primary-foreground">Transferir Atendimento</DialogTitle>
-          <DialogDescription className="text-primary-foreground/90 text-xs">
+        <DialogHeader className="bg-primary text-primary-foreground p-4 m-0 rounded-none border-b border-[#d4d4d4] dark:border-gray-700 dark:bg-transparent">
+          <DialogTitle className="text-base font-bold text-primary-foreground dark:text-white">Transferir Atendimento</DialogTitle>
+          <DialogDescription className="text-primary-foreground/90 text-xs dark:text-gray-300">
             Escolha o novo responsável, fila (opcional) e conexão para este
             atendimento.
           </DialogDescription>

@@ -149,8 +149,8 @@ export function AssignmentHistoryModal({
   return (
     <Dialog open={isOpen} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-2xl p-0 gap-0 border border-[#d4d4d4] bg-white shadow-sm rounded-none dark:bg-[#1f1f1f] dark:border-gray-700">
-        <DialogHeader className="bg-primary text-primary-foreground p-4 m-0 rounded-none border-b border-[#d4d4d4] dark:border-gray-700">
-          <DialogTitle className="flex items-center gap-2 text-base font-bold text-primary-foreground">
+        <DialogHeader className="bg-primary text-primary-foreground p-4 m-0 rounded-none border-b border-[#d4d4d4] dark:border-gray-700 dark:bg-transparent">
+          <DialogTitle className="flex items-center gap-2 text-base font-bold text-primary-foreground dark:text-white">
             <Clock className="h-5 w-5" />
             Histórico de Agentes e Transferências
           </DialogTitle>

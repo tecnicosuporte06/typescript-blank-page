@@ -1070,15 +1070,14 @@ const [selectedCardForProduct, setSelectedCardForProduct] = useState<{
     fetchAgentId();
   }, [selectedConversationForAgent]);
 
-  // ✅ Sensor otimizado para drag fluido e natural
+  // ✅ Sensor otimizado para drag fluido e natural (Press and Hold)
   const sensors = useSensors(
     useSensor(PointerSensor, {
       activationConstraint: {
-        // ✅ Menor distância = mais responsivo
-        distance: 5,
-        // ✅ Delay maior para diferenciar click de drag (press and hold)
+        // ✅ Delay para diferenciar click de drag (press and hold)
         delay: 250,
-        tolerance: 5,
+        // ✅ Tolerância de movimento durante o delay para não cancelar o drag por tremores
+        tolerance: 10,
       }
     })
   );
@@ -2663,7 +2662,7 @@ const [selectedCardForProduct, setSelectedCardForProduct] = useState<{
               const primaryProduct = productRelations.length > 0 ? productRelations[0] : null;
               const productId = primaryProduct?.product_id || primaryProduct?.product?.id || null;
               const productName = primaryProduct?.product?.name || null;
-              const productValue = primaryProduct?.total_value ?? primaryProduct?.unit_value ?? primaryProduct?.product?.value ?? (card as any).product_value ?? (card as any).total_value ?? null;
+              const productValue = primaryProduct?.total_value ?? primaryProduct?.unit_value ?? primaryProduct?.product?.value ?? (activeCard as any).product_value ?? (activeCard as any).total_value ?? null;
               const effectiveValue = activeCard.value || productValue || 0;
               const deal: Deal = {
                 id: activeCard.id,

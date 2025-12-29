@@ -281,12 +281,12 @@ export function AdicionarEditarUsuarioModal({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto p-0 gap-0 border border-[#d4d4d4] bg-white dark:bg-[#1f1f1f] dark:border-gray-700 shadow-sm rounded-none">
-        <DialogHeader className="bg-primary p-4 rounded-none m-0 border-b border-[#d4d4d4] dark:border-gray-700">
-          <DialogTitle className="flex items-center gap-2 text-primary-foreground text-base font-bold">
-            <User className="w-4 h-4 text-primary-foreground" />
+        <DialogHeader className="bg-primary p-4 rounded-none m-0 border-b border-[#d4d4d4] dark:border-gray-700 dark:bg-transparent">
+          <DialogTitle className="flex items-center gap-2 text-primary-foreground text-base font-bold dark:text-white">
+            <User className="w-4 h-4 text-primary-foreground dark:text-white" />
             {isEditing ? 'Editar Usuário' : 'Adicionar Usuário'}
           </DialogTitle>
-          <DialogDescription className="text-xs text-primary-foreground/80 mt-1">
+          <DialogDescription className="text-xs text-primary-foreground/80 mt-1 dark:text-gray-300">
             {isEditing ? 'Modifique os dados do usuário e selecione a empresa.' : 'Preencha os dados do novo usuário e selecione a empresa.'}
           </DialogDescription>
         </DialogHeader>
