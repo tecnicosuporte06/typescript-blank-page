@@ -273,7 +273,7 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
       // @ts-ignore simplificando tipagem dinâmica
       let cardsQuery = supabase
         .from('pipeline_cards')
-        .select('id, contact_id, value, status, workspace_id, pipeline_id, responsible_user_id, created_at, pipeline_cards_products(product_id)');
+        .select('id, contact_id, value, status, workspace_id, pipeline_id, responsible_user_id, created_at, pipeline_cards_products(product_id, quantity, total_value)');
       // Removido filtro de data para cards para garantir que negócios ganhos apareçam independente da data de criação,
       // pois o status de "ganho" reflete o estado atual do negócio no funil.
 
@@ -627,12 +627,38 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
 
   const teamAggregates = useMemo<any[]>(() => {
     const agg: Record<string, any> = {};
+    
+    // 1. Inicializar com TODOS os agentes do workspace
+    agents.forEach((a) => {
+      agg[a.id] = {
+        id: a.id,
+        name: a.name,
+        leads: 0,
+        calls: 0,
+        callsAttended: 0,
+        callsNotAttended: 0,
+        callsApproached: 0,
+        callsFollowUp: 0,
+        messages: 0,
+        whatsappSent: 0,
+        meetings: 0,
+        meetingsDone: 0,
+        meetingsNotDone: 0,
+        meetingsRescheduled: 0,
+        proposals: 0,
+        sales: 0,
+        revenue: 0,
+        products: 0,
+      };
+    });
+
+    // Entrada para "Agente IA" se houver dados atribuídos a IA (null)
     const ensure = (id: string | null | undefined) => {
       const key = id || 'ia';
       if (!agg[key]) {
         agg[key] = {
           id: key,
-          name: agentMap.get(key || '')?.name || (key === 'ia' ? 'Agente IA' : 'Sem responsável'),
+          name: key === 'ia' ? 'Agente IA' : 'Sem responsável',
           leads: 0,
           calls: 0,
           callsAttended: 0,
@@ -703,12 +729,16 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
         const target = ensure(c.responsible_user_id);
         target.sales += 1;
         target.revenue += c.value || 0;
-        target.products += (c.products || []).length;
+        
+        // Calcular quantidade real de produtos vendidos
+        const cardProducts = Array.isArray(c.products) ? c.products : [];
+        const totalProductsQuantity = cardProducts.reduce((sum, pcp: any) => sum + (pcp.quantity || 1), 0);
+        target.products += totalProductsQuantity;
       }
     });
 
     return Object.values(agg);
-  }, [agents, agentMap, contacts, calls, callsApproached, callsAttended, callsNotAttended, messages, meetings, proposals, cards]);
+  }, [agents, contacts, calls, callsApproached, callsAttended, callsNotAttended, messages, meetings, proposals, cards]);
 
   const rankingVendas = useMemo<any[]>(() => {
     const list = [...teamAggregates].sort((a, b) => (b.revenue || 0) - (a.revenue || 0));
@@ -1041,16 +1071,24 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
                 </tr>
               </thead>
               <tbody>
-                {rankingVendas.map((row) => (
-                  <tr key={row.id} className="border-t border-gray-200 dark:border-gray-800">
-                    <td className="px-3 py-2">{row.name}</td>
-                    <td className="px-3 py-2 text-right">{row.revenue.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</td>
-                    <td className="px-3 py-2 text-right">{row.sales}</td>
-                    <td className="px-3 py-2 text-right">{row.products}</td>
-                    <td className="px-3 py-2 text-right">{row.pa}</td>
-                    <td className="px-3 py-2 text-right">{row.ticket.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</td>
+                {rankingVendas.length === 0 ? (
+                  <tr className="border-t border-gray-200 dark:border-gray-800">
+                    <td className="px-3 py-3 text-center text-gray-500 dark:text-gray-300" colSpan={6}>
+                      Nenhum dado encontrado para os filtros/período selecionados.
+                    </td>
                   </tr>
-                ))}
+                ) : (
+                  rankingVendas.map((row) => (
+                    <tr key={row.id} className="border-t border-gray-200 dark:border-gray-800">
+                      <td className="px-3 py-2">{row.name}</td>
+                      <td className="px-3 py-2 text-right">{row.revenue.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</td>
+                      <td className="px-3 py-2 text-right">{row.sales}</td>
+                      <td className="px-3 py-2 text-right">{row.products}</td>
+                      <td className="px-3 py-2 text-right">{row.pa}</td>
+                      <td className="px-3 py-2 text-right">{row.ticket.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</td>
+                    </tr>
+                  ))
+                )}
               </tbody>
             </table>
           </div>
