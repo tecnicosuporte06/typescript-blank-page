@@ -46,6 +46,7 @@ export interface PipelineColumn {
   order_position: number;
   created_at: string;
   permissions?: string[]; // Array de user_ids que podem ver esta coluna
+  view_all_deals_permissions?: string[]; // Array de user_ids que podem ver todos os negócios desta coluna
 }
 
 export interface PipelineCard {
@@ -215,7 +216,29 @@ export function PipelinesProvider({ children }: { children: React.ReactNode }) {
       });
 
       if (error) throw error;
-      setColumns(data || []);
+      
+      // Normalizar view_all_deals_permissions para array de strings
+      const normalizedColumns = (data || []).map((col: any) => {
+        const permissions = Array.isArray(col.view_all_deals_permissions) 
+          ? col.view_all_deals_permissions.map((p: any) => String(p)).filter(Boolean)
+          : [];
+        
+        // Log de debug para verificar permissões carregadas
+        if (permissions.length > 0) {
+          console.log('📋 [fetchColumns] Coluna com permissões:', {
+            columnId: col.id,
+            columnName: col.name,
+            permissions
+          });
+        }
+        
+        return {
+          ...col,
+          view_all_deals_permissions: permissions
+        };
+      });
+      
+      setColumns(normalizedColumns);
     } catch (error) {
       console.error('Error fetching columns:', error);
       toast({
@@ -705,18 +728,52 @@ export function PipelinesProvider({ children }: { children: React.ReactNode }) {
   const getCardsByColumn = useCallback((columnId: string) => {
     if (!selectedPipeline) return [];
     
+    // Buscar informações do usuário atual
+    const userData = localStorage.getItem('currentUser');
+    const currentUserData = userData ? JSON.parse(userData) : null;
+    const currentUserId = currentUserData?.id;
+    
+    // Buscar a coluna para verificar permissões
+    const column = columns.find(col => col.id === columnId);
+    
+    // Verificar permissões com comparação mais robusta (string e UUID)
+    const viewAllPermissions = column?.view_all_deals_permissions || [];
+    const hasColumnPermission = viewAllPermissions.some((permUserId: string) => {
+      // Comparar como string para garantir match
+      return String(permUserId) === String(currentUserId);
+    });
+    
+    // Log de debug
+    if (userRole === 'user' && column) {
+      console.log('🔍 [getCardsByColumn] Verificando permissões:', {
+        columnId,
+        columnName: column.name,
+        currentUserId,
+        viewAllPermissions,
+        hasColumnPermission,
+        totalCards: cards.filter(c => c.column_id === columnId).length
+      });
+    }
+    
     // Primeiro filtra por coluna e permissões
     const filteredCards = cards.filter(card => {
       // Filtro básico por coluna
       if (card.column_id !== columnId) return false;
       
-      // Buscar informações do usuário atual
-      const userData = localStorage.getItem('currentUser');
-      const currentUserData = userData ? JSON.parse(userData) : null;
-      const currentUserId = currentUserData?.id;
-      
       // Se é um usuário comum (não master/admin), aplicar filtros de responsabilidade
       if (userRole === 'user') {
+        // Se o usuário tem permissão para ver todos os negócios desta coluna, permitir acesso
+        if (hasColumnPermission) {
+          console.log('✅ [getCardsByColumn] Usuário tem permissão na coluna para ver todos os negócios:', {
+            cardId: card.id,
+            columnId,
+            columnName: column?.name,
+            currentUserId
+          });
+          return true;
+        }
+        
+        // Caso contrário, aplicar regra padrão:
         // Usuários só podem ver:
         // 1. Cards não atribuídos (responsible_user_id é null/undefined)
         // 2. Cards atribuídos a eles mesmos
@@ -770,7 +827,7 @@ export function PipelinesProvider({ children }: { children: React.ReactNode }) {
     }
 
     return deduplicatedCards;
-  }, [cards, userRole, selectedPipeline]);
+  }, [cards, userRole, selectedPipeline, columns]);
 
   // Handlers para eventos realtime
   const handleCardInsert = useCallback(async (newCard: PipelineCard) => {

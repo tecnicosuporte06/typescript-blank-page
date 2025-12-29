@@ -241,15 +241,15 @@ export function Sidebar({
           isCollapsed ? "justify-center p-2" : "gap-2 px-3 py-1.5",
           "text-sm font-medium rounded-none", // Excel-like typography
           isActive 
-            ? "bg-[#FEF3C7] border-gray-300 text-black font-bold shadow-sm z-10 dark:bg-gray-700 dark:border-gray-600 dark:text-white" // Active look: yellow background, bold black text
-            : "text-gray-700 hover:bg-[#e1e1e1] hover:border-gray-300 hover:z-10 dark:text-gray-300 dark:hover:bg-gray-800 dark:hover:border-gray-600" // Hover look
+            ? "bg-[#FEF3C7] border-gray-300 text-black font-bold shadow-sm z-10" // Active look: yellow background, bold black text
+            : "text-black hover:bg-[#e1e1e1] hover:border-gray-300 hover:z-10" // Hover look
         )}
       >
         {React.cloneElement(item.icon as React.ReactElement, {
           className: cn(
             "transition-all duration-300",
             isCollapsed ? "w-4 h-4" : "w-3.5 h-3.5",
-            isActive ? "text-black dark:text-white" : "text-gray-500 group-hover:text-gray-700 dark:text-gray-400 dark:group-hover:text-gray-200"
+            isActive ? "text-black" : "text-black group-hover:text-black"
           )
         })}
         {!isCollapsed && <span className="truncate">{item.label}</span>}
@@ -299,7 +299,7 @@ export function Sidebar({
       data-sidebar 
       className={cn(
         "flex flex-col m-2 shadow-sm font-sans text-xs transition-all duration-300 ease-in-out relative",
-        "bg-[#f0f0f0] border border-gray-300 dark:bg-[#1a1a1a] dark:border-gray-700", // Excel-like background and border
+        "bg-primary border border-gray-300", // Amarelo igual ao topo, mesma cor em ambos os modos
         isCollapsed ? "w-12" : "w-52" // Compact widths
       )}
     >
@@ -329,30 +329,43 @@ export function Sidebar({
         onClick={onToggleCollapse} 
         className={cn(
           "absolute top-1/2 -right-3 transform -translate-y-1/2",
-          "z-[100] w-6 h-6 flex items-center justify-center",
-          "bg-white border border-gray-300 dark:bg-[#2d2d2d] dark:border-gray-600",
-          "rounded-full shadow-md hover:bg-gray-50 dark:hover:bg-gray-700 transition-all duration-200 group",
+          "z-40 w-6 h-6 flex items-center justify-center",
+          "bg-yellow-400 border border-yellow-500 dark:bg-yellow-500 dark:border-yellow-600",
+          "rounded-full shadow-md hover:bg-yellow-500 dark:hover:bg-yellow-600 transition-all duration-200 group",
           isCollapsed && "rotate-180"
         )}
+        style={{
+          animation: 'pulse-subtle 4s ease-in-out infinite'
+        }}
       >
-        <ChevronLeft className="w-4 h-4 text-gray-600 dark:text-gray-300 group-hover:text-primary transition-colors" />
+        <style>{`
+          @keyframes pulse-subtle {
+            0%, 100% {
+              opacity: 1;
+            }
+            50% {
+              opacity: 0.7;
+            }
+          }
+        `}</style>
+        <ChevronLeft className="w-4 h-4 text-gray-800 dark:text-gray-900 group-hover:text-gray-900 transition-colors" />
       </button>
 
       {/* Workspace Info */}
       {selectedWorkspace && (
         <div className={cn(
-          "flex-shrink-0 border-b border-gray-300 bg-white/50 transition-all duration-300 dark:border-gray-700 dark:bg-[#2d2d2d]",
+          "flex-shrink-0 border-b border-gray-300 bg-primary transition-all duration-300",
           isCollapsed ? 'p-1 flex justify-center' : 'px-3 py-2.5'
         )}>
           <div className="flex items-center gap-2">
-            <Building2 className="w-3.5 h-3.5 text-gray-500 flex-shrink-0 dark:text-gray-400" />
+            <Building2 className="w-3.5 h-3.5 text-black flex-shrink-0" />
             {!isCollapsed && (
               <div className="flex-1 min-w-0">
-                <p className="text-[14px] font-medium text-gray-800 truncate leading-tight dark:text-gray-200">
+                <p className="text-[14px] font-medium text-black truncate leading-tight">
                   {selectedWorkspace.name}
                 </p>
                 {selectedWorkspace.cnpj && (
-                  <p className="text-[9px] text-gray-500 truncate leading-tight dark:text-gray-400">
+                  <p className="text-[9px] text-black truncate leading-tight">
                     {selectedWorkspace.cnpj}
                   </p>
                 )}
@@ -379,7 +392,7 @@ export function Sidebar({
       </nav>
 
       {/* Action Icons */}
-      <div className={cn("flex-shrink-0 border-t border-gray-300 bg-[#e6e6e6] dark:border-gray-700 dark:bg-[#1f1f1f]", isCollapsed ? "p-1" : "p-2")}>
+      <div className={cn("flex-shrink-0 border-t border-gray-300 bg-primary", isCollapsed ? "p-1" : "p-2")}>
         <div className={cn("flex items-center", isCollapsed ? "flex-col gap-2" : "justify-between")}>
           {!isCollapsed && (
             <div className="flex items-center px-1">
@@ -405,8 +418,8 @@ export function Sidebar({
                 <Popover open={isNotificationOpen} onOpenChange={setIsNotificationOpen}>
                   <PopoverTrigger asChild>
                      <TooltipTrigger asChild>
-                       <button className="p-1 hover:bg-gray-300 rounded relative transition-all duration-200 dark:hover:bg-gray-700">
-                         <Bell className="w-4 h-4 text-gray-600 dark:text-gray-400" />
+                       <button className="p-1 hover:bg-gray-300 rounded relative transition-all duration-200">
+                         <Bell className="w-4 h-4 text-black" />
                          <Badge 
                            variant="destructive" 
                            className="absolute -top-1 -right-1 w-3.5 h-3.5 p-0 flex items-center justify-center text-[9px] border-0"
@@ -422,8 +435,8 @@ export function Sidebar({
                 </Popover>
               ) : (
                 <TooltipTrigger asChild>
-                  <button className="p-1 hover:bg-gray-300 rounded relative dark:hover:bg-gray-700">
-                    <Bell className="w-4 h-4 text-gray-600 dark:text-gray-400" />
+                  <button className="p-1 hover:bg-gray-300 rounded relative">
+                    <Bell className="w-4 h-4 text-black" />
                   </button>
                 </TooltipTrigger>
               )}
@@ -435,13 +448,13 @@ export function Sidebar({
       </div>
 
       {/* User Info */}
-      <div className={cn("flex-shrink-0 border-t border-gray-300 bg-white dark:border-gray-700 dark:bg-[#1a1a1a]", isCollapsed ? "p-1" : "p-2")}>
+      <div className={cn("flex-shrink-0 border-t border-gray-300 bg-primary", isCollapsed ? "p-1" : "p-2")}>
         <div className={cn("flex items-center", isCollapsed ? "justify-center" : "gap-2")}>
           {isCollapsed ? (
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <button className="w-7 h-7 bg-gray-100 rounded-full flex items-center justify-center hover:bg-gray-200 border border-gray-300 dark:bg-gray-700 dark:border-gray-600">
-                  <User className="w-4 h-4 text-gray-600 dark:text-gray-300" />
+                <button className="w-7 h-7 bg-gray-100 rounded-full flex items-center justify-center hover:bg-gray-200 border border-gray-300">
+                  <User className="w-4 h-4 text-black" />
                 </button>
               </DropdownMenuTrigger>
               <DropdownMenuContent className="z-50 bg-white border border-gray-300 shadow-md dark:bg-[#2d2d2d] dark:border-gray-600" side="right" align="end">
@@ -463,16 +476,16 @@ export function Sidebar({
             </DropdownMenu>
           ) : (
             <>
-              <div className="w-7 h-7 bg-gray-100 rounded-full flex items-center justify-center border border-gray-300 flex-shrink-0 dark:bg-gray-700 dark:border-gray-600">
-                <User className="w-4 h-4 text-gray-600 dark:text-gray-300" />
+              <div className="w-7 h-7 bg-gray-100 rounded-full flex items-center justify-center border border-gray-300 flex-shrink-0">
+                <User className="w-4 h-4 text-black" />
               </div>
               <div className="flex-1 min-w-0">
-                <div className="text-xs font-medium text-gray-800 truncate dark:text-gray-200">{user?.name}</div>
-                <div className="text-[10px] text-gray-500 truncate dark:text-gray-400">{user?.email}</div>
+                <div className="text-xs font-medium text-black truncate">{user?.name}</div>
+                <div className="text-[10px] text-black truncate">{user?.email}</div>
               </div>
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
-                  <button className="p-1 hover:bg-gray-100 rounded text-gray-500 dark:hover:bg-gray-700 dark:text-gray-400">
+                  <button className="p-1 hover:bg-gray-100 rounded text-black">
                     <MoreVertical className="w-3.5 h-3.5" />
                   </button>
                 </DropdownMenuTrigger>

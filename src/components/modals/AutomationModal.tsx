@@ -64,7 +64,7 @@ const ACTION_TYPES = [
   { value: 'send_message', label: 'Enviar mensagem' },
   { value: 'send_funnel', label: 'Enviar funil' },
   { value: 'move_to_column', label: 'Mudar coluna' },
-  { value: 'add_tag', label: 'Adicionar tag' },
+  { value: 'add_tag', label: 'Adicionar etiqueta' },
   { value: 'add_agent', label: 'Adicionar agente de IA' },
   { value: 'remove_agent', label: 'Remover agente de IA' },
 ];

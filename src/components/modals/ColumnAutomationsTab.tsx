@@ -106,8 +106,8 @@ const formatActionLabel = (action: AutomationAction) => {
         : "Mover para coluna";
     case "add_tag":
       return config.tag_name
-        ? `Adicionar tag ${config.tag_name}`
-        : "Adicionar tag";
+        ? `Adicionar etiqueta ${config.tag_name}`
+        : "Adicionar etiqueta";
     case "add_agent":
       return config.agent_name
         ? `Adicionar agente ${config.agent_name}`
@@ -534,7 +534,7 @@ export function ColumnAutomationsTab({
                         <span>Gatilhos</span>
                         <Badge
                           variant="outline"
-                          className={`rounded-none border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300 text-[10px] px-1.5 py-0`}
+                          className={`rounded-none border-0 bg-[#F59E0B]/40 dark:bg-[#F59E0B]/30 text-black dark:text-white text-[10px] px-1.5 py-0`}
                         >
                           {triggersCount}
                         </Badge>
@@ -545,7 +545,7 @@ export function ColumnAutomationsTab({
                             <Badge
                               key={trigger.id || `trigger-${index}`}
                               variant="outline"
-                              className={`border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300 rounded-none text-[10px] font-normal`}
+                              className={`border-0 bg-[#F59E0B]/40 dark:bg-[#F59E0B]/30 text-black dark:text-white rounded-none text-[10px] font-normal`}
                             >
                               {formatTriggerLabel(trigger)}
                             </Badge>
@@ -562,7 +562,7 @@ export function ColumnAutomationsTab({
                         <span>Ações</span>
                         <Badge
                           variant="outline"
-                          className={`rounded-none border-blue-200 dark:border-blue-800 bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 text-[10px] px-1.5 py-0`}
+                          className={`rounded-none border-0 bg-[#3B82F6]/40 dark:bg-[#3B82F6]/30 text-black dark:text-white text-[10px] px-1.5 py-0`}
                         >
                           {actionsCount}
                         </Badge>
@@ -573,7 +573,7 @@ export function ColumnAutomationsTab({
                             <Badge
                               key={action.id || `action-${index}`}
                               variant="outline"
-                              className={`border border-blue-200 dark:border-blue-800 bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 rounded-none text-[10px] font-normal`}
+                              className={`border-0 bg-[#3B82F6]/40 dark:bg-[#3B82F6]/30 text-black dark:text-white rounded-none text-[10px] font-normal`}
                             >
                               {formatActionLabel(action)}
                             </Badge>
