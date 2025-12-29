@@ -1704,11 +1704,11 @@ const [selectedCardForProduct, setSelectedCardForProduct] = useState<{
   }
   
   return (
-    <DndContext 
-      sensors={sensors} 
-      collisionDetection={customCollisionDetection} 
-      onDragStart={handleDragStart} 
-      onDragEnd={handleDragEnd} 
+    <DndContext
+      sensors={sensors}
+      collisionDetection={customCollisionDetection}
+      onDragStart={handleDragStart}
+      onDragEnd={handleDragEnd}
       onDragOver={handleDragOver}
     >
       {/* Excel-like Layout */}
@@ -1999,10 +1999,10 @@ const [selectedCardForProduct, setSelectedCardForProduct] = useState<{
             </div>
         
         {/* Pipeline Scroll Area - Com scroll horizontal independente */}
-        <div className="flex-1 min-h-0 w-full overflow-hidden">
+        <div className="flex-1 min-h-0 w-full overflow-hidden flex flex-col">
               {/* Mobile: Navigation Controls */}
               {isMobile && columns.length > 0 && (
-                <div className={`flex items-center justify-between px-4 py-2 border-b bg-background dark:bg-[#1a1a1a] border-gray-300 dark:border-gray-700`}>
+                <div className={`flex-shrink-0 flex items-center justify-between px-4 py-2 border-b bg-background dark:bg-[#1a1a1a] border-gray-300 dark:border-gray-700`}>
                   <Button
                     variant="ghost"
                     size="icon"
@@ -2031,7 +2031,7 @@ const [selectedCardForProduct, setSelectedCardForProduct] = useState<{
 
               <div
                 ref={!isMobile ? boardContainerRef : undefined}
-                className="h-full px-2 md:px-4 overflow-hidden"
+                className="flex-1 min-h-0 px-2 md:px-4 overflow-hidden"
               >
                   {isLoading ? (
                     <div className="flex gap-4 h-full w-full">
@@ -2123,7 +2123,7 @@ const [selectedCardForProduct, setSelectedCardForProduct] = useState<{
                     <div
                       className={cn(
                         "h-full w-full",
-                        isMobile ? "flex justify-center" : "flex gap-4 items-start"
+                        isMobile ? "flex justify-center" : "flex gap-4 items-stretch"
                       )}
                     >
                       {/* Mobile: Single Column */}
@@ -2155,7 +2155,7 @@ const [selectedCardForProduct, setSelectedCardForProduct] = useState<{
                           
                           return (
                             <DroppableColumn key={column.id} id={`column-${column.id}`}>
-                              <div className="w-full max-w-md h-full flex flex-col pb-2">
+                              <div className="w-full max-w-md h-full min-h-0 flex flex-col pb-2">
                                 <div className={`bg-white dark:bg-[#111111] border border-[#d4d4d4] dark:border-gray-700 border-t-[3px] border-t-[#d4d4d4] dark:border-t-gray-700 shadow-sm h-full flex flex-col overflow-hidden`}>
                                   {/* Column Header */}
                                   <div className={`bg-[#f3f3f3] dark:bg-[#1f1f1f] p-2 flex-shrink-0 border-b border-[#d4d4d4] dark:border-gray-700`}>
@@ -2177,7 +2177,7 @@ const [selectedCardForProduct, setSelectedCardForProduct] = useState<{
                                   </div>
 
                                   {/* Cards Area */}
-                                  <div className={`flex-1 p-2 overflow-y-auto bg-white dark:bg-[#111111] scrollbar-thin scrollbar-thumb-gray-column scrollbar-track-transparent`}>
+                                  <div className={`flex-1 p-2 overflow-y-auto min-h-0 bg-white dark:bg-[#111111] scrollbar-thin scrollbar-thumb-gray-column scrollbar-track-transparent`}>
                                      <SortableContext items={columnCards.map(card => `card-${card.id}`)} strategy={verticalListSortingStrategy}>
                                        {isLoadingCards ? (
                                          <div className="space-y-3">
@@ -2366,7 +2366,7 @@ const [selectedCardForProduct, setSelectedCardForProduct] = useState<{
                     {/* Coluna individual - responsiva */}
                     <div
                       className={cn(
-                        "flex-shrink-0 h-full flex flex-col pb-2 transition-all duration-200",
+                        "flex-shrink-0 h-full min-h-0 flex flex-col pb-2 transition-all duration-200",
                         isColumnBeingDragged && "scale-[1.02] ring-2 ring-primary/50 shadow-2xl",
                         isColumnDropTarget && "ring-2 ring-primary/40 bg-primary/5"
                       )}

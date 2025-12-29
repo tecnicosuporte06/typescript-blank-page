@@ -105,7 +105,7 @@ const [activityEditForm, setActivityEditForm] = useState({
   type: "Ligação abordada",
   subject: "",
   description: "",
-  priority: "normal",
+  priority: "",
   availability: "livre",
   startDate: new Date(),
   startTime: "13:00",
@@ -186,7 +186,7 @@ const [isMarkingAsLost, setIsMarkingAsLost] = useState(false);
     type: "Ligação abordada",
     subject: "",
     description: "",
-    priority: "normal",
+    priority: "",
     availability: "livre",
     startDate: new Date(),
     startTime: "13:00",
@@ -1213,7 +1213,7 @@ const humanizeLabel = (label: string) => {
         type: "Ligação abordada",
         subject: "",
         description: "",
-        priority: "normal",
+        priority: "",
         availability: "livre",
         startDate: new Date(),
         startTime: "13:00",
@@ -1259,7 +1259,7 @@ const humanizeLabel = (label: string) => {
           type: activity.type || "Ligação abordada",
           subject: activity.subject || "",
           description: activity.description || "",
-          priority: activity.priority || "normal",
+          priority: activity.priority || "",
           availability: activity.availability || "livre",
           startDate: scheduled,
           startTime: formatTime(scheduled),
@@ -3216,20 +3216,20 @@ const humanizeLabel = (label: string) => {
                       </div>
                     </div>
 
-                    {/* Prioridade */}
+                    {/* Qualificação */}
                     <div className="space-y-2">
-                      <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Prioridade</label>
+                      <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Qualificação</label>
                       <Select
-                        value={activityForm.priority}
-                        onValueChange={(value) => setActivityForm({...activityForm, priority: value})}
+                        value={activityForm.priority || undefined}
+                        onValueChange={(value) => setActivityForm({...activityForm, priority: value === "none" ? "" : value})}
                       >
                         <SelectTrigger>
-                          <SelectValue />
+                          <SelectValue placeholder="Escolher qualificação" />
                         </SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="baixa">Baixa</SelectItem>
-                          <SelectItem value="normal">Normal</SelectItem>
-                          <SelectItem value="alta">Alta</SelectItem>
+                          <SelectItem value="none">Escolher qualificação</SelectItem>
+                          <SelectItem value="qualificado">Qualificado</SelectItem>
+                          <SelectItem value="desqualificado">Desqualificado</SelectItem>
                         </SelectContent>
                       </Select>
                     </div>
@@ -3303,7 +3303,7 @@ const humanizeLabel = (label: string) => {
                             type: "Ligação abordada",
                             subject: "",
                             description: "",
-                            priority: "normal",
+                            priority: "",
                             availability: "livre",
                             startDate: new Date(),
                             startTime: "13:00",
@@ -3441,16 +3441,16 @@ const humanizeLabel = (label: string) => {
                             const topPercent = (startTimeInMinutes / totalMinutesInDay) * 100;
                             const heightPercent = (durationMinutes / totalMinutesInDay) * 100;
 
-                            // Cor baseada no tipo ou prioridade
+                            // Cor baseada no tipo ou qualificação
                             const getActivityColor = () => {
                               if (activity.type?.toLowerCase().includes('almoço') || activity.subject?.toLowerCase().includes('almoço')) {
                                 return 'bg-gray-200 dark:bg-gray-700';
                               }
-                              if (activity.priority === 'alta') {
-                                return 'bg-red-500 dark:bg-red-600';
-                              }
-                              if (activity.priority === 'baixa') {
+                              if (activity.priority === 'qualificado') {
                                 return 'bg-green-500 dark:bg-green-600';
+                              }
+                              if (activity.priority === 'desqualificado') {
+                                return 'bg-red-500 dark:bg-red-600';
                               }
                               return 'bg-blue-500 dark:bg-blue-600';
                             };
@@ -3948,18 +3948,18 @@ const humanizeLabel = (label: string) => {
                 </Select>
               </div>
               <div className="space-y-2">
-                  <label className="text-sm font-semibold text-gray-200">Prioridade</label>
+                  <label className="text-sm font-semibold text-gray-200">Qualificação</label>
                 <Select
-                  value={activityEditForm.priority}
-                  onValueChange={(v) => setActivityEditForm({ ...activityEditForm, priority: v })}
+                  value={activityEditForm.priority || undefined}
+                  onValueChange={(v) => setActivityEditForm({ ...activityEditForm, priority: v === "none" ? "" : v })}
                 >
-                    <SelectTrigger className="bg-[#1a1a1a] border-gray-700 h-11 text-gray-100">
-                    <SelectValue placeholder="Prioridade" />
+                  <SelectTrigger className="bg-[#1a1a1a] border-gray-700 h-11 text-gray-100">
+                    <SelectValue placeholder="Escolher qualificação" />
                   </SelectTrigger>
                     <SelectContent className="bg-[#1b1b1b] border-gray-700 text-gray-100">
-                    <SelectItem value="alta">Alta</SelectItem>
-                    <SelectItem value="normal">Normal</SelectItem>
-                    <SelectItem value="baixa">Baixa</SelectItem>
+                    <SelectItem value="none">Escolher qualificação</SelectItem>
+                    <SelectItem value="qualificado">Qualificado</SelectItem>
+                    <SelectItem value="desqualificado">Desqualificado</SelectItem>
                   </SelectContent>
                 </Select>
                 </div>
