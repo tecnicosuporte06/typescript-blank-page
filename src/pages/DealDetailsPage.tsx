@@ -94,6 +94,9 @@ const [manualValue, setManualValue] = useState<string>("");
   // Estados para modal de seleção de coluna
   const [isColumnSelectModalOpen, setIsColumnSelectModalOpen] = useState(false);
   const [selectedColumnId, setSelectedColumnId] = useState<string>("");
+  const [selectedPipelineId, setSelectedPipelineId] = useState<string>("");
+  const [availablePipelines, setAvailablePipelines] = useState<any[]>([]);
+  const [isLoadingPipelines, setIsLoadingPipelines] = useState(false);
   
   // Estado para popover de ações do card
   const [isCardActionsPopoverOpen, setIsCardActionsPopoverOpen] = useState(false);
@@ -482,11 +485,14 @@ const humanizeLabel = (label: string) => {
     }
   }, [cardId, getHeaders, effectiveWorkspaceId, navigate, toast]);
 
-  // Função para mover card para outra coluna
-  const handleMoveCardToColumn = useCallback(async (newColumnId: string) => {
-    if (!cardId || !newColumnId || newColumnId === cardData?.column_id) {
+  // Função para mover card para outro pipeline/coluna
+  const handleMoveCardToColumn = useCallback(async (newPipelineId: string, newColumnId: string) => {
+    if (!cardId || !newPipelineId || !newColumnId) {
       return;
     }
+    const isSamePipeline = newPipelineId === cardData?.pipeline_id;
+    const isSameColumn = newColumnId === cardData?.column_id;
+    if (isSamePipeline && isSameColumn) return;
 
     try {
       const headers = getHeaders();
@@ -499,7 +505,7 @@ const humanizeLabel = (label: string) => {
         {
           method: 'PUT',
           headers,
-          body: { column_id: newColumnId }
+          body: { pipeline_id: newPipelineId, column_id: newColumnId }
         }
       );
 
@@ -507,7 +513,7 @@ const humanizeLabel = (label: string) => {
 
       toast({
         title: "Card movido",
-        description: "O card foi movido para a nova coluna com sucesso.",
+        description: "O card foi movido com sucesso.",
       });
 
       // Recarregar dados do card
@@ -521,7 +527,7 @@ const humanizeLabel = (label: string) => {
         variant: "destructive"
       });
     }
-  }, [cardId, cardData?.column_id, getHeaders, fetchCardData, toast]);
+  }, [cardId, cardData?.pipeline_id, cardData?.column_id, getHeaders, fetchCardData, toast]);
 
   useEffect(() => {
     fetchCardData();
@@ -694,8 +700,37 @@ const humanizeLabel = (label: string) => {
     calculateOverview();
   }, [cardData, activities, users]);
 
-  const { columns } = usePipelineColumns(pipelineData?.id || null, effectiveWorkspaceId);
+  const { columns } = usePipelineColumns(selectedPipelineId || pipelineData?.id || null, effectiveWorkspaceId);
   const [timeInColumns, setTimeInColumns] = useState<Record<string, number>>({});
+
+  // Carregar pipelines do workspace (para permitir mover o card entre pipelines)
+  useEffect(() => {
+    const fetchPipelines = async () => {
+      if (!effectiveWorkspaceId || !isColumnSelectModalOpen) return;
+      try {
+        setIsLoadingPipelines(true);
+        const { data, error } = await supabase
+          .from('pipelines')
+          .select('id, name, is_active')
+          .eq('workspace_id', effectiveWorkspaceId)
+          .order('name', { ascending: true });
+        if (error) throw error;
+        setAvailablePipelines((data || []).filter((p: any) => p.is_active));
+      } catch (e) {
+        console.error('Erro ao buscar pipelines:', e);
+      } finally {
+        setIsLoadingPipelines(false);
+      }
+    };
+    fetchPipelines();
+  }, [effectiveWorkspaceId, isColumnSelectModalOpen]);
+
+  // Preselecionar pipeline/coluna quando abrir o popover
+  useEffect(() => {
+    if (!isColumnSelectModalOpen) return;
+    setSelectedPipelineId(cardData?.pipeline_id || pipelineData?.id || "");
+    setSelectedColumnId(cardData?.column_id || "");
+  }, [isColumnSelectModalOpen, cardData?.pipeline_id, cardData?.column_id, pipelineData?.id]);
 
   // Verificar se cardId existe antes de renderizar
   if (!cardId) {
@@ -2111,6 +2146,41 @@ const humanizeLabel = (label: string) => {
                     onClick={(e) => e.stopPropagation()}
                   >
                     <div className="space-y-4 min-w-[400px]">
+                      {/* Select do Pipeline */}
+                      <div>
+                        <label className="text-sm font-medium text-gray-700 dark:text-gray-200 mb-2 block">
+                          Pipeline
+                        </label>
+                        <Select
+                          value={selectedPipelineId || ""}
+                          onValueChange={(value) => {
+                            setSelectedPipelineId(value);
+                            setSelectedColumnId("");
+                          }}
+                        >
+                          <SelectTrigger className="w-full rounded-md border border-gray-300 dark:border-gray-600">
+                            <SelectValue placeholder={isLoadingPipelines ? "Carregando pipelines..." : "Selecione um pipeline"}>
+                              {availablePipelines?.find(p => p.id === selectedPipelineId)?.name || pipelineData?.name || 'Selecione um pipeline'}
+                            </SelectValue>
+                          </SelectTrigger>
+                          <SelectContent>
+                            {isLoadingPipelines ? (
+                              <SelectItem value="__loading__" disabled>Carregando...</SelectItem>
+                            ) : availablePipelines && availablePipelines.length > 0 ? (
+                              availablePipelines.map((pipeline) => (
+                                <SelectItem key={pipeline.id} value={pipeline.id}>
+                                  {pipeline.name}
+                                </SelectItem>
+                              ))
+                            ) : (
+                              <SelectItem value="__empty__" disabled>
+                                Nenhum pipeline disponível
+                              </SelectItem>
+                            )}
+                          </SelectContent>
+                        </Select>
+                      </div>
+
                       {/* Select das Colunas do Pipeline */}
                       <Select
                         value={selectedColumnId || ""}
@@ -2119,7 +2189,7 @@ const humanizeLabel = (label: string) => {
                         }}
                       >
                         <SelectTrigger className="w-full rounded-md border border-gray-300 dark:border-gray-600">
-                          <SelectValue placeholder="Selecione uma coluna">
+                          <SelectValue placeholder={selectedPipelineId ? "Selecione uma coluna" : "Selecione um pipeline primeiro"}>
                             {columns?.find(c => c.id === selectedColumnId)?.name || 'Selecione uma coluna'}
                           </SelectValue>
                         </SelectTrigger>
@@ -2201,11 +2271,15 @@ const humanizeLabel = (label: string) => {
                         </Button>
                         <Button
                           onClick={() => {
-                            if (selectedColumnId) {
-                              handleMoveCardToColumn(selectedColumnId);
+                            if (selectedPipelineId && selectedColumnId) {
+                              handleMoveCardToColumn(selectedPipelineId, selectedColumnId);
                             }
                           }}
-                          disabled={!selectedColumnId || selectedColumnId === cardData?.column_id}
+                          disabled={
+                            !selectedPipelineId ||
+                            !selectedColumnId ||
+                            (selectedPipelineId === cardData?.pipeline_id && selectedColumnId === cardData?.column_id)
+                          }
                           className="bg-green-600 hover:bg-green-700 text-white"
                         >
                           Salvar
@@ -4409,7 +4483,7 @@ function HistoryTimelineItem({
               {isEditingNote && (
                 <div className="space-y-2">
                   <textarea
-                    className="w-full min-h-[140px] rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-amber-300 dark:bg-amber-950/20 dark:border-amber-900/30 dark:text-amber-200 dark:focus:ring-amber-800"
+                    className="w-full min-h-[140px] rounded-md border border-gray-300 bg-gray-100 px-3 py-2 text-sm text-black focus:outline-none focus:ring-2 focus:ring-gray-300 dark:bg-[#2d2d2d] dark:border-gray-700 dark:text-white dark:focus:ring-gray-600"
                     value={editingNoteContent}
                     onChange={(e) => setEditingNoteContent(e.target.value)}
                   />

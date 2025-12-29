@@ -74,6 +74,7 @@ import { Switch } from "@/components/ui/switch";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
 import { cn } from "@/lib/utils";
 import { generateRandomId } from "@/lib/generate-random-id";
 
@@ -413,6 +414,9 @@ export function WhatsAppChat({
   }, [selectedConversation?.id]);
   const [quickPhoneNumber, setQuickPhoneNumber] = useState("");
   const [isCreatingQuickConversation, setIsCreatingQuickConversation] = useState(false);
+  const [quickCountryCode, setQuickCountryCode] = useState("55"); // ✅ padrão Brasil
+  const [isCountryCodeOpen, setIsCountryCodeOpen] = useState(false);
+  const [countryCodeSearch, setCountryCodeSearch] = useState("");
   const [showAllQueues, setShowAllQueues] = useState(true);
   const [connectionsOpen, setConnectionsOpen] = useState(false);
   const [showSelectAgentModal, setShowSelectAgentModal] = useState(false);
@@ -1651,22 +1655,52 @@ export function WhatsAppChat({
   const handleCreateQuickConversation = async () => {
     if (!quickPhoneNumber.trim() || isCreatingQuickConversation) return;
 
-    // Validar mínimo de 10 dígitos (DDD + número)
-    if (quickPhoneNumber.length < 10) {
+    const ddiDigits = (quickCountryCode || "").replace(/\D/g, "");
+    const localDigits = (quickPhoneNumber || "").replace(/\D/g, "");
+
+    if (!ddiDigits) {
+      toast({
+        title: "DDI inválido",
+        description: "Selecione um DDI válido (ex: +55, +1, +351).",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    // E.164: country code 1-4 dígitos, total até 15 dígitos
+    if (ddiDigits.length < 1 || ddiDigits.length > 4) {
+      toast({
+        title: "DDI inválido",
+        description: "O DDI deve ter entre 1 e 4 dígitos.",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    if (localDigits.length < 4) {
       toast({
         title: "Número inválido",
-        description: "Por favor, digite um número válido com DDD (mínimo 10 dígitos).",
+        description: "Digite um número válido (mínimo 4 dígitos).",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    if ((ddiDigits + localDigits).length > 15) {
+      toast({
+        title: "Número inválido",
+        description: "O número ultrapassa o limite do padrão internacional (E.164).",
         variant: "destructive"
       });
       return;
     }
     setIsCreatingQuickConversation(true);
     try {
-      // Adicionar +55 ao número
-      const fullPhoneNumber = `+55${quickPhoneNumber}`;
+      // Montar número internacional completo
+      const fullPhoneNumber = `+${ddiDigits}${localDigits}`;
 
       // Parse and validate phone number
-      const phoneNumber = parsePhoneNumber(fullPhoneNumber, 'BR');
+      const phoneNumber = parsePhoneNumber(fullPhoneNumber);
       if (!phoneNumber || !phoneNumber.isValid()) {
         toast({
           title: "Número inválido",
@@ -1699,7 +1733,7 @@ export function WhatsAppChat({
 
       // Call Edge Function to create quick conversation
       console.log('📞 Criando conversa rápida:', {
-        original: quickPhoneNumber,
+        original: fullPhoneNumber,
         formatted: phoneNumber.format('E.164'),
         national: phoneNumber.format('NATIONAL')
       });
@@ -1764,6 +1798,7 @@ export function WhatsAppChat({
         }
       }, 500);
       setQuickPhoneNumber("");
+      setQuickCountryCode("55");
       toast({
         title: "Conversa criada",
         description: `Conversa iniciada com ${phoneNumber.format('INTERNATIONAL')}`
@@ -2460,14 +2495,84 @@ export function WhatsAppChat({
         <div className="p-3 border-t border-[#d4d4d4] bg-gray-50 dark:bg-[#1a1a1a] dark:border-gray-700">
           <div className="flex gap-2">
             <div className="flex-1 flex gap-0 border border-[#d4d4d4] rounded-none bg-white overflow-hidden dark:bg-[#2d2d2d] dark:border-gray-600">
-              {/* Prefixo fixo +55 */}
-              <div className="flex items-center bg-[#f0f0f0] px-3 border-r border-[#d4d4d4] dark:bg-[#1a1a1a] dark:border-gray-600">
-                <span className="text-xs font-bold text-gray-600 dark:text-gray-400">+55</span>
-              </div>
+              {/* DDI (selecionável) */}
+              <Popover open={isCountryCodeOpen} onOpenChange={setIsCountryCodeOpen}>
+                <PopoverTrigger asChild>
+                  <button
+                    type="button"
+                    className="flex items-center bg-[#f0f0f0] px-3 border-r border-[#d4d4d4] dark:bg-[#1a1a1a] dark:border-gray-600"
+                    disabled={isCreatingQuickConversation}
+                  >
+                    <span className="text-xs font-bold text-gray-600 dark:text-gray-300">
+                      +{quickCountryCode}
+                    </span>
+                    <ChevronDown className="ml-2 h-3.5 w-3.5 text-gray-500 dark:text-gray-400" />
+                  </button>
+                </PopoverTrigger>
+                <PopoverContent
+                  className="w-64 p-2 rounded-none border-[#d4d4d4] bg-white dark:bg-[#1b1b1b] dark:border-gray-700"
+                  align="start"
+                  side="top"
+                  sideOffset={8}
+                  onOpenAutoFocus={(e) => e.preventDefault()}
+                >
+                  <Command>
+                    <CommandInput
+                      placeholder="Buscar DDI (ex: 55, 1, 351)"
+                      value={countryCodeSearch}
+                      onValueChange={setCountryCodeSearch}
+                    />
+                    <CommandList className="max-h-56 overflow-y-auto">
+                      <CommandEmpty>Nenhum DDI encontrado</CommandEmpty>
+                      <CommandGroup heading="Sugestões">
+                        {["55", "1", "351", "44", "33", "49", "34", "39", "81", "82", "86", "54", "52", "57", "56"].map((code) => (
+                          <CommandItem
+                            key={code}
+                            value={code}
+                            onSelect={() => {
+                              setQuickCountryCode(code);
+                              setCountryCodeSearch("");
+                              setIsCountryCodeOpen(false);
+                            }}
+                          >
+                            +{code}
+                          </CommandItem>
+                        ))}
+                      </CommandGroup>
+                      <CommandGroup heading="Usar digitado">
+                        {(() => {
+                          const digits = (countryCodeSearch || "").replace(/\D/g, "");
+                          if (!digits) return null;
+                          return (
+                            <CommandItem
+                              value={digits}
+                              onSelect={() => {
+                                setQuickCountryCode(digits);
+                                setCountryCodeSearch("");
+                                setIsCountryCodeOpen(false);
+                              }}
+                            >
+                              +{digits}
+                            </CommandItem>
+                          );
+                        })()}
+                      </CommandGroup>
+                    </CommandList>
+                  </Command>
+                </PopoverContent>
+              </Popover>
               
               {/* Input do número */}
               <div className="relative flex-1">
-                <Input placeholder="21999999999" value={quickPhoneNumber} onChange={e => setQuickPhoneNumber(e.target.value.replace(/\D/g, ''))} onKeyPress={handleQuickConversationKeyPress} className="border-0 focus-visible:ring-0 pr-10 h-8 text-xs rounded-none bg-white shadow-none dark:bg-[#2d2d2d] dark:text-gray-200" disabled={isCreatingQuickConversation} maxLength={11} />
+                <Input
+                  placeholder="Número (sem +)"
+                  value={quickPhoneNumber}
+                  onChange={e => setQuickPhoneNumber(e.target.value.replace(/\D/g, ''))}
+                  onKeyPress={handleQuickConversationKeyPress}
+                  className="border-0 focus-visible:ring-0 pr-10 h-8 text-xs rounded-none bg-white shadow-none dark:bg-[#2d2d2d] dark:text-gray-200"
+                  disabled={isCreatingQuickConversation}
+                  maxLength={15}
+                />
                 <Button variant="ghost" size="icon" className="absolute right-0 top-1/2 transform -translate-y-1/2 h-8 w-8 rounded-none hover:bg-gray-200 dark:hover:bg-gray-700" disabled={!quickPhoneNumber.trim() || isCreatingQuickConversation} onClick={handleCreateQuickConversation}>
                   {isCreatingQuickConversation ? <div className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-primary border-t-transparent" /> : <ArrowRight className="w-3.5 h-3.5 dark:text-gray-400" />}
                 </Button>
@@ -2648,7 +2753,7 @@ export function WhatsAppChat({
                             event.preventDefault();
                             setDeleteDialogOpen(true);
                           }}
-                          className="text-destructive focus:text-destructive rounded-none text-xs font-medium focus:bg-red-50 dark:focus:bg-red-900/30"
+                          className="text-destructive focus:text-destructive rounded-none text-xs font-medium focus:bg-red-50 dark:text-white dark:focus:text-white dark:focus:bg-red-900/30"
                         >
                           Deletar
                         </DropdownMenuItem>
