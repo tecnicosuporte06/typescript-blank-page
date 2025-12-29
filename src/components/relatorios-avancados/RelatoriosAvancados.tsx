@@ -1,5 +1,6 @@
 // @ts-nocheck
 import { useEffect, useMemo, useState } from 'react';
+import { useTheme } from 'next-themes';
 import { Workspace, useWorkspace } from '@/contexts/WorkspaceContext';
 import { usePipelinesContext } from '@/contexts/PipelinesContext';
 import { useAuth } from '@/hooks/useAuth';
@@ -58,6 +59,8 @@ interface TagRecord {
 const pieColors = ['#10B981', '#3B82F6', '#F59E0B', '#EF4444', '#8B5CF6', '#14B8A6', '#6366F1'];
 
 export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProps) {
+  const { theme } = useTheme();
+  const isDark = theme === 'dark';
   const { selectedWorkspace, workspaces: ctxWorkspaces } = useWorkspace();
   const { user, userRole } = useAuth();
   const { pipelines: ctxPipelines, fetchPipelines: fetchCtxPipelines } = usePipelinesContext();
@@ -792,13 +795,13 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
             <Filter className="h-4 w-4" />
             Funil – Indicadores
           </div>
-          <div className="grid grid-cols-1 md:grid-cols-12 gap-3">
-            <Card className="rounded-none border-gray-200 dark:border-gray-700 md:col-span-4">
+          <div className="grid grid-cols-1 md:grid-cols-12 gap-3 items-start">
+            <Card className="rounded-none border-gray-200 dark:border-gray-700 md:col-span-4 h-fit dark:bg-[#1b1b1b]">
               <CardHeader className="py-2 px-3">
                 <CardTitle className="text-xs text-gray-700 dark:text-gray-200">Leads</CardTitle>
               </CardHeader>
               <CardContent className="p-3">
-                <div className="grid grid-cols-1 gap-1 text-[11px]">
+                <div className="grid grid-cols-1 gap-1 text-[11px] text-gray-900 dark:text-gray-100">
                   <div className="flex justify-between border-b border-gray-50 dark:border-gray-800 pb-1"><span>Leads recebidos</span><strong>{leadsReceived}</strong></div>
                   <div className="flex justify-between border-b border-gray-50 dark:border-gray-800 pb-1"><span>Conversas ativas</span><strong>{activeConversations}</strong></div>
                   <div className="flex justify-between border-b border-gray-50 dark:border-gray-800 pb-1"><span>Leads qualificados</span><strong>{leadsQualified}</strong></div>
@@ -810,7 +813,7 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
                 </div>
               </CardContent>
             </Card>
-            <Card className="rounded-none border-gray-200 dark:border-gray-700 md:col-span-8">
+            <Card className="rounded-none border-gray-200 dark:border-gray-700 md:col-span-8 dark:bg-[#1b1b1b]">
               <CardHeader className="py-2 px-3">
                 <CardTitle className="text-xs text-gray-700 dark:text-gray-200">Leads por Etiqueta / Produto</CardTitle>
               </CardHeader>
@@ -827,15 +830,42 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
                           dataKey="value"
                           nameKey="name"
                           outerRadius={85}
-                          label={({ percent }) => `${(percent * 100).toFixed(1)}%`}
-                          labelLine={true}
+                          label={({ cx, cy, midAngle, innerRadius, outerRadius, percent }) => {
+                            const radius = outerRadius * 1.1;
+                            const x = cx + radius * Math.cos(-midAngle * (Math.PI / 180));
+                            const y = cy + radius * Math.sin(-midAngle * (Math.PI / 180));
+                            return (
+                              <text x={x} y={y} fill={isDark ? '#e2e8f0' : '#4b5563'} textAnchor={x > cx ? 'start' : 'end'} dominantBaseline="central" fontSize="10">
+                                {`${(percent * 100).toFixed(1)}%`}
+                              </text>
+                            );
+                          }}
+                          labelLine={{ stroke: isDark ? '#4b5563' : '#d1d5db' }}
                         >
                           {leadsByTag.map((_, i) => (
                             <Cell key={i} fill={pieColors[i % pieColors.length]} />
                           ))}
                         </Pie>
-                        <ReTooltip formatter={(value: number, _, entry: any) => [`${value}`, entry?.name]} />
-                        <Legend verticalAlign="bottom" height={36} iconType="circle" wrapperStyle={{ fontSize: '10px' }} />
+                        <ReTooltip 
+                          formatter={(value: number, _, entry: any) => [`${value}`, entry?.name]}
+                          contentStyle={{ 
+                            backgroundColor: isDark ? '#1b1b1b' : '#fff', 
+                            borderColor: isDark ? '#374151' : '#d4d4d4',
+                            color: isDark ? '#fff' : '#000',
+                            fontSize: '10px',
+                            borderRadius: '0px'
+                          }}
+                          itemStyle={{ color: isDark ? '#e2e8f0' : '#374151' }}
+                        />
+                        <Legend 
+                          verticalAlign="bottom" 
+                          height={36} 
+                          iconType="circle" 
+                          wrapperStyle={{ 
+                            fontSize: '10px',
+                            color: isDark ? '#e2e8f0' : '#4b5563' 
+                          }} 
+                        />
                       </PieChart>
                     </ResponsiveContainer>
                   )}
@@ -852,15 +882,42 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
                           dataKey="value"
                           nameKey="name"
                           outerRadius={85}
-                          label={({ percent }) => `${(percent * 100).toFixed(1)}%`}
-                          labelLine={true}
+                          label={({ cx, cy, midAngle, innerRadius, outerRadius, percent }) => {
+                            const radius = outerRadius * 1.1;
+                            const x = cx + radius * Math.cos(-midAngle * (Math.PI / 180));
+                            const y = cy + radius * Math.sin(-midAngle * (Math.PI / 180));
+                            return (
+                              <text x={x} y={y} fill={isDark ? '#e2e8f0' : '#4b5563'} textAnchor={x > cx ? 'start' : 'end'} dominantBaseline="central" fontSize="10">
+                                {`${(percent * 100).toFixed(1)}%`}
+                              </text>
+                            );
+                          }}
+                          labelLine={{ stroke: isDark ? '#4b5563' : '#d1d5db' }}
                         >
                           {leadsByProduct.map((_, i) => (
                             <Cell key={i} fill={pieColors[(i + 3) % pieColors.length]} />
                           ))}
                         </Pie>
-                        <ReTooltip formatter={(value: number, _, entry: any) => [`${value}`, entry?.name]} />
-                        <Legend verticalAlign="bottom" height={36} iconType="circle" wrapperStyle={{ fontSize: '10px' }} />
+                        <ReTooltip 
+                          formatter={(value: number, _, entry: any) => [`${value}`, entry?.name]}
+                          contentStyle={{ 
+                            backgroundColor: isDark ? '#1b1b1b' : '#fff', 
+                            borderColor: isDark ? '#374151' : '#d4d4d4',
+                            color: isDark ? '#fff' : '#000',
+                            fontSize: '10px',
+                            borderRadius: '0px'
+                          }}
+                          itemStyle={{ color: isDark ? '#e2e8f0' : '#374151' }}
+                        />
+                        <Legend 
+                          verticalAlign="bottom" 
+                          height={36} 
+                          iconType="circle" 
+                          wrapperStyle={{ 
+                            fontSize: '10px',
+                            color: isDark ? '#e2e8f0' : '#4b5563' 
+                          }} 
+                        />
                       </PieChart>
                     </ResponsiveContainer>
                   )}
@@ -888,7 +945,7 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
               { label: '% Perdidos 3 / recebidos', value: conversion(leadsLost3, leadsReceived) },
               { label: '% Perdidos total / recebidos', value: conversion(leadsLostTotal, leadsReceived) },
             ].map((item) => (
-              <Card key={item.label} className="rounded-none border-gray-200 dark:border-gray-700">
+              <Card key={item.label} className="rounded-none border-gray-200 dark:border-gray-700 dark:bg-[#1b1b1b]">
                 <CardContent className="p-3">
                   <div className="text-[11px] text-gray-600 dark:text-gray-300">{item.label}</div>
                   <div className="text-xl font-semibold text-gray-900 dark:text-gray-100">{item.value}%</div>
@@ -955,7 +1012,7 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
               { label: '% Propostas / reuniões realizadas', value: conversion(proposals.length, meetings.filter((m) => m.status === 'realizada').length) },
               { label: '% Vendas / propostas', value: conversion(leadsWon, proposals.length) },
             ].map((item) => (
-              <Card key={item.label} className="rounded-none border-gray-200 dark:border-gray-700">
+              <Card key={item.label} className="rounded-none border-gray-200 dark:border-gray-700 dark:bg-[#1b1b1b]">
                 <CardContent className="p-3">
                   <div className="text-[11px] text-gray-600 dark:text-gray-300">{item.label}</div>
                   <div className="text-xl font-semibold text-gray-900 dark:text-gray-100">{item.value}%</div>
