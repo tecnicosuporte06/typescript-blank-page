@@ -235,6 +235,89 @@ function DraggableDeal({
   const resolvedWorkspaceId = workspaceId ?? selectedWorkspace?.workspace_id ?? null;
   const [isTagPopoverOpen, setIsTagPopoverOpen] = React.useState(false);
   const [searchTerm, setSearchTerm] = React.useState("");
+  const [productPrice, setProductPrice] = useState<number | null>(null);
+  
+  // Buscar preço do produto se houver produto vinculado mas valor zerado
+  useEffect(() => {
+    const fetchProductPrice = async () => {
+      if (!resolvedWorkspaceId || !deal.id) return;
+      
+      console.log('🔍 [DraggableDeal] Buscando preço do produto:', {
+        cardId: deal.id,
+        productId: deal.product_id,
+        productName: deal.product_name,
+        currentValue: deal.value,
+        workspaceId: resolvedWorkspaceId
+      });
+      
+      try {
+        // Primeiro, tentar buscar através de pipeline_cards_products
+        const { data: cardProduct, error: cardProductError } = await supabase
+          .from('pipeline_cards_products')
+          .select(`
+            product_id,
+            total_value,
+            unit_value,
+            products!inner(id, value)
+          `)
+          .eq('pipeline_card_id', deal.id)
+          .eq('workspace_id', resolvedWorkspaceId)
+          .limit(1)
+          .maybeSingle();
+        
+        console.log('📦 [DraggableDeal] Resultado pipeline_cards_products:', {
+          cardProduct,
+          error: cardProductError
+        });
+        
+        if (!cardProductError && cardProduct) {
+          const price = cardProduct.total_value ?? cardProduct.unit_value ?? (cardProduct.products as any)?.value ?? null;
+          console.log('💰 [DraggableDeal] Preço encontrado via pipeline_cards_products:', price);
+          if (price) {
+            setProductPrice(price);
+            return;
+          }
+        }
+        
+        // Se não encontrou via pipeline_cards_products, tentar diretamente pelo product_id do deal
+        if (deal.product_id) {
+          console.log('🔍 [DraggableDeal] Buscando produto diretamente:', deal.product_id);
+          const { data: product, error: productError } = await supabase
+            .from('products')
+            .select('value')
+            .eq('id', deal.product_id)
+            .eq('workspace_id', resolvedWorkspaceId)
+            .maybeSingle();
+          
+          console.log('📦 [DraggableDeal] Resultado products:', {
+            product,
+            error: productError
+          });
+          
+          if (!productError && product?.value) {
+            console.log('💰 [DraggableDeal] Preço encontrado via products:', product.value);
+            setProductPrice(product.value);
+            return;
+          }
+        }
+        
+        // Se não encontrou nada, limpar o estado
+        console.log('⚠️ [DraggableDeal] Nenhum preço encontrado');
+        setProductPrice(null);
+      } catch (error) {
+        console.error('❌ [DraggableDeal] Erro ao buscar preço do produto:', error);
+        setProductPrice(null);
+      }
+    };
+    
+    // Só buscar se o valor estiver zerado e houver produto vinculado
+    if ((!deal.value || deal.value === 0) && (deal.product_id || deal.product_name)) {
+      fetchProductPrice();
+    } else {
+      setProductPrice(null);
+    }
+  }, [deal.id, deal.product_id, deal.product_name, deal.value, resolvedWorkspaceId]);
+  
   const {
     contactTags,
     availableTags,
@@ -400,7 +483,8 @@ function DraggableDeal({
     borderLeftStyle: 'solid'
   };
 
-  const dragHandleProps = !isSelectionMode ? listeners : undefined;
+  const rootDragListeners = !isSelectionMode ? listeners : undefined;
+  const dragHandleProps = rootDragListeners;
 
   // Nome/telefone exibido no card (limpa espaços e trata traço)
   const contactName = (deal.contact?.name || "").trim();
@@ -413,6 +497,7 @@ function DraggableDeal({
         ref={setNodeRef}
         style={cardStyle}
         {...attributes}
+        {...(rootDragListeners ?? {})}
         className={cn(
           "bg-white dark:bg-[#1b1b1b] border-l-4 shadow-sm rounded-none hover:shadow-md transition-all mb-1.5 md:mb-2 relative min-h-[85px] md:min-h-[95px]",
           !isSelectionMode && "cursor-pointer",
@@ -434,7 +519,7 @@ function DraggableDeal({
           <input type="checkbox" checked={isSelected} onChange={e => {
           e.stopPropagation();
           onToggleSelection?.();
-        }} onClick={e => e.stopPropagation()} className="w-5 h-5 cursor-pointer accent-primary" />
+        }} onPointerDown={e => e.stopPropagation()} onClick={e => e.stopPropagation()} className="w-5 h-5 cursor-pointer accent-primary" />
         </div>}
       {/* Header apenas com nome */}
       <div className="flex items-center gap-2 mb-2">
@@ -442,10 +527,8 @@ function DraggableDeal({
             {/* Nome do cliente */}
             <div
               className={cn(
-                "flex items-center gap-1.5 flex-1 min-w-0",
-                !isSelectionMode && "cursor-grab active:cursor-grabbing select-none"
+                "flex items-center gap-1.5 flex-1 min-w-0"
               )}
-              {...dragHandleProps}
             >
               <h3 className={cn("text-xs font-semibold whitespace-normal break-words", "text-foreground dark:text-gray-100")}>
                 {displayContact || deal.name || 'Sem nome'}
@@ -455,18 +538,14 @@ function DraggableDeal({
         </div>
 
         {/* Footer com valor e ícones */}
-        <div className={`flex flex-col items-start gap-2 pt-[1.25rem] border-t border-border/50 dark:border-gray-700/50`}>
-          <span
-            className="text-[11px] font-medium text-black dark:text-white cursor-pointer hover:text-primary/80 transition-colors flex-shrink-0"
-            onClick={(e) => {
-              e.stopPropagation();
-              onValueClick?.(deal);
-            }}
-          >
-            {`R$ ${(
-              (!!deal.product_id && typeof deal.value === 'number' ? deal.value : 0) ||
-              0
-            ).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
+        <div className={`flex flex-col items-start gap-1 pt-[1rem] border-t border-border/50 dark:border-gray-700/50`}>
+          {deal.product_name && (
+            <span className="text-[10px] text-gray-500 dark:text-gray-400 truncate w-full" title={deal.product_name}>
+              {deal.product_name}
+            </span>
+          )}
+          <span className="text-[11px] font-semibold text-black dark:text-white flex-shrink-0">
+            {`R$ ${((productPrice !== null ? productPrice : (typeof deal.value === 'number' ? deal.value : 0))).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
           </span>
 
           <div className="flex items-center gap-2 w-full">
@@ -476,6 +555,7 @@ function DraggableDeal({
               size="icon"
               variant="ghost"
               className={`h-5 w-5 p-0 hover:bg-green-100 dark:hover:bg-green-900 hover:text-green-600 dark:hover:text-green-400 relative`}
+              onPointerDown={e => e.stopPropagation()}
               onClick={async e => {
             e.stopPropagation();
             console.log('🎯 Clique no botão de chat - Deal:', deal);
@@ -545,7 +625,13 @@ function DraggableDeal({
             </Button>
             <Tooltip delayDuration={1000}>
               <TooltipTrigger asChild>
-                <Button size="icon" variant="ghost" className={`h-6 w-6 p-0 hover:bg-blue-100 dark:hover:bg-blue-900 hover:text-blue-600 dark:hover:text-blue-400`} onClick={e => e.stopPropagation()}>
+                <Button 
+                  size="icon" 
+                  variant="ghost" 
+                  className={`h-6 w-6 p-0 hover:bg-blue-100 dark:hover:bg-blue-900 hover:text-blue-600 dark:hover:text-blue-400`} 
+                  onPointerDown={e => e.stopPropagation()}
+                  onClick={e => e.stopPropagation()}
+                >
                   <Avatar className="w-6 h-6">
                     {deal.responsible_avatar ? <AvatarImage src={deal.responsible_avatar} alt={responsibleName || "Responsável"} /> : null}
                     <AvatarFallback className={`bg-muted dark:bg-gray-700 text-muted-foreground dark:text-gray-300 text-[10px] font-medium`}>
@@ -570,6 +656,7 @@ function DraggableDeal({
                       ? "text-green-600 dark:text-green-400"
                       : "text-gray-500 dark:text-gray-400"
                   )} 
+                  onPointerDown={e => e.stopPropagation()}
                   onClick={(e) => {
                     e.preventDefault();
                     e.stopPropagation();
@@ -621,6 +708,7 @@ function DraggableDeal({
                         size="icon" 
                         variant="ghost" 
                         className={cn("h-5 w-5 p-0", iconColor)}
+                        onPointerDown={e => e.stopPropagation()}
                         onClick={(e) => e.stopPropagation()}
                       >
                         <AlertCircle className="w-3.5 h-3.5" />
@@ -987,9 +1075,9 @@ const [selectedCardForProduct, setSelectedCardForProduct] = useState<{
     useSensor(PointerSensor, {
       activationConstraint: {
         // ✅ Menor distância = mais responsivo
-        distance: 3,
-        // ✅ Delay sutil para diferenciar click de drag
-        delay: 50,
+        distance: 5,
+        // ✅ Delay maior para diferenciar click de drag (press and hold)
+        delay: 250,
         tolerance: 5,
       }
     })
@@ -1067,6 +1155,37 @@ const [selectedCardForProduct, setSelectedCardForProduct] = useState<{
       style: 'currency',
       currency: 'BRL'
     }).format(value);
+  };
+
+  const parseNumericValue = (value: unknown): number | null => {
+    if (value === null || value === undefined || value === '') {
+      return null;
+    }
+
+    if (typeof value === 'number') {
+      return Number.isFinite(value) ? value : null;
+    }
+
+    const normalized = String(value).replace(',', '.');
+    const parsed = Number(normalized);
+    return Number.isFinite(parsed) ? parsed : null;
+  };
+
+  // Função auxiliar para calcular o valor efetivo de um card (considerando produtos)
+  const getCardEffectiveValue = (card: any): number => {
+    const cardValue = parseNumericValue(card.value);
+    const productRelations = Array.isArray(card.products) ? card.products : [];
+    const primaryProduct = productRelations.length > 0 ? productRelations[0] : null;
+    const productValue = parseNumericValue(
+      primaryProduct?.total_value ??
+        primaryProduct?.unit_value ??
+        primaryProduct?.product?.value ??
+        card.product_value ??
+        card.total_value ??
+        null
+    );
+
+    return cardValue ?? productValue ?? 0;
   };
 
   // Função para filtrar cards por coluna
@@ -2014,7 +2133,19 @@ const [selectedCardForProduct, setSelectedCardForProduct] = useState<{
                           const column = columns[currentColumnIndex];
                           const columnCards = getFilteredCards(column.id);
                           const calculateColumnTotal = () => {
-                            return columnCards.reduce((total, card) => total + (card.value || 0), 0);
+                            const total = columnCards.reduce((sum, card) => {
+                              const effectiveValue = getCardEffectiveValue(card);
+                              console.log('💰 [Mobile Total] Card:', {
+                                cardId: card.id,
+                                cardValue: card.value,
+                                effectiveValue,
+                                hasProducts: !!card.products,
+                                products: card.products
+                              });
+                              return sum + effectiveValue;
+                            }, 0);
+                            console.log('📊 [Mobile Total] Total calculado:', total, 'para', columnCards.length, 'cards');
+                            return total;
                           };
                           const formatCurrency = (value: number) => {
                             return new Intl.NumberFormat('pt-BR', {
@@ -2076,10 +2207,33 @@ const [selectedCardForProduct, setSelectedCardForProduct] = useState<{
                                            ))}
                                          </div>
                                        ) : columnCards.length > 0 ? columnCards.map(card => {
+                                         const productRelations = Array.isArray((card as any).products) ? (card as any).products : [];
+                                         const primaryProduct = productRelations.length > 0 ? productRelations[0] : null;
+                                         const productName = primaryProduct?.product?.name || (card as any).product_name;
+                                         const productId = primaryProduct?.product_id || primaryProduct?.product?.id || (card as any).product_id;
+                                         
+                                         // Debug: Log para verificar estrutura dos dados
+                                         if (productName && (!card.value || card.value === 0)) {
+                                           console.log('🔍 [Card Debug]', {
+                                             cardId: card.id,
+                                             productName,
+                                             productId,
+                                             products: card.products,
+                                             primaryProduct,
+                                             cardValue: card.value,
+                                             total_value: primaryProduct?.total_value,
+                                             unit_value: primaryProduct?.unit_value,
+                                             product_value: primaryProduct?.product?.value
+                                           });
+                                         }
+                                         
+                                         const productValue = primaryProduct?.total_value ?? primaryProduct?.unit_value ?? primaryProduct?.product?.value ?? (card as any).product_value ?? (card as any).total_value ?? null;
+                                         const effectiveValue = card.value || productValue || 0;
+
                                          const deal: Deal = {
                                            id: card.id,
                                            name: card.title,
-                                           value: card.value || 0,
+                                           value: effectiveValue,
                                            stage: column.name,
                                            status: card.status,
                                            responsible: card.responsible_user?.name || 'Não atribuído',
@@ -2088,6 +2242,8 @@ const [selectedCardForProduct, setSelectedCardForProduct] = useState<{
                                            priority: 'medium',
                                            created_at: card.created_at,
                                            contact: card.contact,
+                                           product_id: productId,
+                                           product_name: productName,
                                            conversation: card.conversation ? {
                                              ...card.conversation,
                                              unread_count: card.conversation.unread_count ?? 0
@@ -2107,8 +2263,12 @@ const [selectedCardForProduct, setSelectedCardForProduct] = useState<{
                                                setIsChatModalOpen(true);
                                              }}
                                              onValueClick={(dealData) => {
-                                               setSelectedCardForValue(dealData);
-                                               setIsSetValueModalOpen(true);
+                                               setSelectedCardForProduct({
+                                                 id: dealData.id,
+                                                 value: dealData.value,
+                                                 productId: dealData.product_id || null,
+                                               });
+                                               setIsVincularProdutoModalOpen(true);
                                              }}
                                              isSelectionMode={isSelectionMode && selectedColumnForAction === column.id}
                                              isSelected={selectedCardsForTransfer.has(card.id)}
@@ -2179,7 +2339,19 @@ const [selectedCardForProduct, setSelectedCardForProduct] = useState<{
 
             // Calculate total value of cards in this column
             const calculateColumnTotal = () => {
-              return columnCards.reduce((total, card) => total + (card.value || 0), 0);
+              const total = columnCards.reduce((sum, card) => {
+                const effectiveValue = getCardEffectiveValue(card);
+                console.log('💰 [Desktop Total] Card:', {
+                  cardId: card.id,
+                  cardValue: card.value,
+                  effectiveValue,
+                  hasProducts: !!card.products,
+                  products: card.products
+                });
+                return sum + effectiveValue;
+              }, 0);
+              console.log('📊 [Desktop Total] Total calculado:', total, 'para', columnCards.length, 'cards na coluna', column.name);
+              return total;
             };
             const formatCurrency = (value: number) => {
               return new Intl.NumberFormat('pt-BR', {
@@ -2367,9 +2539,9 @@ const [selectedCardForProduct, setSelectedCardForProduct] = useState<{
                           const productRelations = Array.isArray((card as any).products) ? (card as any).products : [];
                           const primaryProduct = productRelations.length > 0 ? productRelations[0] : null;
                           const productName = primaryProduct?.product?.name || null;
-                          const productId = primaryProduct?.product_id || null;
-                          const productValue = primaryProduct?.total_value ?? primaryProduct?.unit_value ?? primaryProduct?.product?.value ?? null;
-                          const effectiveValue = card.value ?? productValue ?? 0;
+                          const productId = primaryProduct?.product_id || primaryProduct?.product?.id || null;
+                          const productValue = primaryProduct?.total_value ?? primaryProduct?.unit_value ?? primaryProduct?.product?.value ?? (card as any).product_value ?? (card as any).total_value ?? null;
+                          const effectiveValue = card.value || productValue || 0;
 
                           const deal: Deal = {
                             id: card.id,
@@ -2401,21 +2573,12 @@ const [selectedCardForProduct, setSelectedCardForProduct] = useState<{
                             setSelectedChatCard(dealData);
                             setIsChatModalOpen(true);
                           }} onValueClick={dealData => {
-                            if (dealData.hasProduct) {
-                              toast({
-                                title: "Produto vinculado",
-                                description: "Desvincule o produto para definir um valor manual.",
-                              });
-                              setSelectedCardForProduct({
-                                id: dealData.id,
-                                value: dealData.value,
-                                productId: dealData.product_id || null
-                              });
-                              setIsVincularProdutoModalOpen(true);
-                              return;
-                            }
-                            setSelectedCardForValue(dealData);
-                            setIsSetValueModalOpen(true);
+                            setSelectedCardForProduct({
+                              id: dealData.id,
+                              value: dealData.value,
+                              productId: dealData.product_id || null
+                            });
+                            setIsVincularProdutoModalOpen(true);
                           }} onConfigureAgent={(conversationId) => {
                             setSelectedConversationForAgent(conversationId);
                             setAgentModalOpen(true);
@@ -2473,7 +2636,7 @@ const [selectedCardForProduct, setSelectedCardForProduct] = useState<{
             const column = columns.find(col => col.id === draggedColumn);
             if (!column) return null;
             const overlayCards = getFilteredCards(column.id);
-            const totalValue = overlayCards.reduce((sum, card) => sum + (card.value || 0), 0);
+            const totalValue = overlayCards.reduce((sum, card) => sum + getCardEffectiveValue(card), 0);
             return (
               <div className="w-[260px] rounded-md border-2 border-primary bg-white shadow-2xl p-3 space-y-2">
                 <div className="flex items-center justify-between">
@@ -2498,10 +2661,10 @@ const [selectedCardForProduct, setSelectedCardForProduct] = useState<{
               const activeColumn = columns.find(col => col.id === activeCard.column_id);
               const productRelations = Array.isArray((activeCard as any).products) ? (activeCard as any).products : [];
               const primaryProduct = productRelations.length > 0 ? productRelations[0] : null;
-              const productId = primaryProduct?.product_id || null;
+              const productId = primaryProduct?.product_id || primaryProduct?.product?.id || null;
               const productName = primaryProduct?.product?.name || null;
-              const productValue = primaryProduct?.total_value ?? primaryProduct?.unit_value ?? primaryProduct?.product?.value ?? null;
-              const effectiveValue = activeCard.value ?? productValue ?? 0;
+              const productValue = primaryProduct?.total_value ?? primaryProduct?.unit_value ?? primaryProduct?.product?.value ?? (card as any).product_value ?? (card as any).total_value ?? null;
+              const effectiveValue = activeCard.value || productValue || 0;
               const deal: Deal = {
                 id: activeCard.id,
                 name: activeCard.title,

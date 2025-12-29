@@ -8,8 +8,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
-import { Palette, ChevronDown, Plus, Building2 } from "lucide-react";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Plus, Building2 } from "lucide-react";
 import { useWorkspace } from "@/contexts/WorkspaceContext";
 import { AdicionarUsuarioFilaModal } from "./AdicionarUsuarioFilaModal";
 import { QueueUsersList } from "./QueueUsersList";
@@ -32,7 +31,6 @@ const distributionOptions = [{
   value: "nao_distribuir",
   label: "Não distribuir"
 }];
-const colors = ["#8B5CF6", "#EF4444", "#F59E0B", "#10B981", "#3B82F6", "#F97316", "#EC4899", "#6366F1", "#84CC16", "#06B6D4"];
 export function AdicionarFilaModal({
   open,
   onOpenChange,
@@ -69,7 +67,6 @@ export function AdicionarFilaModal({
 
   // Form state
   const [nome, setNome] = useState("");
-  const [cor, setCor] = useState("#8B5CF6");
   const [ordem, setOrdem] = useState("");
   const [distribuicao, setDistribuicao] = useState("");
   const [agenteId, setAgenteId] = useState("");
@@ -102,7 +99,6 @@ export function AdicionarFilaModal({
   };
   const resetForm = () => {
     setNome("");
-    setCor("#8B5CF6");
     setOrdem("");
     setDistribuicao("");
     setAgenteId("");
@@ -132,7 +128,6 @@ export function AdicionarFilaModal({
       } = await supabase.from('queues').insert({
         name: nome.trim(),
         description: mensagemSaudacao.trim() || null,
-        color: cor,
         order_position: ordem ? parseInt(ordem) : 0,
         distribution_type: distribuicao || 'aleatoria',
         ai_agent_id: agenteId || null,
@@ -200,7 +195,7 @@ export function AdicionarFilaModal({
           </TabsList>
 
           <TabsContent value="dados" className="space-y-4 mt-6">
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label htmlFor="nome" className="text-gray-700 dark:text-gray-200">
                   Nome <span className="text-red-500">*</span>
@@ -240,27 +235,6 @@ export function AdicionarFilaModal({
                     </SelectContent>
                   </Select>
                 </div>}
-
-              <div className="space-y-2">
-                <Label className="text-gray-700 dark:text-gray-200">Cor</Label>
-                <Popover>
-                  <PopoverTrigger asChild>
-                    <Button variant="outline" className="w-full justify-start rounded-none dark:border-gray-600 dark:text-gray-200 dark:bg-transparent dark:hover:bg-[#1f1f1f]">
-                      <div className="w-4 h-4 rounded mr-2" style={{
-                        backgroundColor: cor
-                      }} />
-                      <Palette className="w-4 h-4" />
-                    </Button>
-                  </PopoverTrigger>
-                  <PopoverContent className="w-64 bg-white dark:bg-[#1a1a1a] dark:border-gray-700">
-                    <div className="grid grid-cols-5 gap-2">
-                      {colors.map(color => <button key={color} className="w-8 h-8 rounded border-2 border-gray-200 hover:border-gray-400 dark:border-gray-600 dark:hover:border-gray-400" style={{
-                        backgroundColor: color
-                      }} onClick={() => setCor(color)} />)}
-                    </div>
-                  </PopoverContent>
-                </Popover>
-              </div>
 
             </div>
 

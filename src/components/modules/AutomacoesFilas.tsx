@@ -18,7 +18,6 @@ interface Fila {
   is_active: boolean;
   created_at: string;
   updated_at: string;
-  color?: string;
   order_position?: number;
   distribution_type?: string;
   ai_agent_id?: string;
@@ -250,13 +249,7 @@ export function AutomacoesFilas() {
                       {fila.id.substring(0, 8)}
                     </td>
                     <td className="border border-[#e0e0e0] px-2 py-0 font-medium align-middle dark:border-gray-700 dark:text-gray-100">
-                      <div className="flex items-center">
-                        <div 
-                          className="w-2.5 h-2.5 rounded-full mr-2 border border-black/10" 
-                          style={{ backgroundColor: fila.color || '#8B5CF6' }}
-                        ></div>
-                        {fila.name}
-                      </div>
+                      <div className="flex items-center">{fila.name}</div>
                     </td>
                     <td className="border border-[#e0e0e0] px-2 py-0 text-center align-middle dark:border-gray-700 dark:text-gray-100">
                       {fila.user_count || 0}

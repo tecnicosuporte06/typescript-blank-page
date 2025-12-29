@@ -867,7 +867,7 @@ export function DSVoice() {
                   className={cn(
                     "flex items-center gap-2 px-4 py-2 text-xs font-medium rounded-t-md border-t border-x transition-all relative top-[1px]",
                     isActive 
-                      ? "bg-white border-[#d4d4d4] border-b-white text-primary z-10 shadow-sm dark:bg-[#1f1f1f] dark:border-gray-600 dark:text-gray-100" 
+                      ? "bg-white border-[#d4d4d4] border-b-white text-black z-10 shadow-sm dark:bg-[#1f1f1f] dark:border-gray-600 dark:text-white" 
                       : "bg-transparent border-transparent text-gray-500 hover:bg-gray-200/50 hover:text-gray-700 dark:text-gray-400 dark:hover:bg-[#1f1f1f] dark:hover:text-gray-200"
                   )}
                 >

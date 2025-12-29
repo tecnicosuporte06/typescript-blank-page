@@ -19,7 +19,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/useAuth";
 import { DealDetailsPage } from "@/pages/DealDetailsPage";
-import { Sheet, SheetContent } from "@/components/ui/sheet";
+import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { cn } from "@/lib/utils";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
@@ -72,7 +72,9 @@ export function CRMAtividades() {
   const endIndex = totalCount > 0 ? Math.min(page * pageSize, totalCount) : 0;
 
   const handleOpenDealDetails = (activity: ActivityData) => {
+    console.log("🎯 Abrindo detalhes do negócio para a atividade:", activity.id, "Card ID:", activity.pipeline_card_id);
     if (!activity.pipeline_card_id) {
+      console.warn("⚠️ Atividade sem pipeline_card_id");
       return;
     }
     setSelectedDealDetails({
@@ -546,10 +548,13 @@ export function CRMAtividades() {
           side="right" 
           className="p-0 sm:max-w-[90vw] w-[90vw] border-l border-gray-200 dark:border-gray-800 shadow-2xl transition-all duration-500 ease-in-out"
         >
-          {selectedDealDetails && (
+          <SheetHeader className="sr-only">
+            <SheetTitle>Detalhes do Negócio</SheetTitle>
+          </SheetHeader>
+          {selectedDealDetails && selectedDealDetails.cardId && (
             <DealDetailsPage 
               cardId={selectedDealDetails.cardId} 
-              workspaceId={selectedWorkspace?.workspace_id}
+              workspaceId={selectedWorkspace?.workspace_id || undefined}
               onClose={handleCloseDealDetails}
             />
           )}

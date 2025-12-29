@@ -88,6 +88,7 @@ export function QueryBuilderSidebar({ pipelines, tags, agents, onFiltersChange }
             <SelectValue placeholder={(pipelines || []).length === 0 ? 'Nenhum pipeline' : 'Pipeline'} />
           </SelectTrigger>
           <SelectContent className="rounded-none border-[#d4d4d4] dark:border-gray-700">
+            <SelectItem value="all">Todos os Funis</SelectItem>
             {(pipelines || []).map((p) => (
               <SelectItem key={p.id} value={p.id}>
                 {p.name}

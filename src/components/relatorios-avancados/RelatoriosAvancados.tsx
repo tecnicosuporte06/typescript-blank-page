@@ -63,8 +63,8 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
   const { pipelines: ctxPipelines, fetchPipelines: fetchCtxPipelines } = usePipelinesContext();
 
   const [periodPreset, setPeriodPreset] = useState<PeriodPreset>('last30');
-  const [startDate, setStartDate] = useState<Date>(startOfDay(subDays(new Date(), 29)));
-  const [endDate, setEndDate] = useState<Date>(endOfDay(new Date()));
+  const [startDate, setStartDate] = useState<Date | null>(startOfDay(subDays(new Date(), 29)));
+  const [endDate, setEndDate] = useState<Date | null>(endOfDay(new Date()));
   const [selectedWorkspaceId, setSelectedWorkspaceId] = useState<string>(
     selectedWorkspace?.workspace_id ||
       workspaces?.[0]?.workspace_id ||
@@ -73,11 +73,13 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
   ); // mantido para compatibilidade mas sem seletor
   const [selectedFunnel, setSelectedFunnel] = useState<string>('all');
   const [selectedAgent, setSelectedAgent] = useState<string>('all');
-  const [selectedTag, setSelectedTag] = useState<string>('all');
+  const [selectedTags, setSelectedTags] = useState<string[]>([]);
   const [agents, setAgents] = useState<{ id: string; name: string }[]>([]);
   const [pipelines, setPipelines] = useState<{ id: string; name: string }[]>([]);
   const [availableTags, setAvailableTags] = useState<{ id: string; name: string }[]>([]);
+  const [availableProducts, setAvailableProducts] = useState<{ id: string; name: string }[]>([]);
   const [contacts, setContacts] = useState<ContactRecord[]>([]);
+  const [conversations, setConversations] = useState<any[]>([]);
   const [activities, setActivities] = useState<ActivityRecord[]>([]);
   const [cards, setCards] = useState<PipelineCardRecord[]>([]);
   const [tags, setTags] = useState<TagRecord[]>([]);
@@ -149,44 +151,145 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
       setAvailableTags([]);
       return;
     }
-    const { data } = await supabase.from('tags').select('id, name').eq('workspace_id', workspaceId).order('name');
-    setAvailableTags(data || []);
+    try {
+      // 1. Busca todas as tags do workspace
+      const { data: tagsData, error: tagsError } = await supabase
+        .from('tags')
+        .select('id, name')
+        .eq('workspace_id', workspaceId)
+        .order('name');
+      
+      if (tagsError) throw tagsError;
+
+      // 2. Busca associações para contar contatos únicos (sem filtro de data para bater com a lista)
+      const { data: ctData, error: ctError } = await supabase
+        .from('contact_tags')
+        .select('tag_id, contact_id');
+      
+      if (ctError) throw ctError;
+
+      // 3. Processa contagem
+      const countsMap = new Map<string, Set<string>>();
+      (ctData || []).forEach(ct => {
+        if (!countsMap.has(ct.tag_id)) countsMap.set(ct.tag_id, new Set());
+        countsMap.get(ct.tag_id)?.add(ct.contact_id);
+      });
+
+      const processed = (tagsData || []).map(t => ({
+        ...t,
+        contact_count: countsMap.get(t.id)?.size || 0
+      }));
+
+      console.log('📊 Tags com contagem real:', processed);
+      setAvailableTags(processed);
+    } catch (err) {
+      console.error('Erro ao buscar tags com contagem real:', err);
+      setAvailableTags([]);
+    }
+  };
+
+  const fetchProducts = async (workspaceId: string | null) => {
+    if (!workspaceId) {
+      setAvailableProducts([]);
+      return;
+    }
+    try {
+      // 1. Busca todos os produtos do workspace
+      const { data: productsData, error: productsError } = await supabase
+        .from('products')
+        .select('id, name')
+        .eq('workspace_id', workspaceId)
+        .order('name');
+      
+      if (productsError) throw productsError;
+
+      if (!productsData || productsData.length === 0) {
+        setAvailableProducts([]);
+        return;
+      }
+
+      // 2. Busca contagem de associações para estes produtos
+      const productIds = productsData.map(p => p.id);
+      const { data: pcpData, error: pcpError } = await supabase
+        .from('pipeline_cards_products')
+        .select('product_id, pipeline_card_id')
+        .in('product_id', productIds);
+      
+      if (pcpError) throw pcpError;
+
+      // 3. Processa contagem de cards únicos por produto
+      // (Aproximação: cada card geralmente é um contato no funil)
+      const countsMap = new Map<string, Set<string>>();
+      (pcpData || []).forEach(pcp => {
+        if (pcp.product_id && pcp.pipeline_card_id) {
+          if (!countsMap.has(pcp.product_id)) countsMap.set(pcp.product_id, new Set());
+          countsMap.get(pcp.product_id)?.add(pcp.pipeline_card_id);
+        }
+      });
+
+      const processed = productsData.map(p => ({
+        ...p,
+        contact_count: countsMap.get(p.id)?.size || 0
+      }));
+
+      console.log('📊 Produtos processados (all-time):', processed);
+      setAvailableProducts(processed);
+    } catch (err) {
+      console.error('Erro ao buscar produtos:', err);
+      setAvailableProducts([]);
+    }
   };
 
   const fetchData = async () => {
     if (!user?.id) return;
     setIsLoading(true);
     try {
-      const from = startDate.toISOString();
-      const to = endDate.toISOString();
+      const hasDateRange = !!(startDate && endDate);
+      const from = hasDateRange ? startDate!.toISOString() : null;
+      const to = hasDateRange ? endDate!.toISOString() : null;
 
       // Contacts (leads)
       // @ts-ignore simplificando tipagem dinâmica para evitar profundidade de generics
       let contactsQuery = supabase
         .from('contacts')
-        .select('id, created_at, responsible_id, status, workspace_id')
-        .gte('created_at', from)
-        .lte('created_at', to);
+        .select('id, created_at, responsible_id, status, workspace_id');
+      if (hasDateRange && from && to) {
+        contactsQuery = contactsQuery.gte('created_at', from).lte('created_at', to);
+      }
 
       // Activities (ligações/mensagens/reuniões)
       // @ts-ignore simplificando tipagem dinâmica
       let activitiesQuery = supabase
         .from('activities')
-        .select('id, contact_id, responsible_id, type, status, created_at, workspace_id')
-        .gte('created_at', from)
-        .lte('created_at', to);
+        .select('id, contact_id, responsible_id, type, status, created_at, workspace_id');
+      if (hasDateRange && from && to) {
+        activitiesQuery = activitiesQuery.gte('created_at', from).lte('created_at', to);
+      }
 
       // Pipeline cards para produtos e status de venda/perda
       // @ts-ignore simplificando tipagem dinâmica
       let cardsQuery = supabase
         .from('pipeline_cards')
-        .select('id, contact_id, value, status, workspace_id, pipeline_id, responsible_user_id, pipeline_cards_products(product_id)');
+        .select('id, contact_id, value, status, workspace_id, pipeline_id, responsible_user_id, created_at, pipeline_cards_products(product_id)');
+      // Removido filtro de data para cards para garantir que negócios ganhos apareçam independente da data de criação,
+      // pois o status de "ganho" reflete o estado atual do negócio no funil.
 
       // Tags
       // @ts-ignore simplificando tipagem dinâmica
       let tagsQuery = supabase
         .from('contact_tags')
         .select('contact_id, tag_id, tags(name), contacts!inner(id, workspace_id)');
+      if (hasDateRange && from && to) {
+        tagsQuery = tagsQuery.gte('contacts.created_at', from).lte('contacts.created_at', to);
+      }
+
+      // Conversations (assumidas)
+      let conversationsQuery = supabase
+        .from('conversations')
+        .select('id, contact_id, assigned_user_id, created_at, workspace_id');
+      if (hasDateRange && from && to) {
+        conversationsQuery = conversationsQuery.gte('created_at', from).lte('created_at', to);
+      }
 
       // Workspace filter
       if (selectedWorkspaceId) {
@@ -194,6 +297,7 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
         activitiesQuery = activitiesQuery.eq('workspace_id', selectedWorkspaceId);
         cardsQuery = cardsQuery.eq('workspace_id', selectedWorkspaceId);
         tagsQuery = tagsQuery.eq('contacts.workspace_id', selectedWorkspaceId);
+        conversationsQuery = conversationsQuery.eq('workspace_id', selectedWorkspaceId);
       }
 
       // Permissões
@@ -201,33 +305,38 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
         contactsQuery = contactsQuery.eq('responsible_id', user.id);
         activitiesQuery = activitiesQuery.eq('responsible_id', user.id);
         cardsQuery = cardsQuery.eq('responsible_user_id', user.id);
+        conversationsQuery = conversationsQuery.eq('assigned_user_id', user.id);
       } else if (selectedAgent !== 'all' && selectedAgent !== 'ia') {
         contactsQuery = contactsQuery.eq('responsible_id', selectedAgent);
         activitiesQuery = activitiesQuery.eq('responsible_id', selectedAgent);
         cardsQuery = cardsQuery.eq('responsible_user_id', selectedAgent);
+        conversationsQuery = conversationsQuery.eq('assigned_user_id', selectedAgent);
       } else if (selectedAgent === 'ia') {
         // Filtrar interações do agente de IA (responsável nulo)
         contactsQuery = contactsQuery.is('responsible_id', null);
         activitiesQuery = activitiesQuery.is('responsible_id', null);
         cardsQuery = cardsQuery.is('responsible_user_id', null);
+        conversationsQuery = conversationsQuery.is('assigned_user_id', null);
       }
 
       const [
         { data: contactsData, error: contactsError },
         { data: activitiesData, error: activitiesError },
         { data: cardsData, error: cardsError },
-        { data: tagsData, error: tagsError }
-      ] = await Promise.all([contactsQuery, activitiesQuery, cardsQuery, tagsQuery]);
+        { data: tagsData, error: tagsError },
+        { data: conversationsData, error: conversationsError }
+      ] = await Promise.all([contactsQuery, activitiesQuery, cardsQuery, tagsQuery, conversationsQuery]);
 
       if (contactsError) throw contactsError;
       if (activitiesError) throw activitiesError;
       if (cardsError) throw cardsError;
       if (tagsError) throw tagsError;
+      if (conversationsError) throw conversationsError;
 
       const contactsFiltered = (((contactsData as unknown) as ContactRecord[]) || []).filter((c) => {
-        if (selectedTag !== 'all') {
+        if (selectedTags.length > 0) {
           const hasTag = ((tagsData || []) as any[]).some(
-            (t: any) => t.contact_id === c.id && (t.tag_id === selectedTag || (t.tags as any)?.id === selectedTag)
+            (t: any) => t.contact_id === c.id && selectedTags.includes(t.tag_id || (t.tags as any)?.id)
           );
           if (!hasTag) return false;
         }
@@ -241,6 +350,7 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
         status: (c as any).status,
         pipeline_id: (c as any).pipeline_id,
         responsible_user_id: (c as any).responsible_user_id,
+        created_at: (c as any).created_at,
         products: (c as any).pipeline_cards_products || [],
       }));
 
@@ -253,7 +363,7 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
       }
 
       if (statusFilter?.value) {
-        cardsFiltered = cardsFiltered.filter((c) => c.status === statusFilter.value);
+        cardsFiltered = cardsFiltered.filter((c) => (c.status || '').toLowerCase() === statusFilter.value.toLowerCase());
       }
 
       if (valueFilter?.value) {
@@ -273,25 +383,44 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
         }
       }
 
-      // Não restringe por funil (funnel) para garantir visão geral; somente tags filtram contatos.
-      const finalContacts = contactsFiltered;
-
       // Atividades: só recorta por tag se houver filtro de tag; funil não limita para manter dados gerais.
       const allowedContactIds = new Set<string>();
-      if (selectedTag !== 'all') {
+      if (selectedTags.length > 0) {
         ((tagsData || []) as any[]).forEach((t: any) => {
-          if (t.contact_id) allowedContactIds.add(t.contact_id);
+          if (t.contact_id && selectedTags.includes(t.tag_id)) {
+            allowedContactIds.add(t.contact_id);
+          }
         });
       }
+
+      // Aplicar filtro de tags nos cards também
+      if (selectedTags.length > 0) {
+        cardsFiltered = cardsFiltered.filter(c => c.contact_id && allowedContactIds.has(c.contact_id));
+      }
+
+      // Não restringe por funil (funnel) para garantir visão geral; somente tags filtram contatos.
+      const finalContacts = contactsFiltered;
 
       const activitiesFiltered = (((activitiesData as unknown) as ActivityRecord[]) || []).filter((a) => {
         if (allowedContactIds.size === 0) return true;
         return a.contact_id ? allowedContactIds.has(a.contact_id) : false;
       });
 
+      const conversationsFiltered = (conversationsData || []).filter((conv: any) => {
+        if (selectedTags.length > 0) {
+          const hasTag = ((tagsData || []) as any[]).some(
+            (t: any) => t.contact_id === conv.contact_id && selectedTags.includes(t.tag_id || (t.tags as any)?.id)
+          );
+          if (!hasTag) return false;
+        }
+        return true;
+      });
+
       setContacts(finalContacts);
       setActivities(activitiesFiltered);
       setCards(cardsFiltered);
+      setConversations(conversationsFiltered);
+      // Sempre carregamos todas as tags do workspace para o gráfico, mesmo sem filtro
       setTags(
         ((tagsData || []) as any[]).map((t) => ({
           contact_id: (t as any).contact_id,
@@ -328,10 +457,11 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
         fetchCtxPipelines?.(); // dispara fetch global do contexto
       }
       fetchTags(selectedWorkspaceId);
+      fetchProducts(selectedWorkspaceId);
       fetchAgents(selectedWorkspaceId);
       // Reset filtros quando workspace mudar
       setSelectedFunnel('all');
-      setSelectedTag('all');
+      setSelectedTags([]);
       setSelectedAgent('all');
       setSidebarFilters([]); // Reset filtros da sidebar também
     } else {
@@ -346,47 +476,125 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
   useEffect(() => {
     const pipelineFilter = sidebarFilters.find(f => f.type === 'pipeline');
     const teamFilter = sidebarFilters.find(f => f.type === 'team');
-    const tagFilter = sidebarFilters.find(f => f.type === 'tags');
+    const tagFilters = sidebarFilters.filter(f => f.type === 'tags');
     
     setSelectedFunnel(pipelineFilter?.value || 'all');
     setSelectedAgent(teamFilter?.value || 'all');
-    setSelectedTag(tagFilter?.value || 'all');
+    setSelectedTags(tagFilters.map(f => f.value));
     
     // Os filtros de data, status e valor serão aplicados diretamente na query fetchData
   }, [sidebarFilters]);
 
   useEffect(() => {
     fetchData();
-  }, [periodPreset, startDate, endDate, selectedAgent, userRole, selectedFunnel, selectedTag, selectedWorkspaceId, sidebarFilters]);
+  }, [periodPreset, startDate, endDate, selectedAgent, userRole, selectedFunnel, selectedTags, selectedWorkspaceId, sidebarFilters]);
 
-  const leadsReceived = contacts.length;
-  const leadsQualified = contacts.filter((c) => c.status === 'qualified').length;
-  const leadsOffer = contacts.filter((c) => c.status === 'offer').length;
-  const leadsWon = cards.filter((c) => c.status === 'won').length;
-  const leadsLost1 = contacts.filter((c) => c.status === 'lost_offer').length;
-  const leadsLost2 = contacts.filter((c) => c.status === 'lost_no_offer').length;
-  const leadsLost3 = contacts.filter((c) => c.status === 'lost_not_fit').length;
+  const leadsReceived = conversations.length;
+  const leadsQualified = contacts.filter((c) => (c.status || '').toLowerCase() === 'qualified').length;
+  const leadsOffer = contacts.filter((c) => (c.status || '').toLowerCase() === 'offer').length;
+  const leadsWon = cards.filter((c) => {
+    const s = (c.status || '').toLowerCase();
+    return s === 'won' || s === 'ganho' || s === 'venda' || s === 'success' || s === 'sucesso';
+  }).length;
+  const leadsLost1 = contacts.filter((c) => (c.status || '').toLowerCase() === 'lost_offer').length;
+  const leadsLost2 = contacts.filter((c) => (c.status || '').toLowerCase() === 'lost_no_offer').length;
+  const leadsLost3 = contacts.filter((c) => (c.status || '').toLowerCase() === 'lost_not_fit').length;
   const leadsLostTotal = leadsLost1 + leadsLost2 + leadsLost3;
 
   const leadsByTag = useMemo(() => {
+    const nameById = new Map((availableTags || []).map((t) => [t.id, t.name]));
     const map = new Map<string, number>();
-    tags.forEach((t) => {
-      const name = t.tag?.name || t.tag_id;
-      map.set(name, (map.get(name) || 0) + 1);
-    });
-    return Array.from(map.entries()).map(([name, value]) => ({ name, value }));
-  }, [tags]);
+
+    // 1. Processa os contatos únicos por etiqueta no período filtrado
+    if (tags && tags.length > 0) {
+      const tagContacts = new Map<string, Set<string>>();
+      
+      tags.forEach((t) => {
+        const contactId = t.contact_id;
+        const tagId = t.tag_id;
+        if (!contactId || !tagId) return;
+
+        const includeTag = selectedTags.length === 0 || selectedTags.includes(tagId);
+        if (!includeTag) return;
+
+        if (!tagContacts.has(tagId)) tagContacts.set(tagId, new Set());
+        tagContacts.get(tagId)?.add(contactId);
+      });
+
+      tagContacts.forEach((contacts, tagId) => {
+        const name = nameById.get(tagId) || tagId || 'Etiqueta';
+        map.set(name, contacts.size);
+      });
+    }
+
+    // 2. Complementa com o contact_count real (all-time) se o filtro de período não trouxe dados para aquela etiqueta
+    if (availableTags && availableTags.length > 0) {
+      availableTags.forEach((t) => {
+        const includeTag = selectedTags.length === 0 || selectedTags.includes(t.id);
+        if (!includeTag) return;
+
+        const existing = map.get(t.name) || 0;
+        const aggregated = typeof t.contact_count === 'number' ? t.contact_count : 0;
+
+        if (existing === 0 && aggregated > 0) {
+          map.set(t.name, aggregated);
+        }
+      });
+    }
+
+    return Array.from(map.entries())
+      .map(([name, value]) => ({ name, value }))
+      .filter(item => item.value > 0)
+      .sort((a, b) => b.value - a.value);
+  }, [tags, availableTags, selectedTags]);
 
   const leadsByProduct = useMemo(() => {
+    const nameById = new Map((availableProducts || []).map((p) => [p.id, p.name]));
     const map = new Map<string, number>();
-    cards.forEach((c) => {
-      (c.products || []).forEach((p) => {
-        const name = p.product_id || 'Produto';
-        map.set(name, (map.get(name) || 0) + 1);
+
+    // 1. Processa os contatos únicos por produto no período filtrado
+    if (cards && cards.length > 0) {
+      const productContacts = new Map<string, Set<string>>();
+      
+      cards.forEach((c) => {
+        const contactId = c.contact_id;
+        if (!contactId) return;
+
+        (c.products || []).forEach((p) => {
+          const productId = p.product_id;
+          if (!productId) return;
+          
+          if (!productContacts.has(productId)) productContacts.set(productId, new Set());
+          productContacts.get(productId)?.add(contactId);
+        });
       });
-    });
-    return Array.from(map.entries()).map(([name, value]) => ({ name, value }));
-  }, [cards]);
+
+      productContacts.forEach((contacts, productId) => {
+        const name = nameById.get(productId) || productId || 'Produto';
+        map.set(name, contacts.size);
+      });
+    }
+
+    // 2. Complementa com o contact_count real (all-time) se o filtro de período não trouxe dados
+    // (Ou se o mapa ainda está vazio)
+    if (availableProducts && availableProducts.length > 0) {
+      availableProducts.forEach((p) => {
+        const name = p.name || 'Produto';
+        const existing = map.get(name) || 0;
+        const aggregated = typeof p.contact_count === 'number' ? p.contact_count : 0;
+
+        // Se não temos dados do período para este produto, usamos o acumulado real
+        if (existing === 0 && aggregated > 0) {
+          map.set(name, aggregated);
+        }
+      });
+    }
+
+    return Array.from(map.entries())
+      .map(([name, value]) => ({ name, value }))
+      .filter(item => item.value > 0)
+      .sort((a, b) => b.value - a.value);
+  }, [cards, availableProducts]);
 
   const calls = activities.filter((a) => (a.type || '').toLowerCase().includes('ligação') || (a.type || '').toLowerCase().includes('chamada'));
   const callsAttended = calls.filter((a) => (a.status || '').toLowerCase().includes('atendida'));
@@ -487,7 +695,8 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
     });
 
     cards.forEach((c) => {
-      if (c.status === 'won') {
+      const s = (c.status || '').toLowerCase();
+      if (s === 'won' || s === 'ganho' || s === 'venda' || s === 'success' || s === 'sucesso') {
         const target = ensure(c.responsible_user_id);
         target.sales += 1;
         target.revenue += c.value || 0;
@@ -527,14 +736,16 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
     return list.sort((a, b) => (b.total || 0) - (a.total || 0));
   }, [teamAggregates]);
 
-  const periodLabel =
-    periodPreset !== 'custom'
+  const hasDateRange = !!(startDate && endDate);
+  const periodLabel = !hasDateRange
+    ? 'Todos os períodos'
+    : periodPreset !== 'custom'
       ? {
           today: 'Hoje',
           last7: 'Últimos 7 dias',
           last30: 'Últimos 30 dias',
         }[periodPreset]
-      : `${format(startDate, "dd/MM/yyyy", { locale: ptBR })} - ${format(endDate, "dd/MM/yyyy", { locale: ptBR })}`;
+      : `${format(startDate!, "dd/MM/yyyy", { locale: ptBR })} - ${format(endDate!, "dd/MM/yyyy", { locale: ptBR })}`;
 
   return (
     <div className="flex-1 flex flex-col h-screen overflow-hidden">
@@ -581,54 +792,78 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
             <Filter className="h-4 w-4" />
             Funil – Indicadores
           </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-2 gap-3">
-            <Card className="rounded-none border-gray-200 dark:border-gray-700">
+          <div className="grid grid-cols-1 md:grid-cols-12 gap-3">
+            <Card className="rounded-none border-gray-200 dark:border-gray-700 md:col-span-4">
               <CardHeader className="py-2 px-3">
                 <CardTitle className="text-xs text-gray-700 dark:text-gray-200">Leads</CardTitle>
               </CardHeader>
               <CardContent className="p-3">
-                <div className="grid grid-cols-2 gap-2 text-xs">
-                  <div className="flex justify-between"><span>Leads recebidos</span><strong>{leadsReceived}</strong></div>
-                  <div className="flex justify-between"><span>Conversas ativas</span><strong>{activeConversations}</strong></div>
-                  <div className="flex justify-between"><span>Leads qualificados</span><strong>{leadsQualified}</strong></div>
-                  <div className="flex justify-between"><span>Leads com oferta</span><strong>{leadsOffer}</strong></div>
-                  <div className="flex justify-between"><span>Vendas realizadas</span><strong>{leadsWon}</strong></div>
-                  <div className="flex justify-between"><span>Leads perdidos 1</span><strong>{leadsLost1}</strong></div>
-                  <div className="flex justify-between"><span>Leads perdidos 2</span><strong>{leadsLost2}</strong></div>
+                <div className="grid grid-cols-1 gap-1 text-[11px]">
+                  <div className="flex justify-between border-b border-gray-50 dark:border-gray-800 pb-1"><span>Leads recebidos</span><strong>{leadsReceived}</strong></div>
+                  <div className="flex justify-between border-b border-gray-50 dark:border-gray-800 pb-1"><span>Conversas ativas</span><strong>{activeConversations}</strong></div>
+                  <div className="flex justify-between border-b border-gray-50 dark:border-gray-800 pb-1"><span>Leads qualificados</span><strong>{leadsQualified}</strong></div>
+                  <div className="flex justify-between border-b border-gray-50 dark:border-gray-800 pb-1"><span>Leads com oferta</span><strong>{leadsOffer}</strong></div>
+                  <div className="flex justify-between border-b border-gray-50 dark:border-gray-800 pb-1"><span>Vendas realizadas</span><strong>{leadsWon}</strong></div>
+                  <div className="flex justify-between border-b border-gray-50 dark:border-gray-800 pb-1"><span>Leads perdidos 1</span><strong>{leadsLost1}</strong></div>
+                  <div className="flex justify-between border-b border-gray-50 dark:border-gray-800 pb-1"><span>Leads perdidos 2</span><strong>{leadsLost2}</strong></div>
                   <div className="flex justify-between"><span>Leads perdidos 3</span><strong>{leadsLost3}</strong></div>
                 </div>
               </CardContent>
             </Card>
-            <Card className="rounded-none border-gray-200 dark:border-gray-700">
+            <Card className="rounded-none border-gray-200 dark:border-gray-700 md:col-span-8">
               <CardHeader className="py-2 px-3">
-                <CardTitle className="text-xs text-gray-700 dark:text-gray-200">Leads por Tag / Produto</CardTitle>
+                <CardTitle className="text-xs text-gray-700 dark:text-gray-200">Leads por Etiqueta / Produto</CardTitle>
               </CardHeader>
-              <CardContent className="p-3 grid grid-cols-2 gap-2">
-                <div className="h-48">
-                  <ResponsiveContainer>
-                    <PieChart>
-                      <Pie data={leadsByTag} dataKey="value" nameKey="name" outerRadius={70} label>
-                        {leadsByTag.map((_, i) => (
-                          <Cell key={i} fill={pieColors[i % pieColors.length]} />
-                        ))}
-                      </Pie>
-                      <ReTooltip />
-                      <Legend />
-                    </PieChart>
-                  </ResponsiveContainer>
+              <CardContent className="p-3 grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="h-64">
+                  <p className="text-[11px] text-gray-600 dark:text-gray-300 mb-1 font-medium">Etiquetas (%)</p>
+                  {leadsByTag.length === 0 ? (
+                    <div className="text-[11px] text-gray-500 dark:text-gray-400 h-full flex items-center justify-center border border-dashed border-gray-200 dark:border-gray-800">Sem dados de etiquetas</div>
+                  ) : (
+                    <ResponsiveContainer width="100%" height="100%">
+                      <PieChart>
+                        <Pie
+                          data={leadsByTag}
+                          dataKey="value"
+                          nameKey="name"
+                          outerRadius={85}
+                          label={({ percent }) => `${(percent * 100).toFixed(1)}%`}
+                          labelLine={true}
+                        >
+                          {leadsByTag.map((_, i) => (
+                            <Cell key={i} fill={pieColors[i % pieColors.length]} />
+                          ))}
+                        </Pie>
+                        <ReTooltip formatter={(value: number, _, entry: any) => [`${value}`, entry?.name]} />
+                        <Legend verticalAlign="bottom" height={36} iconType="circle" wrapperStyle={{ fontSize: '10px' }} />
+                      </PieChart>
+                    </ResponsiveContainer>
+                  )}
                 </div>
-                <div className="h-48">
-                  <ResponsiveContainer>
-                    <PieChart>
-                      <Pie data={leadsByProduct} dataKey="value" nameKey="name" outerRadius={70} label>
-                        {leadsByProduct.map((_, i) => (
-                          <Cell key={i} fill={pieColors[(i + 3) % pieColors.length]} />
-                        ))}
-                      </Pie>
-                      <ReTooltip />
-                      <Legend />
-                    </PieChart>
-                  </ResponsiveContainer>
+                <div className="h-64 border-l border-gray-100 dark:border-gray-800 pl-4">
+                  <p className="text-[11px] text-gray-600 dark:text-gray-300 mb-1 font-medium">Produtos (%)</p>
+                  {leadsByProduct.length === 0 ? (
+                    <div className="text-[11px] text-gray-500 dark:text-gray-400 h-full flex items-center justify-center border border-dashed border-gray-200 dark:border-gray-800">Sem dados de produtos</div>
+                  ) : (
+                    <ResponsiveContainer width="100%" height="100%">
+                      <PieChart>
+                        <Pie
+                          data={leadsByProduct}
+                          dataKey="value"
+                          nameKey="name"
+                          outerRadius={85}
+                          label={({ percent }) => `${(percent * 100).toFixed(1)}%`}
+                          labelLine={true}
+                        >
+                          {leadsByProduct.map((_, i) => (
+                            <Cell key={i} fill={pieColors[(i + 3) % pieColors.length]} />
+                          ))}
+                        </Pie>
+                        <ReTooltip formatter={(value: number, _, entry: any) => [`${value}`, entry?.name]} />
+                        <Legend verticalAlign="bottom" height={36} iconType="circle" wrapperStyle={{ fontSize: '10px' }} />
+                      </PieChart>
+                    </ResponsiveContainer>
+                  )}
                 </div>
               </CardContent>
             </Card>
@@ -646,7 +881,7 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
               { label: '% Leads qualificados / recebidos', value: conversion(leadsQualified, leadsReceived) },
               { label: '% Leads com oferta / qualificados', value: conversion(leadsOffer, leadsQualified) },
               { label: '% Vendas / oferta', value: conversion(leadsWon, leadsOffer) },
-                  { label: '% Leads por tag', value: conversion(leadsByTag.reduce((a, b) => a + b.value, 0), leadsReceived) },
+                  { label: '% Leads por etiqueta', value: conversion(leadsByTag.reduce((a, b) => a + b.value, 0), leadsReceived) },
                   { label: '% Leads por produto', value: conversion(leadsByProduct.reduce((a, b) => a + b.value, 0), leadsReceived) },
               { label: '% Perdidos 1 / recebidos', value: conversion(leadsLost1, leadsReceived) },
               { label: '% Perdidos 2 / recebidos', value: conversion(leadsLost2, leadsReceived) },

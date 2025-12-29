@@ -700,7 +700,7 @@ const humanizeLabel = (label: string) => {
   // Verificar se cardId existe antes de renderizar
   if (!cardId) {
     return (
-      <div className="h-screen flex flex-col bg-white dark:bg-[#0f0f0f]">
+      <div className="h-full flex flex-col bg-white dark:bg-[#0f0f0f]">
         <div className={cn("px-6 py-4 border-b shrink-0 bg-white dark:bg-[#0f0f0f] border-gray-200 dark:border-gray-700")}>
           <div className="flex items-center gap-4">
             {!onClose && (
@@ -1909,7 +1909,7 @@ const humanizeLabel = (label: string) => {
 
 
   return (
-    <div className="h-screen flex flex-col bg-white dark:bg-[#0f0f0f] overflow-hidden">
+    <div className="h-full flex flex-col bg-white dark:bg-[#0f0f0f] overflow-hidden">
       {/* Header Fixo */}
       <div className="shrink-0 border-b border-gray-200 dark:border-gray-700 bg-white dark:bg-[#0f0f0f]">
         {/* Top Header */}
@@ -1958,76 +1958,83 @@ const humanizeLabel = (label: string) => {
               )}
 
             <div className="flex items-center gap-2">
-                {(() => {
-                  const cardStatus = cardData?.status?.toLowerCase() || 'aberto';
-                  const isMasterOrAdmin = userRole === 'master' || userRole === 'admin';
-                  const isClosed = cardStatus === 'ganho' || cardStatus === 'perda' || cardStatus === 'perdido';
+                {isLoadingActions ? (
+                  <div className="flex items-center gap-2">
+                    <div className="h-9 w-24 bg-gray-200 dark:bg-gray-700 animate-pulse rounded-none" />
+                    <div className="h-9 w-24 bg-gray-200 dark:bg-gray-700 animate-pulse rounded-none" />
+                  </div>
+                ) : (
+                  (() => {
+                    const cardStatus = cardData?.status?.toLowerCase() || 'aberto';
+                    const isMasterOrAdmin = userRole === 'master' || userRole === 'admin';
+                    const isClosed = cardStatus === 'ganho' || cardStatus === 'perda' || cardStatus === 'perdido';
 
-                  // Filtrar ações baseadas no estado do negócio e papel do usuário
-                  const filteredActions = pipelineActions.filter((action: any) => {
-                    const state = action.deal_state;
-                    
-                    // Regra: Ações de 'Aberto' (Reabrir) só aparecem para Master/Admin e se fechado
-                    if (state === 'Aberto') {
-                      const show = isMasterOrAdmin && isClosed;
-                      return show;
-                    }
-                    
-                    // Regra: Ações de 'Ganho' e 'Perda' só aparecem se estiver aberto
-                    if (state === 'Ganho' || state === 'Perda') {
-                      const show = cardStatus === 'aberto';
-                      return show;
-                    }
+                    // Filtrar ações baseadas no estado do negócio e papel do usuário
+                    const filteredActions = pipelineActions.filter((action: any) => {
+                      const state = action.deal_state;
+                      
+                      // Regra: Ações de 'Aberto' (Reabrir) só aparecem para Master/Admin e se fechado
+                      if (state === 'Aberto') {
+                        const show = isMasterOrAdmin && isClosed;
+                        return show;
+                      }
+                      
+                      // Regra: Ações de 'Ganho' e 'Perda' só aparecem se estiver aberto
+                      if (state === 'Ganho' || state === 'Perda') {
+                        const show = cardStatus === 'aberto';
+                        return show;
+                      }
 
-                    return true;
-                  });
-
-                  if (filteredActions.length === 0) {
-                    console.log('⚠️ [Actions] Nenhuma ação passou pelos filtros:', { 
-                      cardStatus, 
-                      userRole, 
-                      totalActions: pipelineActions.length,
-                      actionsStates: pipelineActions.map(a => a.deal_state)
+                      return true;
                     });
-                  }
 
-                  // Ordenar: Ganho, Perda, outros
-                  const orderedActions = [...filteredActions].sort((a, b) => {
-                    const order = { 'Ganho': 1, 'Perda': 2, 'Aberto': 3 };
-                    return (order[a.deal_state] || 99) - (order[b.deal_state] || 99);
-                  });
+                    if (filteredActions.length === 0) {
+                      console.log('⚠️ [Actions] Nenhuma ação passou pelos filtros:', { 
+                        cardStatus, 
+                        userRole, 
+                        totalActions: pipelineActions.length,
+                        actionsStates: pipelineActions.map(a => a.deal_state)
+                      });
+                    }
 
-                  return orderedActions.map((action: any) => {
-                    const isWin = action.deal_state === 'Ganho';
-                    const isLoss = action.deal_state === 'Perda';
-                    const shouldDisable = isExecutingAction;
-                    const isReopen = action.deal_state === 'Aberto';
+                    // Ordenar: Ganho, Perda, outros
+                    const orderedActions = [...filteredActions].sort((a, b) => {
+                      const order = { 'Ganho': 1, 'Perda': 2, 'Aberto': 3 };
+                      return (order[a.deal_state] || 99) - (order[b.deal_state] || 99);
+                    });
 
-                    return (
-              <Button
-                        key={action.id}
-                        size="sm"
-                        onClick={() => {
-                          console.log('🎯 Botão clicado:', action.action_name);
-                          executeAction(action);
-                        }}
-                        disabled={shouldDisable}
-                        className={cn(
-                          "h-9 px-4 text-sm font-semibold rounded-none shadow-sm transition-all",
-                          isWin 
-                            ? "bg-green-600 hover:bg-green-700 text-white border-transparent dark:bg-green-600 dark:hover=h-green-700 dark:text-white" 
+                    return orderedActions.map((action: any) => {
+                      const isWin = action.deal_state === 'Ganho';
+                      const isLoss = action.deal_state === 'Perda';
+                      const shouldDisable = isExecutingAction;
+                      const isReopen = action.deal_state === 'Aberto';
+
+                      return (
+                        <Button
+                          key={action.id}
+                          size="sm"
+                          onClick={() => {
+                            console.log('🎯 Botão clicado:', action.action_name);
+                            executeAction(action);
+                          }}
+                          disabled={shouldDisable}
+                          className={cn(
+                            "h-9 px-4 text-sm font-semibold rounded-none shadow-sm transition-all",
+                            isWin 
+                            ? "bg-green-600 hover:bg-green-700 text-white border-transparent dark:bg-green-600 dark:hover:bg-green-700 dark:text-white" 
                             : isLoss 
                               ? "bg-red-600 hover:bg-red-700 text-white border-transparent dark:bg-red-600 dark:hover:bg-red-700 dark:text-white" 
                               : isReopen
                                 ? "bg-blue-600 hover:bg-blue-700 text-white border-transparent dark:bg-blue-600 dark:hover:bg-blue-700 dark:text-white"
-                                : "bg-white text-gray-900 border border-gray-300 hover:bg-gray-100 dark:bg-[#1b1b1b] dark:text-gray-100 dark:border-gray-700"
-                        )}
-                      >
-                        {isExecutingAction ? '...' : action.action_name}
-              </Button>
-                    );
-                  });
-                })()}
+                                  : "bg-white text-gray-900 border border-gray-300 hover:bg-gray-100 dark:bg-[#1b1b1b] dark:text-gray-100 dark:border-gray-700"
+                          )}
+                        >
+                          {isExecutingAction ? '...' : action.action_name}
+                        </Button>
+                      );
+                    });
+                  })()
+                )}
               </div>
               
               {/* Popover de ações do card */}
@@ -2599,17 +2606,6 @@ const humanizeLabel = (label: string) => {
 
         {/* Área Principal */}
         <div className="flex-1 flex flex-col overflow-hidden">
-          {/* Bloqueio se ações não carregaram */}
-          {(!pipelineActions.length || isLoadingActions) ? (
-            <div className="flex-1 flex flex-col items-center justify-center gap-3 text-sm text-gray-600 dark:text-gray-300">
-              <div className="flex flex-col items-center gap-2">
-                <div className="h-9 w-32 bg-gray-200 dark:bg-gray-700 animate-pulse rounded" />
-                <div className="h-9 w-32 bg-gray-200 dark:bg-gray-700 animate-pulse rounded" />
-                <div className="h-9 w-32 bg-gray-200 dark:bg-gray-700 animate-pulse rounded" />
-              </div>
-              <span>Carregando ações...</span>
-            </div>
-          ) : (
           <>
           {/* Tabs */}
           <Tabs defaultValue="anotacoes" className="flex-1 flex flex-col overflow-hidden">
@@ -3759,7 +3755,6 @@ const humanizeLabel = (label: string) => {
             </div>
           </Tabs>
           </>
-          )}
         </div>
       </div>
       
