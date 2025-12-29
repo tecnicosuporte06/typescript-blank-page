@@ -237,12 +237,12 @@ export function Sidebar({
         key={item.id}
         onClick={() => onModuleChange(item.id)}
         className={cn(
-          "w-full flex items-center transition-all relative group border border-transparent outline-none",
+          "w-full flex items-center transition-all relative group outline-none",
           isCollapsed ? "justify-center p-2" : "gap-2 px-3 py-1.5",
           "text-sm font-medium rounded-none", // Excel-like typography
           isActive 
-            ? "bg-[#FEF3C7] border-gray-300 text-black font-bold shadow-sm z-10" // Active look: yellow background, bold black text
-            : "text-black hover:bg-[#e1e1e1] hover:border-gray-300 hover:z-10" // Hover look
+            ? "bg-[#FEF3C7] text-black font-bold shadow-sm z-10" // Active look: yellow background, bold black text
+            : "text-black hover:bg-[#e1e1e1] hover:z-10" // Hover look
         )}
       >
         {React.cloneElement(item.icon as React.ReactElement, {
@@ -299,7 +299,7 @@ export function Sidebar({
       data-sidebar 
       className={cn(
         "flex flex-col m-2 shadow-sm font-sans text-xs transition-all duration-300 ease-in-out relative",
-        "bg-primary border border-gray-300", // Amarelo igual ao topo, mesma cor em ambos os modos
+        "bg-primary", // Amarelo igual ao topo, mesma cor em ambos os modos
         isCollapsed ? "w-12" : "w-52" // Compact widths
       )}
     >
@@ -354,7 +354,7 @@ export function Sidebar({
       {/* Workspace Info */}
       {selectedWorkspace && (
         <div className={cn(
-          "flex-shrink-0 border-b border-gray-300 bg-primary transition-all duration-300",
+          "flex-shrink-0 bg-primary transition-all duration-300",
           isCollapsed ? 'p-1 flex justify-center' : 'px-3 py-2.5'
         )}>
           <div className="flex items-center gap-2">
@@ -392,7 +392,7 @@ export function Sidebar({
       </nav>
 
       {/* Action Icons */}
-      <div className={cn("flex-shrink-0 border-t border-gray-300 bg-primary", isCollapsed ? "p-1" : "p-2")}>
+      <div className={cn("flex-shrink-0 bg-primary", isCollapsed ? "p-1" : "p-2")}>
         <div className={cn("flex items-center", isCollapsed ? "flex-col gap-2" : "justify-between")}>
           {!isCollapsed && (
             <div className="flex items-center px-1">
@@ -448,12 +448,12 @@ export function Sidebar({
       </div>
 
       {/* User Info */}
-      <div className={cn("flex-shrink-0 border-t border-gray-300 bg-primary", isCollapsed ? "p-1" : "p-2")}>
+      <div className={cn("flex-shrink-0 bg-primary", isCollapsed ? "p-1" : "p-2")}>
         <div className={cn("flex items-center", isCollapsed ? "justify-center" : "gap-2")}>
           {isCollapsed ? (
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <button className="w-7 h-7 bg-gray-100 rounded-full flex items-center justify-center hover:bg-gray-200 border border-gray-300">
+                <button className="w-7 h-7 bg-gray-100 rounded-full flex items-center justify-center hover:bg-gray-200">
                   <User className="w-4 h-4 text-black" />
                 </button>
               </DropdownMenuTrigger>
@@ -476,7 +476,7 @@ export function Sidebar({
             </DropdownMenu>
           ) : (
             <>
-              <div className="w-7 h-7 bg-gray-100 rounded-full flex items-center justify-center border border-gray-300 flex-shrink-0">
+              <div className="w-7 h-7 bg-gray-100 rounded-full flex items-center justify-center flex-shrink-0">
                 <User className="w-4 h-4 text-black" />
               </div>
               <div className="flex-1 min-w-0">
