@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { ChevronLeft, MoreVertical, ArrowLeft, LayoutDashboard, MessageCircle, Users, FolderOpen, Settings, Zap, Link, Shield, DollarSign, Target, Package, Calendar, CheckSquare, MessageSquare, Bot, BrainCircuit, GitBranch, Bell, User, LogOut, Handshake, FileText, Building2, BarChart3, AudioLines, Moon, Sun, Key } from "lucide-react";
+import logoEx from "@/assets/logo-ex.png";
+import logoEnc from "@/assets/logo-enc.png";
 import { Tooltip, TooltipContent, TooltipTrigger, TooltipProvider } from "@/components/ui/tooltip";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
@@ -303,7 +305,7 @@ export function Sidebar({
     >
       {/* Title Bar (Logo) */}
       <div className={cn(
-        "flex-shrink-0 flex items-center bg-primary text-primary-foreground h-8 transition-all duration-300",
+        "flex-shrink-0 flex items-center bg-primary text-primary-foreground h-14 transition-all duration-300",
         isCollapsed ? "justify-center px-0" : "justify-between px-2"
       )}>
         {/* Logo ou Texto */}
@@ -313,29 +315,34 @@ export function Sidebar({
             alt="Logo" 
             className={cn(
               "object-contain transition-all duration-300", 
-              isCollapsed ? "h-5 w-5" : "h-5"
+              isCollapsed ? "h-10 w-10" : "h-10"
             )} 
           />
         ) : (
-           <h1 className={cn(
-             "font-bold transition-all duration-300 truncate", 
-             isCollapsed ? "text-xs" : "text-[16px]"
-           )}>
-            {isCollapsed ? "T" : "TEZEUS"}
-          </h1>
+          <img 
+            src={isCollapsed ? logoEnc : logoEx} 
+            alt="TEZEUS" 
+            className={cn(
+              "object-contain transition-all duration-300",
+              isCollapsed ? "h-12 w-12" : "h-12"
+            )} 
+          />
         )}
-        
-        {/* Botão de colapso */}
-        <button 
-          onClick={onToggleCollapse} 
-          className={cn(
-            "p-0.5 hover:bg-primary-foreground/20 rounded transition-all duration-300 text-primary-foreground",
-            isCollapsed && "rotate-180"
-          )}
-        >
-          <ChevronLeft className="w-4 h-4" />
-        </button>
       </div>
+
+      {/* Botão de colapso flutuante na lateral */}
+      <button 
+        onClick={onToggleCollapse} 
+        className={cn(
+          "absolute top-1/2 -right-3 transform -translate-y-1/2",
+          "z-[100] w-6 h-6 flex items-center justify-center",
+          "bg-white border border-gray-300 dark:bg-[#2d2d2d] dark:border-gray-600",
+          "rounded-full shadow-md hover:bg-gray-50 dark:hover:bg-gray-700 transition-all duration-200 group",
+          isCollapsed && "rotate-180"
+        )}
+      >
+        <ChevronLeft className="w-4 h-4 text-gray-600 dark:text-gray-300 group-hover:text-primary transition-colors" />
+      </button>
 
       {/* Workspace Info */}
       {selectedWorkspace && (
