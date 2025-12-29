@@ -330,8 +330,8 @@ export function Sidebar({
         className={cn(
           "absolute top-1/2 -right-3 transform -translate-y-1/2",
           "z-40 w-6 h-6 flex items-center justify-center",
-          "bg-yellow-400 border border-yellow-500 dark:bg-yellow-500 dark:border-yellow-600",
-          "rounded-full shadow-md hover:bg-yellow-500 dark:hover:bg-yellow-600 transition-all duration-200 group",
+          "bg-[#e85a0c] border border-[#e85a0c]",
+          "rounded-full shadow-md hover:opacity-90 transition-all duration-200 group",
           isCollapsed && "rotate-180"
         )}
         style={{
@@ -348,7 +348,7 @@ export function Sidebar({
             }
           }
         `}</style>
-        <ChevronLeft className="w-4 h-4 text-gray-800 dark:text-gray-900 group-hover:text-gray-900 transition-colors" />
+        <ChevronLeft className="w-4 h-4 text-white group-hover:scale-110 transition-all" />
       </button>
 
       {/* Workspace Info */}

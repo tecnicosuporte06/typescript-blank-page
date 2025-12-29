@@ -133,6 +133,8 @@ export function WhatsAppChat({
   // Usar hook completo de conversas
   const {
     conversations,
+    conversationCounts,
+    loadMoreConversations,
     markAsRead,
     assumirAtendimento,
     reativarIA,
@@ -2023,7 +2025,7 @@ export function WhatsAppChat({
                     {!sidebarCollapsed && <>
                         <span className="flex-1 text-left">Todos</span>
                         <span className={cn("text-[10px] px-1 py-0 rounded-none border", activeTab === 'all' ? "bg-white border-yellow-200 dark:bg-black/20 dark:border-yellow-800/20" : "bg-gray-200 border-transparent dark:bg-[#333] dark:text-gray-200")}>
-                          {conversations.filter(c => c.status !== 'closed').length}
+                          {conversationCounts?.all ?? conversations.filter(c => c.status !== 'closed').length}
                         </span>
                       </>}
                   </button>
@@ -2041,7 +2043,7 @@ export function WhatsAppChat({
                     {!sidebarCollapsed && <>
                         <span className="flex-1 text-left">Minhas conversas</span>
                         <span className={cn("text-[10px] px-1 py-0 rounded-none border", activeTab === 'mine' ? "bg-white border-yellow-200 dark:bg-black/20 dark:border-yellow-800/20" : "bg-gray-200 border-transparent dark:bg-[#333] dark:text-gray-200")}>
-                          {conversations.filter(c => c.assigned_user_id === user?.id && c.status !== 'closed').length}
+                          {conversationCounts?.mine ?? conversations.filter(c => c.assigned_user_id === user?.id && c.status !== 'closed').length}
                         </span>
                       </>}
                   </button>
@@ -2059,7 +2061,7 @@ export function WhatsAppChat({
                     {!sidebarCollapsed && <>
                         <span className="flex-1 text-left">Não atribuídas</span>
                         <span className={cn("text-[10px] px-1 py-0 rounded-none border", activeTab === 'unassigned' ? "bg-white border-yellow-200 dark:bg-black/20 dark:border-yellow-800/20" : "bg-gray-200 border-transparent dark:bg-[#333] dark:text-gray-200")}>
-                          {conversations.filter(c => !c.assigned_user_id && c.status !== 'closed').length}
+                          {conversationCounts?.unassigned ?? conversations.filter(c => !c.assigned_user_id && c.status !== 'closed').length}
                         </span>
                       </>}
                   </button>
@@ -2077,7 +2079,7 @@ export function WhatsAppChat({
                     {!sidebarCollapsed && <>
                         <span className="flex-1 text-left">Não lidas</span>
                         <span className={cn("text-[10px] px-1 py-0 rounded-none border", activeTab === 'unread' ? "bg-white border-yellow-200 dark:bg-black/20 dark:border-yellow-800/20" : "bg-gray-200 border-transparent dark:bg-[#333] dark:text-gray-200")}>
-                          {conversations.filter(c => conversationNotifications.has(c.id) && c.status !== 'closed').length}
+                          {conversationCounts?.unread ?? conversations.filter(c => conversationNotifications.has(c.id) && c.status !== 'closed').length}
                         </span>
                       </>}
                   </button>
@@ -2220,7 +2222,21 @@ export function WhatsAppChat({
         </div>
 
         {/* Lista de conversas */}
-        <ScrollArea className="flex-1">
+        <ScrollArea
+          className="flex-1"
+          onScrollCapture={(e) => {
+            // Pré-carregar antes do usuário chegar no fim (sem mostrar loader)
+            const el = e.target as HTMLElement;
+            const viewport = el.querySelector?.('[data-radix-scroll-area-viewport]') as HTMLElement | null;
+            const scroller = viewport ?? el;
+            if (!scroller) return;
+
+            const remaining = scroller.scrollHeight - scroller.scrollTop - scroller.clientHeight;
+            if (remaining < 500) {
+              loadMoreConversations();
+            }
+          }}
+        >
           {loading ? (
             <WhatsAppChatSkeleton />
           ) : filteredConversations.length === 0 ? (

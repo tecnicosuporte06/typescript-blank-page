@@ -142,10 +142,21 @@ export const useWhatsAppConversations = () => {
     };
   };
 
+  const [conversationCounts, setConversationCounts] = useState<{
+    all: number;
+    mine: number;
+    unassigned: number;
+    unread: number;
+  } | null>(null);
+
+  const nextCursorRef = useRef<string | null>(null);
+  const loadingMoreConversationsRef = useRef(false);
+  const fetchTokenRef = useRef(0);
+
   const fetchConversations = async (): Promise<boolean> => {
     try {
       setLoading(true);
-      console.log('🔄 Carregando conversas...');
+      console.log('🔄 Carregando conversas (primeira página)...');
 
       const userData = localStorage.getItem('currentUser');
       const currentUserData = userData ? JSON.parse(userData) : null;
@@ -156,108 +167,134 @@ export const useWhatsAppConversations = () => {
         return false;
       }
 
-      const { data, error } = await supabase.functions.invoke('whatsapp-get-conversations-lite', {
-        body: { workspace_id: selectedWorkspace.workspace_id },
-        headers: getHeaders()
-      });
+      const headers = getHeaders();
+      const PAGE_LIMIT = 50;
+      const myToken = ++fetchTokenRef.current;
 
+      // reset para novo carregamento
+      nextCursorRef.current = null;
+      setConversations([]);
+
+      const conversationsById = new Map<string, any>();
+
+      const fetchPage = async (cursor: string | null) => {
+        // Enviar paginação via body para não depender de querystring no invoke()
+        return await supabase.functions.invoke('whatsapp-get-conversations-lite', {
+          body: {
+            workspace_id: selectedWorkspace.workspace_id,
+            limit: PAGE_LIMIT,
+            cursor: cursor || null
+          },
+          headers
+        });
+      };
+
+      let gotAny = false;
+
+      // Primeira página (rápida)
+      const { data, error } = await fetchPage(null);
       if (error) throw error;
+      if (fetchTokenRef.current !== myToken) return false; // cancelado
 
-      if (data?.items) {
-        console.log(`✅ ${data.items.length} conversas carregadas`);
-        
-        // ✅ Se retornou 0 conversas, tenta novamente após 1 segundo
-        if (data.items.length === 0) {
-          console.log('⏳ Nenhuma conversa retornada, tentando novamente em 1s...');
+      if (data?.counts) setConversationCounts(data.counts);
+      const items = data?.items ?? [];
+
+      // ✅ Se retornou 0 conversas, tenta novamente após 1 segundo (comportamento atual)
+      if (items.length === 0) {
+        console.log('⏳ Nenhuma conversa retornada, tentando novamente em 1s...');
+        await new Promise(resolve => setTimeout(resolve, 1000));
+        if (fetchTokenRef.current !== myToken) return false; // cancelado
+
+        const { data: retryData, error: retryError } = await fetchPage(null);
+        if (retryError) throw retryError;
+        if (retryData?.counts) setConversationCounts(retryData.counts);
+
+        const retryItems = retryData?.items ?? [];
+        if (retryItems.length === 0) {
           setLoading(false);
-          
-          // Retry após 1 segundo
-          setTimeout(async () => {
-            console.log('🔄 Retry: Carregando conversas novamente...');
-            setLoading(true);
-            
-            const { data: retryData, error: retryError } = await supabase.functions.invoke('whatsapp-get-conversations-lite', {
-              body: { workspace_id: selectedWorkspace.workspace_id },
-              headers: getHeaders()
-            });
-            
-            if (!retryError && retryData?.items) {
-              console.log(`✅ Retry: ${retryData.items.length} conversas carregadas`);
-              
-              const transformedConversations = retryData.items.map((item: any) => ({
-                id: item.id,
-                contact: {
-                  id: item.contacts.id,
-                  name: item.contacts.name,
-                  phone: item.contacts.phone,
-                  email: item.contacts.email || null,
-                  profile_image_url: item.contacts.profile_image_url
-                },
-                agente_ativo: item.agente_ativo,
-                agent_active_id: item.agent_active_id || null,
-                status: item.status,
-                unread_count: item.unread_count,
-                last_activity_at: item.last_activity_at,
-                created_at: item.created_at || item.last_activity_at,
-                assigned_user_id: item.assigned_user_id,
-                assigned_user_name: item.assigned_user_name,
-                connection_id: item.connection_id,
-                connection: item.connection,
-          queue_id: item.queue_id || null,
-                workspace_id: selectedWorkspace.workspace_id,
-                conversation_tags: item.conversation_tags || [],
-                last_message: item.last_message || [],
-                messages: []
-              }));
-              
-              setConversations(sortConversationsByActivity(transformedConversations));
-            }
-            setLoading(false);
-          }, 1000);
-          
           return false;
         }
-        
-        // Transformar items para o formato esperado
-        const transformedConversations = data.items.map((item: any) => ({
-          id: item.id,
-          contact: {
-            id: item.contacts.id,
-            name: item.contacts.name,
-            phone: item.contacts.phone,
-            email: item.contacts.email || null,
-            profile_image_url: item.contacts.profile_image_url
-          },
-          agente_ativo: item.agente_ativo,
-          agent_active_id: item.agent_active_id || null,
-          status: item.status,
-          unread_count: item.unread_count,
-          last_activity_at: item.last_activity_at,
-          created_at: item.created_at || item.last_activity_at,
-          assigned_user_id: item.assigned_user_id,
-          assigned_user_name: item.assigned_user_name,
-          connection_id: item.connection_id,
-          connection: item.connection,
-          queue_id: item.queue_id || null,
-          workspace_id: selectedWorkspace.workspace_id,
-          conversation_tags: item.conversation_tags || [],
-          last_message: item.last_message || [],
-          messages: []
-        }));
-        
-        setConversations(sortConversationsByActivity(transformedConversations));
+
+        for (const raw of retryItems) {
+          const prev = conversationsById.get(raw.id);
+          conversationsById.set(raw.id, formatConversationRecord(raw, prev));
+        }
+
+        gotAny = conversationsById.size > 0;
+        setConversations(sortConversationsByActivity(Array.from(conversationsById.values())));
+        nextCursorRef.current = retryData?.nextCursor || null;
         setLoading(false);
-        return true;
+        return gotAny;
       }
 
+      for (const raw of items) {
+        const prev = conversationsById.get(raw.id);
+        conversationsById.set(raw.id, formatConversationRecord(raw, prev));
+      }
+
+      gotAny = conversationsById.size > 0;
+      setConversations(sortConversationsByActivity(Array.from(conversationsById.values())));
+      nextCursorRef.current = data?.nextCursor || null;
+
       setLoading(false);
-      return false;
+      return gotAny;
     } catch (error: any) {
       console.error('❌ Erro:', error);
       setLoading(false);
       return false;
     }
   };
+
+  const loadMoreConversations = useCallback(async () => {
+    if (loadingMoreConversationsRef.current) return;
+    const cursor = nextCursorRef.current;
+    if (!cursor || !selectedWorkspace?.workspace_id) return;
+
+    loadingMoreConversationsRef.current = true;
+    const myToken = fetchTokenRef.current;
+
+    try {
+      const { data, error } = await supabase.functions.invoke('whatsapp-get-conversations-lite', {
+        body: {
+          workspace_id: selectedWorkspace.workspace_id,
+          limit: 50,
+          cursor
+        },
+        headers: getHeaders()
+      });
+
+      if (fetchTokenRef.current !== myToken) return; // cancelado
+      if (error) throw error;
+
+      if (data?.counts) setConversationCounts(data.counts);
+      const items = data?.items ?? [];
+      if (items.length === 0) {
+        nextCursorRef.current = null;
+        return;
+      }
+
+      const nextCursor = data?.nextCursor || null;
+      if (nextCursor && nextCursor === cursor) {
+        console.warn('⚠️ Cursor repetido detectado, interrompendo paginação para evitar loop.');
+        nextCursorRef.current = null;
+      } else {
+        nextCursorRef.current = nextCursor;
+      }
+
+      setConversations(prev => {
+        const byId = new Map(prev.map((c: any) => [c.id, c]));
+        for (const raw of items) {
+          const existing = byId.get(raw.id);
+          byId.set(raw.id, formatConversationRecord(raw, existing));
+        }
+        return sortConversationsByActivity(Array.from(byId.values()));
+      });
+    } catch (e) {
+      console.error('❌ Erro ao carregar mais conversas:', e);
+    } finally {
+      loadingMoreConversationsRef.current = false;
+    }
+  }, [getHeaders, selectedWorkspace?.workspace_id]);
 
   // Accept conversation function - DEPRECATED: Use useConversationAccept hook instead
   // This is kept for backward compatibility but should not be used
@@ -887,6 +924,8 @@ export const useWhatsAppConversations = () => {
   return {
     conversations,
     loading,
+    conversationCounts,
+    loadMoreConversations,
     sendMessage,
     markAsRead,
     assumirAtendimento,

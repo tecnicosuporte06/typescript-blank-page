@@ -1965,74 +1965,74 @@ const humanizeLabel = (label: string) => {
                   </div>
                 ) : (
                   (() => {
-                    const cardStatus = cardData?.status?.toLowerCase() || 'aberto';
-                    const isMasterOrAdmin = userRole === 'master' || userRole === 'admin';
-                    const isClosed = cardStatus === 'ganho' || cardStatus === 'perda' || cardStatus === 'perdido';
+                  const cardStatus = cardData?.status?.toLowerCase() || 'aberto';
+                  const isMasterOrAdmin = userRole === 'master' || userRole === 'admin';
+                  const isClosed = cardStatus === 'ganho' || cardStatus === 'perda' || cardStatus === 'perdido';
 
-                    // Filtrar ações baseadas no estado do negócio e papel do usuário
-                    const filteredActions = pipelineActions.filter((action: any) => {
-                      const state = action.deal_state;
-                      
-                      // Regra: Ações de 'Aberto' (Reabrir) só aparecem para Master/Admin e se fechado
-                      if (state === 'Aberto') {
-                        const show = isMasterOrAdmin && isClosed;
-                        return show;
-                      }
-                      
-                      // Regra: Ações de 'Ganho' e 'Perda' só aparecem se estiver aberto
-                      if (state === 'Ganho' || state === 'Perda') {
-                        const show = cardStatus === 'aberto';
-                        return show;
-                      }
-
-                      return true;
-                    });
-
-                    if (filteredActions.length === 0) {
-                      console.log('⚠️ [Actions] Nenhuma ação passou pelos filtros:', { 
-                        cardStatus, 
-                        userRole, 
-                        totalActions: pipelineActions.length,
-                        actionsStates: pipelineActions.map(a => a.deal_state)
-                      });
+                  // Filtrar ações baseadas no estado do negócio e papel do usuário
+                  const filteredActions = pipelineActions.filter((action: any) => {
+                    const state = action.deal_state;
+                    
+                    // Regra: Ações de 'Aberto' (Reabrir) só aparecem para Master/Admin e se fechado
+                    if (state === 'Aberto') {
+                      const show = isMasterOrAdmin && isClosed;
+                      return show;
+                    }
+                    
+                    // Regra: Ações de 'Ganho' e 'Perda' só aparecem se estiver aberto
+                    if (state === 'Ganho' || state === 'Perda') {
+                      const show = cardStatus === 'aberto';
+                      return show;
                     }
 
-                    // Ordenar: Ganho, Perda, outros
-                    const orderedActions = [...filteredActions].sort((a, b) => {
-                      const order = { 'Ganho': 1, 'Perda': 2, 'Aberto': 3 };
-                      return (order[a.deal_state] || 99) - (order[b.deal_state] || 99);
+                    return true;
+                  });
+
+                  if (filteredActions.length === 0) {
+                    console.log('⚠️ [Actions] Nenhuma ação passou pelos filtros:', { 
+                      cardStatus, 
+                      userRole, 
+                      totalActions: pipelineActions.length,
+                      actionsStates: pipelineActions.map(a => a.deal_state)
                     });
+                  }
 
-                    return orderedActions.map((action: any) => {
-                      const isWin = action.deal_state === 'Ganho';
-                      const isLoss = action.deal_state === 'Perda';
-                      const shouldDisable = isExecutingAction;
-                      const isReopen = action.deal_state === 'Aberto';
+                  // Ordenar: Ganho, Perda, outros
+                  const orderedActions = [...filteredActions].sort((a, b) => {
+                    const order = { 'Ganho': 1, 'Perda': 2, 'Aberto': 3 };
+                    return (order[a.deal_state] || 99) - (order[b.deal_state] || 99);
+                  });
 
-                      return (
-                        <Button
-                          key={action.id}
-                          size="sm"
-                          onClick={() => {
-                            console.log('🎯 Botão clicado:', action.action_name);
-                            executeAction(action);
-                          }}
-                          disabled={shouldDisable}
-                          className={cn(
-                            "h-9 px-4 text-sm font-semibold rounded-none shadow-sm transition-all",
-                            isWin 
+                  return orderedActions.map((action: any) => {
+                    const isWin = action.deal_state === 'Ganho';
+                    const isLoss = action.deal_state === 'Perda';
+                    const shouldDisable = isExecutingAction;
+                    const isReopen = action.deal_state === 'Aberto';
+
+                    return (
+              <Button
+                        key={action.id}
+                        size="sm"
+                        onClick={() => {
+                          console.log('🎯 Botão clicado:', action.action_name);
+                          executeAction(action);
+                        }}
+                        disabled={shouldDisable}
+                        className={cn(
+                          "h-9 px-4 text-sm font-semibold rounded-none shadow-sm transition-all",
+                          isWin 
                             ? "bg-green-600 hover:bg-green-700 text-white border-transparent dark:bg-green-600 dark:hover:bg-green-700 dark:text-white" 
                             : isLoss 
                               ? "bg-red-600 hover:bg-red-700 text-white border-transparent dark:bg-red-600 dark:hover:bg-red-700 dark:text-white" 
                               : isReopen
                                 ? "bg-blue-600 hover:bg-blue-700 text-white border-transparent dark:bg-blue-600 dark:hover:bg-blue-700 dark:text-white"
-                                  : "bg-white text-gray-900 border border-gray-300 hover:bg-gray-100 dark:bg-[#1b1b1b] dark:text-gray-100 dark:border-gray-700"
-                          )}
-                        >
-                          {isExecutingAction ? '...' : action.action_name}
-                        </Button>
-                      );
-                    });
+                                : "bg-white text-gray-900 border border-gray-300 hover:bg-gray-100 dark:bg-[#1b1b1b] dark:text-gray-100 dark:border-gray-700"
+                        )}
+                      >
+                        {isExecutingAction ? '...' : action.action_name}
+              </Button>
+                    );
+                  });
                   })()
                 )}
               </div>
@@ -3953,7 +3953,7 @@ const humanizeLabel = (label: string) => {
                   value={activityEditForm.priority || undefined}
                   onValueChange={(v) => setActivityEditForm({ ...activityEditForm, priority: v === "none" ? "" : v })}
                 >
-                  <SelectTrigger className="bg-[#1a1a1a] border-gray-700 h-11 text-gray-100">
+                    <SelectTrigger className="bg-[#1a1a1a] border-gray-700 h-11 text-gray-100">
                     <SelectValue placeholder="Escolher qualificação" />
                   </SelectTrigger>
                     <SelectContent className="bg-[#1b1b1b] border-gray-700 text-gray-100">
@@ -4176,6 +4176,20 @@ function HistoryTimelineItem({
   onCancelNote: () => void;
   setSelectedFileForPreview: (file: any) => void;
 }) {
+  // ✅ local helper (HistoryTimelineItem fica fora do DealDetailsPage e não enxerga helpers internos)
+  const formatPhone = (raw?: string | null) => {
+    if (!raw) return '';
+    const digits = String(raw).replace(/\D/g, '');
+    const withoutCountry = digits.startsWith('55') ? digits.slice(2) : digits;
+    if (withoutCountry.length === 10) {
+      return `(${withoutCountry.slice(0, 2)}) ${withoutCountry.slice(2, 6)}-${withoutCountry.slice(6)}`;
+    }
+    if (withoutCountry.length >= 11) {
+      return `(${withoutCountry.slice(0, 2)}) ${withoutCountry.slice(2, 7)}-${withoutCountry.slice(7, 11)}`;
+    }
+    return withoutCountry;
+  };
+
   const EventIcon = getEventIcon(event.type, event.action);
   const isActivity = event.type?.startsWith("activity_");
   const isCompleted = event.action === "completed";

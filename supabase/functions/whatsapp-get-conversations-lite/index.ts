@@ -33,8 +33,23 @@ serve(async (req) => {
     });
 
     const url = new URL(req.url);
-    const limit = parseInt(url.searchParams.get('limit') || '50');
-    const cursor = url.searchParams.get('cursor');
+    const limitFromQuery = parseInt(url.searchParams.get('limit') || '50');
+    const cursorFromQuery = url.searchParams.get('cursor');
+
+    // ✅ Aceitar paginação via body também (porque supabase.functions.invoke pode não preservar querystring)
+    let limit = limitFromQuery;
+    let cursor: string | null = cursorFromQuery;
+    try {
+      const maybeJson = await req.clone().json().catch(() => null);
+      if (maybeJson && typeof maybeJson === 'object') {
+        const bodyLimit = Number((maybeJson as any).limit);
+        const bodyCursor = (maybeJson as any).cursor;
+        if (!Number.isNaN(bodyLimit) && bodyLimit > 0) limit = bodyLimit;
+        if (typeof bodyCursor === 'string' && bodyCursor.length > 0) cursor = bodyCursor;
+      }
+    } catch (_e) {
+      // ignora
+    }
 
     if (!workspaceId) {
       console.error('❌ Missing workspace_id in headers');
@@ -163,15 +178,26 @@ serve(async (req) => {
     console.log('👤 USER FILTER:', userProfile !== 'master' && userProfile !== 'admin' ? `assigned_user_id = ${systemUserId} OR assigned_user_id IS NULL` : 'NONE (master/admin)');
 
     query = query
-      .order('last_activity_at', { ascending: false, nullsFirst: true })
+      .order('last_activity_at', { ascending: false, nullsLast: true })
       .order('id', { ascending: false })
       .limit(limit);
 
     // Apply cursor pagination if provided (sem sobrescrever filtros anteriores)
+    // Cursor esperado: `${last_activity_at}|${id}` (last_activity_at pode ser null)
     if (cursor) {
-      const [cursorDate, cursorId] = cursor.split('|');
-      // Aplica filtro de paginação sem interferir no filtro de usuário
-      query = query.filter('last_activity_at', 'lt', cursorDate);
+      const [cursorDateRaw, cursorIdRaw] = cursor.split('|');
+      const cursorId = cursorIdRaw;
+      const cursorDate = cursorDateRaw === 'null' ? null : cursorDateRaw;
+
+      if (cursorDate === null) {
+        // Paginação dentro do bloco last_activity_at IS NULL (ordem por id DESC)
+        query = query.is('last_activity_at', null);
+        if (cursorId) query = query.lt('id', cursorId);
+      } else {
+        // ✅ Mantemos simples para não sobrescrever filtros .or() já aplicados (ex: filtro de usuário)
+        // Isso evita loop de cursor repetido, mesmo que existam timestamps iguais.
+        query = query.lt('last_activity_at', cursorDate);
+      }
     }
 
     const { data: conversations, error } = await query;
@@ -260,6 +286,33 @@ serve(async (req) => {
       })
     );
 
+    // ✅ Contagens totais (para não depender do subset carregado)
+    // Usamos queries "head: true" para não transferir linhas
+    const countsBase = () => {
+      let q = supabase
+        .from('conversations')
+        .select('id', { count: 'exact', head: true })
+        .eq('workspace_id', workspaceId);
+      if (userProfile === 'user') {
+        q = q.or(`assigned_user_id.eq.${systemUserId},assigned_user_id.is.null`);
+      }
+      return q;
+    };
+
+    const [allCountRes, mineCountRes, unassignedCountRes, unreadCountRes] = await Promise.all([
+      countsBase(),
+      countsBase().eq('assigned_user_id', systemUserId),
+      countsBase().is('assigned_user_id', null),
+      countsBase().gt('unread_count', 0)
+    ]);
+
+    const counts = {
+      all: allCountRes.count ?? 0,
+      mine: mineCountRes.count ?? 0,
+      unassigned: unassignedCountRes.count ?? 0,
+      unread: unreadCountRes.count ?? 0
+    };
+
     // Generate next cursor if we have results
     let nextCursor = null;
     if (conversationsWithMessages && conversationsWithMessages.length === limit) {
@@ -270,7 +323,8 @@ serve(async (req) => {
     return new Response(
       JSON.stringify({
         items: conversationsWithMessages || [],
-        nextCursor
+        nextCursor,
+        counts
       }),
       {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' }

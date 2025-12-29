@@ -1704,11 +1704,11 @@ const [selectedCardForProduct, setSelectedCardForProduct] = useState<{
   }
   
   return (
-    <DndContext
-      sensors={sensors}
-      collisionDetection={customCollisionDetection}
-      onDragStart={handleDragStart}
-      onDragEnd={handleDragEnd}
+    <DndContext 
+      sensors={sensors} 
+      collisionDetection={customCollisionDetection} 
+      onDragStart={handleDragStart} 
+      onDragEnd={handleDragEnd} 
       onDragOver={handleDragOver}
     >
       {/* Excel-like Layout */}
@@ -2572,12 +2572,12 @@ const [selectedCardForProduct, setSelectedCardForProduct] = useState<{
                             setSelectedChatCard(dealData);
                             setIsChatModalOpen(true);
                           }} onValueClick={dealData => {
-                            setSelectedCardForProduct({
-                              id: dealData.id,
-                              value: dealData.value,
-                              productId: dealData.product_id || null
-                            });
-                            setIsVincularProdutoModalOpen(true);
+                              setSelectedCardForProduct({
+                                id: dealData.id,
+                                value: dealData.value,
+                                productId: dealData.product_id || null
+                              });
+                              setIsVincularProdutoModalOpen(true);
                           }} onConfigureAgent={(conversationId) => {
                             setSelectedConversationForAgent(conversationId);
                             setAgentModalOpen(true);
