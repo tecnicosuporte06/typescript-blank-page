@@ -5,7 +5,8 @@ import {
   FolderKanban, 
   ArrowRight, 
   Database, 
-  ListFilter 
+  ListFilter,
+  CheckSquare
 } from "lucide-react";
 import { ReactNode } from "react";
 
@@ -56,6 +57,45 @@ export function getActionDisplayInfo(actionText: string): ActionDisplayInfo | nu
   }
 
   const values = extractActionValues(actionText);
+
+  // Qualificar cliente (Negócio)
+  // Esperado:
+  // [ADD_ACTION]: [workspace_id: WORKSPACE_ID], [card_id: ID_DO_CARD], [qualification: qualified|disqualified], [qualification_title: Qualificado|Desqualificado]
+  const qualifyMatch = actionText.match(
+    /\[ADD_ACTION\]:\s*\[workspace_id:\s*(.*?)\]\s*,\s*\[card_id:\s*(.*?)\]\s*,\s*\[qualification:\s*(.*?)\](?:\s*,\s*\[qualification_title:\s*(.*?)\])?/i
+  );
+  if (qualifyMatch) {
+    const qualification = (qualifyMatch[3] || '').trim().toLowerCase();
+    const titleFromText = (qualifyMatch[4] || '').trim();
+    const title =
+      titleFromText ||
+      (qualification === 'qualified'
+        ? 'Qualificado'
+        : qualification === 'disqualified'
+        ? 'Desqualificado'
+        : 'Selecionar');
+
+    const isQualified = qualification === 'qualified';
+    const isDisqualified = qualification === 'disqualified';
+
+    return {
+      type: 'qualificar_cliente',
+      label: `Qualificar cliente: ${title}`,
+      icon: <CheckSquare className="w-3.5 h-3.5" />,
+      color: isQualified
+        ? 'bg-green-100 text-green-700 border-green-300 dark:bg-green-900/30 dark:text-green-300 dark:border-green-700'
+        : isDisqualified
+        ? 'bg-red-100 text-red-700 border-red-300 dark:bg-red-900/30 dark:text-red-300 dark:border-red-700'
+        : 'bg-gray-100 text-gray-700 border-gray-300 dark:bg-gray-800 dark:text-gray-300 dark:border-gray-700',
+      values: {
+        ...values,
+        workspace_id: (qualifyMatch[1] || '').trim(),
+        card_id: (qualifyMatch[2] || '').trim(),
+        qualification,
+        qualification_title: title,
+      },
+    };
+  }
 
   // Adicionar Tag
   const tagMatch = actionText.match(/\[ADD_ACTION\]:\s*\[tag_name:\s*(.*?)\]\s*,\s*\[tag_id:\s*(.*?)\]\s*,\s*\[contact_id:\s*CONTACT_ID\]/);

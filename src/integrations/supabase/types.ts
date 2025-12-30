@@ -2143,6 +2143,7 @@ export type Database = {
           created_at: string
           description: string | null
           id: string
+          qualification: string
           loss_comments: string | null
           loss_reason_id: string | null
           moved_to_column_at: string | null
@@ -2160,6 +2161,7 @@ export type Database = {
           created_at?: string
           description?: string | null
           id?: string
+          qualification?: string
           loss_comments?: string | null
           loss_reason_id?: string | null
           moved_to_column_at?: string | null
@@ -2177,6 +2179,7 @@ export type Database = {
           created_at?: string
           description?: string | null
           id?: string
+          qualification?: string
           loss_comments?: string | null
           loss_reason_id?: string | null
           moved_to_column_at?: string | null

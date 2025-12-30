@@ -17,7 +17,9 @@ export interface CardHistoryEvent {
     | 'activity_reuniao'
     | 'activity_agendamento'
     | 'tag'
-    | 'notes';
+    | 'notes'
+    | 'files'
+    | 'qualification';
   action: string;
   description: string;
   timestamp: string;
@@ -169,6 +171,35 @@ export const useCardHistory = (cardId: string, contactId?: string) => {
             const changedBy = metadata.changed_by_name || 'Sistema';
             description = `Status alterado para: ${newStatus} - ${changedBy}`;
             eventTitle = 'Status Atualizado';
+          } else if (event.action === 'qualification_changed') {
+            const changedBy = metadata.changed_by_name || 'Sistema';
+            const oldQ = metadata.old_qualification || 'unqualified';
+            const newQ = metadata.new_qualification || 'unqualified';
+            const label = (value: string) => {
+              switch (value) {
+                case 'qualified':
+                  return 'Qualificado';
+                case 'disqualified':
+                  return 'Desqualificado';
+                default:
+                  return 'Não qualificado';
+              }
+            };
+            description = `Qualificação alterada: ${label(oldQ)} → ${label(newQ)} - ${changedBy}`;
+            eventType = 'qualification';
+            eventTitle = 'Qualificação do Negócio';
+          } else if (event.action === 'file_attached') {
+            const changedBy = metadata.changed_by_name || 'Sistema';
+            const fileName = metadata.attachment_name || 'arquivo';
+            description = `Arquivo anexado: ${fileName} - ${changedBy}`;
+            eventType = 'files';
+            eventTitle = 'Arquivo';
+          } else if (event.action === 'file_deleted') {
+            const changedBy = metadata.changed_by_name || 'Sistema';
+            const fileName = metadata.attachment_name || 'arquivo';
+            description = `Arquivo removido: ${fileName} - ${changedBy}`;
+            eventType = 'files';
+            eventTitle = 'Arquivo';
           } else if (event.action === 'tag_removed') {
             const tagName = metadata.tag_name || 'sem nome';
             const changedBy = metadata.changed_by_name || 'Sistema';
@@ -371,6 +402,8 @@ export const useCardHistory = (cardId: string, contactId?: string) => {
           type,
           subject,
           description,
+          attachment_url,
+          attachment_name,
           scheduled_for,
           is_completed,
           created_at,
@@ -425,6 +458,8 @@ export const useCardHistory = (cardId: string, contactId?: string) => {
               scheduled_for: activity.scheduled_for,
               subject: activity.subject,
               description: activity.description,
+              attachment_url: (activity as any).attachment_url,
+              attachment_name: (activity as any).attachment_name,
               status: 'created'
             }
           });
@@ -444,6 +479,8 @@ export const useCardHistory = (cardId: string, contactId?: string) => {
                 scheduled_for: activity.scheduled_for,
                 subject: activity.subject,
                 description: activity.description,
+                attachment_url: (activity as any).attachment_url,
+                attachment_name: (activity as any).attachment_name,
                 status: 'completed'
               }
             });

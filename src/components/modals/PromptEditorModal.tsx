@@ -17,7 +17,8 @@ import {
   Database, 
   Link2, 
   Shuffle,
-  ListFilter
+  ListFilter,
+  CheckSquare
 } from "lucide-react";
 import {
   ContextMenu,
@@ -89,6 +90,12 @@ const actionButtons: ActionButton[] = [
     label: "Enviar Funil",
     icon: <ListFilter className="w-4 h-4" />,
     tag: '[Enviar Funil: NOME_DO_FUNIL]',
+  },
+  {
+    id: "qualify-deal",
+    label: "Qualificar cliente",
+    icon: <CheckSquare className="w-4 h-4" />,
+    tag: '',
   },
 ];
 
@@ -186,6 +193,8 @@ export function PromptEditorModal({
   const [showConnectionSelector, setShowConnectionSelector] = useState(false);
   const [showPipelineColumnSelector, setShowPipelineColumnSelector] = useState(false);
   const [showFunnelSelector, setShowFunnelSelector] = useState(false);
+  const [showQualificationSelector, setShowQualificationSelector] = useState(false);
+  const [qualificationSelection, setQualificationSelection] = useState<'qualified' | 'disqualified'>('qualified');
   const [pendingActionType, setPendingActionType] = useState<string | null>(null);
   const editorRef = useRef<PromptEditorRef>(null);
 
@@ -225,6 +234,11 @@ export function PromptEditorModal({
     if (action.id === "send-funnel") {
       setPendingActionType(action.id);
       setShowFunnelSelector(true);
+      return;
+    }
+
+    if (action.id === "qualify-deal") {
+      setShowQualificationSelector(true);
       return;
     }
 
@@ -279,6 +293,15 @@ export function PromptEditorModal({
     editorRef.current?.insertText(actionText);
     setShowFunnelSelector(false);
     setPendingActionType(null);
+  };
+
+  const handleConfirmQualification = () => {
+    const title = qualificationSelection === 'qualified' ? 'Qualificado' : 'Desqualificado';
+    const actionText =
+      `\n[ADD_ACTION]: [workspace_id: WORKSPACE_ID], [card_id: ID_DO_CARD], ` +
+      `[qualification: ${qualificationSelection}], [qualification_title: ${title}]\n`;
+    editorRef.current?.insertText(actionText);
+    setShowQualificationSelector(false);
   };
 
   const handleSave = () => {
@@ -378,6 +401,59 @@ export function PromptEditorModal({
         onFunnelSelected={handleFunnelSelected}
         workspaceId={workspaceId}
       />
+
+      {/* Modal de qualificação */}
+      <Dialog open={showQualificationSelector} onOpenChange={setShowQualificationSelector}>
+        <DialogContent
+          className="max-w-md border border-[#d4d4d4] shadow-lg sm:rounded-none bg-white dark:bg-[#0b0b0b] dark:border-gray-700 dark:text-gray-100"
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') {
+              e.preventDefault();
+              handleConfirmQualification();
+            }
+          }}
+        >
+          <DialogHeader>
+            <DialogTitle>Qualificar cliente</DialogTitle>
+          </DialogHeader>
+
+          <div className="space-y-3">
+            <div className="grid grid-cols-2 gap-2">
+              <Button
+                type="button"
+                variant={qualificationSelection === 'qualified' ? 'default' : 'outline'}
+                onClick={() => setQualificationSelection('qualified')}
+                className="rounded-none"
+              >
+                Qualificado
+              </Button>
+
+              <Button
+                type="button"
+                variant={qualificationSelection === 'disqualified' ? 'default' : 'outline'}
+                onClick={() => setQualificationSelection('disqualified')}
+                className="rounded-none"
+              >
+                Desqualificado
+              </Button>
+            </div>
+
+            <div className="flex justify-end gap-2 pt-2">
+              <Button
+                type="button"
+                variant="outline"
+                className="rounded-none"
+                onClick={() => setShowQualificationSelector(false)}
+              >
+                Cancelar
+              </Button>
+              <Button type="button" className="rounded-none" onClick={handleConfirmQualification}>
+                Confirmar
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </Dialog>
   );
 }

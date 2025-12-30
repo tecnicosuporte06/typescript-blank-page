@@ -83,6 +83,8 @@ const [manualValue, setManualValue] = useState<string>("");
   const [tempContactName, setTempContactName] = useState("");
   const [isUploadingFile, setIsUploadingFile] = useState(false);
   const [selectedFileForPreview, setSelectedFileForPreview] = useState<any | null>(null);
+  const [activityAttachmentFile, setActivityAttachmentFile] = useState<File | null>(null);
+  const [isUpdatingQualification, setIsUpdatingQualification] = useState(false);
   
   // Estados para anotações
   const [noteContent, setNoteContent] = useState("");
@@ -108,7 +110,6 @@ const [activityEditForm, setActivityEditForm] = useState({
   type: "Ligação abordada",
   subject: "",
   description: "",
-  priority: "",
   availability: "livre",
   startDate: new Date(),
   startTime: "13:00",
@@ -165,6 +166,78 @@ const [conversationId, setConversationId] = useState<string | null>(null);
     }
     return withoutCountry;
   };
+
+  type DealQualification = 'unqualified' | 'qualified' | 'disqualified';
+
+  const normalizeDealQualification = (value: any): DealQualification => {
+    if (value === 'qualified' || value === 'disqualified' || value === 'unqualified') return value;
+    return 'unqualified';
+  };
+
+  const getQualificationLabel = (q: DealQualification) => {
+    switch (q) {
+      case 'qualified':
+        return 'Qualificado';
+      case 'disqualified':
+        return 'Desqualificado';
+      default:
+        return 'Não qualificado';
+    }
+  };
+
+  const handleUpdateDealQualification = async (newQualification: DealQualification) => {
+    if (!cardId) return;
+    const oldQualification = normalizeDealQualification(cardData?.qualification);
+
+    if (oldQualification === newQualification) return;
+
+    setIsUpdatingQualification(true);
+    try {
+      const { error } = await supabase
+        .from('pipeline_cards')
+        .update({
+          qualification: newQualification,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', cardId);
+
+      if (error) throw error;
+
+      // Registrar no histórico do card (para auditoria e timeline)
+      try {
+        await supabase.from('pipeline_card_history').insert({
+          card_id: cardId,
+          action: 'qualification_changed',
+          changed_at: new Date().toISOString(),
+          metadata: {
+            old_qualification: oldQualification,
+            new_qualification: newQualification,
+            changed_by_id: authUser?.id || null,
+            changed_by_name: getUserDisplayName(),
+          },
+        });
+      } catch (historyErr) {
+        console.warn('⚠️ Não foi possível registrar histórico de qualificação:', historyErr);
+      }
+
+      setCardData((prev: any) => ({ ...prev, qualification: newQualification }));
+      queryClient.invalidateQueries({ queryKey: ['card-history', cardId] });
+
+      toast({
+        title: 'Qualificação atualizada',
+        description: `Negócio marcado como ${getQualificationLabel(newQualification).toLowerCase()}.`,
+      });
+    } catch (err: any) {
+      console.error('Erro ao atualizar qualificação do negócio:', err);
+      toast({
+        title: 'Erro',
+        description: err?.message || 'Não foi possível atualizar a qualificação do negócio.',
+        variant: 'destructive',
+      });
+    } finally {
+      setIsUpdatingQualification(false);
+    }
+  };
   const [pipelineActions, setPipelineActions] = useState<any[]>([]);
   const [isLoadingActions, setIsLoadingActions] = useState(false);
   const [isExecutingAction, setIsExecutingAction] = useState(false);
@@ -189,7 +262,6 @@ const [isMarkingAsLost, setIsMarkingAsLost] = useState(false);
     type: "Ligação abordada",
     subject: "",
     description: "",
-    priority: "",
     availability: "livre",
     startDate: new Date(),
     startTime: "13:00",
@@ -1197,6 +1269,7 @@ const humanizeLabel = (label: string) => {
     }
 
     try {
+      setIsUploadingFile(!!activityAttachmentFile);
       // Combinar data e hora de início
       const [startHour, startMinute] = activityForm.startTime.split(':').map(Number);
       const startDateTime = new Date(activityForm.startDate);
@@ -1210,6 +1283,32 @@ const humanizeLabel = (label: string) => {
       // Calcular duração em minutos
       const durationMinutes = Math.round((endDateTime.getTime() - startDateTime.getTime()) / (1000 * 60));
 
+      // Upload do anexo (opcional)
+      let attachmentUrl: string | null = null;
+      let attachmentName: string | null = null;
+      if (activityAttachmentFile && effectiveWorkspaceId) {
+        const fileExt = activityAttachmentFile.name.split('.').pop();
+        const safeName = `${Date.now()}_${Math.random().toString(36).substring(7)}.${fileExt}`;
+        const filePath = `${effectiveWorkspaceId}/${safeName}`;
+
+        const { error: uploadError } = await supabase.storage
+          .from('activity-attachments')
+          .upload(filePath, activityAttachmentFile, {
+            contentType: activityAttachmentFile.type,
+            cacheControl: '3600',
+            upsert: false
+          });
+
+        if (uploadError) throw uploadError;
+
+        const { data: { publicUrl } } = supabase.storage
+          .from('activity-attachments')
+          .getPublicUrl(filePath);
+
+        attachmentUrl = publicUrl;
+        attachmentName = activityAttachmentFile.name;
+      }
+
       const activityData = {
         contact_id: contact.id,
         workspace_id: effectiveWorkspaceId,
@@ -1218,18 +1317,43 @@ const humanizeLabel = (label: string) => {
         responsible_id: activityForm.responsibleId,
         subject: activityForm.subject.trim() || activityForm.type,
         description: activityForm.description || null,
-        priority: activityForm.priority,
         availability: activityForm.availability,
         scheduled_for: startDateTime.toISOString(),
         duration_minutes: durationMinutes > 0 ? durationMinutes : 30,
-        is_completed: activityForm.markAsDone
+        is_completed: activityForm.markAsDone,
+        attachment_url: attachmentUrl,
+        attachment_name: attachmentName
       };
 
-      const { error } = await supabase
+      const { data: insertedActivity, error } = await supabase
         .from('activities')
-        .insert(activityData);
+        .insert(activityData)
+        .select('id')
+        .single();
 
       if (error) throw error;
+
+      // Registrar no histórico quando houver anexo (persistente)
+      if (attachmentUrl && attachmentName) {
+        try {
+          await supabase.from('pipeline_card_history').insert({
+            card_id: cardId,
+            action: 'file_attached',
+            changed_at: new Date().toISOString(),
+            metadata: {
+              activity_id: insertedActivity?.id || null,
+              activity_type: activityForm.type,
+              activity_subject: activityForm.subject.trim() || activityForm.type,
+              attachment_name: attachmentName,
+              attachment_url: attachmentUrl,
+              changed_by_id: authUser?.id || null,
+              changed_by_name: getUserDisplayName(),
+            },
+          });
+        } catch (historyErr) {
+          console.warn('⚠️ Não foi possível registrar histórico de arquivo anexado:', historyErr);
+        }
+      }
 
       toast({
         title: "Sucesso",
@@ -1248,7 +1372,6 @@ const humanizeLabel = (label: string) => {
         type: "Ligação abordada",
         subject: "",
         description: "",
-        priority: "",
         availability: "livre",
         startDate: new Date(),
         startTime: "13:00",
@@ -1259,6 +1382,7 @@ const humanizeLabel = (label: string) => {
         videoCall: false,
         markAsDone: false
       });
+      setActivityAttachmentFile(null);
     } catch (error) {
       console.error('Erro ao salvar atividade:', error);
       toast({
@@ -1266,6 +1390,8 @@ const humanizeLabel = (label: string) => {
         description: "Não foi possível criar a atividade.",
         variant: "destructive",
       });
+    } finally {
+      setIsUploadingFile(false);
     }
   };
 
@@ -1294,7 +1420,6 @@ const humanizeLabel = (label: string) => {
           type: activity.type || "Ligação abordada",
           subject: activity.subject || "",
           description: activity.description || "",
-          priority: activity.priority || "",
           availability: activity.availability || "livre",
           startDate: scheduled,
           startTime: formatTime(scheduled),
@@ -1345,7 +1470,6 @@ const humanizeLabel = (label: string) => {
           responsible_id: activityEditForm.responsibleId,
           subject: activityEditForm.subject.trim() || activityEditForm.type,
           description: activityEditForm.description || null,
-          priority: activityEditForm.priority,
           availability: activityEditForm.availability,
           scheduled_for: startDateTime.toISOString(),
           duration_minutes: durationMinutes > 0 ? durationMinutes : 30,
@@ -1377,101 +1501,39 @@ const humanizeLabel = (label: string) => {
 
   const deleteActivityById = useCallback(
     async (activityId: string) => {
+      // Se a atividade tiver anexo, registrar remoção no histórico antes de deletar
+      try {
+        const { data: activityRow } = await supabase
+          .from('activities')
+          .select('id, attachment_url, attachment_name')
+          .eq('id', activityId)
+          .maybeSingle();
+
+        if (activityRow?.attachment_url) {
+          await supabase.from('pipeline_card_history').insert({
+            card_id: cardId,
+            action: 'file_deleted',
+            changed_at: new Date().toISOString(),
+            metadata: {
+              activity_id: activityRow.id,
+              attachment_name: activityRow.attachment_name || null,
+              attachment_url: activityRow.attachment_url || null,
+              changed_by_id: authUser?.id || null,
+              changed_by_name: getUserDisplayName(),
+            },
+          });
+        }
+      } catch (historyErr) {
+        console.warn('⚠️ Não foi possível registrar histórico de arquivo removido ao excluir atividade:', historyErr);
+      }
+
       const { error } = await supabase.from("activities").delete().eq("id", activityId);
       if (error) throw error;
       await fetchActivities();
       queryClient.invalidateQueries({ queryKey: ['card-history', cardId] });
     },
-    [cardId, fetchActivities, queryClient]
+    [authUser?.id, cardId, fetchActivities, getUserDisplayName, queryClient]
   );
-
-  const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (!file || !cardId || !effectiveWorkspaceId || !contact?.id) return;
-
-    setIsUploadingFile(true);
-    try {
-      const fileExt = file.name.split('.').pop();
-      const fileName = `${Date.now()}_${Math.random().toString(36).substring(7)}.${fileExt}`;
-      const filePath = `${effectiveWorkspaceId}/${fileName}`;
-
-      const { error: uploadError } = await supabase.storage
-        .from('activity-attachments')
-        .upload(filePath, file);
-
-      if (uploadError) throw uploadError;
-
-      const { data: { publicUrl } } = supabase.storage
-        .from('activity-attachments')
-        .getPublicUrl(filePath);
-
-      // Criar uma atividade do tipo "Arquivo" para registrar o upload
-      const { error: activityError } = await supabase
-        .from('activities')
-        .insert({
-          contact_id: contact.id,
-          workspace_id: effectiveWorkspaceId,
-          pipeline_card_id: cardId,
-          type: 'Arquivo',
-          subject: `Arquivo anexado: ${file.name}`,
-          attachment_name: file.name,
-          attachment_url: publicUrl,
-          responsible_id: authUser?.id || null,
-          scheduled_for: new Date().toISOString(),
-          is_completed: true,
-          completed_at: new Date().toISOString()
-        });
-
-      if (activityError) throw activityError;
-
-      toast({
-        title: "Sucesso",
-        description: "Arquivo anexado com sucesso.",
-      });
-
-      // Recarregar atividades para atualizar a lista de arquivos
-      await fetchActivities();
-      queryClient.invalidateQueries({ queryKey: ['card-history', cardId] });
-    } catch (error: any) {
-      console.error('Erro ao fazer upload:', error);
-      toast({
-        title: "Erro",
-        description: error.message || "Não foi possível carregar o arquivo.",
-        variant: "destructive",
-      });
-    } finally {
-      setIsUploadingFile(false);
-      if (event.target) event.target.value = '';
-    }
-  };
-
-  const getFileIconComponent = (fileName: string) => {
-    const ext = fileName.split('.').pop()?.toLowerCase();
-    const label = (ext || 'file').slice(0, 4).toUpperCase();
-    const isImage = ['jpg', 'jpeg', 'png', 'gif', 'webp'].includes(ext || '');
-
-    return (
-      <div className="w-12 h-12 rounded-md border border-gray-200 dark:border-gray-700 bg-gray-100 dark:bg-[#1f1f1f] flex items-center justify-center text-gray-700 dark:text-gray-200">
-        {isImage ? (
-          <ImageIcon className="h-5 w-5 text-gray-500 dark:text-gray-300" />
-        ) : (
-          <span className="text-[10px] font-semibold uppercase tracking-wide">
-            {label}
-          </span>
-        )}
-      </div>
-    );
-  };
-
-  const handleDownloadFile = (url: string, name: string) => {
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = name;
-    link.target = '_blank';
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-  };
 
   const handleDeleteActivity = useCallback(async () => {
     if (!selectedActivityForEdit || !cardId) return;
@@ -1937,7 +1999,7 @@ const humanizeLabel = (label: string) => {
     if (filter === "documents") return events.filter(e => e.type === "documents");
     if (filter === "invoices") return events.filter(e => e.type === "invoices");
     if (filter === "changelog") return events.filter(e => 
-      ["column_transfer", "pipeline_transfer", "tag", "user_assigned", "queue_transfer", "agent_activity"].includes(e.type)
+      ["column_transfer", "pipeline_transfer", "tag", "user_assigned", "queue_transfer", "agent_activity", "qualification"].includes(e.type)
     );
     return events;
   };
@@ -2446,6 +2508,30 @@ const humanizeLabel = (label: string) => {
                   </div>
                 </div>
 
+                {/* Qualificação do Negócio */}
+                <div className="flex items-center gap-2 text-sm">
+                  <CheckSquare className="h-4 w-4 text-gray-400" />
+                  <div className="flex-1 flex items-center justify-between gap-3 min-w-0">
+                    <div className="text-gray-700 dark:text-gray-300 text-xs font-medium whitespace-nowrap">
+                      Qualificação do negócio
+                    </div>
+                    <Select
+                      value={normalizeDealQualification(cardData?.qualification)}
+                      onValueChange={(value) => handleUpdateDealQualification(value as any)}
+                      disabled={isUpdatingQualification}
+                    >
+                      <SelectTrigger className="h-7 w-[170px] text-xs rounded-none border border-gray-300 bg-white dark:bg-[#1b1b1b] dark:border-gray-700 dark:text-gray-100">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent className="rounded-none [&_.absolute.left-2]:hidden [&_[data-radix-select-item-indicator]]:hidden [&_[data-state=checked]]:hidden">
+                        <SelectItem value="unqualified" className="pl-2 pr-2">Selecionar</SelectItem>
+                        <SelectItem value="qualified" className="pl-2 pr-2">Qualificado</SelectItem>
+                        <SelectItem value="disqualified" className="pl-2 pr-2">Desqualificado</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+
                 {/* Etiquetas */}
                 <div className="flex items-start gap-2 text-sm">
                   <Tag className="h-4 w-4 text-gray-400 mt-0.5" />
@@ -2728,13 +2814,6 @@ const humanizeLabel = (label: string) => {
                 >
                   <CalendarIconLucide className="h-4 w-4" />
                   <span>Atividades</span>
-                </TabsTrigger>
-                <TabsTrigger 
-                  value="arquivos" 
-                  className="flex items-center gap-2 rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:shadow-none dark:text-gray-400 dark:data-[state=active]:text-white"
-                >
-                  <File className="h-4 w-4" />
-                  <span>Arquivos</span>
                 </TabsTrigger>
                 <TabsTrigger 
                   value="mensagens" 
@@ -3092,24 +3171,13 @@ const humanizeLabel = (label: string) => {
                         <Button
                           variant="ghost"
                           size="sm"
-                          onClick={() => setHistoryFilter("files")}
-                          className={cn(
-                            "text-xs h-8 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-none transition-colors",
-                            historyFilter === "files" && "bg-yellow-50 dark:bg-yellow-900/30 border border-yellow-200 dark:border-yellow-800 text-black dark:text-white font-semibold hover:bg-yellow-100 dark:hover:bg-yellow-900/50"
-                          )}
-                        >
-                          Arquivos ({historyEvents.filter(e => (e.type as any) === "files").length})
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="sm"
                           onClick={() => setHistoryFilter("changelog")}
                           className={cn(
                             "text-xs h-8 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-none transition-colors",
                             historyFilter === "changelog" && "bg-yellow-50 dark:bg-yellow-900/30 border border-yellow-200 dark:border-yellow-800 text-black dark:text-white font-semibold hover:bg-yellow-100 dark:hover:bg-yellow-900/50"
                           )}
                         >
-                          Registro de alterações ({historyEvents.filter(e => ["column_transfer", "pipeline_transfer", "tag", "user_assigned", "queue_transfer", "agent_activity"].includes(e.type)).length})
+                          Registro de alterações ({historyEvents.filter(e => ["column_transfer", "pipeline_transfer", "tag", "user_assigned", "queue_transfer", "agent_activity", "qualification"].includes(e.type)).length})
                         </Button>
                       </div>
 
@@ -3320,24 +3388,6 @@ const humanizeLabel = (label: string) => {
                       </div>
                     </div>
 
-                    {/* Qualificação */}
-                    <div className="space-y-2">
-                      <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Qualificação</label>
-                      <Select
-                        value={activityForm.priority || undefined}
-                        onValueChange={(value) => setActivityForm({...activityForm, priority: value === "none" ? "" : value})}
-                      >
-                        <SelectTrigger>
-                          <SelectValue placeholder="Escolher qualificação" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="none">Escolher qualificação</SelectItem>
-                          <SelectItem value="qualificado">Qualificado</SelectItem>
-                          <SelectItem value="desqualificado">Desqualificado</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-
                     {/* Disponibilidade */}
                     <div className="space-y-2">
                       <div className="flex items-center gap-2">
@@ -3368,6 +3418,73 @@ const humanizeLabel = (label: string) => {
                       <p className="text-xs text-gray-500 dark:text-gray-400">
                         As anotações ficam visíveis no sistema, exceto para convidados do evento
                       </p>
+                    </div>
+
+                    {/* Anexo (opcional) */}
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-between">
+                        <label className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                          Anexo (opcional)
+                        </label>
+                        {activityAttachmentFile && (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-7 text-xs"
+                            onClick={() => setActivityAttachmentFile(null)}
+                            disabled={isUploadingFile}
+                          >
+                            Remover
+                          </Button>
+                        )}
+                      </div>
+
+                      <div className="bg-gray-50 dark:bg-gray-900/20 border border-dashed border-gray-200 dark:border-gray-700 p-4 rounded-none">
+                        <input
+                          type="file"
+                          id="activity-file-upload"
+                          className="hidden"
+                          onChange={(e) => {
+                            const f = e.target.files?.[0] || null;
+                            setActivityAttachmentFile(f);
+                            // permitir selecionar o mesmo arquivo novamente
+                            if (e.target) e.target.value = '';
+                          }}
+                          disabled={isUploadingFile}
+                        />
+                        <label
+                          htmlFor="activity-file-upload"
+                          className={cn(
+                            "flex items-center justify-between gap-3 cursor-pointer",
+                            isUploadingFile && "opacity-50 cursor-not-allowed"
+                          )}
+                        >
+                          <div className="flex items-center gap-3 min-w-0">
+                            <div className="w-9 h-9 rounded-md bg-primary/10 flex items-center justify-center shrink-0">
+                              <Upload className="h-4 w-4 text-primary" />
+                            </div>
+                            <div className="min-w-0">
+                              <p className="text-sm font-medium text-gray-900 dark:text-gray-100 truncate">
+                                {activityAttachmentFile ? activityAttachmentFile.name : (isUploadingFile ? "Enviando..." : "Clique para anexar um arquivo")}
+                              </p>
+                              {!activityAttachmentFile && (
+                                <p className="text-xs text-gray-500 dark:text-gray-400">
+                                  PDF, DOC, XLS, PNG, JPG
+                                </p>
+                              )}
+                            </div>
+                          </div>
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            className="h-8 text-xs rounded-none"
+                            disabled={isUploadingFile}
+                          >
+                            Selecionar
+                          </Button>
+                        </label>
+                      </div>
                     </div>
 
                     {/* Responsável */}
@@ -3407,7 +3524,6 @@ const humanizeLabel = (label: string) => {
                             type: "Ligação abordada",
                             subject: "",
                             description: "",
-                            priority: "",
                             availability: "livre",
                             startDate: new Date(),
                             startTime: "13:00",
@@ -3418,8 +3534,15 @@ const humanizeLabel = (label: string) => {
                             videoCall: false,
                             markAsDone: false
                           });
+                          setActivityAttachmentFile(null);
                         }}>Cancelar</Button>
-                        <Button className="bg-green-600 hover:bg-green-700 text-white" onClick={handleSaveActivity}>Salvar</Button>
+                        <Button
+                          className="bg-green-600 hover:bg-green-700 text-white"
+                          onClick={handleSaveActivity}
+                          disabled={isUploadingFile}
+                        >
+                          Salvar
+                        </Button>
                         <Button variant="ghost" size="icon">
                           <Copy className="h-4 w-4" />
                         </Button>
@@ -3545,16 +3668,10 @@ const humanizeLabel = (label: string) => {
                             const topPercent = (startTimeInMinutes / totalMinutesInDay) * 100;
                             const heightPercent = (durationMinutes / totalMinutesInDay) * 100;
 
-                            // Cor baseada no tipo ou qualificação
+                            // Cor baseada no tipo
                             const getActivityColor = () => {
                               if (activity.type?.toLowerCase().includes('almoço') || activity.subject?.toLowerCase().includes('almoço')) {
                                 return 'bg-gray-200 dark:bg-gray-700';
-                              }
-                              if (activity.priority === 'qualificado') {
-                                return 'bg-green-500 dark:bg-green-600';
-                              }
-                              if (activity.priority === 'desqualificado') {
-                                return 'bg-red-500 dark:bg-red-600';
                               }
                               return 'bg-blue-500 dark:bg-blue-600';
                             };
@@ -3659,17 +3776,6 @@ const humanizeLabel = (label: string) => {
                             Atividades Futuras ({historyEvents.filter(e => e.type?.startsWith("activity_") && e.metadata?.status !== 'completed').length})
                           </Button>
                           <Button
-                            variant={historyFilter === "files" ? "default" : "ghost"}
-                            size="sm"
-                            onClick={() => setHistoryFilter("files")}
-                            className={cn(
-                              "text-xs h-8",
-                              historyFilter === "files" && "bg-yellow-50 dark:bg-yellow-900/30 text-yellow-700 dark:text-yellow-400 font-semibold hover:bg-yellow-100 dark:hover:bg-yellow-900/50"
-                            )}
-                          >
-                            Arquivos ({historyEvents.filter(e => (e.type as any) === "files").length})
-                          </Button>
-                          <Button
                             variant={historyFilter === "changelog" ? "default" : "ghost"}
                             size="sm"
                             onClick={() => setHistoryFilter("changelog")}
@@ -3678,7 +3784,7 @@ const humanizeLabel = (label: string) => {
                               historyFilter === "changelog" && "bg-yellow-50 dark:bg-yellow-900/30 text-yellow-700 dark:text-yellow-400 font-semibold hover:bg-yellow-100 dark:hover:bg-yellow-900/50"
                             )}
                           >
-                            Registro de alterações ({historyEvents.filter(e => ["column_transfer", "pipeline_transfer", "tag", "user_assigned", "queue_transfer", "agent_activity"].includes(e.type)).length})
+                            Registro de alterações ({historyEvents.filter(e => ["column_transfer", "pipeline_transfer", "tag", "user_assigned", "queue_transfer", "agent_activity", "qualification"].includes(e.type)).length})
                           </Button>
                         </div>
 
@@ -3713,118 +3819,6 @@ const humanizeLabel = (label: string) => {
                           </div>
                         )}
                     </div>
-                </div>
-              </TabsContent>
-
-              <TabsContent value="arquivos" className="mt-0">
-                <div className="space-y-6">
-                  {/* Área de Upload */}
-                  <div className="bg-gray-50 dark:bg-gray-900/20 border-2 border-dashed border-gray-200 dark:border-gray-700 p-8 text-center rounded-none">
-                    <input
-                      type="file"
-                      id="file-upload"
-                      className="hidden"
-                      onChange={handleFileUpload}
-                      disabled={isUploadingFile}
-                    />
-                    <label 
-                      htmlFor="file-upload" 
-                      className={cn(
-                        "flex flex-col items-center gap-3 cursor-pointer",
-                        isUploadingFile && "opacity-50 cursor-not-allowed"
-                      )}
-                    >
-                      <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center">
-                        <Upload className="h-6 w-6 text-primary" />
-                      </div>
-                      <div className="space-y-1">
-                        <p className="text-sm font-medium text-gray-900 dark:text-gray-100">
-                          {isUploadingFile ? "Enviando arquivo..." : "Clique para selecionar um arquivo"}
-                        </p>
-                        <p className="text-xs text-gray-500 dark:text-gray-400">
-                          PDF, DOC, XLS, PNG, JPG (máx. 10MB)
-                        </p>
-                      </div>
-                    </label>
-                  </div>
-
-                  {/* Lista de Arquivos */}
-                  <div className="space-y-4">
-                    <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100 flex items-center gap-2">
-                      <File className="h-4 w-4" />
-                      Arquivos anexados
-                    </h3>
-                    
-                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                      {activities
-                        .filter(a => a.attachment_url)
-                        .map(file => (
-                            <div 
-                              key={file.id} 
-                              className="flex items-center gap-3 p-3 border border-gray-200 dark:border-gray-700 bg-white dark:bg-[#1b1b1b] shadow-sm group hover:border-primary transition-colors cursor-pointer"
-                              onClick={() => {
-                                const ext = file.attachment_name?.split('.').pop()?.toLowerCase();
-                                setSelectedFileForPreview({
-                                  url: file.attachment_url,
-                                  name: file.attachment_name,
-                                  type: ext
-                                });
-                              }}
-                            >
-                            <div className="shrink-0">
-                              {getFileIconComponent(file.attachment_name || "")}
-                            </div>
-                            <div className="flex-1 min-w-0">
-                              <p className="text-xs font-medium text-gray-900 dark:text-gray-100 truncate" title={file.attachment_name}>
-                                {file.attachment_name}
-                              </p>
-                              <p className="text-[10px] text-gray-500 dark:text-gray-400">
-                                {format(new Date(file.created_at), "dd/MM/yyyy HH:mm")}
-                              </p>
-                            </div>
-                            <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                className="h-7 w-7"
-                                onClick={() => handleDownloadFile(file.attachment_url, file.attachment_name || "arquivo")}
-                                title="Baixar arquivo"
-                              >
-                                <Download className="h-3.5 w-3.5" />
-                              </Button>
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                className="h-7 w-7 text-destructive hover:text-destructive"
-                                onClick={async () => {
-                                  if (!confirm('Deseja realmente excluir este arquivo?')) return;
-                                  try {
-                                    const { error } = await supabase
-                                      .from('activities')
-                                      .delete()
-                                      .eq('id', file.id);
-                                    if (error) throw error;
-                                    await fetchActivities();
-                                    toast({ title: "Sucesso", description: "Arquivo removido." });
-                                  } catch (error) {
-                                    console.error('Erro ao excluir arquivo:', error);
-                                  }
-                                }}
-                                title="Excluir arquivo"
-                              >
-                                <X className="h-3.5 w-3.5" />
-                              </Button>
-                            </div>
-                          </div>
-                        ))}
-                      
-                      {activities.filter(a => a.attachment_url).length === 0 && (
-                        <div className="col-span-full py-8 text-center text-gray-500 dark:text-gray-400 border border-dashed border-gray-200 dark:border-gray-700 text-xs">
-                          Nenhum arquivo anexado a esta oportunidade.
-                        </div>
-                      )}
-                    </div>
-                  </div>
                 </div>
               </TabsContent>
 
@@ -4031,7 +4025,7 @@ const humanizeLabel = (label: string) => {
                 </div>
               </div>
 
-              {/* Responsável e Prioridade */}
+              {/* Responsável */}
               <div className="grid grid-cols-2 gap-6">
               <div className="space-y-2">
                   <label className="text-sm font-semibold text-gray-200">Responsável</label>
@@ -4051,22 +4045,6 @@ const humanizeLabel = (label: string) => {
                   </SelectContent>
                 </Select>
               </div>
-              <div className="space-y-2">
-                  <label className="text-sm font-semibold text-gray-200">Qualificação</label>
-                <Select
-                  value={activityEditForm.priority || undefined}
-                  onValueChange={(v) => setActivityEditForm({ ...activityEditForm, priority: v === "none" ? "" : v })}
-                >
-                    <SelectTrigger className="bg-[#1a1a1a] border-gray-700 h-11 text-gray-100">
-                    <SelectValue placeholder="Escolher qualificação" />
-                  </SelectTrigger>
-                    <SelectContent className="bg-[#1b1b1b] border-gray-700 text-gray-100">
-                    <SelectItem value="none">Escolher qualificação</SelectItem>
-                    <SelectItem value="qualificado">Qualificado</SelectItem>
-                    <SelectItem value="desqualificado">Desqualificado</SelectItem>
-                  </SelectContent>
-                </Select>
-                </div>
               </div>
 
               {/* Disponibilidade */}
@@ -4313,6 +4291,28 @@ function HistoryTimelineItem({
       .replace(/^Anotação adicionada:\s*/i, "")
       .replace(/^Anotação adicionada\s*/i, "")
       .trim();
+
+  const activityAttachments = (() => {
+    const md = event?.metadata || {};
+    const list = Array.isArray(md.attachments) ? md.attachments : null;
+    if (list && list.length > 0) {
+      return list
+        .map((a: any) => ({
+          url: a?.url,
+          name: a?.name,
+        }))
+        .filter((a: any) => typeof a.url === 'string' && a.url.length > 0);
+    }
+    if (md.attachment_url) {
+      return [
+        {
+          url: md.attachment_url,
+          name: md.attachment_name,
+        },
+      ];
+    }
+    return [];
+  })();
   
   return (
     <div className="flex gap-4 relative">
@@ -4381,7 +4381,10 @@ function HistoryTimelineItem({
                   </div>
                   {/* Info da atividade: data, responsável e contato */}
                   {!isNote && (
-                    <div className="flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400 flex-wrap mt-1 mb-2">
+                    <div className={cn(
+                      "flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400 flex-wrap mt-1",
+                      activityAttachments.length > 0 ? "mb-3" : "mb-2"
+                    )}>
                       <span>
                         {format(eventDate, "d 'de' MMMM 'às' HH:mm", { locale: ptBR })}
                       </span>
@@ -4403,6 +4406,33 @@ function HistoryTimelineItem({
                     </div>
                   )}
 
+                  {/* Anexos (visual): Anexo 1, Anexo 2, ... */}
+                  {activityAttachments.length > 0 && (
+                    <div className="flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400 flex-wrap">
+                      <span className="font-medium text-gray-600 dark:text-gray-300 whitespace-nowrap">
+                        Anexos
+                      </span>
+                      {activityAttachments.map((att: any, idx: number) => (
+                        <button
+                          key={`${att.url}-${idx}`}
+                          type="button"
+                          className="underline underline-offset-2 hover:text-gray-700 dark:hover:text-gray-200 whitespace-nowrap"
+                          onClick={() => {
+                            const name = att?.name || `Anexo ${idx + 1}`;
+                            const ext = String(att?.name || '').split('.').pop()?.toLowerCase();
+                            setSelectedFileForPreview({
+                              url: att.url,
+                              name,
+                              type: ext
+                            });
+                          }}
+                        >
+                          {`Anexo ${idx + 1}`}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+
                   {/* Descrição abaixo com estilo colado e cor diferenciada */}
                   {hasDescription && (
                     <div className="relative -mx-4 -mb-4 border-t border-amber-100 dark:border-amber-900/30">
@@ -4411,16 +4441,6 @@ function HistoryTimelineItem({
                           "text-xs text-gray-900 dark:text-white font-sans p-3 bg-[#fffde7] dark:bg-amber-950/20 transition-all duration-200 prose dark:prose-invert prose-sm max-w-none note-editor cursor-pointer",
                           !isDescExpanded && "max-h-[40px] overflow-hidden pr-10"
                         )}
-                        onClick={() => {
-                          if (event.metadata?.attachment_url) {
-                            const ext = event.metadata.attachment_name?.split('.').pop()?.toLowerCase();
-                            setSelectedFileForPreview({
-                              url: event.metadata.attachment_url,
-                              name: event.metadata.attachment_name,
-                              type: ext
-                            });
-                          }
-                        }}
                       >
                         {looksLikeHtml ? (
                           <div dangerouslySetInnerHTML={{ __html: cleanNoteText(descriptionHtml as string) }} />

@@ -111,6 +111,10 @@ Exemplo: [ENVIE PARA O TOOL \`transferir-coluna\` (METODO POST) movendo o card a
 Formato: [ENVIE PARA O TOOL \`info-adicionais\` (METODO POST) o id: UUID_DA_INFO e o valor VALOR_CORRESPONDENTE]
 Exemplo: [ENVIE PARA O TOOL \`info-adicionais\` (METODO POST) o id: campo-empresa e o valor Tezeus Tech]
 
+8️⃣ Qualificar Cliente (Negócio):
+Formato: [ENVIE PARA O TOOL \`qualificar-cliente\` (METODO POST) o workspace_id: WORKSPACE_ID e o card_id: ID_DO_CARD e o title QUALIFICADO_OU_DESQUALIFICADO]
+Exemplo: [ENVIE PARA O TOOL \`qualificar-cliente\` (METODO POST) o workspace_id: 123e4567-e89b-12d3-a456-426614174000 e o card_id: 456e7890-e89b-12d3-a456-426614174111 e o title Qualificado]
+
 ---
 
 ✅ REGRAS CRÍTICAS:
