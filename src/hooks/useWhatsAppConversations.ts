@@ -68,6 +68,8 @@ export interface WhatsAppConversation {
 export const useWhatsAppConversations = () => {
   const [conversations, setConversations] = useState<WhatsAppConversation[]>([]);
   const [loading, setLoading] = useState(true);
+  const [isLoadingMoreConversations, setIsLoadingMoreConversations] = useState(false);
+  const [hasMoreConversations, setHasMoreConversations] = useState(false);
   const { selectedWorkspace } = useWorkspace();
   const { user, logout } = useAuth();
   const { getHeaders } = useWorkspaceHeaders();
@@ -152,8 +154,9 @@ export const useWhatsAppConversations = () => {
   const nextCursorRef = useRef<string | null>(null);
   const loadingMoreConversationsRef = useRef(false);
   const fetchTokenRef = useRef(0);
+  const currentSearchRef = useRef<string | null>(null);
 
-  const fetchConversations = async (): Promise<boolean> => {
+  const fetchConversations = useCallback(async (options?: { search?: string | null }): Promise<boolean> => {
     try {
       setLoading(true);
       console.log('🔄 Carregando conversas (primeira página)...');
@@ -173,7 +176,11 @@ export const useWhatsAppConversations = () => {
 
       // reset para novo carregamento
       nextCursorRef.current = null;
+      setHasMoreConversations(false);
       setConversations([]);
+
+      const normalizedSearch = (options?.search ?? '').toString().trim();
+      currentSearchRef.current = normalizedSearch.length > 0 ? normalizedSearch : null;
 
       const conversationsById = new Map<string, any>();
 
@@ -183,7 +190,8 @@ export const useWhatsAppConversations = () => {
           body: {
             workspace_id: selectedWorkspace.workspace_id,
             limit: PAGE_LIMIT,
-            cursor: cursor || null
+            cursor: cursor || null,
+            search: currentSearchRef.current
           },
           headers
         });
@@ -223,6 +231,7 @@ export const useWhatsAppConversations = () => {
         gotAny = conversationsById.size > 0;
         setConversations(sortConversationsByActivity(Array.from(conversationsById.values())));
         nextCursorRef.current = retryData?.nextCursor || null;
+        setHasMoreConversations(!!nextCursorRef.current);
         setLoading(false);
         return gotAny;
       }
@@ -235,6 +244,7 @@ export const useWhatsAppConversations = () => {
       gotAny = conversationsById.size > 0;
       setConversations(sortConversationsByActivity(Array.from(conversationsById.values())));
       nextCursorRef.current = data?.nextCursor || null;
+      setHasMoreConversations(!!nextCursorRef.current);
 
       setLoading(false);
       return gotAny;
@@ -243,7 +253,7 @@ export const useWhatsAppConversations = () => {
       setLoading(false);
       return false;
     }
-  };
+  }, [getHeaders, selectedWorkspace?.workspace_id, sortConversationsByActivity]);
 
   const loadMoreConversations = useCallback(async () => {
     if (loadingMoreConversationsRef.current) return;
@@ -251,6 +261,7 @@ export const useWhatsAppConversations = () => {
     if (!cursor || !selectedWorkspace?.workspace_id) return;
 
     loadingMoreConversationsRef.current = true;
+    setIsLoadingMoreConversations(true);
     const myToken = fetchTokenRef.current;
 
     try {
@@ -258,7 +269,8 @@ export const useWhatsAppConversations = () => {
         body: {
           workspace_id: selectedWorkspace.workspace_id,
           limit: 50,
-          cursor
+          cursor,
+          search: currentSearchRef.current
         },
         headers: getHeaders()
       });
@@ -270,6 +282,7 @@ export const useWhatsAppConversations = () => {
       const items = data?.items ?? [];
       if (items.length === 0) {
         nextCursorRef.current = null;
+        setHasMoreConversations(false);
         return;
       }
 
@@ -277,8 +290,10 @@ export const useWhatsAppConversations = () => {
       if (nextCursor && nextCursor === cursor) {
         console.warn('⚠️ Cursor repetido detectado, interrompendo paginação para evitar loop.');
         nextCursorRef.current = null;
+        setHasMoreConversations(false);
       } else {
         nextCursorRef.current = nextCursor;
+        setHasMoreConversations(!!nextCursorRef.current);
       }
 
       setConversations(prev => {
@@ -293,6 +308,7 @@ export const useWhatsAppConversations = () => {
       console.error('❌ Erro ao carregar mais conversas:', e);
     } finally {
       loadingMoreConversationsRef.current = false;
+      setIsLoadingMoreConversations(false);
     }
   }, [getHeaders, selectedWorkspace?.workspace_id]);
 
@@ -926,6 +942,8 @@ export const useWhatsAppConversations = () => {
     loading,
     conversationCounts,
     loadMoreConversations,
+    hasMoreConversations,
+    isLoadingMoreConversations,
     sendMessage,
     markAsRead,
     assumirAtendimento,

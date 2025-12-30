@@ -35,21 +35,28 @@ serve(async (req) => {
     const url = new URL(req.url);
     const limitFromQuery = parseInt(url.searchParams.get('limit') || '50');
     const cursorFromQuery = url.searchParams.get('cursor');
+    const searchFromQuery = url.searchParams.get('search');
 
     // ✅ Aceitar paginação via body também (porque supabase.functions.invoke pode não preservar querystring)
     let limit = limitFromQuery;
     let cursor: string | null = cursorFromQuery;
+    let search: string | null = typeof searchFromQuery === 'string' && searchFromQuery.length > 0 ? searchFromQuery : null;
     try {
       const maybeJson = await req.clone().json().catch(() => null);
       if (maybeJson && typeof maybeJson === 'object') {
         const bodyLimit = Number((maybeJson as any).limit);
         const bodyCursor = (maybeJson as any).cursor;
+        const bodySearch = (maybeJson as any).search;
         if (!Number.isNaN(bodyLimit) && bodyLimit > 0) limit = bodyLimit;
         if (typeof bodyCursor === 'string' && bodyCursor.length > 0) cursor = bodyCursor;
+        if (typeof bodySearch === 'string') search = bodySearch;
       }
     } catch (_e) {
       // ignora
     }
+    
+    search = (search ?? '').trim();
+    if (search.length === 0) search = null;
 
     if (!workspaceId) {
       console.error('❌ Missing workspace_id in headers');
@@ -171,6 +178,54 @@ serve(async (req) => {
       console.log('🔍 Applied filter: assigned_user_id = ', systemUserId, ' OR assigned_user_id IS NULL');
     } else {
       console.log('👑 Admin/Master: showing ALL conversations in workspace');
+    }
+
+    // ✅ Busca por banco (por contato) - evita conflito com o .or() do filtro de atribuição
+    // Estratégia: primeiro encontra contact_ids no workspace via name/phone, depois filtra conversations.contact_id IN (...)
+    if (search) {
+      const digitsOnly = search.replace(/\D/g, '');
+      const patterns: string[] = [];
+      // PostgREST "or" usa: col.op.value, com % direto no value
+      patterns.push(`name.ilike.%${search}%`);
+      patterns.push(`phone.ilike.%${search}%`);
+      if (digitsOnly.length >= 3 && digitsOnly !== search) {
+        patterns.push(`phone.ilike.%${digitsOnly}%`);
+      }
+
+      const { data: contactMatches, error: contactErr } = await supabase
+        .from('contacts')
+        .select('id')
+        .eq('workspace_id', workspaceId)
+        .or(patterns.join(','))
+        .limit(2000);
+
+      if (contactErr) {
+        console.error('❌ Error searching contacts:', contactErr);
+        return new Response(
+          JSON.stringify({ error: 'Erro ao buscar contatos' }),
+          {
+            status: 500,
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+          }
+        );
+      }
+
+      const contactIds = (contactMatches || []).map((c: any) => c.id).filter(Boolean);
+      console.log('🔎 Search applied:', { search, matchedContacts: contactIds.length });
+
+      if (contactIds.length === 0) {
+        // Resultado vazio rápido
+        return new Response(
+          JSON.stringify({
+            items: [],
+            nextCursor: null,
+            counts: { all: 0, mine: 0, unassigned: 0, unread: 0 }
+          }),
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+
+      query = query.in('contact_id', contactIds);
     }
 
     console.log('📊 Query filters applied, fetching conversations...');

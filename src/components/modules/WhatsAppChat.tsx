@@ -258,6 +258,8 @@ export function WhatsAppChat({
   const [selectedConversation, setSelectedConversation] = useState<WhatsAppConversation | null>(null);
   const [messageDrafts, setMessageDrafts] = useState<Record<string, string>>({});
   const [searchTerm, setSearchTerm] = useState("");
+  const conversationListRootRef = useRef<HTMLDivElement | null>(null);
+  const searchDebounceFirstRunRef = useRef(true);
   const [isAtBottom, setIsAtBottom] = useState(true);
   const [shouldAutoScroll, setShouldAutoScroll] = useState(true);
   const [changeAgentModalOpen, setChangeAgentModalOpen] = useState(false);
@@ -283,6 +285,45 @@ export function WhatsAppChat({
   const [isVisualLoading, setIsVisualLoading] = useState(false);
   const [isDark, setIsDark] = useState(false);
   const messageText = selectedConversation ? (messageDrafts[selectedConversation.id] ?? "") : "";
+
+  // 🔎 Busca por conversa deve vir do banco (debounce)
+  useEffect(() => {
+    // Evitar disparar no primeiro render (o hook já faz fetch quando workspace muda)
+    if (searchDebounceFirstRunRef.current) {
+      searchDebounceFirstRunRef.current = false;
+      return;
+    }
+
+    const handle = window.setTimeout(() => {
+      fetchConversations({ search: searchTerm });
+    }, 350);
+
+    return () => window.clearTimeout(handle);
+  }, [searchTerm, fetchConversations]);
+
+  // ♾️ Scroll infinito na lista de conversas (listener no viewport real do ScrollArea)
+  useEffect(() => {
+    const root = conversationListRootRef.current;
+    if (!root) return;
+
+    const viewport = root.querySelector?.('[data-radix-scroll-area-viewport]') as HTMLElement | null;
+    const scroller = viewport ?? root;
+
+    const onScroll = () => {
+      const remaining = scroller.scrollHeight - scroller.scrollTop - scroller.clientHeight;
+      if (remaining < 500) {
+        loadMoreConversations();
+      }
+    };
+
+    // dispara uma vez (após o layout): se a lista inicial não preenche a altura, já tenta carregar mais
+    requestAnimationFrame(onScroll);
+
+    scroller.addEventListener('scroll', onScroll, { passive: true } as any);
+    return () => {
+      scroller.removeEventListener('scroll', onScroll as any);
+    };
+  }, [loadMoreConversations, conversations.length, loading]);
 
   // Detectar mudanças no tema
   useEffect(() => {
@@ -526,14 +567,11 @@ export function WhatsAppChat({
       filtered = filtered.filter(conv => conv.connection_id === selectedConnection);
     }
 
-    // Filtrar por termo de busca
-    if (searchTerm) {
-      filtered = filtered.filter(conv => conv.contact.name.toLowerCase().includes(searchTerm.toLowerCase()) || conv.contact.phone && conv.contact.phone.includes(searchTerm));
-    }
-    
+    // 🔎 Busca por texto é feita no banco (ver useEffect de debounce).
+
     console.log('✅ [Filter] Conversas filtradas finais:', filtered.length);
     return filtered;
-  }, [conversations, activeTab, selectedTags, selectedConnection, searchTerm, user?.id, conversationNotifications, tags]);
+  }, [conversations, activeTab, selectedTags, selectedConnection, user?.id, conversationNotifications, tags]);
   const [peekModalOpen, setPeekModalOpen] = useState(false);
   const [peekConversationId, setPeekConversationId] = useState<string | null>(null);
   const [contactPanelOpen, setContactPanelOpen] = useState(false);
@@ -2258,19 +2296,8 @@ export function WhatsAppChat({
 
         {/* Lista de conversas */}
         <ScrollArea
+          ref={conversationListRootRef}
           className="flex-1"
-          onScrollCapture={(e) => {
-            // Pré-carregar antes do usuário chegar no fim (sem mostrar loader)
-            const el = e.target as HTMLElement;
-            const viewport = el.querySelector?.('[data-radix-scroll-area-viewport]') as HTMLElement | null;
-            const scroller = viewport ?? el;
-            if (!scroller) return;
-
-            const remaining = scroller.scrollHeight - scroller.scrollTop - scroller.clientHeight;
-            if (remaining < 500) {
-              loadMoreConversations();
-            }
-          }}
         >
           {loading ? (
             <WhatsAppChatSkeleton />
