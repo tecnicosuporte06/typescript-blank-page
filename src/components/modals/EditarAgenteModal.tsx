@@ -365,14 +365,14 @@ Exemplo: [ENVIE PARA O TOOL \`qualificar-cliente\` (METODO POST) o workspace_id:
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto p-0 gap-0 border border-[#d4d4d4] bg-white dark:bg-[#1f1f1f] dark:border-gray-700 shadow-sm rounded-none">
-        <DialogHeader className="bg-primary p-4 rounded-none m-0 border-b border-[#d4d4d4] dark:border-gray-700">
-          <DialogTitle className="flex items-center gap-2 text-primary-foreground text-base font-bold">
+      <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto p-0 gap-0 border border-[#d4d4d4] bg-white dark:bg-[#0b0b0b] dark:border-gray-700 shadow-sm rounded-none">
+        <DialogHeader className="bg-primary dark:bg-[#0f0f0f] p-4 rounded-none m-0 border-b border-[#d4d4d4] dark:border-gray-700">
+          <DialogTitle className="flex items-center gap-2 text-primary-foreground dark:text-gray-100 text-base font-bold">
             Editar Agente de IA
           </DialogTitle>
         </DialogHeader>
 
-        <form className="space-y-4 p-6 bg-white dark:bg-[#1f1f1f]">
+        <form className="space-y-4 p-6 bg-white dark:bg-[#0b0b0b]">
           {/* Workspace e Nome */}
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-1.5">
