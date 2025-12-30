@@ -691,76 +691,85 @@ function DraggableDeal({
               const taskDate = startOfDay(new Date(pendingTask.scheduled_for));
               const today = startOfDay(new Date());
               const daysDiff = differenceInDays(taskDate, today);
-              
-              if (daysDiff <= 1) {
-                const isOverdue = daysDiff < 0;
-                const isToday = daysDiff === 0;
-                const isTomorrow = daysDiff === 1;
-                
-                let iconColor = "text-yellow-500";
-                if (isOverdue) iconColor = "text-red-500";
-                else if (isToday) iconColor = "text-orange-500";
-                
-                return (
-                  <Popover>
-                    <PopoverTrigger asChild>
-                      <Button 
-                        size="icon" 
-                        variant="ghost" 
-                        className={cn("h-5 w-5 p-0", iconColor)}
-                        onPointerDown={e => e.stopPropagation()}
-                        onClick={(e) => e.stopPropagation()}
-                      >
-                        <AlertCircle className="w-3.5 h-3.5" />
-                      </Button>
-                    </PopoverTrigger>
-                    <PopoverContent 
-                      className="w-72 p-0 bg-white dark:bg-[#1b1b1b] border-gray-200 dark:border-gray-700 shadow-xl z-[10000] overflow-hidden rounded-none" 
-                      onClick={(e) => e.stopPropagation()}
-                      align="start"
-                    >
-                      <div className="p-3 border-b border-gray-200 dark:border-gray-700 bg-gray-50/50 dark:bg-gray-800/50">
-                        <div className="flex items-center justify-between">
-                          <h3 className="font-semibold text-sm">Tarefa Pendente</h3>
-                          <Badge variant={isOverdue ? "destructive" : "secondary"} className="text-[10px] px-1.5 h-4 rounded-none">
-                            {isOverdue ? `${Math.abs(daysDiff)}d atrasado` : isToday ? "Hoje" : "Amanhã"}
-                          </Badge>
-                        </div>
-                      </div>
-                      <div className="p-3 space-y-3">
-                        <div className="space-y-1">
-                          {pendingTask.type && (
-                            <Badge variant="outline" className="text-[10px] uppercase tracking-wider rounded-none border-gray-300 dark:border-gray-600 font-normal">
-                              {pendingTask.type}
-                            </Badge>
-                          )}
-                          <h4 className="font-semibold text-sm text-gray-900 dark:text-gray-100 leading-tight">
-                            {pendingTask.subject || "Sem assunto"}
-                          </h4>
-                        </div>
-                        
-                        {pendingTask.description && (
-                          <p className="text-xs text-muted-foreground line-clamp-2 italic">
-                            "{pendingTask.description}"
-                          </p>
-                        )}
 
-                        <div className="flex flex-col gap-1.5 pt-2 border-t border-border/50">
-                          <div className="flex items-center gap-2 text-[10px] text-muted-foreground">
-                            <Clock className="w-3 h-3" />
-                            <span>{format(new Date(pendingTask.scheduled_for), "HH:mm")}</span>
-                          </div>
-                          <div className="flex items-center gap-2 text-[10px] text-muted-foreground">
-                            <Calendar className="w-3 h-3" />
-                            <span>{format(new Date(pendingTask.scheduled_for), "dd 'de' MMMM", { locale: ptBR })}</span>
-                          </div>
+              const isOverdue = daysDiff < 0;
+              const isTodayOrTomorrow = daysDiff <= 1;
+
+              // ✅ Regra solicitada:
+              // - Verde: atividade em aberto e ainda "longe" do atraso (> 1 dia)
+              // - Amarelo: perto de atrasar (1 dia antes ou no dia)
+              // - Vermelho: atrasado
+              let iconColor = "text-green-500";
+              if (isOverdue) iconColor = "text-red-500";
+              else if (isTodayOrTomorrow) iconColor = "text-yellow-500";
+
+              const badgeText = isOverdue
+                ? `${Math.abs(daysDiff)}d atrasado`
+                : daysDiff === 0
+                ? "Hoje"
+                : daysDiff === 1
+                ? "Amanhã"
+                : `Em ${daysDiff}d`;
+
+              return (
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <Button
+                      size="icon"
+                      variant="ghost"
+                      className={cn("h-5 w-5 p-0", iconColor)}
+                      onPointerDown={e => e.stopPropagation()}
+                      onClick={(e) => e.stopPropagation()}
+                      title={badgeText}
+                    >
+                      <AlertCircle className="w-3.5 h-3.5" />
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent
+                    className="w-72 p-0 bg-white dark:bg-[#1b1b1b] border-gray-200 dark:border-gray-700 shadow-xl z-[10000] overflow-hidden rounded-none"
+                    onClick={(e) => e.stopPropagation()}
+                    align="start"
+                  >
+                    <div className="p-3 border-b border-gray-200 dark:border-gray-700 bg-gray-50/50 dark:bg-gray-800/50">
+                      <div className="flex items-center justify-between">
+                        <h3 className="font-semibold text-sm">Tarefa Pendente</h3>
+                        <Badge variant={isOverdue ? "destructive" : "secondary"} className="text-[10px] px-1.5 h-4 rounded-none">
+                          {badgeText}
+                        </Badge>
+                      </div>
+                    </div>
+                    <div className="p-3 space-y-3">
+                      <div className="space-y-1">
+                        {pendingTask.type && (
+                          <Badge variant="outline" className="text-[10px] uppercase tracking-wider rounded-none border-gray-300 dark:border-gray-600 font-normal">
+                            {pendingTask.type}
+                          </Badge>
+                        )}
+                        <h4 className="font-semibold text-sm text-gray-900 dark:text-gray-100 leading-tight">
+                          {pendingTask.subject || "Sem assunto"}
+                        </h4>
+                      </div>
+
+                      {pendingTask.description && (
+                        <p className="text-xs text-muted-foreground line-clamp-2 italic">
+                          "{pendingTask.description}"
+                        </p>
+                      )}
+
+                      <div className="flex flex-col gap-1.5 pt-2 border-t border-border/50">
+                        <div className="flex items-center gap-2 text-[10px] text-muted-foreground">
+                          <Clock className="w-3 h-3" />
+                          <span>{format(new Date(pendingTask.scheduled_for), "HH:mm")}</span>
+                        </div>
+                        <div className="flex items-center gap-2 text-[10px] text-muted-foreground">
+                          <Calendar className="w-3 h-3" />
+                          <span>{format(new Date(pendingTask.scheduled_for), "dd 'de' MMMM", { locale: ptBR })}</span>
                         </div>
                       </div>
-                    </PopoverContent>
-                  </Popover>
-                );
-              }
-              return null;
+                    </div>
+                  </PopoverContent>
+                </Popover>
+              );
             })()}
             {/* Etiquetas removidas do card */}
             </div>
@@ -916,6 +925,7 @@ function CRMNegociosContent({
       from: Date;
       to: Date;
     };
+    unreadMessages?: boolean;
   } | null>(null);
   const [responsibleFilter, setResponsibleFilter] = useState<ResponsibleFilterValue>('ALL');
   const [isTransferirModalOpen, setIsTransferirModalOpen] = useState(false);
@@ -2729,7 +2739,8 @@ const [selectedCardForProduct, setSelectedCardForProduct] = useState<{
         queues: filters.queues,
         status: filters.status,
         selectedDate: filters.selectedDate,
-        dateRange: filters.dateRange
+        dateRange: filters.dateRange,
+        unreadMessages: filters.unreadMessages
       });
     }} isDarkMode={isDarkMode} />
 

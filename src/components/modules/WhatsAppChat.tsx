@@ -77,6 +77,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/comp
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
 import { cn } from "@/lib/utils";
 import { generateRandomId } from "@/lib/generate-random-id";
+import { useQuickMessages } from "@/hooks/useQuickMessages";
 
 type ConversationMessage = ReturnType<typeof useConversationMessages>['messages'][number];
 type DisplayMessageStatus = 'sending' | 'sent' | 'delivered' | 'read' | 'failed';
@@ -254,6 +255,9 @@ export function WhatsAppChat({
   const {
     toast
   } = useToast();
+
+  // ✅ Mensagens rápidas (texto) para o atalho “/”
+  const { messages: quickTextMessages } = useQuickMessages();
   
   const [selectedConversation, setSelectedConversation] = useState<WhatsAppConversation | null>(null);
   const [messageDrafts, setMessageDrafts] = useState<Record<string, string>>({});
@@ -279,12 +283,30 @@ export function WhatsAppChat({
     previewUrl: string;
   } | null>(null);
   const [isRecordedAudioSending, setIsRecordedAudioSending] = useState(false);
+  const composerTextareaRef = useRef<HTMLTextAreaElement | null>(null);
+  const [slashOpen, setSlashOpen] = useState(false);
+  const [slashQuery, setSlashQuery] = useState("");
+  const slashReplaceRangeRef = useRef<{ start: number; end: number } | null>(null);
   
   // ✅ Estado para controlar quantas mensagens mostrar (Infinite Scroll com dados em memória)
   const [visibleMessagesCount, setVisibleMessagesCount] = useState(10);
   const [isVisualLoading, setIsVisualLoading] = useState(false);
   const [isDark, setIsDark] = useState(false);
   const messageText = selectedConversation ? (messageDrafts[selectedConversation.id] ?? "") : "";
+
+  const slashSuggestions = useMemo(() => {
+    if (!slashOpen) return [];
+    const list = quickTextMessages || [];
+    const q = (slashQuery || "").trim().toLowerCase();
+    const filtered = q
+      ? list.filter((m: any) => {
+          const title = (m?.title || "").toLowerCase();
+          const content = (m?.content || "").toLowerCase();
+          return title.includes(q) || content.includes(q);
+        })
+      : list;
+    return filtered.slice(0, 8);
+  }, [quickTextMessages, slashOpen, slashQuery]);
 
   // 🔎 Busca por conversa deve vir do banco (debounce)
   useEffect(() => {
@@ -350,6 +372,22 @@ export function WhatsAppChat({
       return { ...prev, [conversationId]: value };
     });
   }, []);
+
+  const insertMessageIntoComposer = useCallback((content: string) => {
+    if (!selectedConversation) return;
+    updateMessageDraft(selectedConversation.id, content);
+    requestAnimationFrame(() => {
+      const el = composerTextareaRef.current;
+      if (!el) return;
+      el.focus();
+      const len = el.value?.length ?? 0;
+      try {
+        el.setSelectionRange(len, len);
+      } catch {
+        // ignore
+      }
+    });
+  }, [selectedConversation?.id, updateMessageDraft]);
 
   const clearMessageDraft = useCallback((conversationId: string) => {
     setMessageDrafts(prev => {
@@ -725,6 +763,13 @@ export function WhatsAppChat({
     }
   }, [selectedConversation?.id, isMasterUser]);
 
+  // Fechar menu de “/” ao trocar de conversa
+  useEffect(() => {
+    setSlashOpen(false);
+    setSlashQuery("");
+    slashReplaceRangeRef.current = null;
+  }, [selectedConversation?.id]);
+
 
   // ✅ Enviar mensagem - OTIMIZADO
   const handleSendMessage = async () => {
@@ -876,6 +921,46 @@ export function WhatsAppChat({
       setTimeout(() => sendingRef.current.delete(messageKey), 500);
     }
   };
+
+  const applySlashQuickMessage = useCallback((message: any) => {
+    if (!selectedConversation) return;
+
+    const current = messageDrafts[selectedConversation.id] ?? "";
+    const range = slashReplaceRangeRef.current;
+    const start = range?.start ?? current.lastIndexOf("/");
+    const end = range?.end ?? (start >= 0 ? start + 1 : 0);
+    const safeStart = start >= 0 ? start : 0;
+    const safeEnd = end > safeStart ? end : safeStart;
+
+    const content = (message?.content ?? "") as string;
+    const shouldEdit = Boolean(message?.allow_edit_before_send);
+
+    setSlashOpen(false);
+    setSlashQuery("");
+    slashReplaceRangeRef.current = null;
+
+    if (shouldEdit) {
+      const next = current.slice(0, safeStart) + content + current.slice(safeEnd);
+      insertMessageIntoComposer(next);
+      return;
+    }
+
+    // Enviar direto
+    const remaining = current.slice(0, safeStart) + current.slice(safeEnd);
+    if (remaining.trim()) {
+      updateMessageDraft(selectedConversation.id, remaining);
+    } else {
+      clearMessageDraft(selectedConversation.id);
+    }
+    handleSendQuickMessage(content, "text");
+  }, [
+    selectedConversation?.id,
+    messageDrafts,
+    insertMessageIntoComposer,
+    updateMessageDraft,
+    clearMessageDraft,
+    handleSendQuickMessage
+  ]);
   const handleSendQuickAudio = async (file: {
     name: string;
     url: string;
@@ -1224,13 +1309,96 @@ export function WhatsAppChat({
   const lastAutoOpenedIdRef = useRef<string | null>(null);
   const isAutoOpeningRef = useRef(false);
 
+  const fetchAndOpenConversationById = useCallback(async (conversationId: string) => {
+    if (!conversationId) return;
+    if (!user?.id) return;
+    if (!selectedWorkspace?.workspace_id) return;
+
+    try {
+      console.log('🔎 [WhatsAppChat] Buscando conversa direto no banco (fallback):', {
+        conversationId,
+        workspaceId: selectedWorkspace.workspace_id,
+      });
+
+      const { data, error } = await supabase.functions.invoke(
+        `get-chat-data?conversation_id=${encodeURIComponent(conversationId)}`,
+        {
+          headers: {
+            'x-system-user-id': user.id,
+            'x-system-user-email': user.email || '',
+            'x-workspace-id': selectedWorkspace.workspace_id,
+          },
+        }
+      );
+
+      if (error) throw error;
+
+      const convData = data?.conversation;
+      if (!convData?.id || !convData?.contact?.id) {
+        throw new Error('Conversa não encontrada no banco (get-chat-data).');
+      }
+
+      const nowIso = new Date().toISOString();
+      const fallbackConv: WhatsAppConversation = {
+        id: convData.id,
+        contact: {
+          id: convData.contact.id,
+          name: convData.contact.name || 'Contato',
+          phone: convData.contact.phone,
+          email: convData.contact.email,
+          profile_image_url: convData.contact.profile_image_url,
+        },
+        agente_ativo: false,
+        agent_active_id: null,
+        status: 'open',
+        unread_count: 0,
+        last_activity_at: nowIso,
+        created_at: nowIso,
+        evolution_instance: null,
+        assigned_user_id: null,
+        assigned_user_name: null,
+        assigned_at: null,
+        connection_id: undefined,
+        connection: undefined,
+        queue_id: null,
+        workspace_id: selectedWorkspace.workspace_id,
+        conversation_tags: [],
+        last_message: [],
+        messages: [],
+        _updated_at: Date.now(),
+      };
+
+      await handleSelectConversation(fallbackConv);
+      lastAutoOpenedIdRef.current = conversationId;
+    } catch (e) {
+      console.error('❌ [WhatsAppChat] Falha ao buscar conversa por ID (fallback):', e);
+      toast({
+        title: 'Erro ao abrir conversa',
+        description: 'Não foi possível carregar a conversa direto do banco.',
+        variant: 'destructive',
+      });
+    }
+  }, [handleSelectConversation, selectedWorkspace?.workspace_id, toast, user?.email, user?.id]);
+
   useEffect(() => {
     if (!selectedConversationId) return;
     // Se já abrimos esta conversa automaticamente, não repetir
     if (lastAutoOpenedIdRef.current === selectedConversationId) return;
 
     const conv = conversations.find(c => c.id === selectedConversationId);
-    if (!conv) return;
+    if (!conv) {
+      // ✅ CRÍTICO: não depender da aba Conversas estar carregada
+      // Se não está no estado atual, buscar direto no banco por ID
+      (async () => {
+        try {
+          isAutoOpeningRef.current = true;
+          await fetchAndOpenConversationById(selectedConversationId);
+        } finally {
+          isAutoOpeningRef.current = false;
+        }
+      })();
+      return;
+    }
 
     (async () => {
       try {
@@ -1241,7 +1409,7 @@ export function WhatsAppChat({
         isAutoOpeningRef.current = false;
       }
     })();
-  }, [selectedConversationId, conversations]);
+  }, [selectedConversationId, conversations, fetchAndOpenConversationById]);
 
   // Funções de seleção e encaminhamento
   const handleMessageForward = (messageId: string) => {
@@ -2458,7 +2626,7 @@ export function WhatsAppChat({
                                 </span>}
                             </div>
                           </TooltipTrigger>
-                          <TooltipContent className="rounded-none border-[#d4d4d4]">
+                          <TooltipContent className="rounded-none border-[#d4d4d4] bg-white text-gray-900 shadow-md dark:bg-[#0f0f0f] dark:text-gray-100 dark:border-gray-700">
                             <div className="space-y-1">
                               {conversation.tags.map((tag: any) => <div key={tag.id} className="flex items-center gap-2">
                                   <div className="w-2.5 h-2.5 rounded-full" style={{
@@ -2491,7 +2659,7 @@ export function WhatsAppChat({
                             </AvatarFallback>
                           </Avatar>
                         </TooltipTrigger>
-                        <TooltipContent className="rounded-none border-[#d4d4d4]">
+                        <TooltipContent className="rounded-none border-[#d4d4d4] bg-white text-gray-900 shadow-md dark:bg-[#0f0f0f] dark:text-gray-100 dark:border-gray-700">
                           <p className="text-xs">{(conversation.assigned_user_name || assignedUsersMap.get(conversation.assigned_user_id || '')?.name)?.split(' ')[0] || 'Não atribuído'}</p>
                         </TooltipContent>
                       </Tooltip>
@@ -3115,25 +3283,101 @@ export function WhatsAppChat({
                       <path d="M9 15c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4zm7.76-9.64l-1.68 1.69c.84 1.18.84 2.71 0 3.89l1.68 1.69c2.02-2.02 2.02-5.07 0-7.27zM20.07 2l-1.63 1.63c2.77 3.02 2.77 7.56 0 10.74L20.07 16c3.9-3.89 3.91-9.95 0-14z"></path>
                     </svg>
                   </Button>
-                  <div className="flex-1">
-                    <Textarea 
-                      placeholder="Digite sua mensagem..." 
-                      value={messageText} 
-                      rows={1}
-                      onChange={e => {
-                        if (selectedConversation) {
-                          updateMessageDraft(selectedConversation.id, e.target.value);
-                        }
-                      }} 
-                      onKeyDown={e => {
-                        if (e.key === 'Enter' && !e.shiftKey) {
-                          e.preventDefault();
-                          handleSendMessage();
-                        }
-                      }} 
-                      className="h-9 min-h-[36px] max-h-32 text-xs rounded-none border-gray-300 focus-visible:ring-0 focus-visible:border-primary bg-white shadow-sm resize-none dark:bg-[#2d2d2d] dark:border-gray-600 dark:text-gray-100 dark:placeholder:text-gray-400" 
-                    />
-                  </div>
+                  <Popover
+                    open={slashOpen}
+                    onOpenChange={(open) => {
+                      if (!open) {
+                        setSlashOpen(false);
+                        setSlashQuery("");
+                        slashReplaceRangeRef.current = null;
+                      }
+                    }}
+                  >
+                    <PopoverTrigger asChild>
+                      <div className="flex-1">
+                        <Textarea 
+                          ref={composerTextareaRef}
+                          placeholder="Digite sua mensagem..." 
+                          value={messageText} 
+                          rows={1}
+                          onChange={e => {
+                            if (!selectedConversation) return;
+
+                            const value = e.target.value;
+                            const cursor = e.target.selectionStart ?? value.length;
+                            updateMessageDraft(selectedConversation.id, value);
+
+                            const uptoCursor = value.slice(0, cursor);
+                            const match = uptoCursor.match(/(?:^|\s)\/([^\s\/]{0,50})$/);
+                            if (match) {
+                              setSlashOpen(true);
+                              setSlashQuery(match[1] || "");
+                              const slashIndex = uptoCursor.lastIndexOf('/');
+                              slashReplaceRangeRef.current = { start: slashIndex, end: cursor };
+                            } else {
+                              setSlashOpen(false);
+                              setSlashQuery("");
+                              slashReplaceRangeRef.current = null;
+                            }
+                          }} 
+                          onKeyDown={e => {
+                            if (slashOpen) {
+                              if (e.key === 'Escape') {
+                                e.preventDefault();
+                                setSlashOpen(false);
+                                setSlashQuery("");
+                                slashReplaceRangeRef.current = null;
+                                return;
+                              }
+
+                              if (e.key === 'Enter' && !e.shiftKey) {
+                                e.preventDefault();
+                                const first = slashSuggestions[0];
+                                if (first) {
+                                  applySlashQuickMessage(first);
+                                } else {
+                                  setSlashOpen(false);
+                                  setSlashQuery("");
+                                  slashReplaceRangeRef.current = null;
+                                }
+                                return;
+                              }
+                            }
+
+                            if (e.key === 'Enter' && !e.shiftKey) {
+                              e.preventDefault();
+                              handleSendMessage();
+                            }
+                          }} 
+                          className="h-9 min-h-[36px] max-h-32 text-xs rounded-none border-gray-300 focus-visible:ring-0 focus-visible:border-primary bg-white shadow-sm resize-none dark:bg-[#2d2d2d] dark:border-gray-600 dark:text-gray-100 dark:placeholder:text-gray-400" 
+                        />
+                      </div>
+                    </PopoverTrigger>
+                    <PopoverContent
+                      align="start"
+                      side="top"
+                      className="w-80 p-0 rounded-none border border-[#d4d4d4] bg-white text-gray-800 shadow-lg dark:bg-[#0f0f0f] dark:text-gray-100 dark:border-gray-700"
+                      onOpenAutoFocus={(e) => e.preventDefault()}
+                      onCloseAutoFocus={(e) => e.preventDefault()}
+                    >
+                      <Command className="rounded-none">
+                        <CommandList>
+                          <CommandEmpty>Nenhuma mensagem rápida encontrada</CommandEmpty>
+                          <CommandGroup heading={`Mensagens rápidas${slashQuery ? `: ${slashQuery}` : ""}`}>
+                            {slashSuggestions.map((m: any) => (
+                              <CommandItem
+                                key={m.id}
+                                value={m.title}
+                                onSelect={() => applySlashQuickMessage(m)}
+                              >
+                                <span className="text-xs truncate">{m.title}</span>
+                              </CommandItem>
+                            ))}
+                          </CommandGroup>
+                        </CommandList>
+                      </Command>
+                    </PopoverContent>
+                  </Popover>
                   <Button onClick={startRecording} size="icon" variant="secondary" title="Gravar áudio" className="h-9 w-9 rounded-none border border-[#d4d4d4] hover:bg-gray-200 bg-white shadow-none dark:bg-[#2d2d2d] dark:border-gray-600 dark:hover:bg-gray-700">
                     <Mic className="w-4 h-4 text-gray-600 dark:text-gray-400" />
                   </Button>
@@ -3172,6 +3416,7 @@ export function WhatsAppChat({
         open={quickItemsModalOpen}
         onOpenChange={setQuickItemsModalOpen}
         onSendMessage={handleSendQuickMessage}
+        onInsertMessage={(content) => insertMessageIntoComposer(content)}
         onSendAudio={handleSendQuickAudio}
         onPreviewAudio={requestQuickAudioPreview}
         onSendMedia={handleSendQuickMedia}

@@ -375,6 +375,10 @@ const humanizeLabel = (label: string) => {
       
       // Buscar pipeline
       if (card.pipeline_id) {
+        // ✅ Sempre tentar carregar ações do pipeline (Ganho/Perda/Reabrir),
+        // mesmo que o select do pipeline falhe por RLS/estado.
+        fetchPipelineActions(card.pipeline_id);
+
         const { data: pipeline, error: pipelineError } = await supabase
           .from('pipelines')
           .select('*')
@@ -384,8 +388,6 @@ const humanizeLabel = (label: string) => {
         
         if (!pipelineError && pipeline) {
           setPipelineData(pipeline);
-          // Buscar as ações configuradas para este pipeline
-          fetchPipelineActions(pipeline.id);
         }
       }
 

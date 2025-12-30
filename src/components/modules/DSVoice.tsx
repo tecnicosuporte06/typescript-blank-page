@@ -24,6 +24,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { useAuth } from "@/hooks/useAuth";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
 
 const categories = [{
   id: "mensagens",
@@ -111,6 +112,8 @@ export function DSVoice() {
   const [messageTitle, setMessageTitle] = useState("");
   const [messageContent, setMessageContent] = useState("");
   const [isAiAgentMessage, setIsAiAgentMessage] = useState(false);
+  const [isMessageVisibleToAll, setIsMessageVisibleToAll] = useState(false);
+  const [allowEditBeforeSend, setAllowEditBeforeSend] = useState(false);
   const [editingMessageId, setEditingMessageId] = useState<string | null>(null);
 
   // Estados para modais de áudios
@@ -118,6 +121,7 @@ export function DSVoice() {
   const [audioTitle, setAudioTitle] = useState("");
   const [audioFile, setAudioFile] = useState<File | null>(null);
   const [isAiAgentAudio, setIsAiAgentAudio] = useState(false);
+  const [isAudioVisibleToAll, setIsAudioVisibleToAll] = useState(false);
   const [editingAudioId, setEditingAudioId] = useState<string | null>(null);
 
   // Estados para modais de mídias
@@ -126,6 +130,7 @@ export function DSVoice() {
   const [mediaFile, setMediaFile] = useState<File | null>(null);
   const [mediaCaption, setMediaCaption] = useState("");
   const [isAiAgentMedia, setIsAiAgentMedia] = useState(false);
+  const [isMediaVisibleToAll, setIsMediaVisibleToAll] = useState(false);
   const [editingMediaId, setEditingMediaId] = useState<string | null>(null);
   const [editingMediaFileName, setEditingMediaFileName] = useState<string>("");
 
@@ -135,6 +140,7 @@ export function DSVoice() {
   const [documentFile, setDocumentFile] = useState<File | null>(null);
   const [documentCaption, setDocumentCaption] = useState("");
   const [isAiAgentDocument, setIsAiAgentDocument] = useState(false);
+  const [isDocumentVisibleToAll, setIsDocumentVisibleToAll] = useState(false);
   const [editingDocumentId, setEditingDocumentId] = useState<string | null>(null);
   const [editingDocumentFileName, setEditingDocumentFileName] = useState<string>("");
 
@@ -144,6 +150,7 @@ export function DSVoice() {
   const [funnelName, setFunnelName] = useState("");
   const [funnelSteps, setFunnelSteps] = useState<any[]>([]);
   const [isAiAgentFunnel, setIsAiAgentFunnel] = useState(false);
+  const [isFunnelVisibleToAll, setIsFunnelVisibleToAll] = useState(false);
   const [selectedStepType, setSelectedStepType] = useState<string | null>(null);
   const [selectedItemId, setSelectedItemId] = useState<string>("");
   const [stepMinutes, setStepMinutes] = useState(0);
@@ -270,9 +277,15 @@ export function DSVoice() {
   const handleCreateMessage = async () => {
     if (messageTitle.trim() && messageContent.trim()) {
       if (editingMessageId) {
-        await updateMessage(editingMessageId, messageTitle, messageContent, isAiAgentMessage);
+        await updateMessage(editingMessageId, messageTitle, messageContent, isAiAgentMessage, {
+          visibleToAll: isMessageVisibleToAll,
+          allowEditBeforeSend
+        });
       } else {
-        await createMessage(messageTitle, messageContent, isAiAgentMessage);
+        await createMessage(messageTitle, messageContent, isAiAgentMessage, {
+          visibleToAll: isMessageVisibleToAll,
+          allowEditBeforeSend
+        });
       }
       handleCloseMessageModal();
     }
@@ -281,6 +294,8 @@ export function DSVoice() {
     setMessageTitle(message.title);
     setMessageContent(message.content);
     setIsAiAgentMessage(message.is_ai_agent || false);
+    setIsMessageVisibleToAll(Boolean(message.visible_to_all));
+    setAllowEditBeforeSend(Boolean(message.allow_edit_before_send));
     setEditingMessageId(message.id);
     setIsMessageModalOpen(true);
   };
@@ -294,12 +309,16 @@ export function DSVoice() {
     setMessageTitle("");
     setMessageContent("");
     setIsAiAgentMessage(false);
+    setIsMessageVisibleToAll(false);
+    setAllowEditBeforeSend(false);
     setEditingMessageId(null);
   };
   const handleOpenNewMessageModal = () => {
     setMessageTitle("");
     setMessageContent("");
     setIsAiAgentMessage(false);
+    setIsMessageVisibleToAll(false);
+    setAllowEditBeforeSend(false);
     setEditingMessageId(null);
     setIsMessageModalOpen(true);
   };
@@ -308,9 +327,13 @@ export function DSVoice() {
   const handleCreateAudio = async () => {
     if (audioTitle.trim() && audioFile) {
       if (editingAudioId) {
-        await updateAudio(editingAudioId, audioTitle, audioFile, isAiAgentAudio);
+        await updateAudio(editingAudioId, audioTitle, audioFile, isAiAgentAudio, {
+          visibleToAll: isAudioVisibleToAll
+        });
       } else {
-        await createAudio(audioTitle, audioFile, isAiAgentAudio);
+        await createAudio(audioTitle, audioFile, isAiAgentAudio, {
+          visibleToAll: isAudioVisibleToAll
+        });
       }
       handleCloseAudioModal();
     }
@@ -318,6 +341,7 @@ export function DSVoice() {
   const handleEditAudio = (audio: any) => {
     setAudioTitle(audio.title);
     setIsAiAgentAudio(audio.is_ai_agent || false);
+    setIsAudioVisibleToAll(Boolean(audio.visible_to_all));
     setEditingAudioId(audio.id);
     setIsAudioModalOpen(true);
   };
@@ -331,12 +355,14 @@ export function DSVoice() {
     setAudioTitle("");
     setAudioFile(null);
     setIsAiAgentAudio(false);
+    setIsAudioVisibleToAll(false);
     setEditingAudioId(null);
   };
   const handleOpenNewAudioModal = () => {
     setAudioTitle("");
     setAudioFile(null);
     setIsAiAgentAudio(false);
+    setIsAudioVisibleToAll(false);
     setEditingAudioId(null);
     setIsAudioModalOpen(true);
   };
@@ -346,11 +372,15 @@ export function DSVoice() {
     if (!mediaTitle.trim()) return;
     if (editingMediaId) {
       // Ao editar, arquivo é opcional
-      await updateMedia(editingMediaId, mediaTitle, mediaFile || undefined, mediaCaption, isAiAgentMedia);
+      await updateMedia(editingMediaId, mediaTitle, mediaFile || undefined, mediaCaption, isAiAgentMedia, {
+        visibleToAll: isMediaVisibleToAll
+      });
     } else {
       // Ao criar, arquivo é obrigatório
       if (!mediaFile) return;
-      await createMedia(mediaTitle, mediaFile, mediaCaption, isAiAgentMedia);
+      await createMedia(mediaTitle, mediaFile, mediaCaption, isAiAgentMedia, {
+        visibleToAll: isMediaVisibleToAll
+      });
     }
     handleCloseMediaModal();
   };
@@ -359,6 +389,7 @@ export function DSVoice() {
     setMediaTitle(mediaItem.title);
     setMediaCaption(mediaItem.caption || "");
     setIsAiAgentMedia(mediaItem.is_ai_agent || false);
+    setIsMediaVisibleToAll(Boolean(mediaItem.visible_to_all));
     setEditingMediaFileName(mediaItem.file_name || "");
     setIsMediaModalOpen(true);
   };
@@ -373,6 +404,7 @@ export function DSVoice() {
     setMediaFile(null);
     setMediaCaption("");
     setIsAiAgentMedia(false);
+    setIsMediaVisibleToAll(false);
     setEditingMediaId(null);
     setEditingMediaFileName("");
   };
@@ -381,6 +413,7 @@ export function DSVoice() {
     setMediaFile(null);
     setMediaCaption("");
     setIsAiAgentMedia(false);
+    setIsMediaVisibleToAll(false);
     setEditingMediaId(null);
     setEditingMediaFileName("");
     setIsMediaModalOpen(true);
@@ -391,11 +424,15 @@ export function DSVoice() {
     if (!documentTitle.trim()) return;
     if (editingDocumentId) {
       // Ao editar, arquivo é opcional
-      await updateDocument(editingDocumentId, documentTitle, documentFile || undefined, documentCaption, isAiAgentDocument);
+      await updateDocument(editingDocumentId, documentTitle, documentFile || undefined, documentCaption, isAiAgentDocument, {
+        visibleToAll: isDocumentVisibleToAll
+      });
     } else {
       // Ao criar, arquivo é obrigatório
       if (!documentFile) return;
-      await createDocument(documentTitle, documentFile, documentCaption, isAiAgentDocument);
+      await createDocument(documentTitle, documentFile, documentCaption, isAiAgentDocument, {
+        visibleToAll: isDocumentVisibleToAll
+      });
     }
     handleCloseDocumentModal();
   };
@@ -403,6 +440,7 @@ export function DSVoice() {
     setDocumentTitle(document.title);
     setDocumentCaption(document.caption || "");
     setIsAiAgentDocument(document.is_ai_agent || false);
+    setIsDocumentVisibleToAll(Boolean(document.visible_to_all));
     setEditingDocumentId(document.id);
     setEditingDocumentFileName(document.file_name || "");
     setIsDocumentModalOpen(true);
@@ -418,6 +456,7 @@ export function DSVoice() {
     setDocumentFile(null);
     setDocumentCaption("");
     setIsAiAgentDocument(false);
+    setIsDocumentVisibleToAll(false);
     setEditingDocumentId(null);
     setEditingDocumentFileName("");
   };
@@ -426,6 +465,7 @@ export function DSVoice() {
     setDocumentFile(null);
     setDocumentCaption("");
     setIsAiAgentDocument(false);
+    setIsDocumentVisibleToAll(false);
     setEditingDocumentId(null);
     setEditingDocumentFileName("");
     setIsDocumentModalOpen(true);
@@ -436,6 +476,7 @@ export function DSVoice() {
     setFunnelName("");
     setFunnelSteps([]);
     setIsAiAgentFunnel(false);
+    setIsFunnelVisibleToAll(false);
     setEditingFunnelId(null);
     setIsFunnelModalOpen(true);
   };
@@ -444,12 +485,14 @@ export function DSVoice() {
     setFunnelName("");
     setFunnelSteps([]);
     setIsAiAgentFunnel(false);
+    setIsFunnelVisibleToAll(false);
     setEditingFunnelId(null);
   };
   const handleEditFunnel = (funnel: Funnel) => {
     setFunnelName(funnel.title);
     setFunnelSteps(funnel.steps.map(convertStepFromDbFormat));
     setIsAiAgentFunnel(funnel.is_ai_agent || false);
+    setIsFunnelVisibleToAll(Boolean((funnel as any).visible_to_all));
     setEditingFunnelId(funnel.id);
     setIsFunnelModalOpen(true);
   };
@@ -491,10 +534,14 @@ export function DSVoice() {
       const dbSteps: FunnelStep[] = funnelSteps.map((step, index) => convertStepToDbFormat(step, index));
       if (editingFunnelId) {
         // Atualizar funil existente
-        await updateFunnel(editingFunnelId, funnelName, dbSteps, isAiAgentFunnel);
+        await updateFunnel(editingFunnelId, funnelName, dbSteps, isAiAgentFunnel, {
+          visibleToAll: isFunnelVisibleToAll
+        });
       } else {
         // Criar novo funil
-        await createFunnel(funnelName, dbSteps, isAiAgentFunnel);
+        await createFunnel(funnelName, dbSteps, isAiAgentFunnel, {
+          visibleToAll: isFunnelVisibleToAll
+        });
       }
       handleCloseFunnelModal();
     }
@@ -957,6 +1004,20 @@ export function DSVoice() {
                 </Label>
               </div>
             )}
+
+            <div className="flex items-center justify-between">
+              <Label className="text-sm font-medium leading-none dark:text-gray-200">
+                Visível para todos
+              </Label>
+              <Switch checked={isMessageVisibleToAll} onCheckedChange={setIsMessageVisibleToAll} />
+            </div>
+
+            <div className="flex items-center justify-between">
+              <Label className="text-sm font-medium leading-none dark:text-gray-200">
+                Editar ao enviar
+              </Label>
+              <Switch checked={allowEditBeforeSend} onCheckedChange={setAllowEditBeforeSend} />
+            </div>
             <div className="flex gap-2 justify-end">
               <Button variant="outline" onClick={handleCloseMessageModal} className="rounded-none border border-[#d4d4d4] bg-white text-gray-800 hover:bg-gray-100 dark:border-gray-600 dark:bg-transparent dark:text-gray-200 dark:hover:bg-[#1f1f1f]">
                 Cancelar
@@ -999,6 +1060,13 @@ export function DSVoice() {
                 </Label>
               </div>
             )}
+
+            <div className="flex items-center justify-between">
+              <Label className="text-sm font-medium leading-none dark:text-gray-200">
+                Visível para todos
+              </Label>
+              <Switch checked={isAudioVisibleToAll} onCheckedChange={setIsAudioVisibleToAll} />
+            </div>
             <div className="flex gap-2 justify-end">
               <Button variant="outline" onClick={handleCloseAudioModal} className="rounded-none border border-[#d4d4d4] bg-white text-gray-800 hover:bg-gray-100 dark:border-gray-600 dark:bg-transparent dark:text-gray-200 dark:hover:bg-[#1f1f1f]">
                 Cancelar
@@ -1051,6 +1119,13 @@ export function DSVoice() {
                 </Label>
               </div>
             )}
+
+            <div className="flex items-center justify-between">
+              <Label className="text-sm font-medium leading-none dark:text-gray-200">
+                Visível para todos
+              </Label>
+              <Switch checked={isMediaVisibleToAll} onCheckedChange={setIsMediaVisibleToAll} />
+            </div>
             <div className="flex gap-2 justify-end">
               <Button variant="outline" onClick={handleCloseMediaModal} className="rounded-none border border-[#d4d4d4] bg-white text-gray-800 hover:bg-gray-100 dark:border-gray-600 dark:bg-transparent dark:text-gray-200 dark:hover:bg-[#1f1f1f]">
                 Cancelar
@@ -1103,6 +1178,13 @@ export function DSVoice() {
                 </Label>
               </div>
             )}
+
+            <div className="flex items-center justify-between">
+              <Label className="text-sm font-medium leading-none dark:text-gray-200">
+                Visível para todos
+              </Label>
+              <Switch checked={isDocumentVisibleToAll} onCheckedChange={setIsDocumentVisibleToAll} />
+            </div>
             <div className="flex gap-2 justify-end">
               <Button variant="outline" onClick={handleCloseDocumentModal} className="rounded-none border border-[#d4d4d4] bg-white text-gray-800 hover:bg-gray-100 dark:border-gray-600 dark:bg-transparent dark:text-gray-200 dark:hover:bg-[#1f1f1f]">
                 Cancelar
@@ -1174,6 +1256,13 @@ export function DSVoice() {
                 </Label>
               </div>
             )}
+
+            <div className="flex items-center justify-between pt-1">
+              <Label className="text-sm font-medium leading-none dark:text-gray-200">
+                Visível para todos
+              </Label>
+              <Switch checked={isFunnelVisibleToAll} onCheckedChange={setIsFunnelVisibleToAll} />
+            </div>
 
             <div className="flex gap-2 justify-end pt-4 border-t dark:border-gray-700">
               <Button variant="outline" onClick={handleCloseFunnelModal} className="rounded-none border border-[#d4d4d4] bg-white text-gray-800 hover:bg-gray-100 dark:border-gray-600 dark:bg-transparent dark:text-gray-200 dark:hover:bg-[#1f1f1f]">

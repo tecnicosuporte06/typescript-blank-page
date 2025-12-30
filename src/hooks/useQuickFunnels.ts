@@ -18,6 +18,8 @@ export interface Funnel {
   workspace_id: string;
   steps: FunnelStep[];
   is_ai_agent?: boolean;
+  created_by_id?: string | null;
+  visible_to_all?: boolean;
   created_at: string;
 }
 
@@ -55,15 +57,36 @@ export function useQuickFunnels(workspaceIdProp?: string) {
         query = query.is('is_ai_agent', false);
       }
 
-      const { data, error } = await query;
+      query = query.or(`visible_to_all.eq.true,created_by_id.eq.${user.id}`);
+
+      let { data, error } = await query;
+
+      if (error) {
+        const msg = `${(error as any)?.message || ''} ${(error as any)?.details || ''}`.toLowerCase();
+        const isMissingColumns =
+          (error as any)?.code === '42703' ||
+          msg.includes('visible_to_all') ||
+          msg.includes('created_by_id');
+
+        if (isMissingColumns) {
+          console.warn('[useQuickFunnels] Colunas de visibilidade/owner não encontradas no banco. Recarregando sem filtro. Aplique a migration.', error);
+          const fallback = await (supabase as any)
+            .from('quick_funnels')
+            .select('*')
+            .eq('workspace_id', workspaceId)
+            .order('created_at', { ascending: false });
+          data = fallback.data as any;
+          error = fallback.error as any;
+        }
+      }
 
       if (error) throw error;
       setFunnels((data || []) as Funnel[]);
     } catch (error) {
-      console.error('Error fetching funnels:', error);
+      console.error('Error fetching funnels:', error, JSON.stringify(error));
       toast({
         title: 'Erro',
-        description: 'Erro ao buscar funis',
+        description: 'Erro ao buscar funis. Se começou após atualização, aplique a migration do Supabase.',
         variant: 'destructive',
       });
     } finally {
@@ -71,7 +94,12 @@ export function useQuickFunnels(workspaceIdProp?: string) {
     }
   };
 
-  const createFunnel = async (title: string, steps: FunnelStep[], isAiAgent: boolean = false) => {
+  const createFunnel = async (
+    title: string,
+    steps: FunnelStep[],
+    isAiAgent: boolean = false,
+    options?: { visibleToAll?: boolean }
+  ) => {
     if (!workspaceId || !user) {
       toast({
         title: 'Erro',
@@ -82,16 +110,41 @@ export function useQuickFunnels(workspaceIdProp?: string) {
     }
 
     try {
-      const { data, error } = await (supabase as any)
+      let { data, error } = await (supabase as any)
         .from('quick_funnels')
         .insert({
           title,
           steps,
           workspace_id: workspaceId,
-          is_ai_agent: isAiAgent
+          is_ai_agent: isAiAgent,
+          created_by_id: user.id,
+          visible_to_all: Boolean(options?.visibleToAll)
         })
         .select()
         .single();
+
+      if (error) {
+        const msg = `${(error as any)?.message || ''} ${(error as any)?.details || ''}`.toLowerCase();
+        const isMissingColumns =
+          (error as any)?.code === '42703' ||
+          msg.includes('visible_to_all') ||
+          msg.includes('created_by_id');
+        if (isMissingColumns) {
+          console.warn('[useQuickFunnels] Migration não aplicada no banco (colunas ausentes). Criando sem campos novos.', error);
+          const fallback = await (supabase as any)
+            .from('quick_funnels')
+            .insert({
+              title,
+              steps,
+              workspace_id: workspaceId,
+              is_ai_agent: isAiAgent
+            })
+            .select()
+            .single();
+          data = fallback.data as any;
+          error = fallback.error as any;
+        }
+      }
 
       if (error) throw error;
 
@@ -102,23 +155,53 @@ export function useQuickFunnels(workspaceIdProp?: string) {
       });
       return data;
     } catch (error) {
-      console.error('Error creating funnel:', error);
+      console.error('Error creating funnel:', error, JSON.stringify(error));
       toast({
         title: 'Erro',
-        description: 'Erro ao criar funil',
+        description: 'Erro ao criar funil. Se começou após atualização, aplique a migration do Supabase.',
         variant: 'destructive',
       });
     }
   };
 
-  const updateFunnel = async (id: string, title: string, steps: FunnelStep[], isAiAgent: boolean = false) => {
+  const updateFunnel = async (
+    id: string,
+    title: string,
+    steps: FunnelStep[],
+    isAiAgent: boolean = false,
+    options?: { visibleToAll?: boolean }
+  ) => {
     try {
-      const { data, error } = await (supabase as any)
+      let { data, error } = await (supabase as any)
         .from('quick_funnels')
-        .update({ title, steps, is_ai_agent: isAiAgent })
+        .update({ title, steps, is_ai_agent: isAiAgent, visible_to_all: options?.visibleToAll })
         .eq('id', id)
         .select()
         .single();
+
+      if (error) {
+        const msg = `${(error as any)?.message || ''} ${(error as any)?.details || ''}`.toLowerCase();
+        const isMissingColumns =
+          (error as any)?.code === '42703' ||
+          msg.includes('visible_to_all') ||
+          msg.includes('created_by_id');
+        if (isMissingColumns && typeof options?.visibleToAll === 'boolean') {
+          console.warn('[useQuickFunnels] Migration não aplicada no banco (colunas ausentes). Atualizando sem campos novos.', error);
+          const fallback = await (supabase as any)
+            .from('quick_funnels')
+            .update({ title, steps, is_ai_agent: isAiAgent })
+            .eq('id', id)
+            .select()
+            .single();
+          if (fallback.error) throw fallback.error;
+          setFunnels(prev => prev.map(funnel => funnel.id === id ? (fallback.data as Funnel) : funnel));
+          toast({
+            title: 'Sucesso',
+            description: 'Funil atualizado com sucesso',
+          });
+          return;
+        }
+      }
 
       if (error) throw error;
 
@@ -128,10 +211,10 @@ export function useQuickFunnels(workspaceIdProp?: string) {
         description: 'Funil atualizado com sucesso',
       });
     } catch (error) {
-      console.error('Error updating funnel:', error);
+      console.error('Error updating funnel:', error, JSON.stringify(error));
       toast({
         title: 'Erro',
-        description: 'Erro ao atualizar funil',
+        description: 'Erro ao atualizar funil. Se começou após atualização, aplique a migration do Supabase.',
         variant: 'destructive',
       });
     }

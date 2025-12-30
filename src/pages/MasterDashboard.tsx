@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect, useRef } from 'react';
+import { useState, useMemo, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Search, Settings, Home, Users, Building2, BarChart3, Settings2, BrainCircuit, LayoutDashboard, UserCircle, ListOrdered, LogOut, ArrowLeft, Edit, Trash2, Activity, Bell, AlertTriangle, Plus, Eye, EyeOff, MoreVertical, User, Upload, Calendar } from 'lucide-react';
 import { Input } from '@/components/ui/input';
@@ -37,16 +37,14 @@ import { GoogleAgendaMasterConfig } from '@/components/modules/master/GoogleAgen
 import { Badge } from '@/components/ui/badge';
 import { formatDistanceToNow } from "date-fns";
 import { ptBR } from "date-fns/locale";
-import { cn } from "@/lib/utils";
-import { useSystemCustomizationContext } from "@/contexts/SystemCustomizationContext";
-import { Switch } from "@/components/ui/switch";
+ 
+import { MasterSidebar, type MasterPage } from "@/components/master/MasterSidebar";
 
 export default function MasterDashboard() {
   const navigate = useNavigate();
   const { workspaces, isLoading, fetchWorkspaces, deleteWorkspace, toggleWorkspaceStatus, clearCache } = useWorkspaces();
   const { setSelectedWorkspace } = useWorkspace();
   const { userRole, logout, user } = useAuth();
-  const { customization } = useSystemCustomizationContext();
   
   // Debug workspaces
   console.log('🔍 [MasterDashboard] workspaces data:', {
@@ -56,9 +54,7 @@ export default function MasterDashboard() {
     firstWorkspace: workspaces[0]
   });
   const [searchQuery, setSearchQuery] = useState('');
-  const [activePage, setActivePage] = useState<
-    'home' | 'users' | 'workspaces' | 'reports' | 'settings' | 'ds-agent' | 'filas' | 'usuarios' | 'configuracoes' | 'busca-ids' | 'google-agenda-config'
-  >('workspaces');
+  const [activePage, setActivePage] = useState<MasterPage>('workspaces');
   const [usersModalOpen, setUsersModalOpen] = useState(false);
   const [selectedWorkspaceForModal, setSelectedWorkspaceForModal] = useState<Workspace | null>(null);
   const [configModalOpen, setConfigModalOpen] = useState(false);
@@ -78,26 +74,7 @@ export default function MasterDashboard() {
   const usuariosRef = useRef<AdministracaoUsuariosRef>(null);
   const filasRef = useRef<AutomacoesFilasMasterRef>(null);
   const agentesRef = useRef<DSAgenteMasterRef>(null);
-  const [isDarkMode, setIsDarkMode] = useState(false);
-
-  useEffect(() => {
-    const savedTheme = localStorage.getItem('theme');
-    const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
-    const shouldUseDark = savedTheme === 'dark' || (!savedTheme && prefersDark);
-    setIsDarkMode(shouldUseDark);
-    document.documentElement.classList.toggle('dark', shouldUseDark);
-  }, []);
-
-  const toggleDarkMode = (checked: boolean) => {
-    setIsDarkMode(checked);
-    if (checked) {
-      document.documentElement.classList.add('dark');
-      localStorage.setItem('theme', 'dark');
-    } else {
-      document.documentElement.classList.remove('dark');
-      localStorage.setItem('theme', 'light');
-    }
-  };
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
 
   // Verificar se o usuário é realmente master
   if (userRole !== 'master') {
@@ -136,10 +113,6 @@ export default function MasterDashboard() {
   const handleViewConfig = (workspace: Workspace) => {
     setSelectedWorkspaceForConfig(workspace);
     setConfigModalOpen(true);
-  };
-
-  const handleNavigateToAdminPage = (page: 'ds-agent' | 'filas' | 'usuarios' | 'configuracoes') => {
-    setActivePage(page);
   };
 
   const handleLogout = async () => {
@@ -233,222 +206,13 @@ export default function MasterDashboard() {
 
   return (
     <div className="min-h-screen bg-background flex fixed inset-0 dark:bg-[#040405]">
-      {/* Sidebar */}
-      <aside 
-        data-sidebar 
-        className={cn(
-          "flex flex-col m-2 shadow-sm font-sans text-xs transition-all duration-300 ease-in-out relative",
-          "bg-[#f0f0f0] border border-gray-300 dark:bg-[#1a1a1a] dark:border-gray-700",
-          "w-52"
-        )}
-      >
-        {/* Title Bar (Logo) */}
-        <div className={cn(
-          "flex-shrink-0 flex items-center bg-primary text-primary-foreground h-8 transition-all duration-300",
-          "justify-between px-2"
-        )}>
-          {/* Logo ou Texto */}
-          {customization.logo_url ? (
-            <img 
-              src={customization.logo_url} 
-              alt="Logo" 
-              className={cn(
-                "object-contain transition-all duration-300", 
-                "h-5"
-              )} 
-            />
-          ) : (
-            <h1 className={cn(
-              "font-bold transition-all duration-300 truncate", 
-              "text-[16px]"
-            )}>
-              TEZEUS
-            </h1>
-          )}
-        </div>
-
-        {/* Navigation */}
-        <nav className="flex-1 overflow-y-auto">
-          <button
-            onClick={() => setActivePage('workspaces')}
-            className={cn(
-              "w-full flex items-center transition-all relative group border border-transparent outline-none",
-              "gap-2 px-3 py-1.5",
-              "text-sm font-medium rounded-none",
-              activePage === 'workspaces'
-                ? "bg-[#FEF3C7] border-gray-300 text-black font-bold shadow-sm z-10 dark:bg-gray-700 dark:border-gray-600 dark:text-white"
-                : "text-gray-700 hover:bg-[#e1e1e1] hover:border-gray-300 hover:z-10 dark:text-gray-300 dark:hover:bg-gray-800 dark:hover:border-gray-600"
-            )}
-          >
-            <Building2 className={cn(
-              "transition-all duration-300 w-3.5 h-3.5",
-              activePage === 'workspaces' ? "text-black dark:text-white" : "text-gray-500 group-hover:text-gray-700 dark:text-gray-400 dark:group-hover:text-gray-200"
-            )} />
-            <span className="truncate">Empresas</span>
-          </button>
-          
-          <button
-            onClick={() => setActivePage('reports')}
-            className={cn(
-              "w-full flex items-center transition-all relative group border border-transparent outline-none",
-              "gap-2 px-3 py-1.5",
-              "text-sm font-medium rounded-none",
-              activePage === 'reports'
-                ? "bg-[#FEF3C7] border-gray-300 text-black font-bold shadow-sm z-10 dark:bg-gray-700 dark:border-gray-600 dark:text-white"
-                : "text-gray-700 hover:bg-[#e1e1e1] hover:border-gray-300 hover:z-10 dark:text-gray-300 dark:hover:bg-gray-800 dark:hover:border-gray-600"
-            )}
-          >
-            <BarChart3 className={cn(
-              "transition-all duration-300 w-3.5 h-3.5",
-              activePage === 'reports' ? "text-black dark:text-white" : "text-gray-500 group-hover:text-gray-700 dark:text-gray-400 dark:group-hover:text-gray-200"
-            )} />
-            <span className="truncate">Relatórios</span>
-          </button>
-          
-          <button
-            onClick={() => setActivePage('busca-ids')}
-            className={cn(
-              "w-full flex items-center transition-all relative group border border-transparent outline-none",
-              "gap-2 px-3 py-1.5",
-              "text-sm font-medium rounded-none",
-              activePage === 'busca-ids'
-                ? "bg-[#FEF3C7] border-gray-300 text-black font-bold shadow-sm z-10 dark:bg-gray-700 dark:border-gray-600 dark:text-white"
-                : "text-gray-700 hover:bg-[#e1e1e1] hover:border-gray-300 hover:z-10 dark:text-gray-300 dark:hover:bg-gray-800 dark:hover:border-gray-600"
-            )}
-          >
-            <Search className={cn(
-              "transition-all duration-300 w-3.5 h-3.5",
-              activePage === 'busca-ids' ? "text-black dark:text-white" : "text-gray-500 group-hover:text-gray-700 dark:text-gray-400 dark:group-hover:text-gray-200"
-            )} />
-            <span className="truncate">Busca por IDs</span>
-          </button>
-          
-          <button
-            onClick={() => setActivePage('usuarios')}
-            className={cn(
-              "w-full flex items-center transition-all relative group border border-transparent outline-none",
-              "gap-2 px-3 py-1.5",
-              "text-sm font-medium rounded-none",
-              activePage === 'usuarios'
-                ? "bg-[#FEF3C7] border-gray-300 text-black font-bold shadow-sm z-10 dark:bg-gray-700 dark:border-gray-600 dark:text-white"
-                : "text-gray-700 hover:bg-[#e1e1e1] hover:border-gray-300 hover:z-10 dark:text-gray-300 dark:hover:bg-gray-800 dark:hover:border-gray-600"
-            )}
-          >
-            <UserCircle className={cn(
-              "transition-all duration-300 w-3.5 h-3.5",
-              activePage === 'usuarios' ? "text-black dark:text-white" : "text-gray-500 group-hover:text-gray-700 dark:text-gray-400 dark:group-hover:text-gray-200"
-            )} />
-            <span className="truncate">Usuários</span>
-          </button>
-          
-          <button
-            onClick={() => setActivePage('ds-agent')}
-            className={cn(
-              "w-full flex items-center transition-all relative group border border-transparent outline-none",
-              "gap-2 px-3 py-1.5",
-              "text-sm font-medium rounded-none",
-              activePage === 'ds-agent'
-                ? "bg-[#FEF3C7] border-gray-300 text-black font-bold shadow-sm z-10 dark:bg-gray-700 dark:border-gray-600 dark:text-white"
-                : "text-gray-700 hover:bg-[#e1e1e1] hover:border-gray-300 hover:z-10 dark:text-gray-300 dark:hover:bg-gray-800 dark:hover:border-gray-600"
-            )}
-          >
-            <BrainCircuit className={cn(
-              "transition-all duration-300 w-3.5 h-3.5",
-              activePage === 'ds-agent' ? "text-black dark:text-white" : "text-gray-500 group-hover:text-gray-700 dark:text-gray-400 dark:group-hover:text-gray-200"
-            )} />
-            <span className="truncate">Agentes de IA</span>
-          </button>
-          
-          <button
-            onClick={() => setActivePage('filas')}
-            className={cn(
-              "w-full flex items-center transition-all relative group border border-transparent outline-none",
-              "gap-2 px-3 py-1.5",
-              "text-sm font-medium rounded-none",
-              activePage === 'filas'
-                ? "bg-[#FEF3C7] border-gray-300 text-black font-bold shadow-sm z-10 dark:bg-gray-700 dark:border-gray-600 dark:text-white"
-                : "text-gray-700 hover:bg-[#e1e1e1] hover:border-gray-300 hover:z-10 dark:text-gray-300 dark:hover:bg-gray-800 dark:hover:border-gray-600"
-            )}
-          >
-            <ListOrdered className={cn(
-              "transition-all duration-300 w-3.5 h-3.5",
-              activePage === 'filas' ? "text-black dark:text-white" : "text-gray-500 group-hover:text-gray-700 dark:text-gray-400 dark:group-hover:text-gray-200"
-            )} />
-            <span className="truncate">Filas</span>
-          </button>
-          
-          <button
-            onClick={() => setActivePage('configuracoes')}
-            className={cn(
-              "w-full flex items-center transition-all relative group border border-transparent outline-none",
-              "gap-2 px-3 py-1.5",
-              "text-sm font-medium rounded-none",
-              activePage === 'configuracoes'
-                ? "bg-[#FEF3C7] border-gray-300 text-black font-bold shadow-sm z-10 dark:bg-gray-700 dark:border-gray-600 dark:text-white"
-                : "text-gray-700 hover:bg-[#e1e1e1] hover:border-gray-300 hover:z-10 dark:text-gray-300 dark:hover:bg-gray-800 dark:hover:border-gray-600"
-            )}
-          >
-            <Settings2 className={cn(
-              "transition-all duration-300 w-3.5 h-3.5",
-              activePage === 'configuracoes' ? "text-black dark:text-white" : "text-gray-500 group-hover:text-gray-700 dark:text-gray-400 dark:group-hover:text-gray-200"
-            )} />
-            <span className="truncate">Configurações</span>
-          </button>
-          
-          <button
-            onClick={() => setActivePage('google-agenda-config')}
-            className={cn(
-              "w-full flex items-center transition-all relative group border border-transparent outline-none",
-              "gap-2 px-3 py-1.5",
-              "text-sm font-medium rounded-none",
-              activePage === 'google-agenda-config'
-                ? "bg-[#FEF3C7] border-gray-300 text-black font-bold shadow-sm z-10 dark:bg-gray-700 dark:border-gray-600 dark:text-white"
-                : "text-gray-700 hover:bg-[#e1e1e1] hover:border-gray-300 hover:z-10 dark:text-gray-300 dark:hover:bg-gray-800 dark:hover:border-gray-600"
-            )}
-          >
-            <Calendar className={cn(
-              "transition-all duration-300 w-3.5 h-3.5",
-              activePage === 'google-agenda-config' ? "text-black dark:text-white" : "text-gray-500 group-hover:text-gray-700 dark:text-gray-400 dark:group-hover:text-gray-200"
-            )} />
-            <span className="truncate">Google Agenda</span>
-          </button>
-        </nav>
-
-        <div className="border-t border-gray-300 bg-white dark:border-gray-700 dark:bg-[#1a1a1a] px-2 py-2 flex items-center justify-between text-xs">
-          <span className="text-gray-700 dark:text-gray-300 font-medium">Modo escuro</span>
-          <Switch
-            checked={isDarkMode}
-            onCheckedChange={toggleDarkMode}
-            className="scale-75 data-[state=checked]:bg-primary dark:bg-gray-600"
-          />
-        </div>
-
-        {/* User Info */}
-        <div className={cn("flex-shrink-0 border-t border-gray-300 bg-white dark:border-gray-700 dark:bg-[#1a1a1a]", "p-2")}>
-          <div className={cn("flex items-center", "gap-2")}>
-            <div className="w-7 h-7 bg-gray-100 rounded-full flex items-center justify-center border border-gray-300 flex-shrink-0 dark:bg-gray-700 dark:border-gray-600">
-              <User className="w-4 h-4 text-gray-600 dark:text-gray-300" />
-            </div>
-            <div className="flex-1 min-w-0">
-              <div className="text-xs font-medium text-gray-800 truncate dark:text-gray-200">{user?.name}</div>
-              <div className="text-[10px] text-gray-500 truncate dark:text-gray-400">{user?.email}</div>
-            </div>
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <button className="p-1 hover:bg-gray-100 rounded text-gray-500 dark:hover:bg-gray-700 dark:text-gray-400">
-                  <MoreVertical className="w-3.5 h-3.5" />
-                </button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent className="z-50 bg-white border border-gray-300 shadow-md dark:bg-[#2d2d2d] dark:border-gray-600" align="end">
-                <DropdownMenuItem onClick={handleLogout} className="text-xs text-red-600 focus:text-red-600">
-                  <LogOut className="w-3 h-3 mr-2" />
-                  Sair
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
-          </div>
-        </div>
-      </aside>
+      <MasterSidebar
+        activePage={activePage}
+        onPageChange={setActivePage}
+        isCollapsed={isSidebarCollapsed}
+        onToggleCollapse={() => setIsSidebarCollapsed(v => !v)}
+        onLogout={handleLogout}
+      />
 
       {/* Main Content */}
       <div className="flex-1 flex flex-col">

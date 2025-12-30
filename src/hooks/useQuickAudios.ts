@@ -12,6 +12,8 @@ interface QuickAudio {
   duration_seconds?: number;
   workspace_id: string;
   is_ai_agent?: boolean;
+  created_by_id?: string | null;
+  visible_to_all?: boolean;
   created_at: string;
   updated_at: string;
 }
@@ -41,15 +43,36 @@ export const useQuickAudios = () => {
         query = query.is('is_ai_agent', false);
       }
 
-      const { data, error } = await query;
+      query = query.or(`visible_to_all.eq.true,created_by_id.eq.${user.id}`);
+
+      let { data, error } = await query;
+
+      if (error) {
+        const msg = `${(error as any)?.message || ''} ${(error as any)?.details || ''}`.toLowerCase();
+        const isMissingColumns =
+          (error as any)?.code === '42703' ||
+          msg.includes('visible_to_all') ||
+          msg.includes('created_by_id');
+
+        if (isMissingColumns) {
+          console.warn('[useQuickAudios] Colunas de visibilidade/owner não encontradas no banco. Recarregando sem filtro. Aplique a migration.', error);
+          const fallback = await supabase
+            .from('quick_audios')
+            .select('*')
+            .eq('workspace_id', selectedWorkspace.workspace_id)
+            .order('created_at', { ascending: false });
+          data = fallback.data as any;
+          error = fallback.error as any;
+        }
+      }
 
       if (error) throw error;
       setAudios(data || []);
     } catch (error) {
-      console.error('Error fetching quick audios:', error);
+      console.error('Error fetching quick audios:', error, JSON.stringify(error));
       toast({
         title: 'Erro',
-        description: 'Erro ao carregar áudios rápidos',
+        description: 'Erro ao carregar áudios rápidos. Se começou após atualização, aplique a migration do Supabase.',
         variant: 'destructive',
       });
     } finally {
@@ -57,7 +80,12 @@ export const useQuickAudios = () => {
     }
   };
 
-  const createAudio = async (title: string, file: File, isAiAgent: boolean = false) => {
+  const createAudio = async (
+    title: string,
+    file: File,
+    isAiAgent: boolean = false,
+    options?: { visibleToAll?: boolean }
+  ) => {
     if (!selectedWorkspace?.workspace_id || !user) {
       toast({
         title: 'Erro',
@@ -85,17 +113,43 @@ export const useQuickAudios = () => {
         .getPublicUrl(filePath);
 
       // Inserir no banco
-      const { data, error } = await supabase
+      let { data, error } = await supabase
         .from('quick_audios')
         .insert({
           title,
           file_url: publicUrl,
           file_name: file.name,
           workspace_id: selectedWorkspace.workspace_id,
-          is_ai_agent: isAiAgent
+          is_ai_agent: isAiAgent,
+          created_by_id: user.id,
+          visible_to_all: Boolean(options?.visibleToAll)
         })
         .select()
         .single();
+
+      if (error) {
+        const msg = `${(error as any)?.message || ''} ${(error as any)?.details || ''}`.toLowerCase();
+        const isMissingColumns =
+          (error as any)?.code === '42703' ||
+          msg.includes('visible_to_all') ||
+          msg.includes('created_by_id');
+        if (isMissingColumns) {
+          console.warn('[useQuickAudios] Migration não aplicada no banco (colunas ausentes). Criando sem campos novos.', error);
+          const fallback = await supabase
+            .from('quick_audios')
+            .insert({
+              title,
+              file_url: publicUrl,
+              file_name: file.name,
+              workspace_id: selectedWorkspace.workspace_id,
+              is_ai_agent: isAiAgent
+            })
+            .select()
+            .single();
+          data = fallback.data as any;
+          error = fallback.error as any;
+        }
+      }
 
       if (error) throw error;
 
@@ -106,18 +160,27 @@ export const useQuickAudios = () => {
       });
       return data;
     } catch (error) {
-      console.error('Error creating audio:', error);
+      console.error('Error creating audio:', error, JSON.stringify(error));
       toast({
         title: 'Erro',
-        description: 'Erro ao criar áudio',
+        description: 'Erro ao criar áudio. Se começou após atualização, aplique a migration do Supabase.',
         variant: 'destructive',
       });
     }
   };
 
-  const updateAudio = async (id: string, title: string, file?: File, isAiAgent: boolean = false) => {
+  const updateAudio = async (
+    id: string,
+    title: string,
+    file?: File,
+    isAiAgent: boolean = false,
+    options?: { visibleToAll?: boolean }
+  ) => {
     try {
       let updateData: any = { title, is_ai_agent: isAiAgent };
+      if (typeof options?.visibleToAll === 'boolean') {
+        updateData.visible_to_all = options.visibleToAll;
+      }
 
       if (file && selectedWorkspace?.workspace_id) {
         // Upload novo arquivo se fornecido
@@ -146,6 +209,32 @@ export const useQuickAudios = () => {
         .select()
         .single();
 
+      if (error) {
+        const msg = `${(error as any)?.message || ''} ${(error as any)?.details || ''}`.toLowerCase();
+        const isMissingColumns =
+          (error as any)?.code === '42703' ||
+          msg.includes('visible_to_all') ||
+          msg.includes('created_by_id');
+        if (isMissingColumns && typeof options?.visibleToAll === 'boolean') {
+          console.warn('[useQuickAudios] Migration não aplicada no banco (colunas ausentes). Atualizando sem campos novos.', error);
+          // Remover o campo novo e tentar novamente
+          const { visible_to_all, ...rest } = updateData;
+          const fallback = await supabase
+            .from('quick_audios')
+            .update(rest)
+            .eq('id', id)
+            .select()
+            .single();
+          if (fallback.error) throw fallback.error;
+          setAudios(prev => prev.map(audio => audio.id === id ? (fallback.data as any) : audio));
+          toast({
+            title: 'Sucesso',
+            description: 'Áudio atualizado com sucesso',
+          });
+          return fallback.data;
+        }
+      }
+
       if (error) throw error;
 
       setAudios(prev => prev.map(audio => audio.id === id ? data : audio));
@@ -155,10 +244,10 @@ export const useQuickAudios = () => {
       });
       return data;
     } catch (error) {
-      console.error('Error updating audio:', error);
+      console.error('Error updating audio:', error, JSON.stringify(error));
       toast({
         title: 'Erro',
-        description: 'Erro ao atualizar áudio',
+        description: 'Erro ao atualizar áudio. Se começou após atualização, aplique a migration do Supabase.',
         variant: 'destructive',
       });
     }

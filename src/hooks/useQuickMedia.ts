@@ -13,6 +13,8 @@ interface QuickMedia {
   caption?: string;
   workspace_id: string;
   is_ai_agent?: boolean;
+  created_by_id?: string | null;
+  visible_to_all?: boolean;
   created_at: string;
   updated_at: string;
 }
@@ -42,15 +44,36 @@ export const useQuickMedia = () => {
         query = query.is('is_ai_agent', false);
       }
 
-      const { data, error } = await query;
+      query = query.or(`visible_to_all.eq.true,created_by_id.eq.${user.id}`);
+
+      let { data, error } = await query;
+
+      if (error) {
+        const msg = `${(error as any)?.message || ''} ${(error as any)?.details || ''}`.toLowerCase();
+        const isMissingColumns =
+          (error as any)?.code === '42703' ||
+          msg.includes('visible_to_all') ||
+          msg.includes('created_by_id');
+
+        if (isMissingColumns) {
+          console.warn('[useQuickMedia] Colunas de visibilidade/owner não encontradas no banco. Recarregando sem filtro. Aplique a migration.', error);
+          const fallback = await supabase
+            .from('quick_media')
+            .select('*')
+            .eq('workspace_id', selectedWorkspace.workspace_id)
+            .order('created_at', { ascending: false });
+          data = fallback.data as any;
+          error = fallback.error as any;
+        }
+      }
 
       if (error) throw error;
       setMedia(data || []);
     } catch (error) {
-      console.error('Error fetching quick media:', error);
+      console.error('Error fetching quick media:', error, JSON.stringify(error));
       toast({
         title: 'Erro',
-        description: 'Erro ao carregar mídias rápidas',
+        description: 'Erro ao carregar mídias rápidas. Se começou após atualização, aplique a migration do Supabase.',
         variant: 'destructive',
       });
     } finally {
@@ -58,7 +81,13 @@ export const useQuickMedia = () => {
     }
   };
 
-  const createMedia = async (title: string, file: File, caption?: string, isAiAgent: boolean = false) => {
+  const createMedia = async (
+    title: string,
+    file: File,
+    caption?: string,
+    isAiAgent: boolean = false,
+    options?: { visibleToAll?: boolean }
+  ) => {
     if (!selectedWorkspace?.workspace_id || !user) {
       toast({
         title: 'Erro',
@@ -86,7 +115,7 @@ export const useQuickMedia = () => {
         .getPublicUrl(filePath);
 
       // Inserir no banco
-      const { data, error } = await supabase
+      let { data, error } = await supabase
         .from('quick_media')
         .insert({
           title,
@@ -95,10 +124,38 @@ export const useQuickMedia = () => {
           file_type: file.type,
           caption: caption || null,
           workspace_id: selectedWorkspace.workspace_id,
-          is_ai_agent: isAiAgent
+          is_ai_agent: isAiAgent,
+          created_by_id: user.id,
+          visible_to_all: Boolean(options?.visibleToAll)
         })
         .select()
         .single();
+
+      if (error) {
+        const msg = `${(error as any)?.message || ''} ${(error as any)?.details || ''}`.toLowerCase();
+        const isMissingColumns =
+          (error as any)?.code === '42703' ||
+          msg.includes('visible_to_all') ||
+          msg.includes('created_by_id');
+        if (isMissingColumns) {
+          console.warn('[useQuickMedia] Migration não aplicada no banco (colunas ausentes). Criando sem campos novos.', error);
+          const fallback = await supabase
+            .from('quick_media')
+            .insert({
+              title,
+              file_url: publicUrl,
+              file_name: file.name,
+              file_type: file.type,
+              caption: caption || null,
+              workspace_id: selectedWorkspace.workspace_id,
+              is_ai_agent: isAiAgent
+            })
+            .select()
+            .single();
+          data = fallback.data as any;
+          error = fallback.error as any;
+        }
+      }
 
       if (error) throw error;
 
@@ -109,18 +166,28 @@ export const useQuickMedia = () => {
       });
       return data;
     } catch (error) {
-      console.error('Error creating media:', error);
+      console.error('Error creating media:', error, JSON.stringify(error));
       toast({
         title: 'Erro',
-        description: 'Erro ao criar mídia',
+        description: 'Erro ao criar mídia. Se começou após atualização, aplique a migration do Supabase.',
         variant: 'destructive',
       });
     }
   };
 
-  const updateMedia = async (id: string, title: string, file?: File, caption?: string, isAiAgent: boolean = false) => {
+  const updateMedia = async (
+    id: string,
+    title: string,
+    file?: File,
+    caption?: string,
+    isAiAgent: boolean = false,
+    options?: { visibleToAll?: boolean }
+  ) => {
     try {
       let updateData: any = { title, caption: caption || null, is_ai_agent: isAiAgent };
+      if (typeof options?.visibleToAll === 'boolean') {
+        updateData.visible_to_all = options.visibleToAll;
+      }
 
       if (file && selectedWorkspace?.workspace_id) {
         // Upload novo arquivo se fornecido
@@ -150,6 +217,31 @@ export const useQuickMedia = () => {
         .select()
         .single();
 
+      if (error) {
+        const msg = `${(error as any)?.message || ''} ${(error as any)?.details || ''}`.toLowerCase();
+        const isMissingColumns =
+          (error as any)?.code === '42703' ||
+          msg.includes('visible_to_all') ||
+          msg.includes('created_by_id');
+        if (isMissingColumns && typeof options?.visibleToAll === 'boolean') {
+          console.warn('[useQuickMedia] Migration não aplicada no banco (colunas ausentes). Atualizando sem campos novos.', error);
+          const { visible_to_all, ...rest } = updateData;
+          const fallback = await supabase
+            .from('quick_media')
+            .update(rest)
+            .eq('id', id)
+            .select()
+            .single();
+          if (fallback.error) throw fallback.error;
+          setMedia(prev => prev.map(item => item.id === id ? (fallback.data as any) : item));
+          toast({
+            title: 'Sucesso',
+            description: 'Mídia atualizada com sucesso',
+          });
+          return fallback.data;
+        }
+      }
+
       if (error) throw error;
 
       setMedia(prev => prev.map(item => item.id === id ? data : item));
@@ -159,10 +251,10 @@ export const useQuickMedia = () => {
       });
       return data;
     } catch (error) {
-      console.error('Error updating media:', error);
+      console.error('Error updating media:', error, JSON.stringify(error));
       toast({
         title: 'Erro',
-        description: 'Erro ao atualizar mídia',
+        description: 'Erro ao atualizar mídia. Se começou após atualização, aplique a migration do Supabase.',
         variant: 'destructive',
       });
     }

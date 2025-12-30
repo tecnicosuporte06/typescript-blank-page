@@ -186,11 +186,6 @@ export function Sidebar({
     icon: <CheckSquare className="w-5 h-5" />,
     group: "crm"
   }, {
-    id: "agendas" as ModuleType,
-    label: "Agendas",
-    icon: <Calendar className="w-5 h-5" />,
-    group: "crm"
-  }, {
     id: "contatos" as ModuleType,
     label: "Contatos",
     icon: <Users className="w-5 h-5" />,
@@ -210,6 +205,11 @@ export function Sidebar({
     label: "Filas",
     icon: <Users className="w-5 h-5" />,
     group: "administracao"
+  }, {
+    id: "agendas" as ModuleType,
+    label: "Agendas",
+    icon: <Calendar className="w-5 h-5" />,
+    group: "crm"
   }, {
     id: "mensagens-rapidas" as ModuleType,
     label: "Mensagens Rápidas",
@@ -382,6 +382,7 @@ export function Sidebar({
           if (item.id === 'conversas') return canView('conversas-item');
           if (item.id === 'mensagens-rapidas') return true;
           if (item.id === 'empresa') return hasRole(['master', 'admin']);
+          if (item.id === 'filas') return hasRole(['master', 'admin']); // admin pode ver/criar filas; user não
           if (item.id === 'pipeline') return canView('crm-negocios-item');
           if (item.id === 'contatos') return canView('crm-contatos-item');
           if (item.id === 'etiquetas') return canView('crm-tags-item');

@@ -15,6 +15,7 @@ interface QuickItemsModalProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onSendMessage?: (content: string, type: 'text') => void;
+  onInsertMessage?: (content: string) => void;
   onSendAudio?: (file: { name: string; url: string }, content: string) => void;
   onPreviewAudio?: (file: { name: string; url: string }, content: string) => void;
   onSendMedia?: (file: { name: string; url: string }, content: string, type: 'image' | 'video') => void;
@@ -25,6 +26,7 @@ export function QuickItemsModal({
   open, 
   onOpenChange, 
   onSendMessage, 
+  onInsertMessage,
   onSendAudio, 
   onPreviewAudio,
   onSendMedia, 
@@ -39,6 +41,13 @@ export function QuickItemsModal({
   const { funnels, loading: funnelsLoading } = useQuickFunnels();
 
   const handleSendMessage = (message: any) => {
+    const shouldEdit = Boolean(message?.allow_edit_before_send);
+    if (shouldEdit && onInsertMessage) {
+      onInsertMessage(message.content || '');
+      onOpenChange(false);
+      return;
+    }
+
     if (onSendMessage) {
       onSendMessage(message.content, 'text');
       onOpenChange(false);
@@ -86,7 +95,16 @@ export function QuickItemsModal({
           <MessageSquare className="w-4 h-4 text-muted-foreground" />
         </div>
         <div className="flex-1 min-w-0 overflow-hidden">
-          <h4 className="font-medium text-sm truncate text-foreground overflow-hidden whitespace-nowrap">{message.title}</h4>
+          <div className="flex items-center gap-2 min-w-0">
+            <h4 className="font-medium text-sm truncate text-foreground overflow-hidden whitespace-nowrap">
+              {message.title}
+            </h4>
+            {message?.allow_edit_before_send ? (
+              <span className="shrink-0 text-[10px] px-1.5 py-0.5 rounded-none border border-gray-300 text-gray-700 bg-gray-50 dark:border-gray-700 dark:text-gray-200 dark:bg-[#1b1b1b]">
+                Editar
+              </span>
+            ) : null}
+          </div>
           <p className="text-xs text-muted-foreground truncate overflow-hidden whitespace-nowrap">{message.content}</p>
         </div>
       </div>

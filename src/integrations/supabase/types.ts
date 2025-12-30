@@ -2623,6 +2623,7 @@ export type Database = {
       quick_audios: {
         Row: {
           created_at: string
+          created_by_id: string | null
           duration_seconds: number | null
           file_name: string
           file_url: string
@@ -2630,10 +2631,12 @@ export type Database = {
           is_ai_agent: boolean | null
           title: string
           updated_at: string
+          visible_to_all: boolean
           workspace_id: string
         }
         Insert: {
           created_at?: string
+          created_by_id?: string | null
           duration_seconds?: number | null
           file_name: string
           file_url: string
@@ -2641,10 +2644,12 @@ export type Database = {
           is_ai_agent?: boolean | null
           title: string
           updated_at?: string
+          visible_to_all?: boolean
           workspace_id: string
         }
         Update: {
           created_at?: string
+          created_by_id?: string | null
           duration_seconds?: number | null
           file_name?: string
           file_url?: string
@@ -2652,6 +2657,7 @@ export type Database = {
           is_ai_agent?: boolean | null
           title?: string
           updated_at?: string
+          visible_to_all?: boolean
           workspace_id?: string
         }
         Relationships: []
@@ -2660,6 +2666,7 @@ export type Database = {
         Row: {
           caption: string | null
           created_at: string
+          created_by_id: string | null
           file_name: string
           file_size: number | null
           file_type: string
@@ -2668,11 +2675,13 @@ export type Database = {
           is_ai_agent: boolean | null
           title: string
           updated_at: string
+          visible_to_all: boolean
           workspace_id: string
         }
         Insert: {
           caption?: string | null
           created_at?: string
+          created_by_id?: string | null
           file_name: string
           file_size?: number | null
           file_type: string
@@ -2681,11 +2690,13 @@ export type Database = {
           is_ai_agent?: boolean | null
           title: string
           updated_at?: string
+          visible_to_all?: boolean
           workspace_id: string
         }
         Update: {
           caption?: string | null
           created_at?: string
+          created_by_id?: string | null
           file_name?: string
           file_size?: number | null
           file_type?: string
@@ -2694,6 +2705,7 @@ export type Database = {
           is_ai_agent?: boolean | null
           title?: string
           updated_at?: string
+          visible_to_all?: boolean
           workspace_id?: string
         }
         Relationships: []
@@ -2701,29 +2713,35 @@ export type Database = {
       quick_funnels: {
         Row: {
           created_at: string
+          created_by_id: string | null
           id: string
           is_ai_agent: boolean | null
           steps: Json
           title: string
           updated_at: string
+          visible_to_all: boolean
           workspace_id: string
         }
         Insert: {
           created_at?: string
+          created_by_id?: string | null
           id?: string
           is_ai_agent?: boolean | null
           steps?: Json
           title: string
           updated_at?: string
+          visible_to_all?: boolean
           workspace_id: string
         }
         Update: {
           created_at?: string
+          created_by_id?: string | null
           id?: string
           is_ai_agent?: boolean | null
           steps?: Json
           title?: string
           updated_at?: string
+          visible_to_all?: boolean
           workspace_id?: string
         }
         Relationships: []
@@ -2732,6 +2750,7 @@ export type Database = {
         Row: {
           caption: string | null
           created_at: string
+          created_by_id: string | null
           file_name: string
           file_type: string
           file_url: string
@@ -2739,11 +2758,13 @@ export type Database = {
           is_ai_agent: boolean | null
           title: string
           updated_at: string
+          visible_to_all: boolean
           workspace_id: string
         }
         Insert: {
           caption?: string | null
           created_at?: string
+          created_by_id?: string | null
           file_name: string
           file_type: string
           file_url: string
@@ -2751,11 +2772,13 @@ export type Database = {
           is_ai_agent?: boolean | null
           title: string
           updated_at?: string
+          visible_to_all?: boolean
           workspace_id: string
         }
         Update: {
           caption?: string | null
           created_at?: string
+          created_by_id?: string | null
           file_name?: string
           file_type?: string
           file_url?: string
@@ -2763,36 +2786,46 @@ export type Database = {
           is_ai_agent?: boolean | null
           title?: string
           updated_at?: string
+          visible_to_all?: boolean
           workspace_id?: string
         }
         Relationships: []
       }
       quick_messages: {
         Row: {
+          allow_edit_before_send: boolean
           content: string
           created_at: string
+          created_by_id: string | null
           id: string
           is_ai_agent: boolean | null
           title: string
           updated_at: string
+          visible_to_all: boolean
           workspace_id: string
         }
         Insert: {
+          allow_edit_before_send?: boolean
           content: string
           created_at?: string
+          created_by_id?: string | null
           id?: string
           is_ai_agent?: boolean | null
           title: string
           updated_at?: string
+          visible_to_all?: boolean
           workspace_id: string
         }
         Update: {
+          allow_edit_before_send?: boolean
           content?: string
           created_at?: string
+          created_by_id?: string | null
           id?: string
           is_ai_agent?: boolean | null
           title?: string
           updated_at?: string
+          visible_to_all?: boolean
           workspace_id?: string
         }
         Relationships: []
