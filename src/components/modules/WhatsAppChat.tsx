@@ -283,6 +283,7 @@ export function WhatsAppChat({
     previewUrl: string;
   } | null>(null);
   const [isRecordedAudioSending, setIsRecordedAudioSending] = useState(false);
+  const [isOpeningConversation, setIsOpeningConversation] = useState(false);
   const composerTextareaRef = useRef<HTMLTextAreaElement | null>(null);
   const [slashOpen, setSlashOpen] = useState(false);
   const [slashQuery, setSlashQuery] = useState("");
@@ -1391,10 +1392,12 @@ export function WhatsAppChat({
       // Se não está no estado atual, buscar direto no banco por ID
       (async () => {
         try {
+          setIsOpeningConversation(true);
           isAutoOpeningRef.current = true;
           await fetchAndOpenConversationById(selectedConversationId);
         } finally {
           isAutoOpeningRef.current = false;
+          setIsOpeningConversation(false);
         }
       })();
       return;
@@ -1402,11 +1405,13 @@ export function WhatsAppChat({
 
     (async () => {
       try {
+        setIsOpeningConversation(true);
         isAutoOpeningRef.current = true;
         await handleSelectConversation(conv);
         lastAutoOpenedIdRef.current = selectedConversationId;
       } finally {
         isAutoOpeningRef.current = false;
+        setIsOpeningConversation(false);
       }
     })();
   }, [selectedConversationId, conversations, fetchAndOpenConversationById]);
@@ -3393,17 +3398,38 @@ export function WhatsAppChat({
               {/* Barra de seleção (modo de encaminhamento) */}
               {selectionMode && <MessageSelectionBar selectedCount={selectedMessages.size} onCancel={cancelSelection} onForward={() => setForwardModalOpen(true)} />}
             </div>
-          </> : <div className="flex-1 flex items-center justify-center bg-white dark:bg-[#1f1f1f]">
-            <div className="text-center">
-              <MessageCircle className="w-16 h-16 text-muted-foreground mx-auto mb-4" />
-              <h3 className="text-lg font-medium text-foreground mb-2 dark:text-gray-200">
-                Selecione uma conversa
-              </h3>
-              <p className="text-muted-foreground dark:text-gray-400">
-                Escolha uma conversa da lista para começar a conversar
-              </p>
-            </div>
-          </div>}
+          </> : (
+            // ✅ Evitar "piscar" no modal: quando chega via selectedConversationId, mostrar skeleton até abrir/carregar
+            selectedConversationId && (isOpeningConversation || messagesLoading) ? (
+              <div className="flex-1 flex items-center justify-center bg-white dark:bg-[#1f1f1f]">
+                <div className="w-full max-w-2xl p-6">
+                  <div className="animate-pulse space-y-4">
+                    <div className="h-6 w-56 bg-gray-200 dark:bg-gray-800 rounded-none" />
+                    <div className="h-4 w-80 bg-gray-200 dark:bg-gray-800 rounded-none" />
+                    <div className="pt-4 space-y-3">
+                      <div className="h-10 w-2/3 bg-gray-200 dark:bg-gray-800 rounded-none" />
+                      <div className="h-10 w-1/2 bg-gray-200 dark:bg-gray-800 rounded-none" />
+                      <div className="h-10 w-3/5 bg-gray-200 dark:bg-gray-800 rounded-none" />
+                      <div className="h-10 w-1/3 bg-gray-200 dark:bg-gray-800 rounded-none" />
+                    </div>
+                    <div className="pt-4 h-9 w-full bg-gray-200 dark:bg-gray-800 rounded-none" />
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <div className="flex-1 flex items-center justify-center bg-white dark:bg-[#1f1f1f]">
+                <div className="text-center">
+                  <MessageCircle className="w-16 h-16 text-muted-foreground mx-auto mb-4" />
+                  <h3 className="text-lg font-medium text-foreground mb-2 dark:text-gray-200">
+                    Selecione uma conversa
+                  </h3>
+                  <p className="text-muted-foreground dark:text-gray-400">
+                    Escolha uma conversa da lista para começar a conversar
+                  </p>
+                </div>
+              </div>
+            )
+          )}
         
         <PeekConversationModal isOpen={peekModalOpen} onClose={() => {
         setPeekModalOpen(false);

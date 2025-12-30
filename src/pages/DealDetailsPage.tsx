@@ -3390,25 +3390,6 @@ const humanizeLabel = (label: string) => {
                       </div>
                     </div>
 
-                    {/* Disponibilidade */}
-                    <div className="space-y-2">
-                      <div className="flex items-center gap-2">
-                        <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Disponibilidade</label>
-                        <Select 
-                          value={activityForm.availability}
-                          onValueChange={(value) => setActivityForm({...activityForm, availability: value})}
-                        >
-                          <SelectTrigger className="w-32">
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="livre">Livre</SelectItem>
-                            <SelectItem value="ocupado">Ocupado</SelectItem>
-                          </SelectContent>
-                        </Select>
-                      </div>
-                    </div>
-
                     {/* Descrição */}
                     <div className="space-y-2">
                       <Textarea
@@ -4048,23 +4029,6 @@ const humanizeLabel = (label: string) => {
                 </Select>
               </div>
               </div>
-
-              {/* Disponibilidade */}
-              <div className="space-y-2">
-                <label className="text-sm font-semibold text-gray-200">Disponibilidade</label>
-                <Select
-                  value={activityEditForm.availability}
-                  onValueChange={(v) => setActivityEditForm({ ...activityEditForm, availability: v })}
-                >
-                  <SelectTrigger className="bg-[#1a1a1a] border-gray-700 h-11 text-gray-100">
-                    <SelectValue placeholder="Disponibilidade" />
-                  </SelectTrigger>
-                  <SelectContent className="bg-[#1b1b1b] border-gray-700 text-gray-100">
-                    <SelectItem value="livre">Livre</SelectItem>
-                    <SelectItem value="ocupado">Ocupado</SelectItem>
-                  </SelectContent>
-                </Select>
-            </div>
 
               {/* Descrição */}
               <div className="space-y-2">
