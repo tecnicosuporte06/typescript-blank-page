@@ -547,7 +547,7 @@ export function ContactSidePanel({
                   <div className="flex flex-col items-center justify-center p-4">
                     <div className="flex items-center gap-2 mb-1">
                       <Trophy className="h-4 w-4 text-green-600 dark:text-green-400" />
-                      <span className="text-[10px] font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400">Fechados</span>
+                      <span className="text-[10px] font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400">Ganhos</span>
                     </div>
                     <p className="text-2xl font-bold text-gray-900 dark:text-gray-100">{stats.closedDeals}</p>
                   </div>

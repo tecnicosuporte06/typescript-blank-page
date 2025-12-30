@@ -104,8 +104,8 @@ export function FilterModal({ open, onOpenChange, onApplyFilters, isDarkMode = f
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className={`sm:max-w-md p-0 gap-0 border border-[#d4d4d4] dark:border-gray-700 bg-white dark:bg-[#0f0f0f] shadow-sm rounded-none ${isDarkMode ? 'dark' : ''}`}>
-        <DialogHeader className="bg-primary p-4 rounded-none m-0">
-          <DialogTitle className="text-primary-foreground">Filtros</DialogTitle>
+        <DialogHeader className="bg-primary p-4 rounded-none m-0 dark:bg-[#0b0b0b]">
+          <DialogTitle className="text-primary-foreground dark:text-gray-100">Filtros</DialogTitle>
         </DialogHeader>
         
         <div className="space-y-4 p-6">

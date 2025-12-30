@@ -186,6 +186,11 @@ export function Sidebar({
     icon: <CheckSquare className="w-5 h-5" />,
     group: "crm"
   }, {
+    id: "agendas" as ModuleType,
+    label: "Agenda",
+    icon: <Calendar className="w-5 h-5" />,
+    group: "crm"
+  }, {
     id: "contatos" as ModuleType,
     label: "Contatos",
     icon: <Users className="w-5 h-5" />,
@@ -194,6 +199,11 @@ export function Sidebar({
     id: "etiquetas" as ModuleType,
     label: "Etiquetas",
     icon: <Target className="w-5 h-5" />,
+    group: "crm"
+  }, {
+    id: "configuracao-acoes" as ModuleType,
+    label: "Motivos de Perda",
+    icon: <FileText className="w-5 h-5" />,
     group: "crm"
   }, {
     id: "produtos" as ModuleType,
@@ -205,11 +215,6 @@ export function Sidebar({
     label: "Filas",
     icon: <Users className="w-5 h-5" />,
     group: "administracao"
-  }, {
-    id: "agendas" as ModuleType,
-    label: "Agendas",
-    icon: <Calendar className="w-5 h-5" />,
-    group: "crm"
   }, {
     id: "mensagens-rapidas" as ModuleType,
     label: "Mensagens Rápidas",
@@ -386,6 +391,7 @@ export function Sidebar({
           if (item.id === 'pipeline') return canView('crm-negocios-item');
           if (item.id === 'contatos') return canView('crm-contatos-item');
           if (item.id === 'etiquetas') return canView('crm-tags-item');
+          if (item.id === 'configuracao-acoes') return canView('crm-loss-reasons-item');
           if (item.id === 'produtos') return canView('crm-produtos-item');
           if (item.group === 'administracao') return hasRole(['master', 'admin']);
           return true;

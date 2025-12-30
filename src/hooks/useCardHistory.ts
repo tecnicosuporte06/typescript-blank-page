@@ -212,6 +212,13 @@ export const useCardHistory = (cardId: string, contactId?: string) => {
             description = `${tagName} - ${changedBy}`;
             eventType = 'tag';
             eventTitle = 'Etiqueta Atribuída';
+          } else if (event.action === 'responsible_changed') {
+            const changedBy = metadata.changed_by_name || 'Sistema';
+            const fromUser = metadata.old_responsible_user_name || 'Sem responsável';
+            const toUser = metadata.new_responsible_user_name || 'Sem responsável';
+            description = `Responsável alterado: ${fromUser} → ${toUser} - ${changedBy}`;
+            eventType = 'user_assigned';
+            eventTitle = 'Responsável do Negócio';
           } else if (event.action === 'note_created') {
             description = metadata.description || metadata.content || 'Anotação adicionada';
             eventType = 'notes';

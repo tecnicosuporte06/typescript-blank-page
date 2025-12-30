@@ -19,6 +19,7 @@ import { usePipelineColumns } from "@/hooks/usePipelineColumns";
 import { useWorkspaceHeaders } from "@/lib/workspaceHeaders";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/useAuth";
+import { useWorkspaceMembers } from "@/hooks/useWorkspaceMembers";
 import { format, differenceInDays, differenceInHours } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
@@ -59,6 +60,7 @@ export function DealDetailsPage({ cardId: propCardId, workspaceId: propWorkspace
   const { getHeaders } = useWorkspaceHeaders();
   const { toast } = useToast();
   const queryClient = useQueryClient();
+  const { members: workspaceMembers } = useWorkspaceMembers(effectiveWorkspaceId);
   
   const [cardData, setCardData] = useState<any>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -92,6 +94,7 @@ const [manualValue, setManualValue] = useState<string>("");
   
   // Estados para histórico
   const [historyFilter, setHistoryFilter] = useState<string>("all");
+  const didInitActivityTimeRef = useRef(false);
   
   // Estados para modal de seleção de coluna
   const [isColumnSelectModalOpen, setIsColumnSelectModalOpen] = useState(false);
@@ -124,12 +127,35 @@ const [noteEditContent, setNoteEditContent] = useState("");
 const [editingNoteId, setEditingNoteId] = useState<string | null>(null);
 const [editingNoteContent, setEditingNoteContent] = useState("");
 const [conversationId, setConversationId] = useState<string | null>(null);
+const [isEditingCompany, setIsEditingCompany] = useState(false);
+const [tempCompany, setTempCompany] = useState("");
+const [isSavingCompany, setIsSavingCompany] = useState(false);
+  const [isUpdatingResponsibleUser, setIsUpdatingResponsibleUser] = useState(false);
 
   const getUserDisplayName = () =>
     authUser?.user_metadata?.full_name ||
     authUser?.email ||
     authUser?.id ||
     'Sistema';
+
+  const handleCopyContactPhone = useCallback(async () => {
+    if (!contact?.phone) return;
+    try {
+      const digits = String(contact.phone).replace(/\D/g, '');
+      await navigator.clipboard.writeText(digits);
+      toast({
+        title: "Copiado",
+        description: "Número copiado sem formatação.",
+      });
+    } catch (e) {
+      console.error('Erro ao copiar número:', e);
+      toast({
+        title: "Erro",
+        description: "Não foi possível copiar o número.",
+        variant: "destructive",
+      });
+    }
+  }, [contact?.phone, toast]);
 
   const logStatusHistory = async (newStatus: string, valueAtStatus?: number | null) => {
     if (!cardId) return;
@@ -150,6 +176,120 @@ const [conversationId, setConversationId] = useState<string | null>(null);
       console.error('Erro ao registrar histórico de status:', err);
     }
   };
+
+  const eligibleTransferUsers = useMemo(() => {
+    return (users || [])
+      .filter((u: any) => {
+        const p = String(u?.profile || "").toLowerCase().trim();
+        return p === "admin" || p === "user";
+      })
+      .sort((a: any, b: any) => String(a?.name || "").localeCompare(String(b?.name || ""), "pt-BR"));
+  }, [users]);
+
+  const handleTransferResponsibleUser = useCallback(
+    async (newUserId: string) => {
+      if (!cardId) return;
+      if (!effectiveWorkspaceId) return;
+      if (!newUserId) return;
+
+      const currentId = cardData?.responsible_user_id || null;
+      if (currentId === newUserId) return;
+
+      const oldUser = users.find((u: any) => u.id === currentId) || owner;
+      const newUser = users.find((u: any) => u.id === newUserId);
+
+      setIsUpdatingResponsibleUser(true);
+      try {
+        // 1) Atualiza responsável do negócio
+        const { error: updateCardError } = await supabase
+          .from("pipeline_cards")
+          .update({
+            responsible_user_id: newUserId,
+            updated_at: new Date().toISOString(),
+          })
+          .eq("id", cardId);
+
+        if (updateCardError) throw updateCardError;
+
+        // 2) Atualiza responsável da conversa vinculada (se houver)
+        const convId = cardData?.conversation_id || conversationId;
+        if (convId) {
+          const { error: convError } = await supabase
+            .from("conversations")
+            .update({
+              assigned_user_id: newUserId,
+              assigned_user_name: newUser?.name || null,
+              assigned_at: new Date().toISOString(),
+              updated_at: new Date().toISOString(),
+            } as any)
+            .eq("id", convId)
+            .eq("workspace_id", effectiveWorkspaceId);
+
+          if (convError) {
+            console.warn("⚠️ Falha ao atualizar conversa para o novo responsável:", convError);
+          }
+        }
+
+        // 3) Log no histórico do negócio (para relatórios e auditoria)
+        try {
+          await supabase.from("pipeline_card_history").insert({
+            card_id: cardId,
+            action: "responsible_changed",
+            changed_at: new Date().toISOString(),
+            metadata: {
+              old_responsible_user_id: currentId,
+              old_responsible_user_name: oldUser?.name || null,
+              new_responsible_user_id: newUserId,
+              new_responsible_user_name: newUser?.name || null,
+              changed_by_id: authUser?.id || null,
+              changed_by_name: getUserDisplayName(),
+            },
+          });
+        } catch (historyErr) {
+          console.warn("⚠️ Não foi possível registrar histórico de responsável:", historyErr);
+        }
+
+        // Atualizar estados locais
+        setCardData((prev: any) => (prev ? { ...prev, responsible_user_id: newUserId } : prev));
+        setOwner((prev: any) => ({
+          ...(prev || {}),
+          id: newUser?.id || newUserId,
+          name: newUser?.name || prev?.name,
+          profile: newUser?.profile || prev?.profile,
+          profile_image_url: newUser?.profile_image_url || prev?.profile_image_url,
+        }));
+
+        toast({
+          title: "Responsável atualizado",
+          description: "O responsável do negócio foi atualizado com sucesso.",
+        });
+
+        queryClient.invalidateQueries({ queryKey: ["card-history", cardId] });
+      } catch (error: any) {
+        console.error("Erro ao transferir responsável do negócio:", error);
+        toast({
+          title: "Erro",
+          description: error.message || "Não foi possível transferir o responsável do negócio.",
+          variant: "destructive",
+        });
+      } finally {
+        setIsUpdatingResponsibleUser(false);
+      }
+    },
+    [
+      authUser?.id,
+      cardData?.conversation_id,
+      cardData?.responsible_user_id,
+      cardId,
+      conversationId,
+      effectiveWorkspaceId,
+      getUserDisplayName,
+      owner,
+      queryClient,
+      toast,
+      users,
+    ]
+  );
 
   const formatPhone = (raw?: string | null) => {
     if (!raw) return '';
@@ -299,6 +439,137 @@ const formatDateToInput = (date: Date) => {
 const formatTime = (date: Date) => {
   return format(date, "HH:mm");
 };
+
+  const companyInfo = useMemo(() => {
+    const match = (contactExtraInfo || []).find((f) => (f.field_name || "").trim().toLowerCase() === "empresa")
+      || (contactExtraInfo || []).find((f) => (f.field_name || "").trim().toLowerCase() === "campo-empresa")
+      || (contactExtraInfo || []).find((f) => (f.field_name || "").trim().toLowerCase().includes("empresa"));
+
+    return {
+      fieldName: match?.field_name || "empresa",
+      value: (match?.field_value || "").trim(),
+    };
+  }, [contactExtraInfo]);
+
+  const handleSaveCompany = async () => {
+    if (!contact?.id || !effectiveWorkspaceId) return;
+    const nextValue = (tempCompany || "").trim();
+
+    try {
+      setIsSavingCompany(true);
+
+      // Buscar ID do campo existente (se houver)
+      const { data: existingRows, error: existingError } = await supabase
+        .from("contact_extra_info")
+        .select("id, field_name")
+        .eq("contact_id", contact.id)
+        .eq("workspace_id", effectiveWorkspaceId);
+
+      if (existingError) throw existingError;
+
+      const normalizedTarget = (companyInfo.fieldName || "empresa").trim().toLowerCase();
+      const existing = (existingRows || []).find((r: any) => (r.field_name || "").trim().toLowerCase() === normalizedTarget)
+        || (existingRows || []).find((r: any) => (r.field_name || "").trim().toLowerCase() === "empresa")
+        || (existingRows || []).find((r: any) => (r.field_name || "").trim().toLowerCase().includes("empresa"));
+
+      if (!nextValue) {
+        // Se apagar, remove o campo
+        if (existing?.id) {
+          const { error: delErr } = await supabase
+            .from("contact_extra_info")
+            .delete()
+            .eq("id", existing.id);
+          if (delErr) throw delErr;
+        }
+      } else if (existing?.id) {
+        const { error: updErr } = await supabase
+          .from("contact_extra_info")
+          .update({ field_value: nextValue })
+          .eq("id", existing.id);
+        if (updErr) throw updErr;
+      } else {
+        const { error: insErr } = await supabase
+          .from("contact_extra_info")
+          .insert({
+            contact_id: contact.id,
+            workspace_id: effectiveWorkspaceId,
+            field_name: companyInfo.fieldName || "empresa",
+            field_value: nextValue,
+          });
+        if (insErr) throw insErr;
+      }
+
+      // Atualizar estado local sem destruir outros campos
+      setContactExtraInfo((prev) => {
+        const withoutCompany = (prev || []).filter((f) => {
+          const key = (f.field_name || "").trim().toLowerCase();
+          return key !== (companyInfo.fieldName || "empresa").trim().toLowerCase() && key !== "empresa" && key !== "campo-empresa";
+        });
+        if (!nextValue) return withoutCompany;
+        return [...withoutCompany, { field_name: companyInfo.fieldName || "empresa", field_value: nextValue }];
+      });
+
+      setIsEditingCompany(false);
+      toast({
+        title: "Sucesso",
+        description: "Empresa atualizada com sucesso.",
+      });
+    } catch (err: any) {
+      console.error("Erro ao salvar empresa:", err);
+      toast({
+        title: "Erro",
+        description: err?.message || "Não foi possível salvar a empresa.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsSavingCompany(false);
+    }
+  };
+
+  const getBrasiliaNow = () => {
+    const parts = new Intl.DateTimeFormat("pt-BR", {
+      timeZone: "America/Sao_Paulo",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: false,
+    }).formatToParts(new Date());
+
+    const get = (type: string) => parts.find((p) => p.type === type)?.value;
+    const year = Number(get("year"));
+    const month = Number(get("month"));
+    const day = Number(get("day"));
+    const hour = Number(get("hour"));
+    const minute = Number(get("minute"));
+
+    return { year, month, day, hour, minute };
+  };
+
+  const getBrasiliaRoundedTimeRange = () => {
+    const { year, month, day, hour, minute } = getBrasiliaNow();
+    const startMinutes = hour * 60 + minute;
+    // opções são de 5 em 5 min — arredondar pra CIMA (ex: 16:09 -> 16:10)
+    const roundedStart = Math.ceil(startMinutes / 5) * 5;
+    const clampedStart = Math.min(roundedStart, 23 * 60 + 55);
+    // o próximo horário deve ser +5min (não +30)
+    const roundedEnd = Math.min(clampedStart + 5, 23 * 60 + 55);
+
+    const pad2 = (n: number) => String(n).padStart(2, "0");
+    const toHHmm = (total: number) => `${pad2(Math.floor(total / 60))}:${pad2(total % 60)}`;
+
+    return {
+      startDate: new Date(year, month - 1, day),
+      endDate: new Date(year, month - 1, day),
+      startTime: toHHmm(clampedStart),
+      endTime: toHHmm(roundedEnd),
+      startHour: Math.floor(clampedStart / 60),
+      startMinute: clampedStart % 60,
+      endHour: Math.floor(roundedEnd / 60),
+      endMinute: roundedEnd % 60,
+    };
+  };
 
 const humanizeLabel = (label: string) => {
   if (!label) return "";
@@ -607,24 +878,26 @@ const humanizeLabel = (label: string) => {
     fetchCardData();
   }, [fetchCardData]);
 
-  // Buscar usuários para o select de responsável
+  // ✅ Usuários do workspace para selects (usa Edge Function via hook, evitando RLS quebrar)
   useEffect(() => {
-    const fetchUsers = async () => {
-      try {
-        const { data, error } = await supabase
-          .from('system_users')
-          .select('id, name')
-          .order('name');
+    if (!effectiveWorkspaceId) {
+      setUsers([]);
+      return;
+    }
 
-        if (error) throw error;
-        setUsers(data || []);
-      } catch (error) {
-        console.error('Erro ao buscar usuários:', error);
-      }
-    };
+    const mapped = (workspaceMembers || [])
+      .filter((m: any) => !m?.is_hidden && (m?.role === "admin" || m?.role === "user"))
+      .map((m: any) => ({
+        id: m.user?.id || m.user_id,
+        name: m.user?.name || "",
+        profile_image_url: m.user?.avatar || m.user?.profile_image_url || null,
+        profile: m.role,
+      }))
+      .filter((u: any) => u.id && u.name);
 
-    fetchUsers();
-  }, []);
+    mapped.sort((a: any, b: any) => String(a.name).localeCompare(String(b.name), "pt-BR"));
+    setUsers(mapped);
+  }, [effectiveWorkspaceId, workspaceMembers]);
 
   // Preselecionar responsável para usuários não master
   useEffect(() => {
@@ -1370,26 +1643,43 @@ const humanizeLabel = (label: string) => {
       queryClient.invalidateQueries({ queryKey: ['card-history', cardId] });
 
       // Resetar formulário
-      setActivityForm({
-        type: "Ligação abordada",
-        subject: "",
-        description: "",
-        availability: "livre",
-        startDate: new Date(),
-        startTime: "13:00",
-        endDate: new Date(),
-        endTime: "13:30",
-        responsibleId: "",
-        location: "",
-        videoCall: false,
-        markAsDone: false
-      });
+      {
+        const range = getBrasiliaRoundedTimeRange();
+        const keepResponsibleId = activityForm.responsibleId;
+        setActivityForm({
+          type: "Ligação abordada",
+          subject: "",
+          description: "",
+          availability: "livre",
+          startDate: range.startDate,
+          startTime: range.startTime,
+          endDate: range.endDate,
+          endTime: range.endTime,
+          // ✅ Não resetar responsável ao salvar
+          responsibleId: keepResponsibleId,
+          location: "",
+          videoCall: false,
+          markAsDone: false
+        });
+        setSelectedStartHour(range.startHour);
+        setSelectedStartMinute(range.startMinute);
+        setSelectedEndHour(range.endHour);
+        setSelectedEndMinute(range.endMinute);
+      }
       setActivityAttachmentFile(null);
-    } catch (error) {
+    } catch (error: any) {
       console.error('Erro ao salvar atividade:', error);
+
+      const code = error?.code || error?.cause?.code;
+      const isOverlap =
+        code === "23P01" ||
+        String(error?.message || "").toLowerCase().includes("conflito de agenda");
+
       toast({
         title: "Erro",
-        description: "Não foi possível criar a atividade.",
+        description: isOverlap
+          ? "Conflito de agenda: já existe uma atividade para este responsável nesse período."
+          : "Não foi possível criar a atividade.",
         variant: "destructive",
       });
     } finally {
@@ -1493,9 +1783,17 @@ const humanizeLabel = (label: string) => {
       queryClient.invalidateQueries({ queryKey: ['card-history', cardId] });
     } catch (error: any) {
       console.error("Erro ao atualizar atividade:", error);
+
+      const code = error?.code || error?.cause?.code;
+      const isOverlap =
+        code === "23P01" ||
+        String(error?.message || "").toLowerCase().includes("conflito de agenda");
+
       toast({
         title: "Erro",
-        description: error.message || "Não foi possível atualizar a atividade.",
+        description: isOverlap
+          ? "Conflito de agenda: já existe uma atividade para este responsável nesse período."
+          : error.message || "Não foi possível atualizar a atividade.",
         variant: "destructive",
       });
     }
@@ -1940,6 +2238,50 @@ const humanizeLabel = (label: string) => {
     }
   }, [cardId, toast]);
 
+  // ✅ Aba "Arquivos": listar anexos salvos nas atividades (mesmo que não exista evento em pipeline_card_history)
+  // (precisa ficar ANTES de returns condicionais para não quebrar a ordem de hooks)
+  const activityAttachmentEvents = useMemo(() => {
+    const byActivityId = new Map<string, any>();
+
+    for (const ev of historyEvents || []) {
+      if (!ev?.type?.startsWith?.("activity_")) continue;
+      const url = ev?.metadata?.attachment_url;
+      if (!url) continue;
+
+      const baseId = String(ev.id || "").split("_")[0] || String(ev?.metadata?.activity_id || "");
+      if (!baseId) continue;
+
+      const prev = byActivityId.get(baseId);
+      // Preferir o evento "created" para representar o anexo da atividade (mais intuitivo)
+      if (!prev || (prev?.action !== "created" && ev?.action === "created")) {
+        byActivityId.set(baseId, ev);
+      }
+    }
+
+    return Array.from(byActivityId.values()).sort((a, b) => {
+      const aTime = a?.timestamp ? new Date(a.timestamp).getTime() : 0;
+      const bTime = b?.timestamp ? new Date(b.timestamp).getTime() : 0;
+      return bTime - aTime;
+    });
+  }, [historyEvents]);
+
+  const fileHistoryEvents = useMemo(() => {
+    return (historyEvents || []).filter((e: any) => e?.type === "files");
+  }, [historyEvents]);
+
+  const filesCount = useMemo(() => {
+    const unique = new Set<string>();
+    activityAttachmentEvents.forEach((e: any) => {
+      const url = e?.metadata?.attachment_url;
+      if (url) unique.add(String(url));
+    });
+    fileHistoryEvents.forEach((e: any) => {
+      const url = e?.metadata?.attachment_url;
+      if (url) unique.add(String(url));
+    });
+    return unique.size;
+  }, [activityAttachmentEvents, fileHistoryEvents]);
+
   if (isLoading || !cardData || !cardId) {
     return (
       <div className="h-screen flex flex-col bg-white dark:bg-[#0f0f0f]">
@@ -2005,7 +2347,6 @@ const humanizeLabel = (label: string) => {
     );
     return events;
   };
-
 
   return (
     <div className="h-full flex flex-col bg-white dark:bg-[#0f0f0f] overflow-hidden">
@@ -2449,6 +2790,18 @@ const humanizeLabel = (label: string) => {
                       <span className="text-gray-700 dark:text-gray-300">
                         {formatPhone(contact.phone) || 'Sem telefone'}
                       </span>
+                      {contact.phone && (
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          className="h-6 w-6 rounded-none"
+                          onClick={handleCopyContactPhone}
+                          title="Copiar número"
+                        >
+                          <Copy className="h-3.5 w-3.5" />
+                        </Button>
+                      )}
                     </div>
                   </>
                 )}
@@ -2507,6 +2860,68 @@ const humanizeLabel = (label: string) => {
                       <Plus className="h-3 w-3 mr-1" />
                       Produtos
                     </Button>
+                  </div>
+                </div>
+
+                {/* Empresa */}
+                <div className="flex items-center gap-2 text-sm">
+                  <Building2 className="h-4 w-4 text-gray-400" />
+                  <div className="flex-1">
+                    <div className="text-gray-700 dark:text-gray-300 text-xs font-medium">
+                      Empresa
+                    </div>
+                    {isEditingCompany ? (
+                      <div className="flex items-center gap-2 mt-1">
+                        <Input
+                          value={tempCompany}
+                          onChange={(e) => setTempCompany(e.target.value)}
+                          placeholder="Digite a empresa..."
+                          className="h-7 text-xs rounded-none border border-gray-300 bg-white dark:bg-[#1b1b1b] dark:border-gray-700 dark:text-gray-100"
+                          disabled={isSavingCompany}
+                        />
+                        <Button
+                          size="icon"
+                          variant="ghost"
+                          className="h-7 w-7"
+                          onClick={handleSaveCompany}
+                          disabled={isSavingCompany}
+                          title="Salvar"
+                        >
+                          <Check className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          size="icon"
+                          variant="ghost"
+                          className="h-7 w-7"
+                          onClick={() => {
+                            setIsEditingCompany(false);
+                            setTempCompany(companyInfo.value || "");
+                          }}
+                          disabled={isSavingCompany}
+                          title="Cancelar"
+                        >
+                          <X className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    ) : (
+                      <div className="flex items-center justify-between gap-2 mt-1">
+                        <div className={cn("text-sm", companyInfo.value ? "text-gray-900 dark:text-gray-100" : "text-gray-500 dark:text-gray-400")}>
+                          {companyInfo.value || "Adicionar empresa"}
+                        </div>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-6 w-6"
+                          onClick={() => {
+                            setTempCompany(companyInfo.value || "");
+                            setIsEditingCompany(true);
+                          }}
+                          title={companyInfo.value ? "Editar empresa" : "Adicionar empresa"}
+                        >
+                          <Pencil className="h-3 w-3" />
+                        </Button>
+                      </div>
+                    )}
                   </div>
                 </div>
 
@@ -2632,8 +3047,40 @@ const humanizeLabel = (label: string) => {
                   <>
                     {/* Informações Gerais */}
                     <div className="space-y-2 text-sm">
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="text-gray-600 dark:text-gray-400 whitespace-nowrap">
+                          Responsável
+                        </span>
+                        <div className="flex items-center gap-2 min-w-0">
+                          <span className="font-medium text-gray-900 dark:text-gray-100 truncate max-w-[120px]">
+                            {owner?.name || "—"}
+                          </span>
+                          <Select
+                            value={cardData?.responsible_user_id || ""}
+                            onValueChange={(value) => handleTransferResponsibleUser(value)}
+                            disabled={isUpdatingResponsibleUser}
+                          >
+                            <SelectTrigger className="h-7 w-[170px] text-xs rounded-none border border-gray-300 bg-white dark:bg-[#1b1b1b] dark:border-gray-700 dark:text-gray-100">
+                              <SelectValue placeholder="Trocar" />
+                            </SelectTrigger>
+                            <SelectContent className="rounded-none [&>div>div>span.absolute]:hidden [&>div>div]:pl-2 [&>div>div]:pr-2">
+                              {eligibleTransferUsers.length === 0 ? (
+                                <SelectItem value="__empty__" disabled>
+                                  Nenhum usuário disponível
+                                </SelectItem>
+                              ) : (
+                                eligibleTransferUsers.map((u: any) => (
+                                  <SelectItem key={u.id} value={u.id}>
+                                    {u.name}
+                                  </SelectItem>
+                                ))
+                              )}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                      </div>
                       <div className="flex items-center justify-between">
-                        <span className="text-gray-600 dark:text-gray-400">Idade do negócio</span>
+                        <span className="text-gray-600 dark:text-gray-400">Tempo da Oportunidade</span>
                         <span className="font-medium">{overviewData.businessAge} dias</span>
                       </div>
                       <div className="flex items-center justify-between">
@@ -2745,40 +3192,6 @@ const humanizeLabel = (label: string) => {
                 </div>
                 {contact && (
                   <div className="space-y-1.5">
-                    <div>
-                      <span className="text-gray-500 dark:text-gray-400">Contato:</span>
-                      <span className="ml-2 inline-flex items-center gap-2">
-                        <span>{formatPhone(contact.phone) || contact.name || 'Sem contato'}</span>
-                        {contact.phone && (
-                          <Button
-                            type="button"
-                            variant="ghost"
-                            size="icon"
-                            className="h-6 w-6 rounded-none"
-                            onClick={async () => {
-                              try {
-                                const digits = String(contact.phone).replace(/\D/g, '');
-                                await navigator.clipboard.writeText(digits);
-                                toast({
-                                  title: "Copiado",
-                                  description: "Número copiado sem formatação."
-                                });
-                              } catch (e) {
-                                console.error('Erro ao copiar número:', e);
-                                toast({
-                                  title: "Erro",
-                                  description: "Não foi possível copiar o número.",
-                                  variant: "destructive"
-                                });
-                              }
-                            }}
-                            title="Copiar número"
-                          >
-                            <Copy className="h-3.5 w-3.5" />
-                          </Button>
-                        )}
-                      </span>
-                    </div>
                     {additionalContactInfo.length > 0 && (
                       <div className="space-y-1">
                         {additionalContactInfo.map((item, idx) => (
@@ -2800,7 +3213,40 @@ const humanizeLabel = (label: string) => {
         <div className="flex-1 flex flex-col overflow-hidden">
           <>
           {/* Tabs */}
-          <Tabs defaultValue="anotacoes" className="flex-1 flex flex-col overflow-hidden">
+          <Tabs
+            defaultValue="anotacoes"
+            className="flex-1 flex flex-col overflow-hidden"
+            onValueChange={(tab) => {
+              if (tab !== "atividade") return;
+              if (didInitActivityTimeRef.current) return;
+
+              // Só aplicar automaticamente se o usuário ainda não começou a preencher
+              const shouldApply =
+                !activityForm.subject?.trim() &&
+                !activityForm.description?.trim() &&
+                activityForm.startTime === "13:00" &&
+                activityForm.endTime === "13:30";
+
+              if (!shouldApply) {
+                didInitActivityTimeRef.current = true;
+                return;
+              }
+
+              const range = getBrasiliaRoundedTimeRange();
+              setActivityForm((prev) => ({
+                ...prev,
+                startDate: range.startDate,
+                endDate: range.endDate,
+                startTime: range.startTime,
+                endTime: range.endTime,
+              }));
+              setSelectedStartHour(range.startHour);
+              setSelectedStartMinute(range.startMinute);
+              setSelectedEndHour(range.endHour);
+              setSelectedEndMinute(range.endMinute);
+              didInitActivityTimeRef.current = true;
+            }}
+          >
             <div className="border-b border-gray-200 dark:border-gray-700 px-6">
               <TabsList className="bg-transparent gap-4">
                 <TabsTrigger 
@@ -3140,17 +3586,6 @@ const humanizeLabel = (label: string) => {
                         <Button
                           variant="ghost"
                           size="sm"
-                          onClick={() => setHistoryFilter("activities")}
-                          className={cn(
-                            "text-xs h-8 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-none transition-colors",
-                            historyFilter === "activities" && "bg-yellow-50 dark:bg-yellow-900/30 border border-yellow-200 dark:border-yellow-800 text-black dark:text-white font-semibold hover:bg-yellow-100 dark:hover:bg-yellow-900/50"
-                          )}
-                        >
-                          Atividades ({historyEvents.filter(e => e.type?.startsWith("activity_")).length})
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="sm"
                           onClick={() => setHistoryFilter("activities_done")}
                           className={cn(
                             "text-xs h-8 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-none transition-colors",
@@ -3181,12 +3616,74 @@ const humanizeLabel = (label: string) => {
                         >
                           Registro de alterações ({historyEvents.filter(e => ["column_transfer", "pipeline_transfer", "tag", "user_assigned", "queue_transfer", "agent_activity", "qualification"].includes(e.type)).length})
                         </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => setHistoryFilter("files")}
+                          className={cn(
+                            "text-xs h-8 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-none transition-colors",
+                            historyFilter === "files" && "bg-yellow-50 dark:bg-yellow-900/30 border border-yellow-200 dark:border-yellow-800 text-black dark:text-white font-semibold hover:bg-yellow-100 dark:hover:bg-yellow-900/50"
+                          )}
+                        >
+                          Arquivos ({filesCount})
+                        </Button>
                       </div>
 
-                      {/* Timeline */}
+                      {/* Timeline / Arquivos */}
                       {isLoadingHistory ? (
                         <div className="text-center py-8 text-gray-500 dark:text-gray-400">
                           Carregando histórico...
+                        </div>
+                      ) : historyFilter === "files" ? (
+                        <div className="space-y-3">
+                          {activityAttachmentEvents.length === 0 ? (
+                            <div className="text-center py-8 text-gray-500 dark:text-gray-400">
+                              Nenhum arquivo encontrado
+                            </div>
+                          ) : (
+                            activityAttachmentEvents.map((ev: any) => {
+                              const eventDate = ev?.timestamp ? new Date(ev.timestamp) : new Date();
+                              const userName = ev?.user_name || ev?.metadata?.changed_by_name || "Sistema";
+                              const subject = ev?.metadata?.subject || ev?.metadata?.activity_subject || "Atividade";
+                              const url = ev?.metadata?.attachment_url;
+                              const name = ev?.metadata?.attachment_name;
+
+                              return (
+                                <div
+                                  key={ev.id}
+                                  className="border border-[#d4d4d4] dark:border-gray-700 bg-white dark:bg-[#0f0f0f] rounded-none p-3"
+                                >
+                                  <div className="flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400 flex-wrap">
+                                    {format(eventDate, "dd 'de' MMMM 'às' HH:mm", { locale: ptBR })} • {userName} • {contact?.name || "-"}
+                                  </div>
+
+                                  <div className="mt-2 flex items-center gap-2 text-xs">
+                                    <span className="font-semibold text-gray-700 dark:text-gray-300">
+                                      {subject}
+                                    </span>
+                                  </div>
+
+                                  {url ? (
+                                    <div className="mt-2 flex items-center gap-2 text-xs text-gray-600 dark:text-gray-400">
+                                      <span className="font-semibold text-gray-700 dark:text-gray-300">Anexos</span>
+                                      <button
+                                        type="button"
+                                        className="text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300 underline"
+                                        onClick={() =>
+                                          setSelectedFileForPreview({
+                                            url,
+                                            name: name || "Anexo 1",
+                                          })
+                                        }
+                                      >
+                                        Anexo 1
+                                      </button>
+                                    </div>
+                                  ) : null}
+                                </div>
+                              );
+                            })
+                          )}
                         </div>
                       ) : (
                         <div className="space-y-0">
@@ -3457,15 +3954,7 @@ const humanizeLabel = (label: string) => {
                               )}
                             </div>
                           </div>
-                          <Button
-                            type="button"
-                            variant="outline"
-                            size="sm"
-                            className="h-8 text-xs rounded-none"
-                            disabled={isUploadingFile}
-                          >
-                            Selecionar
-                          </Button>
+                          {/* removido: botão "Selecionar" (era redundante e ficava vazio) */}
                         </label>
                       </div>
                     </div>
@@ -3503,20 +3992,26 @@ const humanizeLabel = (label: string) => {
                           <label className="text-sm text-gray-700 dark:text-gray-300">Marcar como feito</label>
                         </div>
                         <Button variant="outline" onClick={() => {
+                          const range = getBrasiliaRoundedTimeRange();
                           setActivityForm({
                             type: "Ligação abordada",
                             subject: "",
                             description: "",
                             availability: "livre",
-                            startDate: new Date(),
-                            startTime: "13:00",
-                            endDate: new Date(),
-                            endTime: "13:30",
-                            responsibleId: "",
+                            startDate: range.startDate,
+                            startTime: range.startTime,
+                            endDate: range.endDate,
+                            endTime: range.endTime,
+                            // ✅ Não resetar responsável ao cancelar
+                            responsibleId: activityForm.responsibleId,
                             location: "",
                             videoCall: false,
                             markAsDone: false
                           });
+                          setSelectedStartHour(range.startHour);
+                          setSelectedStartMinute(range.startMinute);
+                          setSelectedEndHour(range.endHour);
+                          setSelectedEndMinute(range.endMinute);
                           setActivityAttachmentFile(null);
                         }}>Cancelar</Button>
                         <Button
@@ -3726,15 +4221,15 @@ const humanizeLabel = (label: string) => {
                             Anotações ({historyEvents.filter(e => e.type === "notes").length})
                           </Button>
                           <Button
-                            variant={historyFilter === "activities" ? "default" : "ghost"}
+                            variant={historyFilter === "files" ? "default" : "ghost"}
                             size="sm"
-                            onClick={() => setHistoryFilter("activities")}
+                            onClick={() => setHistoryFilter("files")}
                             className={cn(
                               "text-xs h-8",
-                              historyFilter === "activities" && "bg-yellow-50 dark:bg-yellow-900/30 text-yellow-700 dark:text-yellow-400 font-semibold hover:bg-yellow-100 dark:hover:bg-yellow-900/50"
+                              historyFilter === "files" && "bg-yellow-50 dark:bg-yellow-900/30 text-yellow-700 dark:text-yellow-400 font-semibold hover:bg-yellow-100 dark:hover:bg-yellow-900/50"
                             )}
                           >
-                            Atividades ({historyEvents.filter(e => e.type?.startsWith("activity_")).length})
+                            Arquivos ({filesCount})
                           </Button>
                           <Button
                             variant={historyFilter === "activities_done" ? "default" : "ghost"}
@@ -3771,10 +4266,61 @@ const humanizeLabel = (label: string) => {
                           </Button>
                         </div>
 
-                        {/* Timeline */}
+                        {/* Timeline / Arquivos */}
                         {isLoadingHistory ? (
                           <div className="text-center py-8 text-gray-500 dark:text-gray-400">
                             Carregando histórico...
+                          </div>
+                        ) : historyFilter === "files" ? (
+                          <div className="space-y-3">
+                            {activityAttachmentEvents.length === 0 ? (
+                              <div className="text-center py-8 text-gray-500 dark:text-gray-400">
+                                Nenhum arquivo encontrado
+                              </div>
+                            ) : (
+                              activityAttachmentEvents.map((ev: any) => {
+                                const eventDate = ev?.timestamp ? new Date(ev.timestamp) : new Date();
+                                const userName = ev?.user_name || ev?.metadata?.changed_by_name || "Sistema";
+                                const subject = ev?.metadata?.subject || ev?.metadata?.activity_subject || "Atividade";
+                                const url = ev?.metadata?.attachment_url;
+                                const name = ev?.metadata?.attachment_name;
+
+                                return (
+                                  <div
+                                    key={ev.id}
+                                    className="border border-[#d4d4d4] dark:border-gray-700 bg-white dark:bg-[#0f0f0f] rounded-none p-3"
+                                  >
+                                    <div className="flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400 flex-wrap">
+                                      {format(eventDate, "dd 'de' MMMM 'às' HH:mm", { locale: ptBR })} • {userName} • {contact?.name || "-"}
+                                    </div>
+
+                                    <div className="mt-2 flex items-center gap-2 text-xs">
+                                      <span className="font-semibold text-gray-700 dark:text-gray-300">
+                                        {subject}
+                                      </span>
+                                    </div>
+
+                                    {url ? (
+                                      <div className="mt-2 flex items-center gap-2 text-xs text-gray-600 dark:text-gray-400">
+                                        <span className="font-semibold text-gray-700 dark:text-gray-300">Anexos</span>
+                                        <button
+                                          type="button"
+                                          className="text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300 underline"
+                                          onClick={() =>
+                                            setSelectedFileForPreview({
+                                              url,
+                                              name: name || "Anexo 1",
+                                            })
+                                          }
+                                        >
+                                          Anexo 1
+                                        </button>
+                                      </div>
+                                    ) : null}
+                                  </div>
+                                );
+                              })
+                            )}
                           </div>
                         ) : (
                           <div className="space-y-0">

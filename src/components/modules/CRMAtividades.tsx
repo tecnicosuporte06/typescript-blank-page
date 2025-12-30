@@ -307,9 +307,17 @@ export function CRMAtividades() {
     fetchActivities();
   }, [selectedWorkspace?.workspace_id, page, pageSize]);
 
+  const isArquivoActivityType = (raw?: string | null) => {
+    const t = (raw || "").toLowerCase().trim();
+    return t === "arquivo" || t === "arquivos";
+  };
+
   const filteredActivities = useMemo(() => {
     const term = searchTerm.toLowerCase();
     return activities.filter((activity) => {
+      // Arquivo não é atividade: não deve aparecer nem na lista nem no kanban
+      if (isArquivoActivityType(activity.type)) return false;
+
       const categoryOk =
         selectedCategory === "all" ||
         (activity.type || "").toLowerCase().trim() === selectedCategory.toLowerCase().trim();
@@ -332,7 +340,7 @@ export function CRMAtividades() {
     const set = new Set<string>();
     for (const a of activities) {
       const t = (a.type || "").trim();
-      if (t) set.add(t);
+      if (t && !isArquivoActivityType(t)) set.add(t);
     }
     return Array.from(set).sort((a, b) => a.localeCompare(b, "pt-BR"));
   }, [activities]);
@@ -452,11 +460,16 @@ export function CRMAtividades() {
       </div>
 
       {/* Conteúdo */}
-      <div className="flex-1 overflow-auto bg-[#e6e6e6] dark:bg-[#050505] relative">
+      <div
+        className={cn(
+          "flex-1 bg-[#e6e6e6] dark:bg-[#050505] relative",
+          viewMode === "list" ? "overflow-auto" : "overflow-hidden"
+        )}
+      >
         {viewMode === "list" ? (
           <div className="inline-block min-w-full align-middle bg-white dark:bg-[#111111]">
             <table className="min-w-full border-collapse bg-white text-xs font-sans dark:bg-[#111111] dark:text-gray-100">
-            <thead className="bg-[#f3f3f3] sticky top-0 z-10 dark:bg-[#1f1f1f]">
+            <thead className="bg-[#f3f3f3] sticky top-0 z-10 dark:bg-[#2a2a2a]">
               <tr>
                 <th className="border border-[#d4d4d4] px-2 py-1 text-left font-semibold text-gray-700 min-w-[150px] group hover:bg-[#e1e1e1] cursor-pointer dark:border-gray-700 dark:text-gray-200 dark:hover:bg-[#2a2a2a]">
                   <div className="flex items-center gap-1">
@@ -597,19 +610,20 @@ export function CRMAtividades() {
           </table>
         </div>
         ) : (
-          <div className="p-3">
+          <div className="p-3 h-full overflow-hidden">
             {isLoading || !isDataReady ? (
               <div className="text-gray-500 dark:text-gray-400 text-sm">Carregando atividades...</div>
             ) : kanbanColumns.length === 0 ? (
               <div className="text-gray-500 dark:text-gray-400 text-sm">Nenhuma atividade encontrada.</div>
             ) : (
-              <div className="flex gap-3 overflow-x-auto pb-2">
+              <div className="h-full overflow-x-auto">
+                <div className="flex gap-3 h-full items-stretch">
                 {kanbanColumns.map((col) => (
                   <div
                     key={col.name}
-                    className="w-[280px] min-w-[280px] bg-white border border-[#d4d4d4] dark:bg-[#111111] dark:border-gray-700 rounded-none"
+                    className="w-[280px] min-w-[280px] bg-white border border-[#d4d4d4] dark:bg-[#111111] dark:border-gray-700 rounded-none flex flex-col h-full"
                   >
-                    <div className="sticky top-0 z-10 bg-[#f3f3f3] dark:bg-[#1f1f1f] border-b border-[#d4d4d4] dark:border-gray-700 px-2 py-2">
+                    <div className="shrink-0 bg-[#f3f3f3] dark:bg-[#3a3a3a] border-b border-[#d4d4d4] dark:border-gray-700 px-2 py-2">
                       <div className="flex items-center justify-between gap-2">
                         <div className="font-semibold text-gray-800 dark:text-gray-100 truncate">
                           {col.name}
@@ -623,7 +637,7 @@ export function CRMAtividades() {
                       </div>
                     </div>
 
-                    <div className="p-2 space-y-2">
+                    <div className="flex-1 min-h-0 overflow-y-auto p-2 space-y-2">
                       {col.items.map((activity) => (
                         <div
                           key={activity.id}
@@ -682,6 +696,7 @@ export function CRMAtividades() {
                     </div>
                   </div>
                 ))}
+                </div>
               </div>
             )}
           </div>

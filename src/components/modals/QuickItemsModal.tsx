@@ -389,8 +389,8 @@ export function QuickItemsModal({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-md w-full p-0 gap-0 overflow-hidden border border-[#d4d4d4] shadow-lg sm:rounded-none bg-white h-[600px] max-h-[90vh] flex flex-col dark:bg-[#1f1f1f] dark:border-gray-700">
-        <DialogHeader className="mx-0 mt-0 px-4 py-2 mb-0 bg-primary text-primary-foreground border-b border-[#d4d4d4] rounded-t-none flex-shrink-0 dark:border-gray-700">
-          <DialogTitle className="text-left text-[15px] font-bold flex items-center gap-2">
+        <DialogHeader className="mx-0 mt-0 px-4 py-2 mb-0 bg-primary text-primary-foreground border-b border-[#d4d4d4] rounded-t-none flex-shrink-0 dark:border-gray-700 dark:bg-[#0f0f0f] dark:text-gray-100">
+          <DialogTitle className="text-left text-[15px] font-bold flex items-center gap-2 dark:text-gray-100">
             <span>Mensagens Rápidas</span>
           </DialogTitle>
         </DialogHeader>

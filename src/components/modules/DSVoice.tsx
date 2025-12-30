@@ -977,9 +977,9 @@ export function DSVoice() {
       {/* Modal para Mensagens */}
       <Dialog open={isMessageModalOpen} onOpenChange={setIsMessageModalOpen}>
         <DialogContent className="sm:max-w-md bg-white text-gray-900 dark:bg-[#0b0b0b] dark:text-gray-100 dark:border-gray-700">
-          <DialogHeader className="px-4 py-2 bg-primary text-primary-foreground border-b border-[#d4d4d4] rounded-t-none dark:border-gray-700">
-            <DialogTitle className="text-primary-foreground">{editingMessageId ? 'Editar Mensagem' : 'Nova Mensagem'}</DialogTitle>
-            <DialogDescription className="text-primary-foreground/90">
+          <DialogHeader className="px-4 py-2 bg-primary text-primary-foreground border-b border-[#d4d4d4] rounded-t-none dark:border-gray-700 dark:bg-[#0f0f0f] dark:text-gray-100">
+            <DialogTitle className="text-primary-foreground dark:text-gray-100">{editingMessageId ? 'Editar Mensagem' : 'Nova Mensagem'}</DialogTitle>
+            <DialogDescription className="text-primary-foreground/90 dark:text-gray-400">
               {editingMessageId ? 'Edite os dados da mensagem rápida.' : 'Crie uma nova mensagem rápida.'}
             </DialogDescription>
           </DialogHeader>
@@ -1033,9 +1033,9 @@ export function DSVoice() {
       {/* Modal para Áudios */}
       <Dialog open={isAudioModalOpen} onOpenChange={setIsAudioModalOpen}>
         <DialogContent className="sm:max-w-md bg-white text-gray-900 dark:bg-[#0b0b0b] dark:text-gray-100 dark:border-gray-700">
-          <DialogHeader className="px-4 py-2 bg-primary text-primary-foreground border-b border-[#d4d4d4] rounded-t-none dark:border-gray-700">
-            <DialogTitle className="text-primary-foreground">{editingAudioId ? 'Editar Áudio' : 'Novo Áudio'}</DialogTitle>
-            <DialogDescription className="text-primary-foreground/90">
+          <DialogHeader className="px-4 py-2 bg-primary text-primary-foreground border-b border-[#d4d4d4] rounded-t-none dark:border-gray-700 dark:bg-[#0f0f0f] dark:text-gray-100">
+            <DialogTitle className="text-primary-foreground dark:text-gray-100">{editingAudioId ? 'Editar Áudio' : 'Novo Áudio'}</DialogTitle>
+            <DialogDescription className="text-primary-foreground/90 dark:text-gray-400">
               {editingAudioId ? 'Edite os dados do áudio rápido.' : 'Adicione um novo áudio rápido.'}
             </DialogDescription>
           </DialogHeader>
@@ -1082,9 +1082,9 @@ export function DSVoice() {
       {/* Modal para Mídias */}
       <Dialog open={isMediaModalOpen} onOpenChange={setIsMediaModalOpen}>
         <DialogContent className="sm:max-w-md bg-white text-gray-900 dark:bg-[#0b0b0b] dark:text-gray-100 dark:border-gray-700">
-          <DialogHeader className="px-4 py-2 bg-primary text-primary-foreground border-b border-[#d4d4d4] rounded-t-none dark:border-gray-700">
-            <DialogTitle className="text-primary-foreground">{editingMediaId ? 'Editar Mídia' : 'Nova Mídia'}</DialogTitle>
-            <DialogDescription className="text-primary-foreground/90">
+          <DialogHeader className="px-4 py-2 bg-primary text-primary-foreground border-b border-[#d4d4d4] rounded-t-none dark:border-gray-700 dark:bg-[#0f0f0f] dark:text-gray-100">
+            <DialogTitle className="text-primary-foreground dark:text-gray-100">{editingMediaId ? 'Editar Mídia' : 'Nova Mídia'}</DialogTitle>
+            <DialogDescription className="text-primary-foreground/90 dark:text-gray-400">
               {editingMediaId ? 'Edite os dados da mídia rápida.' : 'Adicione uma nova mídia rápida.'}
             </DialogDescription>
           </DialogHeader>
@@ -1141,9 +1141,9 @@ export function DSVoice() {
       {/* Modal para Documentos */}
       <Dialog open={isDocumentModalOpen} onOpenChange={setIsDocumentModalOpen}>
         <DialogContent className="sm:max-w-md bg-white text-gray-900 dark:bg-[#0b0b0b] dark:text-gray-100 dark:border-gray-700">
-          <DialogHeader className="px-4 py-2 bg-primary text-primary-foreground border-b border-[#d4d4d4] rounded-t-none dark:border-gray-700">
-            <DialogTitle className="text-primary-foreground">{editingDocumentId ? 'Editar Documento' : 'Novo Documento'}</DialogTitle>
-            <DialogDescription className="text-primary-foreground/90">
+          <DialogHeader className="px-4 py-2 bg-primary text-primary-foreground border-b border-[#d4d4d4] rounded-t-none dark:border-gray-700 dark:bg-[#0f0f0f] dark:text-gray-100">
+            <DialogTitle className="text-primary-foreground dark:text-gray-100">{editingDocumentId ? 'Editar Documento' : 'Novo Documento'}</DialogTitle>
+            <DialogDescription className="text-primary-foreground/90 dark:text-gray-400">
               {editingDocumentId ? 'Edite os dados do documento rápido.' : 'Adicione um novo documento rápido.'}
             </DialogDescription>
           </DialogHeader>
@@ -1200,9 +1200,9 @@ export function DSVoice() {
       {/* Modal para Criar Funil */}
       <Dialog open={isFunnelModalOpen} onOpenChange={setIsFunnelModalOpen}>
         <DialogContent className="max-w-2xl bg-white text-gray-900 dark:bg-[#0b0b0b] dark:text-gray-100 dark:border-gray-700">
-          <DialogHeader className="px-4 py-2 bg-primary text-primary-foreground border-b border-[#d4d4d4] rounded-t-none dark:border-gray-700">
-            <DialogTitle className="text-primary-foreground">{editingFunnelId ? 'Editar Funil' : 'Novo Funil'}</DialogTitle>
-            <DialogDescription className="text-primary-foreground/90">
+          <DialogHeader className="px-4 py-2 bg-primary text-primary-foreground border-b border-[#d4d4d4] rounded-t-none dark:border-gray-700 dark:bg-[#0f0f0f] dark:text-gray-100">
+            <DialogTitle className="text-primary-foreground dark:text-gray-100">{editingFunnelId ? 'Editar Funil' : 'Novo Funil'}</DialogTitle>
+            <DialogDescription className="text-primary-foreground/90 dark:text-gray-400">
               Crie um funil com múltiplas etapas e delays configuráveis.
             </DialogDescription>
           </DialogHeader>
@@ -1279,9 +1279,9 @@ export function DSVoice() {
       {/* Modal para Adicionar Etapa */}
       <Dialog open={isAddStepModalOpen} onOpenChange={setIsAddStepModalOpen}>
         <DialogContent className="sm:max-w-lg bg-white text-gray-900 dark:bg-[#0b0b0b] dark:text-gray-100 dark:border-gray-700">
-          <DialogHeader className="px-4 py-2 bg-primary text-primary-foreground border-b border-[#d4d4d4] rounded-t-none dark:border-gray-700">
-            <DialogTitle className="text-primary-foreground">Adicionar Novo Item</DialogTitle>
-            <DialogDescription className="text-primary-foreground/90">
+          <DialogHeader className="px-4 py-2 bg-primary text-primary-foreground border-b border-[#d4d4d4] rounded-t-none dark:border-gray-700 dark:bg-[#0f0f0f] dark:text-gray-100">
+            <DialogTitle className="text-primary-foreground dark:text-gray-100">Adicionar Novo Item</DialogTitle>
+            <DialogDescription className="text-primary-foreground/90 dark:text-gray-400">
               Selecione o tipo de conteúdo e configure o delay da etapa.
             </DialogDescription>
           </DialogHeader>

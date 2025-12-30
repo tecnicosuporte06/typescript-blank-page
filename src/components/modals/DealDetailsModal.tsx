@@ -217,11 +217,19 @@ function ActivityItem({
 
       setIsEditingActivity(false);
       onUpdate(contactId);
-    } catch (error) {
+    } catch (error: any) {
       console.error('Erro ao atualizar atividade:', error);
+
+      const code = error?.code || error?.cause?.code;
+      const isOverlap =
+        code === "23P01" ||
+        String(error?.message || "").toLowerCase().includes("conflito de agenda");
+
       toast({
         title: "Erro",
-        description: "Não foi possível atualizar a atividade.",
+        description: isOverlap
+          ? "Conflito de agenda: já existe uma atividade para este responsável nesse período."
+          : "Não foi possível atualizar a atividade.",
         variant: "destructive"
       });
     }

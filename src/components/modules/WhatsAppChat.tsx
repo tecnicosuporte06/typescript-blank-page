@@ -1,4 +1,4 @@
-import { useState, useEffect, useLayoutEffect, useRef, useCallback, useMemo } from "react";
+import { useState, useEffect, useLayoutEffect, useRef, useCallback, useMemo, lazy, Suspense } from "react";
 import { flushSync } from "react-dom";
 import { useRealtimeNotifications } from "@/components/RealtimeNotificationProvider";
 import { useNotifications } from "@/hooks/useNotifications";
@@ -68,16 +68,22 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { Search, Send, Bot, Phone, MoreVertical, Circle, MessageCircle, ArrowRight, Settings, Users, Trash2, ChevronDown, Filter, Eye, RefreshCw, Mic, Square, X, Check, PanelLeft, UserCircle, UserX, UsersRound, Tag, Plus, Loader2, Workflow, Clock, Music } from "lucide-react";
+import { Search, Send, Bot, Phone, MoreVertical, Circle, MessageCircle, ArrowRight, Settings, Users, Trash2, ChevronDown, Filter, Eye, RefreshCw, Mic, Square, X, Check, PanelLeft, UserCircle, UserX, UsersRound, Tag, Plus, Loader2, Workflow, Clock, Music, Briefcase } from "lucide-react";
 import { WhatsAppChatSkeleton } from "@/components/chat/WhatsAppChatSkeleton";
 import { Switch } from "@/components/ui/switch";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
+import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { cn } from "@/lib/utils";
 import { generateRandomId } from "@/lib/generate-random-id";
 import { useQuickMessages } from "@/hooks/useQuickMessages";
+
+const LazyDealDetailsPage = lazy(async () => {
+  const mod = await import("@/pages/DealDetailsPage");
+  return { default: mod.DealDetailsPage };
+});
 
 type ConversationMessage = ReturnType<typeof useConversationMessages>['messages'][number];
 type DisplayMessageStatus = 'sending' | 'sent' | 'delivered' | 'read' | 'failed';
@@ -629,6 +635,92 @@ export function WhatsAppChat({
   const [selectedMessages, setSelectedMessages] = useState<Set<string>>(new Set());
   const [forwardModalOpen, setForwardModalOpen] = useState(false);
   const [replyingTo, setReplyingTo] = useState<any>(null);
+
+  // ✅ Seletor de negócios (popover) + Sheet de detalhes
+  const [dealPickerOpen, setDealPickerOpen] = useState(false);
+  const [isLoadingDeals, setIsLoadingDeals] = useState(false);
+  const [contactDeals, setContactDeals] = useState<
+    Array<{
+      card_id: string;
+      description?: string | null;
+      pipeline_id?: string | null;
+      pipeline_name?: string | null;
+      column_id?: string | null;
+      column_name?: string | null;
+      card_status?: string | null;
+    }>
+  >([]);
+  const [dealSheetOpen, setDealSheetOpen] = useState(false);
+  const [selectedDealCardId, setSelectedDealCardId] = useState<string | null>(null);
+  const lastDealsKeyRef = useRef<string | null>(null);
+
+  const fetchActiveDealsForContact = useCallback(async () => {
+    const workspaceId = selectedWorkspace?.workspace_id;
+    const contactId = selectedConversation?.contact?.id;
+    if (!workspaceId || !contactId) return;
+
+    // Evitar refetch desnecessário
+    const cacheKey = `${workspaceId}:${contactId}`;
+    if (lastDealsKeyRef.current === cacheKey && contactDeals.length > 0) return;
+
+    setIsLoadingDeals(true);
+    try {
+      // ✅ Mesma lógica do painel lateral (ContactSidePanel): join em pipelines + filtro pipelines.workspace_id
+      const { data: joinData, error: joinError } = await supabase
+        .from("pipeline_cards")
+        .select(`
+          id,
+          pipeline_id,
+          column_id,
+          status,
+          value,
+          description,
+          pipelines!inner(id, name, workspace_id),
+          pipeline_columns!inner(id, name)
+        `)
+        .eq("contact_id", contactId)
+        .eq("pipelines.workspace_id", workspaceId);
+
+      if (joinError) throw joinError;
+
+      const rows = (joinData || []).filter(
+        (row: any) => String(row?.pipelines?.workspace_id || "") === String(workspaceId)
+      );
+
+      // Priorizar negócios "ativos", mas não esconder os demais (porque o usuário pode ter só ganhos/perdas)
+      const closedStatuses = new Set(["ganho", "perdido", "perda", "closed"]);
+      const isActive = (status: any) => {
+        const s = String(status || "").toLowerCase().trim();
+        return s.length > 0 && !closedStatuses.has(s);
+      };
+
+      const normalized = rows
+        .map((row: any) => ({
+          card_id: row.id,
+          description: row.description || null,
+          pipeline_id: row.pipeline_id || null,
+          pipeline_name: row.pipelines?.name || null,
+          column_id: row.column_id || null,
+          column_name: row.pipeline_columns?.name || null,
+          card_status: row.status || null,
+        }))
+        .sort((a: any, b: any) => {
+          const aActive = isActive(a.card_status);
+          const bActive = isActive(b.card_status);
+          if (aActive !== bActive) return aActive ? -1 : 1;
+          return String(a.description || "").localeCompare(String(b.description || ""));
+        });
+
+      setContactDeals(normalized);
+      lastDealsKeyRef.current = cacheKey;
+    } catch (err) {
+      console.error("Erro ao buscar negócios do contato:", err);
+      setContactDeals([]);
+      lastDealsKeyRef.current = cacheKey;
+    } finally {
+      setIsLoadingDeals(false);
+    }
+  }, [selectedWorkspace?.workspace_id, selectedConversation?.contact?.id, contactDeals.length]);
 
   // Hook para data flutuante
   const { floatingDate, shouldShowFloating } = useFloatingDate(messagesScrollRef, messages);
@@ -2263,106 +2355,151 @@ export function WhatsAppChat({
         <nav className="flex-1 p-2 bg-[#f0f0f0] dark:bg-[#1a1a1a]">
           <div className="space-y-1">
             {/* Todos */}
-            <TooltipProvider>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <button onClick={() => setActiveTab('all')} className={cn("w-full flex items-center gap-2 px-2 py-1.5 rounded-none transition-all text-xs border", activeTab === 'all' ? "bg-gray-100 text-gray-900 font-semibold shadow-sm border-transparent dark:bg-[#2a2a2a] dark:text-white dark:border-transparent" : "border-transparent text-gray-700 hover:bg-[#e1e1e1] hover:border-gray-300 dark:text-gray-200 dark:hover:bg-[#333] dark:hover:border-gray-600")}>
-                    <Circle className={cn("h-3.5 w-3.5", activeTab === 'all' ? "fill-yellow-600 text-yellow-600 dark:fill-yellow-400 dark:text-yellow-400" : "text-gray-500 dark:text-gray-400")} />
-                    {!sidebarCollapsed && <>
-                        <span className="flex-1 text-left">Todos</span>
-                        <span className={cn("text-[10px] px-1 py-0 rounded-none border", activeTab === 'all' ? "bg-white border-yellow-200 dark:bg-black/20 dark:border-yellow-800/20" : "bg-gray-200 border-transparent dark:bg-[#333] dark:text-gray-200")}>
-                          {conversationCounts?.all ?? conversations.filter(c => c.status !== 'closed').length}
-                        </span>
-                      </>}
-                  </button>
-                </TooltipTrigger>
-                {sidebarCollapsed && <TooltipContent side="right" className="text-xs rounded-none border-[#d4d4d4]">Todos</TooltipContent>}
-              </Tooltip>
-            </TooltipProvider>
+            {sidebarCollapsed ? (
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <button onClick={() => setActiveTab('all')} className={cn("w-full flex items-center gap-2 px-2 py-1.5 rounded-none transition-all text-xs border", activeTab === 'all' ? "bg-[#d4d4d4] text-gray-900 font-semibold shadow-sm border-gray-300 dark:bg-[#3a3a3a] dark:text-white dark:border-gray-600" : "border-transparent text-gray-700 hover:bg-[#e1e1e1] hover:border-gray-300 dark:text-gray-200 dark:hover:bg-[#333] dark:hover:border-gray-600")}>
+                      <Circle className={cn("h-3.5 w-3.5", activeTab === 'all' ? "fill-yellow-600 text-yellow-600 dark:fill-yellow-400 dark:text-yellow-400" : "text-gray-500 dark:text-gray-400")} />
+                      {!sidebarCollapsed && <>
+                          <span className="flex-1 text-left">Todos</span>
+                          <span className={cn("text-[10px] px-1 py-0 rounded-none border", activeTab === 'all' ? "bg-white border-yellow-200 dark:bg-black/20 dark:border-yellow-800/20" : "bg-gray-200 border-transparent dark:bg-[#333] dark:text-gray-200")}>
+                            {conversationCounts?.all ?? conversations.filter(c => c.status !== 'closed').length}
+                          </span>
+                        </>}
+                    </button>
+                  </TooltipTrigger>
+                  <TooltipContent side="right" className="text-xs rounded-none border-[#d4d4d4]">Todos</TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+            ) : (
+              <button onClick={() => setActiveTab('all')} className={cn("w-full flex items-center gap-2 px-2 py-1.5 rounded-none transition-all text-xs border", activeTab === 'all' ? "bg-[#d4d4d4] text-gray-900 font-semibold shadow-sm border-gray-300 dark:bg-[#3a3a3a] dark:text-white dark:border-gray-600" : "border-transparent text-gray-700 hover:bg-[#e1e1e1] hover:border-gray-300 dark:text-gray-200 dark:hover:bg-[#333] dark:hover:border-gray-600")}>
+                <Circle className={cn("h-3.5 w-3.5", activeTab === 'all' ? "fill-yellow-600 text-yellow-600 dark:fill-yellow-400 dark:text-yellow-400" : "text-gray-500 dark:text-gray-400")} />
+                <span className="flex-1 text-left">Todos</span>
+                <span className={cn("text-[10px] px-1 py-0 rounded-none border", activeTab === 'all' ? "bg-white border-yellow-200 dark:bg-black/20 dark:border-yellow-800/20" : "bg-gray-200 border-transparent dark:bg-[#333] dark:text-gray-200")}>
+                  {conversationCounts?.all ?? conversations.filter(c => c.status !== 'closed').length}
+                </span>
+              </button>
+            )}
 
             {/* Minhas Conversas */}
-            <TooltipProvider>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <button onClick={() => setActiveTab('mine')} className={cn("w-full flex items-center gap-2 px-2 py-1.5 rounded-none transition-all text-xs border", activeTab === 'mine' ? "bg-gray-100 text-gray-900 font-semibold shadow-sm border-transparent dark:bg-[#2a2a2a] dark:text-white dark:border-transparent" : "border-transparent text-gray-700 hover:bg-[#e1e1e1] hover:border-gray-300 dark:text-gray-200 dark:hover:bg-[#333] dark:hover:border-gray-600")}>
-                    <UserCircle className={cn("h-3.5 w-3.5", activeTab === 'mine' ? "text-yellow-600 dark:text-yellow-400" : "text-gray-500")} />
-                    {!sidebarCollapsed && <>
-                        <span className="flex-1 text-left">Minhas conversas</span>
-                        <span className={cn("text-[10px] px-1 py-0 rounded-none border", activeTab === 'mine' ? "bg-white border-yellow-200 dark:bg-black/20 dark:border-yellow-800/20" : "bg-gray-200 border-transparent dark:bg-[#333] dark:text-gray-200")}>
-                          {conversationCounts?.mine ?? conversations.filter(c => c.assigned_user_id === user?.id && c.status !== 'closed').length}
-                        </span>
-                      </>}
-                  </button>
-                </TooltipTrigger>
-                {sidebarCollapsed && <TooltipContent side="right" className="text-xs rounded-none border-[#d4d4d4]">Minhas conversas</TooltipContent>}
-              </Tooltip>
-            </TooltipProvider>
+            {sidebarCollapsed ? (
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <button onClick={() => setActiveTab('mine')} className={cn("w-full flex items-center gap-2 px-2 py-1.5 rounded-none transition-all text-xs border", activeTab === 'mine' ? "bg-[#d4d4d4] text-gray-900 font-semibold shadow-sm border-gray-300 dark:bg-[#3a3a3a] dark:text-white dark:border-gray-600" : "border-transparent text-gray-700 hover:bg-[#e1e1e1] hover:border-gray-300 dark:text-gray-200 dark:hover:bg-[#333] dark:hover:border-gray-600")}>
+                      <UserCircle className={cn("h-3.5 w-3.5", activeTab === 'mine' ? "text-yellow-600 dark:text-yellow-400" : "text-gray-500")} />
+                      {!sidebarCollapsed && <>
+                          <span className="flex-1 text-left">Minhas conversas</span>
+                          <span className={cn("text-[10px] px-1 py-0 rounded-none border", activeTab === 'mine' ? "bg-white border-yellow-200 dark:bg-black/20 dark:border-yellow-800/20" : "bg-gray-200 border-transparent dark:bg-[#333] dark:text-gray-200")}>
+                            {conversationCounts?.mine ?? conversations.filter(c => c.assigned_user_id === user?.id && c.status !== 'closed').length}
+                          </span>
+                        </>}
+                    </button>
+                  </TooltipTrigger>
+                  <TooltipContent side="right" className="text-xs rounded-none border-[#d4d4d4]">Minhas conversas</TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+            ) : (
+              <button onClick={() => setActiveTab('mine')} className={cn("w-full flex items-center gap-2 px-2 py-1.5 rounded-none transition-all text-xs border", activeTab === 'mine' ? "bg-[#d4d4d4] text-gray-900 font-semibold shadow-sm border-gray-300 dark:bg-[#3a3a3a] dark:text-white dark:border-gray-600" : "border-transparent text-gray-700 hover:bg-[#e1e1e1] hover:border-gray-300 dark:text-gray-200 dark:hover:bg-[#333] dark:hover:border-gray-600")}>
+                <UserCircle className={cn("h-3.5 w-3.5", activeTab === 'mine' ? "text-yellow-600 dark:text-yellow-400" : "text-gray-500")} />
+                <span className="flex-1 text-left">Minhas conversas</span>
+                <span className={cn("text-[10px] px-1 py-0 rounded-none border", activeTab === 'mine' ? "bg-white border-yellow-200 dark:bg-black/20 dark:border-yellow-800/20" : "bg-gray-200 border-transparent dark:bg-[#333] dark:text-gray-200")}>
+                  {conversationCounts?.mine ?? conversations.filter(c => c.assigned_user_id === user?.id && c.status !== 'closed').length}
+                </span>
+              </button>
+            )}
 
             {/* Não atribuídas */}
-            <TooltipProvider>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <button onClick={() => setActiveTab('unassigned')} className={cn("w-full flex items-center gap-2 px-2 py-1.5 rounded-none transition-all text-xs border", activeTab === 'unassigned' ? "bg-gray-100 text-gray-900 font-semibold shadow-sm border-transparent dark:bg-[#2a2a2a] dark:text-white dark:border-transparent" : "border-transparent text-gray-700 hover:bg-[#e1e1e1] hover:border-gray-300 dark:text-gray-200 dark:hover:bg-[#333] dark:hover:border-gray-600")}>
-                    <UserX className={cn("h-3.5 w-3.5", activeTab === 'unassigned' ? "text-yellow-600 dark:text-yellow-400" : "text-gray-500")} />
-                    {!sidebarCollapsed && <>
-                        <span className="flex-1 text-left">Não atribuídas</span>
-                        <span className={cn("text-[10px] px-1 py-0 rounded-none border", activeTab === 'unassigned' ? "bg-white border-yellow-200 dark:bg-black/20 dark:border-yellow-800/20" : "bg-gray-200 border-transparent dark:bg-[#333] dark:text-gray-200")}>
-                          {conversationCounts?.unassigned ?? conversations.filter(c => !c.assigned_user_id && c.status !== 'closed').length}
-                        </span>
-                      </>}
-                  </button>
-                </TooltipTrigger>
-                {sidebarCollapsed && <TooltipContent side="right" className="text-xs rounded-none border-[#d4d4d4]">Não atribuídas</TooltipContent>}
-              </Tooltip>
-            </TooltipProvider>
+            {sidebarCollapsed ? (
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <button onClick={() => setActiveTab('unassigned')} className={cn("w-full flex items-center gap-2 px-2 py-1.5 rounded-none transition-all text-xs border", activeTab === 'unassigned' ? "bg-[#d4d4d4] text-gray-900 font-semibold shadow-sm border-gray-300 dark:bg-[#3a3a3a] dark:text-white dark:border-gray-600" : "border-transparent text-gray-700 hover:bg-[#e1e1e1] hover:border-gray-300 dark:text-gray-200 dark:hover:bg-[#333] dark:hover:border-gray-600")}>
+                      <UserX className={cn("h-3.5 w-3.5", activeTab === 'unassigned' ? "text-yellow-600 dark:text-yellow-400" : "text-gray-500")} />
+                      {!sidebarCollapsed && <>
+                          <span className="flex-1 text-left">Não atribuídas</span>
+                          <span className={cn("text-[10px] px-1 py-0 rounded-none border", activeTab === 'unassigned' ? "bg-white border-yellow-200 dark:bg-black/20 dark:border-yellow-800/20" : "bg-gray-200 border-transparent dark:bg-[#333] dark:text-gray-200")}>
+                            {conversationCounts?.unassigned ?? conversations.filter(c => !c.assigned_user_id && c.status !== 'closed').length}
+                          </span>
+                        </>}
+                    </button>
+                  </TooltipTrigger>
+                  <TooltipContent side="right" className="text-xs rounded-none border-[#d4d4d4]">Não atribuídas</TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+            ) : (
+              <button onClick={() => setActiveTab('unassigned')} className={cn("w-full flex items-center gap-2 px-2 py-1.5 rounded-none transition-all text-xs border", activeTab === 'unassigned' ? "bg-[#d4d4d4] text-gray-900 font-semibold shadow-sm border-gray-300 dark:bg-[#3a3a3a] dark:text-white dark:border-gray-600" : "border-transparent text-gray-700 hover:bg-[#e1e1e1] hover:border-gray-300 dark:text-gray-200 dark:hover:bg-[#333] dark:hover:border-gray-600")}>
+                <UserX className={cn("h-3.5 w-3.5", activeTab === 'unassigned' ? "text-yellow-600 dark:text-yellow-400" : "text-gray-500")} />
+                <span className="flex-1 text-left">Não atribuídas</span>
+                <span className={cn("text-[10px] px-1 py-0 rounded-none border", activeTab === 'unassigned' ? "bg-white border-yellow-200 dark:bg-black/20 dark:border-yellow-800/20" : "bg-gray-200 border-transparent dark:bg-[#333] dark:text-gray-200")}>
+                  {conversationCounts?.unassigned ?? conversations.filter(c => !c.assigned_user_id && c.status !== 'closed').length}
+                </span>
+              </button>
+            )}
 
             {/* Não Lidas */}
-            <TooltipProvider>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <button onClick={() => setActiveTab('unread')} className={cn("w-full flex items-center gap-2 px-2 py-1.5 rounded-none transition-all text-xs border", activeTab === 'unread' ? "bg-gray-100 text-gray-900 font-semibold shadow-sm border-transparent dark:bg-[#2a2a2a] dark:text-white dark:border-transparent" : "border-transparent text-gray-700 hover:bg-[#e1e1e1] hover:border-gray-300 dark:text-gray-200 dark:hover:bg-[#333] dark:hover:border-gray-600")}>
-                    <MessageCircle className={cn("h-3.5 w-3.5", activeTab === 'unread' ? "text-yellow-600 dark:text-yellow-400" : "text-gray-500")} />
-                    {!sidebarCollapsed && <>
-                        <span className="flex-1 text-left">Não lidas</span>
-                        <span className={cn("text-[10px] px-1 py-0 rounded-none border", activeTab === 'unread' ? "bg-white border-yellow-200 dark:bg-black/20 dark:border-yellow-800/20" : "bg-gray-200 border-transparent dark:bg-[#333] dark:text-gray-200")}>
-                          {conversationCounts?.unread ?? conversations.filter(c => conversationNotifications.has(c.id) && c.status !== 'closed').length}
-                        </span>
-                      </>}
-                  </button>
-                </TooltipTrigger>
-                {sidebarCollapsed && <TooltipContent side="right" className="text-xs rounded-none border-[#d4d4d4]">Não lidas</TooltipContent>}
-              </Tooltip>
-            </TooltipProvider>
+            {sidebarCollapsed ? (
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <button onClick={() => setActiveTab('unread')} className={cn("w-full flex items-center gap-2 px-2 py-1.5 rounded-none transition-all text-xs border", activeTab === 'unread' ? "bg-[#d4d4d4] text-gray-900 font-semibold shadow-sm border-gray-300 dark:bg-[#3a3a3a] dark:text-white dark:border-gray-600" : "border-transparent text-gray-700 hover:bg-[#e1e1e1] hover:border-gray-300 dark:text-gray-200 dark:hover:bg-[#333] dark:hover:border-gray-600")}>
+                      <MessageCircle className={cn("h-3.5 w-3.5", activeTab === 'unread' ? "text-yellow-600 dark:text-yellow-400" : "text-gray-500")} />
+                      {!sidebarCollapsed && <>
+                          <span className="flex-1 text-left">Não lidas</span>
+                          <span className={cn("text-[10px] px-1 py-0 rounded-none border", activeTab === 'unread' ? "bg-white border-yellow-200 dark:bg-black/20 dark:border-yellow-800/20" : "bg-gray-200 border-transparent dark:bg-[#333] dark:text-gray-200")}>
+                            {conversationCounts?.unread ?? conversations.filter(c => conversationNotifications.has(c.id) && c.status !== 'closed').length}
+                          </span>
+                        </>}
+                    </button>
+                  </TooltipTrigger>
+                  <TooltipContent side="right" className="text-xs rounded-none border-[#d4d4d4]">Não lidas</TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+            ) : (
+              <button onClick={() => setActiveTab('unread')} className={cn("w-full flex items-center gap-2 px-2 py-1.5 rounded-none transition-all text-xs border", activeTab === 'unread' ? "bg-[#d4d4d4] text-gray-900 font-semibold shadow-sm border-gray-300 dark:bg-[#3a3a3a] dark:text-white dark:border-gray-600" : "border-transparent text-gray-700 hover:bg-[#e1e1e1] hover:border-gray-300 dark:text-gray-200 dark:hover:bg-[#333] dark:hover:border-gray-600")}>
+                <MessageCircle className={cn("h-3.5 w-3.5", activeTab === 'unread' ? "text-yellow-600 dark:text-yellow-400" : "text-gray-500")} />
+                <span className="flex-1 text-left">Não lidas</span>
+                <span className={cn("text-[10px] px-1 py-0 rounded-none border", activeTab === 'unread' ? "bg-white border-yellow-200 dark:bg-black/20 dark:border-yellow-800/20" : "bg-gray-200 border-transparent dark:bg-[#333] dark:text-gray-200")}>
+                  {conversationCounts?.unread ?? conversations.filter(c => conversationNotifications.has(c.id) && c.status !== 'closed').length}
+                </span>
+              </button>
+            )}
           </div>
             </nav>
 
-            {/* Seção Customizado */}
+            {/* Seção Etiquetas */}
         {!sidebarCollapsed && <div className="border-t border-[#d4d4d4] p-2 bg-[#f0f0f0] dark:bg-[#1a1a1a] dark:border-gray-700">
             <Collapsible open={customFiltersOpen} onOpenChange={setCustomFiltersOpen}>
               <CollapsibleTrigger asChild>
                 <Button variant="ghost" className="w-full justify-between h-8 px-2 text-xs font-bold text-gray-700 hover:bg-[#e1e1e1] rounded-none dark:text-gray-200 dark:hover:bg-[#2d2d2d]">
                   <div className="flex items-center gap-2">
                     <Tag className="h-3.5 w-3.5" />
-                    <span>Customizado</span>
+                    <span>Selecionar Etiquetas</span>
                   </div>
                   <Plus className={cn("h-3.5 w-3.5 transition-transform", customFiltersOpen && "rotate-45")} />
                 </Button>
               </CollapsibleTrigger>
               <CollapsibleContent className="space-y-1 mt-1">
-                {/* Filtro por Tag - Seleção Múltipla */}
+                {/* Filtro por Etiquetas - Seleção Múltipla */}
                 <div className="px-1">
                   <Popover>
                     <PopoverTrigger asChild>
                       <Button
                         variant="outline"
-                        className="w-full h-8 text-xs rounded-none border-gray-300 bg-white focus:ring-0 dark:bg-[#2d2d2d] dark:border-gray-600 dark:text-gray-200 justify-between"
+                        className={cn(
+                          "w-full h-8 text-xs rounded-none border-gray-300 bg-white focus:ring-0 justify-between",
+                          "dark:bg-[#2d2d2d] dark:border-gray-600 dark:text-gray-200",
+                          selectedTags.length > 0 && "bg-[#d4d4d4] border-gray-300",
+                          selectedTags.length > 0 && "dark:bg-[#3a3a3a] dark:border-gray-600"
+                        )}
                       >
                         <span>
                           {selectedTags.length === 0 
-                            ? "Todas as tags" 
+                            ? "Todas as etiquetas" 
                             : selectedTags.length === 1
-                            ? tags.find(t => t.id === selectedTags[0])?.name || "1 tag selecionada"
-                            : `${selectedTags.length} tags selecionadas`}
+                            ? tags.find(t => t.id === selectedTags[0])?.name || "1 etiqueta selecionada"
+                            : `${selectedTags.length} etiquetas selecionadas`}
                         </span>
                         <ChevronDown className="h-3.5 w-3.5 ml-2 opacity-50" />
                       </Button>
@@ -2377,7 +2514,12 @@ export function WhatsAppChat({
                           tags.map((tag) => (
                             <div
                               key={tag.id}
-                              className="flex items-center space-x-2 p-2 hover:bg-[#e6f2ff] dark:hover:bg-[#2a2a2a] rounded-none cursor-pointer"
+                              className={cn(
+                                "flex items-center space-x-2 p-2 rounded-none cursor-pointer",
+                                selectedTags.includes(tag.id)
+                                  ? "bg-[#d4d4d4] dark:bg-[#3a3a3a]"
+                                  : "hover:bg-[#e6f2ff] dark:hover:bg-[#2a2a2a]"
+                              )}
                               onClick={() => {
                                 setSelectedTags(prev => 
                                   prev.includes(tag.id) 
@@ -2386,18 +2528,6 @@ export function WhatsAppChat({
                                 );
                               }}
                             >
-                              <input
-                                type="checkbox"
-                                checked={selectedTags.includes(tag.id)}
-                                onChange={() => {
-                                  setSelectedTags(prev => 
-                                    prev.includes(tag.id) 
-                                      ? prev.filter(id => id !== tag.id)
-                                      : [...prev, tag.id]
-                                  );
-                                }}
-                                className="rounded-none border-gray-300 dark:border-gray-600"
-                              />
                               <div className="flex items-center space-x-2 flex-1">
                                 <div
                                   className="w-2 h-2 rounded-full"
@@ -2889,6 +3019,91 @@ export function WhatsAppChat({
                         </span>
                       </button>
                     )}
+
+                    {/* ✅ Botão: abrir negócios do contato (popover) */}
+                    <Popover
+                      open={dealPickerOpen}
+                      onOpenChange={(open) => {
+                        setDealPickerOpen(open);
+                        if (open) {
+                          fetchActiveDealsForContact();
+                        }
+                      }}
+                    >
+                      <PopoverTrigger asChild>
+                        <button
+                          type="button"
+                          className="p-1.5 hover:bg-gray-100 rounded-none border border-[#d4d4d4] dark:border-gray-600 dark:hover:bg-gray-700 h-8 w-8 flex items-center justify-center transition-colors"
+                          title="Abrir oportunidade"
+                        >
+                          <Briefcase className="h-3.5 w-3.5 text-gray-500 dark:text-gray-400" />
+                        </button>
+                      </PopoverTrigger>
+                    <PopoverContent
+                        align="end"
+                        className={cn(
+                          "w-80 p-0 rounded-none border shadow-lg",
+                          isDark ? "border-gray-700 bg-[#0f0f0f] text-gray-100" : "border-[#d4d4d4] bg-white text-gray-900"
+                        )}
+                        onOpenAutoFocus={(e) => e.preventDefault()}
+                      >
+                        <div
+                          className={cn(
+                            "px-3 py-2 border-b",
+                            isDark ? "border-gray-700 bg-[#2a2a2a]" : "border-[#d4d4d4] bg-[#f8f9fa]"
+                          )}
+                        >
+                          <div className={cn("text-xs font-bold", isDark ? "text-gray-50" : "text-gray-900")}>
+                            Oportunidades ativas
+                          </div>
+                          <div className={cn("text-[11px]", isDark ? "text-gray-200" : "text-gray-500")}>
+                            Selecione uma oportunidade para abrir
+                          </div>
+                        </div>
+
+                        <div className="max-h-72 overflow-y-auto">
+                          {isLoadingDeals ? (
+                            <div className={cn("p-4 flex items-center gap-2 text-xs", isDark ? "text-gray-300" : "text-gray-500")}>
+                              <Loader2 className="h-4 w-4 animate-spin" />
+                              Carregando...
+                            </div>
+                          ) : contactDeals.length === 0 ? (
+                            <div className={cn("p-4 text-xs", isDark ? "text-gray-300" : "text-gray-500")}>
+                              Nenhuma oportunidade ativa encontrada
+                            </div>
+                          ) : (
+                            contactDeals.map((deal) => (
+                              <button
+                                key={deal.card_id}
+                                type="button"
+                                className={cn(
+                                  "w-full text-left px-3 py-2 border-b",
+                                  isDark
+                                    ? "border-gray-800 hover:bg-[#1f2937]"
+                                    : "border-[#f0f0f0] hover:bg-[#e6f2ff]"
+                                )}
+                                onClick={() => {
+                                  setDealPickerOpen(false);
+                                  setSelectedDealCardId(deal.card_id);
+                                  setDealSheetOpen(true);
+                                }}
+                              >
+                                <div className="flex items-start justify-between gap-2">
+                                  <div className="min-w-0">
+                                    <div className={cn("text-xs font-semibold truncate", isDark ? "text-gray-100" : "text-gray-900")}>
+                                      {deal.pipeline_name || "Funil"}
+                                    </div>
+                                    <div className={cn("text-[11px] truncate", isDark ? "text-gray-300" : "text-gray-500")}>
+                                      {deal.column_name || "Etapa"}
+                                    </div>
+                                  </div>
+                                </div>
+                              </button>
+                            ))
+                          )}
+                        </div>
+                      </PopoverContent>
+                    </Popover>
                     
                     <button
                       onClick={() => setAssignmentHistoryModalOpen(true)}
@@ -3282,12 +3497,26 @@ export function WhatsAppChat({
               }
             }} />
                   
-                  <Button variant="ghost" size="sm" title="Mensagens Rápidas" onClick={() => setQuickItemsModalOpen(true)} className="h-9 w-9 p-0 rounded-none border border-[#d4d4d4] hover:bg-gray-200 bg-white dark:bg-[#2d2d2d] dark:border-gray-600 dark:hover:bg-gray-700">
-                    <svg className="w-4 h-4 text-gray-600 dark:text-gray-400" focusable="false" viewBox="0 0 24 24" aria-hidden="true" fill="currentColor">
-                      <circle cx="9" cy="9" r="4"></circle>
-                      <path d="M9 15c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4zm7.76-9.64l-1.68 1.69c.84 1.18.84 2.71 0 3.89l1.68 1.69c2.02-2.02 2.02-5.07 0-7.27zM20.07 2l-1.63 1.63c2.77 3.02 2.77 7.56 0 10.74L20.07 16c3.9-3.89 3.91-9.95 0-14z"></path>
-                    </svg>
-                  </Button>
+                  <TooltipProvider delayDuration={0}>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => setQuickItemsModalOpen(true)}
+                          className="h-9 w-9 p-0 rounded-none border border-[#d4d4d4] hover:bg-gray-200 bg-white dark:bg-[#2d2d2d] dark:border-gray-600 dark:hover:bg-gray-700"
+                        >
+                          <svg className="w-4 h-4 text-gray-600 dark:text-gray-400" focusable="false" viewBox="0 0 24 24" aria-hidden="true" fill="currentColor">
+                            <circle cx="9" cy="9" r="4"></circle>
+                            <path d="M9 15c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4zm7.76-9.64l-1.68 1.69c.84 1.18.84 2.71 0 3.89l1.68 1.69c2.02-2.02 2.02-5.07 0-7.27zM20.07 2l-1.63 1.63c2.77 3.02 2.77 7.56 0 10.74L20.07 16c3.9-3.89 3.91-9.95 0-14z"></path>
+                          </svg>
+                        </Button>
+                      </TooltipTrigger>
+                      <TooltipContent className="rounded-none border-[#d4d4d4] bg-white text-gray-900 shadow-md dark:bg-[#0f0f0f] dark:text-gray-100 dark:border-gray-700">
+                        <p className="text-xs">Mensagens Rápidas</p>
+                      </TooltipContent>
+                    </Tooltip>
+                  </TooltipProvider>
                   <Popover
                     open={slashOpen}
                     onOpenChange={(open) => {
@@ -3561,6 +3790,50 @@ export function WhatsAppChat({
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* ✅ Sheet: detalhes da oportunidade selecionada */}
+      <Sheet
+        open={dealSheetOpen}
+        onOpenChange={(open) => {
+          setDealSheetOpen(open);
+          if (!open) {
+            setSelectedDealCardId(null);
+          }
+        }}
+      >
+        <SheetContent
+          side="right"
+          className="p-0 sm:max-w-[90vw] w-[90vw] border-l border-gray-200 dark:border-gray-800 shadow-2xl transition-all duration-500 ease-in-out [&>button.absolute]:hidden"
+        >
+          <SheetHeader className="sr-only">
+            <SheetTitle>Detalhes do Negócio</SheetTitle>
+          </SheetHeader>
+          <Suspense
+            fallback={
+              <div className="h-full w-full bg-white dark:bg-[#0f0f0f] p-6">
+                <div className="animate-pulse space-y-4">
+                  <div className="h-6 w-56 bg-gray-200 dark:bg-gray-800 rounded-none" />
+                  <div className="h-4 w-80 bg-gray-200 dark:bg-gray-800 rounded-none" />
+                  <div className="pt-4 space-y-3">
+                    <div className="h-10 w-2/3 bg-gray-200 dark:bg-gray-800 rounded-none" />
+                    <div className="h-10 w-1/2 bg-gray-200 dark:bg-gray-800 rounded-none" />
+                    <div className="h-10 w-3/5 bg-gray-200 dark:bg-gray-800 rounded-none" />
+                    <div className="h-10 w-1/3 bg-gray-200 dark:bg-gray-800 rounded-none" />
+                  </div>
+                </div>
+              </div>
+            }
+          >
+            {selectedDealCardId ? (
+              <LazyDealDetailsPage
+                cardId={selectedDealCardId}
+                workspaceId={selectedWorkspace?.workspace_id || undefined}
+                onClose={() => setDealSheetOpen(false)}
+              />
+            ) : null}
+          </Suspense>
+        </SheetContent>
+      </Sheet>
       </div>
 
       {/* ✅ Listener para recarregar mensagens quando a página fica visível novamente */}

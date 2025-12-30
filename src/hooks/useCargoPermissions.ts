@@ -43,7 +43,9 @@ export const useCargoPermissions = () => {
           'crm-negocios-item': { ver: true },
           'crm-contatos-item': { ver: true },
           'crm-tags-item': { ver: true },
-          'crm-produtos-item': { ver: true }
+          'crm-produtos-item': { ver: true },
+          // Motivos de Perda (antigo configuração de ações)
+          'crm-loss-reasons-item': { ver: true }
         };
         
         // Admin sem cargo tem acesso total a tudo
