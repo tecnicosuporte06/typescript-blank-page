@@ -53,7 +53,7 @@ export function TagSelectorModal({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-md">
         <DialogHeader>
-          <DialogTitle>Selecionar Tag</DialogTitle>
+          <DialogTitle>Selecionar Etiqueta</DialogTitle>
         </DialogHeader>
 
         <div className="py-4">
@@ -63,10 +63,10 @@ export function TagSelectorModal({
             </div>
           ) : (
             <div className="space-y-2">
-              <label className="text-sm font-medium">Escolha uma tag</label>
+              <label className="text-sm font-medium">Escolha uma etiqueta</label>
               <Select value={selectedTagId} onValueChange={setSelectedTagId}>
                 <SelectTrigger>
-                  <SelectValue placeholder="Selecione uma tag..." />
+                  <SelectValue placeholder="Selecione uma etiqueta..." />
                 </SelectTrigger>
                 <SelectContent>
                   {tags.map((tag) => (

@@ -847,7 +847,7 @@ export function AutomationModal({
               }}
             >
               <SelectTrigger className={`border-gray-300 dark:border-gray-700 bg-white dark:bg-[#1b1b1b] text-gray-900 dark:text-gray-100`}>
-                <SelectValue placeholder={tagsLoading ? "Carregando..." : "Selecione uma tag"} />
+                <SelectValue placeholder={tagsLoading ? "Carregando..." : "Selecione uma etiqueta"} />
               </SelectTrigger>
               <SelectContent className={`border-gray-300 dark:border-gray-700 bg-white dark:bg-[#1b1b1b]`}>
                 {tagsLoading ? (

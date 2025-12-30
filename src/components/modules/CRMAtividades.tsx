@@ -338,6 +338,8 @@ export function CRMAtividades() {
 
   const availableCategories = useMemo(() => {
     const set = new Set<string>();
+    // Tipos fixos que devem aparecer mesmo se ainda não existirem atividades no banco
+    set.add("Ligação Agendada");
     for (const a of activities) {
       const t = (a.type || "").trim();
       if (t && !isArquivoActivityType(t)) set.add(t);
@@ -357,6 +359,17 @@ export function CRMAtividades() {
       const key = normalizeActivityType(a.type);
       if (!groups.has(key)) groups.set(key, []);
       groups.get(key)!.push(a);
+    }
+
+    // Garantir coluna “Ligação Agendada” no Kanban, mesmo vazia, quando estiver em “Todas categorias”
+    // (e também quando o usuário selecionar essa categoria manualmente).
+    const forcedType = "Ligação Agendada";
+    const selected = (selectedCategory || "").toLowerCase().trim();
+    if (
+      selectedCategory === "all" ||
+      selected === forcedType.toLowerCase().trim()
+    ) {
+      if (!groups.has(forcedType)) groups.set(forcedType, []);
     }
 
     const sortKey = (name: string) => {
@@ -386,7 +399,7 @@ export function CRMAtividades() {
       }));
 
     return sorted;
-  }, [filteredActivities]);
+  }, [filteredActivities, selectedCategory]);
 
   return (
     <div className="flex flex-col h-full bg-white border border-gray-300 m-2 shadow-sm font-sans text-xs dark:bg-[#0e0e0e] dark:border-gray-700 dark:text-gray-100">

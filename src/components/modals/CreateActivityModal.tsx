@@ -298,6 +298,7 @@ export function CreateActivityModal({
                 <SelectItem value="Lembrete">Lembrete</SelectItem>
                 <SelectItem value="Mensagem">Mensagem</SelectItem>
                 <SelectItem value="Ligação">Ligação</SelectItem>
+                <SelectItem value="Ligação Agendada">Ligação Agendada</SelectItem>
                 <SelectItem value="Reunião">Reunião</SelectItem>
                 <SelectItem value="Agendamento">Agendamento</SelectItem>
                 <SelectItem value="Comentários">Observações</SelectItem>
