@@ -41,7 +41,6 @@ import { ContactTags } from "@/components/chat/ContactTags";
 import { MessageContextMenu } from "@/components/chat/MessageContextMenu";
 import { MessageSelectionBar } from "@/components/chat/MessageSelectionBar";
 import { ForwardMessageModal } from "@/components/modals/ForwardMessageModal";
-import { ConnectionBadge } from "@/components/chat/ConnectionBadge";
 import { ReplyPreview } from "@/components/chat/ReplyPreview";
 import { SelectAgentModal } from "@/components/modals/SelectAgentModal";
 import { ChangeAgentModal } from "@/components/modals/ChangeAgentModal";
@@ -151,18 +150,7 @@ export function WhatsAppChat({
     fetchConversations,
     loading,
     sendMessage
-  } = useWhatsAppConversations();
-  
-  useEffect(() => {
-    console.log('🔔 [WhatsAppChat] Notificações MUDARAM:', {
-      total: notifications.length,
-      timestamp: new Date().toISOString(),
-      notifications: notifications.map(n => ({
-        conversationId: n.conversationId,
-        content: n.content
-      }))
-    });
-  }, [notifications]);
+  } = useWhatsAppConversations({ enabled: !onlyMessages });
   
   const notificationCounts = useMemo(() => {
     const counts = new Map<string, number>();
@@ -176,10 +164,7 @@ export function WhatsAppChat({
   }, [notifications]);
 
   const conversationNotifications = useMemo(() => {
-    if (notificationCounts.size > 0) {
-      console.log('🔔 [WhatsAppChat] Notificações por usuário:', Array.from(notificationCounts.entries()));
-      return notificationCounts;
-    }
+    if (notificationCounts.size > 0) return notificationCounts;
 
     const fallbackMap = new Map<string, number>();
     conversations.forEach((conversation) => {
@@ -189,19 +174,9 @@ export function WhatsAppChat({
       }
     });
 
-    console.log('🔔 [WhatsAppChat] Fallback global de unread_count:', Array.from(fallbackMap.entries()));
     return fallbackMap;
   }, [notificationCounts, conversations]);
-  
-  // Debug: Detectar mudanças no array de conversas
-  useEffect(() => {
-    console.log('🔄 [WhatsAppChat] Array de conversas MUDOU:', {
-      total: conversations.length,
-      conversationIds: conversations.map(c => ({ id: c.id, name: c.contact.name, status: c.status })),
-      timestamp: new Date().toISOString()
-    });
-  }, [conversations.length, conversations]);
-
+ 
 
   // ✅ Hook específico para mensagens (lazy loading)
   const {
@@ -215,7 +190,11 @@ export function WhatsAppChat({
     updateMessage,
     removeMessage, // ✅ NOVO: função para remover mensagem
     clearMessages
-  } = useConversationMessages();
+  } = useConversationMessages({
+    enableBackgroundPreload: !onlyMessages,
+    cacheTtlMs: onlyMessages ? 15000 : 5000,
+    debug: false,
+  });
   const {
     selectedWorkspace
   } = useWorkspace();
@@ -317,6 +296,7 @@ export function WhatsAppChat({
 
   // 🔎 Busca por conversa deve vir do banco (debounce)
   useEffect(() => {
+    if (onlyMessages) return;
     // Evitar disparar no primeiro render (o hook já faz fetch quando workspace muda)
     if (searchDebounceFirstRunRef.current) {
       searchDebounceFirstRunRef.current = false;
@@ -332,6 +312,7 @@ export function WhatsAppChat({
 
   // ♾️ Scroll infinito na lista de conversas (listener no viewport real do ScrollArea)
   useEffect(() => {
+    if (onlyMessages) return;
     const root = conversationListRootRef.current;
     if (!root) return;
 
@@ -1473,10 +1454,67 @@ export function WhatsAppChat({
     }
   }, [handleSelectConversation, selectedWorkspace?.workspace_id, toast, user?.email, user?.id]);
 
+  // Modo "somente mensagens": carregar diretamente as mensagens da conversa selecionada
   useEffect(() => {
+    if (!onlyMessages) return;
+    if (!selectedConversationId) return;
+    if (lastAutoOpenedIdRef.current === selectedConversationId) return;
+    if (isAutoOpeningRef.current) return;
+
+    isAutoOpeningRef.current = true;
+    setIsOpeningConversation(true);
+
+    (async () => {
+      try {
+        // Garantir que a UI não caia no estado "Selecione uma conversa"
+        // (no modo onlyMessages não temos a lista de conversas para montar o objeto completo)
+        setSelectedConversation((prev) => {
+          if (prev?.id === selectedConversationId) return prev;
+          return {
+            id: selectedConversationId,
+            contact: {
+              id: '',
+              name: 'Contato',
+              phone: undefined,
+              email: undefined,
+              profile_image_url: undefined,
+            },
+            agente_ativo: false,
+            agent_active_id: null,
+            status: 'open',
+            unread_count: 0,
+            last_activity_at: new Date().toISOString(),
+            created_at: new Date().toISOString(),
+            evolution_instance: null,
+            assigned_user_id: null,
+            assigned_user_name: null,
+            assigned_at: null,
+            connection_id: undefined,
+            connection: undefined,
+            queue_id: null,
+            workspace_id: selectedWorkspace?.workspace_id,
+            conversation_tags: [],
+            last_message: [],
+            messages: [],
+            _updated_at: Date.now(),
+          };
+        });
+        clearMessages();
+        await loadMessages(selectedConversationId, false);
+        lastAutoOpenedIdRef.current = selectedConversationId;
+      } finally {
+        setIsOpeningConversation(false);
+        isAutoOpeningRef.current = false;
+      }
+    })();
+  }, [onlyMessages, selectedConversationId, clearMessages, loadMessages, selectedWorkspace?.workspace_id]);
+
+  useEffect(() => {
+    if (onlyMessages) return;
     if (!selectedConversationId) return;
     // Se já abrimos esta conversa automaticamente, não repetir
     if (lastAutoOpenedIdRef.current === selectedConversationId) return;
+    if (isAutoOpeningRef.current) return;
 
     const conv = conversations.find(c => c.id === selectedConversationId);
     if (!conv) {
@@ -1506,7 +1544,7 @@ export function WhatsAppChat({
         setIsOpeningConversation(false);
       }
     })();
-  }, [selectedConversationId, conversations, fetchAndOpenConversationById]);
+  }, [onlyMessages, selectedConversationId, conversations, fetchAndOpenConversationById]);
 
   // Funções de seleção e encaminhamento
   const handleMessageForward = (messageId: string) => {
@@ -2713,10 +2751,6 @@ export function WhatsAppChat({
                         <span className="text-xs font-bold text-gray-900 tracking-tight truncate whitespace-nowrap overflow-hidden text-ellipsis block dark:text-gray-100">
                           {conversation.contact?.name && conversation.contact.name !== '-' ? conversation.contact.name : (conversation.contact?.phone || 'Sem nome')}
                         </span>
-                          <ConnectionBadge 
-                            connectionId={conversation.connection_id}
-                            connectionInfo={conversation.connection}
-                          />
                       </div>
                       
                         {/* ✅ Última mensagem da conversa */}
@@ -2940,7 +2974,13 @@ export function WhatsAppChat({
                   </TooltipProvider>
                   )}
 
-                   <Avatar className="w-9 h-9 cursor-pointer rounded-none border border-[#d4d4d4] shadow-sm dark:border-gray-600" onClick={() => setContactPanelOpen(true)}>
+                   <Avatar
+                     className="w-9 h-9 cursor-pointer rounded-none border border-[#d4d4d4] shadow-sm dark:border-gray-600"
+                     onClick={() => {
+                       if (!selectedConversation.contact?.id) return;
+                       setContactPanelOpen(true);
+                     }}
+                   >
                     {selectedConversation.contact?.profile_image_url && <AvatarImage src={selectedConversation.contact.profile_image_url} alt={selectedConversation.contact?.name && selectedConversation.contact.name !== '-' ? selectedConversation.contact.name : selectedConversation.contact?.phone} className="object-cover" />}
                     <AvatarFallback style={{
                   backgroundColor: getAvatarColor(selectedConversation.contact?.name && selectedConversation.contact.name !== '-' ? selectedConversation.contact.name : (selectedConversation.contact?.phone || ''))
@@ -2953,20 +2993,27 @@ export function WhatsAppChat({
                     <h3 className="font-bold text-gray-900 text-sm tracking-tight dark:text-gray-100">
                       {selectedConversation.contact?.name && selectedConversation.contact.name !== '-' ? selectedConversation.contact.name : (selectedConversation.contact?.phone || 'Sem nome')}
                     </h3>
-                    <div className="flex items-center gap-2">
-                    <ContactTags 
-                      contactId={selectedConversation.contact.id} 
-                      conversationId={selectedConversation.id}
-                      isDarkMode={isDarkMode} 
-                      onTagRemoved={() => {
-                    // Refresh conversations after removing tag
-                    fetchConversations();
-                  }} />
-                      <AddTagButton conversationId={selectedConversation.id} isDarkMode={isDarkMode} onTagAdded={() => {
-                    // Refresh conversations after adding tag
-                    fetchConversations();
-                  }} />
-                    </div>
+                    {selectedConversation.contact?.id && (
+                      <div className="flex items-center gap-2">
+                        <ContactTags
+                          contactId={selectedConversation.contact.id}
+                          conversationId={selectedConversation.id}
+                          isDarkMode={isDarkMode}
+                          onTagRemoved={() => {
+                            // Refresh conversations after removing tag
+                            fetchConversations();
+                          }}
+                        />
+                        <AddTagButton
+                          conversationId={selectedConversation.id}
+                          isDarkMode={isDarkMode}
+                          onTagAdded={() => {
+                            // Refresh conversations after adding tag
+                            fetchConversations();
+                          }}
+                        />
+                      </div>
+                    )}
                   </div>
                 </div>
 
@@ -3033,10 +3080,13 @@ export function WhatsAppChat({
                       <PopoverTrigger asChild>
                         <button
                           type="button"
-                          className="p-1.5 hover:bg-gray-100 rounded-none border border-[#d4d4d4] dark:border-gray-600 dark:hover:bg-gray-700 h-8 w-8 flex items-center justify-center transition-colors"
+                          className="px-2.5 bg-gray-200 hover:bg-gray-300 rounded-none border-0 dark:bg-gray-800 dark:hover:bg-gray-700 h-8 flex items-center justify-center gap-2 transition-colors"
                           title="Abrir oportunidade"
                         >
                           <Briefcase className="h-3.5 w-3.5 text-gray-500 dark:text-gray-400" />
+                          <span className="text-[11px] font-medium text-gray-600 dark:text-gray-300 whitespace-nowrap">
+                            Abrir Oportunidade
+                          </span>
                         </button>
                       </PopoverTrigger>
                     <PopoverContent
@@ -3114,12 +3164,7 @@ export function WhatsAppChat({
                     </button>
                   </div>
                   
-                  {selectedConversation.connection_id && (
-                    <ConnectionBadge 
-                      connectionId={selectedConversation.connection_id}
-                      connectionInfo={selectedConversation.connection}
-                    />
-                  )}
+                  
                   
                   <AcceptConversationButton conversation={selectedConversation} onAccept={async (conversationId: string) => {
                 // Get current user info for immediate UI update
@@ -3665,7 +3710,11 @@ export function WhatsAppChat({
         setPeekConversationId(null);
       }} conversationId={peekConversationId} />
       
-      <ContactSidePanel isOpen={contactPanelOpen} onClose={() => setContactPanelOpen(false)} contact={selectedConversation?.contact || null} />
+      <ContactSidePanel
+        isOpen={contactPanelOpen}
+        onClose={() => setContactPanelOpen(false)}
+        contact={selectedConversation?.contact?.id ? selectedConversation.contact : null}
+      />
       
       <QuickItemsModal
         open={quickItemsModalOpen}
@@ -3839,9 +3888,9 @@ export function WhatsAppChat({
       {/* ✅ Listener para recarregar mensagens quando a página fica visível novamente */}
       {(() => {
         useEffect(() => {
+          if (onlyMessages) return;
           const handleVisibilityChange = () => {
             if (document.visibilityState === 'visible' && selectedConversation?.id) {
-              console.log('👁️ [WhatsAppChat] Página visível, recarregando mensagens:', selectedConversation.id);
               loadMessages(selectedConversation.id, true); // ✅ Forçar refresh
             }
           };

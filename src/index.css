@@ -295,6 +295,17 @@
   background-color: #4b5563; /* Hover mais claro no modo escuro (gray-600) */
 }
 
+/* Hide scrollbar (mantém scroll) */
+.no-scrollbar {
+  -ms-overflow-style: none; /* IE/Edge legado */
+  scrollbar-width: none; /* Firefox */
+}
+.no-scrollbar::-webkit-scrollbar {
+  width: 0px;
+  height: 0px;
+  display: none; /* Chrome/Safari */
+}
+
 /* Custom select styling */
 select option:checked,
 select option:hover {

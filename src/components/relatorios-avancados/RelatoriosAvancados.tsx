@@ -17,8 +17,10 @@ import { Pie, PieChart, ResponsiveContainer, Cell, Tooltip as ReTooltip, Legend 
 import { Filter, Users, Download, Loader2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { QueryBuilderSidebar } from './QueryBuilderSidebar';
+import { useReportIndicatorFunnelPresets } from '@/hooks/useReportIndicatorFunnelPresets';
+import { useWorkspaceHeaders } from '@/lib/workspaceHeaders';
 
-type PeriodPreset = 'today' | 'last7' | 'last30' | 'custom';
+type PeriodPreset = 'all' | 'today' | 'last7' | 'last30' | 'custom';
 
 interface RelatoriosAvancadosProps {
   workspaces?: Workspace[];
@@ -64,10 +66,12 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
   const { selectedWorkspace, workspaces: ctxWorkspaces } = useWorkspace();
   const { user, userRole } = useAuth();
   const { pipelines: ctxPipelines, fetchPipelines: fetchCtxPipelines } = usePipelinesContext();
+  const { getHeaders } = useWorkspaceHeaders();
 
-  const [periodPreset, setPeriodPreset] = useState<PeriodPreset>('last30');
-  const [startDate, setStartDate] = useState<Date | null>(startOfDay(subDays(new Date(), 29)));
-  const [endDate, setEndDate] = useState<Date | null>(endOfDay(new Date()));
+  // ✅ Por padrão: sem recorte (carrega tudo). Só filtra por período quando o usuário escolher.
+  const [periodPreset, setPeriodPreset] = useState<PeriodPreset>('all');
+  const [startDate, setStartDate] = useState<Date | null>(null);
+  const [endDate, setEndDate] = useState<Date | null>(null);
   const [selectedWorkspaceId, setSelectedWorkspaceId] = useState<string>(
     selectedWorkspace?.workspace_id ||
       workspaces?.[0]?.workspace_id ||
@@ -88,11 +92,21 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
   const [tags, setTags] = useState<TagRecord[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [viewMode, setViewMode] = useState<'list' | 'bi' | 'kpis' | 'funnel'>('funnel');
-  const [sidebarFilters, setSidebarFilters] = useState<Array<{ type: 'pipeline' | 'team' | 'tags' | 'date' | 'status' | 'value'; value: string; operator?: string }>>([]);
+  // Preset/draft: Funis (múltiplos) do bloco "Funil – Indicadores"
+  const { savedFunnels, canEdit: canEditIndicatorFunnels, loading: loadingFunnelsPreset, savePreset } =
+    useReportIndicatorFunnelPresets(selectedWorkspaceId);
+  const [draftFunnels, setDraftFunnels] = useState<any[]>([]);
+  const [savedSnapshot, setSavedSnapshot] = useState<any[]>([]);
+  const [funnelsDirty, setFunnelsDirty] = useState(false);
+  const [rehydrateNonce, setRehydrateNonce] = useState(0);
 
   const applyPreset = (preset: PeriodPreset) => {
     setPeriodPreset(preset);
     switch (preset) {
+      case 'all':
+        setStartDate(null);
+        setEndDate(null);
+        break;
       case 'today':
         setStartDate(startOfDay(new Date()));
         setEndDate(endOfDay(new Date()));
@@ -257,6 +271,25 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
       const from = hasDateRange ? startDate!.toISOString() : null;
       const to = hasDateRange ? endDate!.toISOString() : null;
 
+      // ✅ Cards (pipeline_cards) via Edge Function LITE (bypass RLS) — evita payload gigante e garante filtros
+      let cardsLite: any[] = [];
+      try {
+        if (selectedWorkspaceId) {
+          const headers = getHeaders(selectedWorkspaceId);
+          const { data, error } = await supabase.functions.invoke("report-indicator-cards-lite", {
+            method: "POST",
+            headers,
+            body: { workspaceId: selectedWorkspaceId },
+          });
+          if (error) throw error;
+          cardsLite = Array.isArray(data?.cards) ? data.cards : [];
+          // debug removed: keep console clean in production
+        }
+      } catch (e) {
+        console.error("Erro ao buscar cards via report-indicator-cards-lite:", e);
+        cardsLite = [];
+      }
+
       // Contacts (leads)
       // @ts-ignore simplificando tipagem dinâmica para evitar profundidade de generics
       let contactsQuery = supabase
@@ -275,23 +308,6 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
         activitiesQuery = activitiesQuery.gte('created_at', from).lte('created_at', to);
       }
 
-      // Pipeline cards para produtos e status de venda/perda
-      // @ts-ignore simplificando tipagem dinâmica
-      let cardsQuery = supabase
-        .from('pipeline_cards')
-        .select('id, contact_id, value, status, workspace_id, pipeline_id, responsible_user_id, created_at, pipeline_cards_products(product_id, quantity, total_value)');
-      // Removido filtro de data para cards para garantir que negócios ganhos apareçam independente da data de criação,
-      // pois o status de "ganho" reflete o estado atual do negócio no funil.
-
-      // Tags
-      // @ts-ignore simplificando tipagem dinâmica
-      let tagsQuery = supabase
-        .from('contact_tags')
-        .select('contact_id, tag_id, tags(name), contacts!inner(id, workspace_id)');
-      if (hasDateRange && from && to) {
-        tagsQuery = tagsQuery.gte('contacts.created_at', from).lte('contacts.created_at', to);
-      }
-
       // Conversations (assumidas)
       let conversationsQuery = supabase
         .from('conversations')
@@ -304,139 +320,65 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
       if (selectedWorkspaceId) {
         contactsQuery = contactsQuery.eq('workspace_id', selectedWorkspaceId);
         activitiesQuery = activitiesQuery.eq('workspace_id', selectedWorkspaceId);
-        cardsQuery = cardsQuery.eq('workspace_id', selectedWorkspaceId);
-        tagsQuery = tagsQuery.eq('contacts.workspace_id', selectedWorkspaceId);
         conversationsQuery = conversationsQuery.eq('workspace_id', selectedWorkspaceId);
       }
 
-      // Permissões
+      // Permissões (somente para usuários comuns). Admin/Master enxergam tudo do workspace.
+      // Os filtros "Equipe/Tags/Pipeline/Coluna/Produtos" agora são aplicados apenas dentro de cada funil de indicadores.
       if (userRole === 'user') {
         contactsQuery = contactsQuery.eq('responsible_id', user.id);
         activitiesQuery = activitiesQuery.eq('responsible_id', user.id);
-        cardsQuery = cardsQuery.eq('responsible_user_id', user.id);
         conversationsQuery = conversationsQuery.eq('assigned_user_id', user.id);
-      } else if (selectedAgent !== 'all' && selectedAgent !== 'ia') {
-        contactsQuery = contactsQuery.eq('responsible_id', selectedAgent);
-        activitiesQuery = activitiesQuery.eq('responsible_id', selectedAgent);
-        cardsQuery = cardsQuery.eq('responsible_user_id', selectedAgent);
-        conversationsQuery = conversationsQuery.eq('assigned_user_id', selectedAgent);
-      } else if (selectedAgent === 'ia') {
-        // Filtrar interações do agente de IA (responsável nulo)
-        contactsQuery = contactsQuery.is('responsible_id', null);
-        activitiesQuery = activitiesQuery.is('responsible_id', null);
-        cardsQuery = cardsQuery.is('responsible_user_id', null);
-        conversationsQuery = conversationsQuery.is('assigned_user_id', null);
       }
 
       const [
         { data: contactsData, error: contactsError },
         { data: activitiesData, error: activitiesError },
-        { data: cardsData, error: cardsError },
-        { data: tagsData, error: tagsError },
         { data: conversationsData, error: conversationsError }
-      ] = await Promise.all([contactsQuery, activitiesQuery, cardsQuery, tagsQuery, conversationsQuery]);
+      ] = await Promise.all([contactsQuery, activitiesQuery, conversationsQuery]);
 
       if (contactsError) throw contactsError;
       if (activitiesError) throw activitiesError;
-      if (cardsError) throw cardsError;
-      if (tagsError) throw tagsError;
       if (conversationsError) throw conversationsError;
 
-      const contactsFiltered = (((contactsData as unknown) as ContactRecord[]) || []).filter((c) => {
-        if (selectedTags.length > 0) {
-          const hasTag = ((tagsData || []) as any[]).some(
-            (t: any) => t.contact_id === c.id && selectedTags.includes(t.tag_id || (t.tags as any)?.id)
-          );
-          if (!hasTag) return false;
-        }
-        return true;
-      });
+      const contactsFiltered = (((contactsData as unknown) as ContactRecord[]) || []);
 
-      let cardsFiltered = (((cardsData as unknown) as PipelineCardRecord[]) || []).map((c) => ({
+      // Normaliza cards vindos da Edge Function LITE para o shape usado nos indicadores
+      let cardsFiltered = (cardsLite || []).map((c: any) => ({
         id: c.id,
-        contact_id: (c as any).contact_id,
-        value: (c as any).value,
-        status: (c as any).status,
-        pipeline_id: (c as any).pipeline_id,
-        responsible_user_id: (c as any).responsible_user_id,
-        created_at: (c as any).created_at,
-        products: (c as any).pipeline_cards_products || [],
+        contact_id: c.contact_id || null,
+        value: null,
+        status: c.status ?? null,
+        qualification: c.qualification ?? null,
+        pipeline_id: c.pipeline_id ?? null,
+        column_id: c.column_id ?? null,
+        responsible_user_id: c.responsible_user_id ?? null,
+        created_at: c.created_at ?? null,
+        products: Array.isArray(c.product_ids) ? c.product_ids.map((pid: string) => ({ product_id: pid })) : [],
       }));
 
-      // Aplicar filtros da sidebar
-      const statusFilter = sidebarFilters.find(f => f.type === 'status');
-      const valueFilter = sidebarFilters.find(f => f.type === 'value');
-
-      if (selectedFunnel !== 'all') {
-        cardsFiltered = cardsFiltered.filter((c) => c.pipeline_id === selectedFunnel);
-      }
-
-      if (statusFilter?.value) {
-        cardsFiltered = cardsFiltered.filter((c) => (c.status || '').toLowerCase() === statusFilter.value.toLowerCase());
-      }
-
-      if (valueFilter?.value) {
-        const valueNum = parseFloat(valueFilter.value);
-        if (!isNaN(valueNum)) {
-          switch (valueFilter.operator) {
-            case 'equals':
-              cardsFiltered = cardsFiltered.filter((c) => c.value === valueNum);
-              break;
-            case 'greater':
-              cardsFiltered = cardsFiltered.filter((c) => (c.value || 0) > valueNum);
-              break;
-            case 'less':
-              cardsFiltered = cardsFiltered.filter((c) => (c.value || 0) < valueNum);
-              break;
-          }
-        }
-      }
-
-      // Atividades: só recorta por tag se houver filtro de tag; funil não limita para manter dados gerais.
-      const allowedContactIds = new Set<string>();
-      if (selectedTags.length > 0) {
-        ((tagsData || []) as any[]).forEach((t: any) => {
-          if (t.contact_id && selectedTags.includes(t.tag_id)) {
-            allowedContactIds.add(t.contact_id);
-          }
-        });
-      }
-
-      // Aplicar filtro de tags nos cards também
-      if (selectedTags.length > 0) {
-        cardsFiltered = cardsFiltered.filter(c => c.contact_id && allowedContactIds.has(c.contact_id));
-      }
-
-      // Não restringe por funil (funnel) para garantir visão geral; somente tags filtram contatos.
       const finalContacts = contactsFiltered;
 
-      const activitiesFiltered = (((activitiesData as unknown) as ActivityRecord[]) || []).filter((a) => {
-        if (allowedContactIds.size === 0) return true;
-        return a.contact_id ? allowedContactIds.has(a.contact_id) : false;
-      });
+      const activitiesFiltered = (((activitiesData as unknown) as ActivityRecord[]) || []);
 
-      const conversationsFiltered = (conversationsData || []).filter((conv: any) => {
-        if (selectedTags.length > 0) {
-          const hasTag = ((tagsData || []) as any[]).some(
-            (t: any) => t.contact_id === conv.contact_id && selectedTags.includes(t.tag_id || (t.tags as any)?.id)
-          );
-          if (!hasTag) return false;
-        }
-        return true;
-      });
+      const conversationsFiltered = (conversationsData || []);
 
       setContacts(finalContacts);
       setActivities(activitiesFiltered);
       setCards(cardsFiltered);
       setConversations(conversationsFiltered);
-      // Sempre carregamos todas as tags do workspace para o gráfico, mesmo sem filtro
-      setTags(
-        ((tagsData || []) as any[]).map((t) => ({
-          contact_id: (t as any).contact_id,
-          tag_id: (t as any).tag_id,
-          tag: (t as any).tags,
-        }))
-      );
+      // Tags para gráficos: derivadas dos cards LITE (tag_ids)
+      const tagRows: any[] = [];
+      (cardsLite || []).forEach((card: any) => {
+        const contactId = card.contact_id;
+        const tagIds = Array.isArray(card.tag_ids) ? card.tag_ids : [];
+        if (!contactId) return;
+        tagIds.forEach((tagId: string) => {
+          if (!tagId) return;
+          tagRows.push({ contact_id: contactId, tag_id: tagId });
+        });
+      });
+      setTags(tagRows);
     } catch (error) {
       console.error('Erro ao carregar relatórios:', error);
     } finally {
@@ -472,31 +414,29 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
       setSelectedFunnel('all');
       setSelectedTags([]);
       setSelectedAgent('all');
-      setSidebarFilters([]); // Reset filtros da sidebar também
     } else {
       setPipelines([]);
       setAvailableTags([]);
       setAgents([]);
-      setSidebarFilters([]);
     }
   }, [selectedWorkspaceId]);
 
-  // Aplicar filtros da sidebar
+  // Inicializa o draft a partir do preset salvo
   useEffect(() => {
-    const pipelineFilter = sidebarFilters.find(f => f.type === 'pipeline');
-    const teamFilter = sidebarFilters.find(f => f.type === 'team');
-    const tagFilters = sidebarFilters.filter(f => f.type === 'tags');
-    
-    setSelectedFunnel(pipelineFilter?.value || 'all');
-    setSelectedAgent(teamFilter?.value || 'all');
-    setSelectedTags(tagFilters.map(f => f.value));
-    
-    // Os filtros de data, status e valor serão aplicados diretamente na query fetchData
-  }, [sidebarFilters]);
+    const normalized = (savedFunnels || []).map((f: any, idx: number) => ({
+      id: String(f.id || `funnel-${idx + 1}`),
+      name: String(f.name || `Funil ${idx + 1}`),
+      filters: Array.isArray(f.filters) ? f.filters : [],
+    }));
+    setDraftFunnels(normalized);
+    setSavedSnapshot(normalized);
+    setFunnelsDirty(false);
+    setRehydrateNonce((n) => n + 1);
+  }, [savedFunnels]);
 
   useEffect(() => {
     fetchData();
-  }, [periodPreset, startDate, endDate, selectedAgent, userRole, selectedFunnel, selectedTags, selectedWorkspaceId, sidebarFilters]);
+  }, [periodPreset, startDate, endDate, selectedAgent, userRole, selectedFunnel, selectedTags, selectedWorkspaceId, pipelines.length]);
 
   const leadsReceived = conversations.length;
   const leadsQualified = contacts.filter((c) => (c.status || '').toLowerCase() === 'qualified').length;
@@ -509,6 +449,176 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
   const leadsLost2 = contacts.filter((c) => (c.status || '').toLowerCase() === 'lost_no_offer').length;
   const leadsLost3 = contacts.filter((c) => (c.status || '').toLowerCase() === 'lost_not_fit').length;
   const leadsLostTotal = leadsLost1 + leadsLost2 + leadsLost3;
+
+  // Indicadores por funil (múltiplos) — aplicam somente no bloco "Funil – Indicadores"
+  const indicatorFunnels = useMemo(() => {
+    const nameByTagId = new Map((availableTags || []).map((t: any) => [t.id, t.name]));
+    const nameByProductId = new Map((availableProducts || []).map((p: any) => [p.id, p.name]));
+
+    const parseDateFilter = (filters: any[]) => {
+      const date = (filters || []).find((f) => f.type === 'date' && f.operator === 'between' && f.value);
+      if (!date) return null;
+      const [from, to] = String(date.value).split('|');
+      const dFrom = from ? new Date(from) : null;
+      const dTo = to ? new Date(to) : null;
+      if (!dFrom || !dTo || Number.isNaN(dFrom.getTime()) || Number.isNaN(dTo.getTime())) return null;
+      return { from: dFrom.getTime(), to: dTo.getTime() };
+    };
+
+    const apply = (funnel: any) => {
+      const filters = Array.isArray(funnel?.filters) ? funnel.filters : [];
+      const pipeline = filters.find((f: any) => f.type === 'pipeline')?.value || '';
+      const column = filters.find((f: any) => f.type === 'column')?.value || '';
+      const team = filters.find((f: any) => f.type === 'team')?.value || '';
+      const status = filters.find((f: any) => f.type === 'status')?.value || '';
+      const valueFilter = filters.find((f: any) => f.type === 'value');
+      const tagFilters = (filters || []).filter((f: any) => f.type === 'tags').map((x: any) => x.value);
+      const productFilters = (filters || []).filter((f: any) => f.type === 'products').map((x: any) => x.value);
+      const dateRange = parseDateFilter(filters);
+
+      // 1) Filtra cards (pipeline/coluna/status/valor/time)
+      let cardsF = [...(cards || [])] as any[];
+      if (pipeline && pipeline !== 'all') cardsF = cardsF.filter((c) => c.pipeline_id === pipeline);
+      if (column && column !== 'all') cardsF = cardsF.filter((c) => c.column_id === column);
+      if (team && team !== 'all') {
+        if (team === 'ia') cardsF = cardsF.filter((c) => !c.responsible_user_id);
+        else cardsF = cardsF.filter((c) => c.responsible_user_id === team);
+      }
+      if (status && status !== 'all') {
+        cardsF = cardsF.filter((c) => (c.status || '').toLowerCase() === String(status).toLowerCase());
+      }
+      if (valueFilter?.value) {
+        const valueNum = parseFloat(valueFilter.value);
+        if (!Number.isNaN(valueNum)) {
+          switch (valueFilter.operator) {
+            case 'greater':
+              cardsF = cardsF.filter((c) => (c.value || 0) > valueNum);
+              break;
+            case 'less':
+              cardsF = cardsF.filter((c) => (c.value || 0) < valueNum);
+              break;
+            case 'equals':
+            default:
+              cardsF = cardsF.filter((c) => c.value === valueNum);
+              break;
+          }
+        }
+      }
+
+      // 1b) Filtra por produtos selecionados
+      if (productFilters.length > 0) {
+        cardsF = cardsF.filter((c) => (c.products || []).some((p: any) => p?.product_id && productFilters.includes(p.product_id)));
+      }
+
+      // 2) Filtra por tags: reduz universo por contact_id
+      let allowedContactIds: Set<string> | null = null;
+      if (tagFilters.length > 0) {
+        allowedContactIds = new Set<string>();
+        (tags || []).forEach((t: any) => {
+          if (!t?.contact_id || !t?.tag_id) return;
+          if (tagFilters.includes(t.tag_id)) allowedContactIds?.add(t.contact_id);
+        });
+        cardsF = cardsF.filter((c) => c.contact_id && allowedContactIds?.has(c.contact_id));
+      }
+
+      // 3) Universo de contatos do funil
+      const contactIdsFromCards = new Set<string>(cardsF.map((c) => c.contact_id).filter(Boolean));
+      const withinDate = (iso?: string) => {
+        if (!dateRange) return true;
+        if (!iso) return false;
+        const t = new Date(iso).getTime();
+        return t >= dateRange.from && t <= dateRange.to;
+      };
+
+      let contactsF = (contacts || []).filter((c: any) => contactIdsFromCards.has(c.id));
+      let conversationsF = (conversations || []).filter((c: any) => contactIdsFromCards.has(c.contact_id));
+      let activitiesF = (activities || []).filter((a: any) => a.contact_id && contactIdsFromCards.has(a.contact_id));
+
+      // time / equipe (aplica em contatos/conversas/atividades)
+      if (team && team !== 'all') {
+        if (team === 'ia') {
+          contactsF = contactsF.filter((c: any) => !c.responsible_id);
+          conversationsF = conversationsF.filter((c: any) => !c.assigned_user_id);
+          activitiesF = activitiesF.filter((a: any) => !a.responsible_id);
+        } else {
+          contactsF = contactsF.filter((c: any) => c.responsible_id === team);
+          conversationsF = conversationsF.filter((c: any) => c.assigned_user_id === team);
+          activitiesF = activitiesF.filter((a: any) => a.responsible_id === team);
+        }
+      }
+
+      // data (se existir)
+      if (dateRange) {
+        contactsF = contactsF.filter((c: any) => withinDate(c.created_at));
+        conversationsF = conversationsF.filter((c: any) => withinDate(c.created_at));
+        activitiesF = activitiesF.filter((a: any) => withinDate(a.created_at));
+      }
+
+      // ✅ Leads recebidos = quantidade de CARDS no funil/coluna filtrados (estado atual)
+      // - Pipeline "all" => todos os cards
+      // - Pipeline selecionado => cards do pipeline
+      // - Pipeline + coluna => cards que estão na coluna
+      const leadsReceivedF = cardsF.length;
+      const leadsQualifiedF = contactsF.filter((c: any) => (c.status || '').toLowerCase() === 'qualified').length;
+      const leadsOfferF = contactsF.filter((c: any) => (c.status || '').toLowerCase() === 'offer').length;
+      const leadsWonF = cardsF.filter((c: any) => {
+        const s = (c.status || '').toLowerCase();
+        return s === 'won' || s === 'ganho' || s === 'venda' || s === 'success' || s === 'sucesso';
+      }).length;
+      const leadsQualifiedCardsF = cardsF.filter((c: any) => String(c.qualification || '').toLowerCase() === 'qualified').length;
+      const leadsLost1F = contactsF.filter((c: any) => (c.status || '').toLowerCase() === 'lost_offer').length;
+      const leadsLost2F = contactsF.filter((c: any) => (c.status || '').toLowerCase() === 'lost_no_offer').length;
+      const leadsLost3F = contactsF.filter((c: any) => (c.status || '').toLowerCase() === 'lost_not_fit').length;
+
+      // Pie: tags (contatos únicos por tag)
+      const byTag = new Map<string, Set<string>>();
+      (tags || []).forEach((t: any) => {
+        if (!t?.contact_id || !t?.tag_id) return;
+        if (!contactIdsFromCards.has(t.contact_id)) return;
+        if (tagFilters.length > 0 && !tagFilters.includes(t.tag_id)) return;
+        const name = nameByTagId.get(t.tag_id) || t.tag_id || 'Etiqueta';
+        if (!byTag.has(name)) byTag.set(name, new Set());
+        byTag.get(name)!.add(t.contact_id);
+      });
+      const leadsByTagF = Array.from(byTag.entries())
+        .map(([name, set]) => ({ name, value: set.size }))
+        .filter((x) => x.value > 0)
+        .sort((a, b) => b.value - a.value);
+
+      // Pie: produtos (contatos únicos por produto)
+      const byProduct = new Map<string, Set<string>>();
+      cardsF.forEach((c: any) => {
+        if (!c?.contact_id) return;
+        (c.products || []).forEach((p: any) => {
+          const pid = p?.product_id;
+          if (!pid) return;
+          const name = nameByProductId.get(pid) || pid || 'Produto';
+          if (!byProduct.has(name)) byProduct.set(name, new Set());
+          byProduct.get(name)!.add(c.contact_id);
+        });
+      });
+      const leadsByProductF = Array.from(byProduct.entries())
+        .map(([name, set]) => ({ name, value: set.size }))
+        .filter((x) => x.value > 0)
+        .sort((a, b) => b.value - a.value);
+
+        return {
+        id: funnel.id,
+        name: funnel.name,
+        leadsReceived: leadsReceivedF,
+          leadsQualified: leadsQualifiedCardsF,
+        leadsOffer: leadsOfferF,
+        leadsWon: leadsWonF,
+        leadsLost1: leadsLost1F,
+        leadsLost2: leadsLost2F,
+        leadsLost3: leadsLost3F,
+        leadsByTag: leadsByTagF,
+        leadsByProduct: leadsByProductF,
+      };
+    };
+
+    return (draftFunnels || []).map(apply);
+  }, [availableProducts, availableTags, activities, cards, contacts, conversations, draftFunnels, tags]);
 
   const leadsByTag = useMemo(() => {
     const nameById = new Map((availableTags || []).map((t) => [t.id, t.name]));
@@ -605,18 +715,20 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
       .sort((a, b) => b.value - a.value);
   }, [cards, availableProducts]);
 
-  const calls = activities.filter((a) => (a.type || '').toLowerCase().includes('ligação') || (a.type || '').toLowerCase().includes('chamada'));
-  const callsAttended = calls.filter((a) => (a.status || '').toLowerCase().includes('atendida'));
-  const callsNotAttended = calls.filter((a) => (a.status || '').toLowerCase().includes('não atendida') || (a.status || '').toLowerCase().includes('nao atendida'));
-  const callsApproached = calls.filter((a) => (a.status || '').toLowerCase().includes('abordada'));
-  const callsFollowUp = calls.filter((a) => (a.status || '').toLowerCase().includes('follow') || (a.type || '').toLowerCase().includes('follow'));
-  const messages = activities.filter((a) => (a.type || '').toLowerCase().includes('mensagem') || (a.type || '').toLowerCase().includes('whatsapp'));
-  const whatsappSent = activities.filter((a) => (a.type || '').toLowerCase().includes('whatsapp'));
-  const meetings = activities.filter((a) => (a.type || '').toLowerCase().includes('reunião') || (a.type || '').toLowerCase().includes('reuniao'));
-  const meetingsDone = meetings.filter((a) => (a.status || '').toLowerCase().includes('realizada'));
-  const meetingsNotDone = meetings.filter((a) => (a.status || '').toLowerCase().includes('não realizada') || (a.status || '').toLowerCase().includes('nao realizada'));
-  const meetingsRescheduled = meetings.filter((a) => (a.status || '').toLowerCase().includes('reagendada') || (a.type || '').toLowerCase().includes('reagenda'));
-  const proposals = activities.filter((a) => (a.type || '').toLowerCase().includes('proposta'));
+  // Atividades: tudo do Ranking de Trabalho vem de public.activities (como você explicou)
+  const norm = (v?: string | null) => (v || '').toLowerCase().trim();
+  const calls = activities.filter((a) => norm(a.type).includes('ligação') || norm(a.type).includes('ligacao') || norm(a.type).includes('chamada'));
+  const callsAttended = activities.filter((a) => norm(a.type).includes('ligação atendida') || norm(a.type).includes('ligacao atendida'));
+  const callsNotAttended = activities.filter((a) => norm(a.type).includes('ligação não atendida') || norm(a.type).includes('ligacao nao atendida') || norm(a.type).includes('ligacao não atendida'));
+  const callsApproached = activities.filter((a) => norm(a.type).includes('ligação abordada') || norm(a.type).includes('ligacao abordada') || norm(a.status).includes('abordada'));
+  const callsFollowUp = activities.filter((a) => norm(a.type).includes('follow') || norm(a.status).includes('follow'));
+  const messages = activities.filter((a) => norm(a.type).includes('mensagem'));
+  const whatsappSent = activities.filter((a) => norm(a.type).includes('whatsapp') || norm(a.status).includes('whatsapp'));
+  const meetings = activities.filter((a) => norm(a.type).includes('reunião') || norm(a.type).includes('reuniao'));
+  const meetingsDone = activities.filter((a) => norm(a.type).includes('realizada') || norm(a.status).includes('realizada'));
+  const meetingsNotDone = activities.filter((a) => norm(a.type).includes('não realizada') || norm(a.type).includes('nao realizada') || norm(a.status).includes('não realizada') || norm(a.status).includes('nao realizada'));
+  const meetingsRescheduled = activities.filter((a) => norm(a.type).includes('reagendada') || norm(a.type).includes('reagenda') || norm(a.status).includes('reagendada'));
+  const proposals = activities.filter((a) => norm(a.type).includes('proposta'));
   const activeConversations = messages.reduce((set, m) => {
     if (m.contact_id) set.add(m.contact_id);
     return set;
@@ -692,30 +804,33 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
 
     activities.forEach((act) => {
       const target = ensure(act.responsible_id);
-      const t = (act.type || '').toLowerCase();
-      const s = (act.status || '').toLowerCase();
+      const t = norm(act.type);
 
-      // Mensagens / WhatsApp
-      if (t.includes('mensagem') || t.includes('whatsapp')) {
+      // Mensagens
+      if (t.includes('mensagem')) {
         target.messages += 1;
-        if (t.includes('whatsapp') || s.includes('whatsapp')) target.whatsappSent += 1;
       }
 
       // Ligações
-      if (t.includes('ligação') || t.includes('chamada')) {
+      if (t.includes('ligação') || t.includes('ligacao') || t.includes('chamada')) {
         target.calls += 1;
-        if (s.includes('atendida')) target.callsAttended += 1;
-        if (s.includes('não atendida') || s.includes('nao atendida')) target.callsNotAttended += 1;
-        if (s.includes('abordada') || t.includes('abordada')) target.callsApproached += 1;
-        if (s.includes('follow') || t.includes('follow')) target.callsFollowUp += 1;
+        if (t.includes('atendida')) target.callsAttended += 1;
+        if (t.includes('não atendida') || t.includes('nao atendida')) target.callsNotAttended += 1;
+        if (t.includes('abordada') || norm(act.status).includes('abordada')) target.callsApproached += 1;
+        if (t.includes('follow') || norm(act.status).includes('follow')) target.callsFollowUp += 1;
+      }
+
+      // WhatsApp (atividade)
+      if (t.includes('whatsapp') || norm(act.status).includes('whatsapp')) {
+        target.whatsappSent += 1;
       }
 
       // Reuniões
       if (t.includes('reunião') || t.includes('reuniao')) {
         target.meetings += 1;
-        if (s.includes('realizada')) target.meetingsDone += 1;
-        if (s.includes('não realizada') || s.includes('nao realizada')) target.meetingsNotDone += 1;
-        if (s.includes('reagendada') || t.includes('reagenda')) target.meetingsRescheduled += 1;
+        if (t.includes('realizada') || norm(act.status).includes('realizada')) target.meetingsDone += 1;
+        if (t.includes('não realizada') || t.includes('nao realizada') || norm(act.status).includes('não realizada') || norm(act.status).includes('nao realizada')) target.meetingsNotDone += 1;
+        if (t.includes('reagendada') || t.includes('reagenda') || norm(act.status).includes('reagendada')) target.meetingsRescheduled += 1;
       }
 
       // Propostas (atividades)
@@ -744,7 +859,7 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
     });
 
     return Object.values(agg);
-  }, [agents, contacts, calls, callsApproached, callsAttended, callsNotAttended, messages, meetings, proposals, cards]);
+  }, [agents, contacts, activities, proposals, cards]);
 
   const rankingVendas = useMemo<any[]>(() => {
     const list = [...teamAggregates].sort((a, b) => (b.revenue || 0) - (a.revenue || 0));
@@ -780,6 +895,7 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
     ? 'Todos os períodos'
     : periodPreset !== 'custom'
       ? {
+          all: 'Todos os períodos',
           today: 'Hoje',
           last7: 'Últimos 7 dias',
           last30: 'Últimos 30 dias',
@@ -805,17 +921,6 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
         <div className="flex-1 overflow-auto bg-[#e6e6e6] dark:bg-[#050505] relative">
           <div className="inline-block min-w-full align-middle bg-white dark:bg-[#111111]">
             <div className="p-4 space-y-4">
-              {/* Filtros avançados no topo */}
-              <div className="border border-[#d4d4d4] dark:border-gray-800 bg-white dark:bg-[#0f0f0f] shadow-sm">
-                <QueryBuilderSidebar
-                  pipelines={pipelines || []}
-                  tags={availableTags || []}
-                  agents={agents || []}
-                  selectedWorkspaceId={selectedWorkspaceId || workspaces?.[0]?.workspace_id || ''}
-                  onFiltersChange={setSidebarFilters}
-                />
-              </div>
-
               {/* Área Principal */}
               <div className="flex flex-col overflow-hidden border border-[#d4d4d4] dark:border-gray-800 bg-white dark:bg-[#0f0f0f] shadow-sm p-4 space-y-6 min-h-0">
         {isLoading && (
@@ -827,139 +932,268 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
 
         {/* Funil – Indicadores */}
         <section className="space-y-3">
-          <div className="flex items-center gap-2 text-sm font-semibold text-gray-900 dark:text-gray-100">
-            <Filter className="h-4 w-4" />
-            Funil – Indicadores
+          <div className="flex items-center justify-between gap-2">
+            <div className="flex items-center gap-2 text-sm font-semibold text-gray-900 dark:text-gray-100">
+              <Filter className="h-4 w-4" />
+              Funil – Indicadores
+            </div>
+
+            <div className="flex items-center gap-2">
+              {canEditIndicatorFunnels && (
+                <>
+                  <Button
+                    variant="outline"
+                    className="h-8 px-3 text-xs rounded-none border-[#d4d4d4] dark:border-gray-600"
+                    onClick={() => {
+                      setDraftFunnels(savedSnapshot);
+                      setFunnelsDirty(false);
+                      setRehydrateNonce((n) => n + 1);
+                    }}
+                    disabled={!funnelsDirty || loadingFunnelsPreset}
+                  >
+                    Desfazer
+                  </Button>
+                  <Button
+                    className="h-8 px-3 text-xs rounded-none"
+                    onClick={async () => {
+                      const ok = await savePreset(draftFunnels);
+                      if (ok) {
+                        setSavedSnapshot(draftFunnels);
+                        setFunnelsDirty(false);
+                      }
+                    }}
+                    disabled={!funnelsDirty || loadingFunnelsPreset}
+                  >
+                    Salvar
+                  </Button>
+                </>
+              )}
+            </div>
           </div>
-          <div className="grid grid-cols-1 md:grid-cols-12 gap-3 items-start">
-            <Card className="rounded-none border-gray-200 dark:border-gray-700 md:col-span-4 h-fit dark:bg-[#1b1b1b]">
-              <CardHeader className="py-2 px-3">
-                <CardTitle className="text-xs text-gray-700 dark:text-gray-200">Leads</CardTitle>
-              </CardHeader>
-              <CardContent className="p-3">
-                <div className="grid grid-cols-1 gap-1 text-[11px] text-gray-900 dark:text-gray-100">
-                  <div className="flex justify-between border-b border-gray-50 dark:border-gray-800 pb-1"><span>Leads recebidos</span><strong>{leadsReceived}</strong></div>
-                  <div className="flex justify-between border-b border-gray-50 dark:border-gray-800 pb-1"><span>Conversas ativas</span><strong>{activeConversations}</strong></div>
-                  <div className="flex justify-between border-b border-gray-50 dark:border-gray-800 pb-1"><span>Leads qualificados</span><strong>{leadsQualified}</strong></div>
-                  <div className="flex justify-between border-b border-gray-50 dark:border-gray-800 pb-1"><span>Leads com oferta</span><strong>{leadsOffer}</strong></div>
-                  <div className="flex justify-between border-b border-gray-50 dark:border-gray-800 pb-1"><span>Vendas realizadas</span><strong>{leadsWon}</strong></div>
-                  <div className="flex justify-between border-b border-gray-50 dark:border-gray-800 pb-1"><span>Leads perdidos 1</span><strong>{leadsLost1}</strong></div>
-                  <div className="flex justify-between border-b border-gray-50 dark:border-gray-800 pb-1"><span>Leads perdidos 2</span><strong>{leadsLost2}</strong></div>
-                  <div className="flex justify-between"><span>Leads perdidos 3</span><strong>{leadsLost3}</strong></div>
-                </div>
-              </CardContent>
-            </Card>
-            <Card className="rounded-none border-gray-200 dark:border-gray-700 md:col-span-8 dark:bg-[#1b1b1b]">
-              <CardHeader className="py-2 px-3">
-                <CardTitle className="text-xs text-gray-700 dark:text-gray-200">Leads por Etiqueta / Produto</CardTitle>
-              </CardHeader>
-              <CardContent className="p-3 grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="h-64">
-                  <p className="text-[11px] text-gray-600 dark:text-gray-300 mb-1 font-medium">Etiquetas (%)</p>
-                  {leadsByTag.length === 0 ? (
-                    <div className="text-[11px] text-gray-500 dark:text-gray-400 h-full flex items-center justify-center border border-dashed border-gray-200 dark:border-gray-800">Sem dados de etiquetas</div>
-                  ) : (
-                    <ResponsiveContainer width="100%" height="100%">
-                      <PieChart>
-                        <Pie
-                          data={leadsByTag}
-                          dataKey="value"
-                          nameKey="name"
-                          outerRadius={85}
-                          label={({ cx, cy, midAngle, innerRadius, outerRadius, percent }) => {
-                            const radius = outerRadius * 1.1;
-                            const x = cx + radius * Math.cos(-midAngle * (Math.PI / 180));
-                            const y = cy + radius * Math.sin(-midAngle * (Math.PI / 180));
-                            return (
-                              <text x={x} y={y} fill={isDark ? '#e2e8f0' : '#4b5563'} textAnchor={x > cx ? 'start' : 'end'} dominantBaseline="central" fontSize="10">
-                                {`${(percent * 100).toFixed(1)}%`}
-                              </text>
-                            );
-                          }}
-                          labelLine={{ stroke: isDark ? '#4b5563' : '#d1d5db' }}
-                        >
-                          {leadsByTag.map((_, i) => (
-                            <Cell key={i} fill={pieColors[i % pieColors.length]} />
-                          ))}
-                        </Pie>
-                        <ReTooltip 
-                          formatter={(value: number, _, entry: any) => [`${value}`, entry?.name]}
-                          contentStyle={{ 
-                            backgroundColor: isDark ? '#1b1b1b' : '#fff', 
-                            borderColor: isDark ? '#374151' : '#d4d4d4',
-                            color: isDark ? '#fff' : '#000',
-                            fontSize: '10px',
-                            borderRadius: '0px'
-                          }}
-                          itemStyle={{ color: isDark ? '#e2e8f0' : '#374151' }}
-                        />
-                        <Legend 
-                          verticalAlign="bottom" 
-                          height={36} 
-                          iconType="circle" 
-                          wrapperStyle={{ 
-                            fontSize: '10px',
-                            color: isDark ? '#e2e8f0' : '#4b5563' 
-                          }} 
-                        />
-                      </PieChart>
-                    </ResponsiveContainer>
+
+          {/* Builder: múltiplos funis */}
+          <div className="space-y-3">
+            {draftFunnels.map((f: any, idx: number) => (
+              <div key={f.id} className="border border-gray-200 dark:border-gray-700 bg-white dark:bg-[#0f0f0f]">
+                <div className="flex items-center justify-between px-3 py-2 border-b border-gray-200 dark:border-gray-700 bg-[#f3f3f3] dark:bg-[#1a1a1a]">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <span className="text-xs font-semibold text-gray-900 dark:text-gray-100 truncate">
+                      {f.name || `Funil ${idx + 1}`}
+                    </span>
+                  </div>
+                  {canEditIndicatorFunnels && (
+                    <div className="flex items-center gap-2">
+                      <Button
+                        variant="outline"
+                        className="h-7 px-2 text-[11px] rounded-none border-[#d4d4d4] dark:border-gray-600"
+                        onClick={() => {
+                          setDraftFunnels((prev: any[]) => prev.map((x) => (x.id === f.id ? { ...x, filters: [] } : x)));
+                          setFunnelsDirty(true);
+                        }}
+                      >
+                        Limpar
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        className="h-7 px-2 text-[11px] rounded-none text-red-600 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-900/20"
+                        onClick={() => {
+                          setDraftFunnels((prev: any[]) => prev.filter((x) => x.id !== f.id));
+                          setFunnelsDirty(true);
+                        }}
+                        disabled={draftFunnels.length <= 1}
+                      >
+                        Remover
+                      </Button>
+                    </div>
                   )}
                 </div>
-                <div className="h-64 border-l border-gray-100 dark:border-gray-800 pl-4">
-                  <p className="text-[11px] text-gray-600 dark:text-gray-300 mb-1 font-medium">Produtos (%)</p>
-                  {leadsByProduct.length === 0 ? (
-                    <div className="text-[11px] text-gray-500 dark:text-gray-400 h-full flex items-center justify-center border border-dashed border-gray-200 dark:border-gray-800">Sem dados de produtos</div>
-                  ) : (
-                    <ResponsiveContainer width="100%" height="100%">
-                      <PieChart>
-                        <Pie
-                          data={leadsByProduct}
-                          dataKey="value"
-                          nameKey="name"
-                          outerRadius={85}
-                          label={({ cx, cy, midAngle, innerRadius, outerRadius, percent }) => {
-                            const radius = outerRadius * 1.1;
-                            const x = cx + radius * Math.cos(-midAngle * (Math.PI / 180));
-                            const y = cy + radius * Math.sin(-midAngle * (Math.PI / 180));
-                            return (
-                              <text x={x} y={y} fill={isDark ? '#e2e8f0' : '#4b5563'} textAnchor={x > cx ? 'start' : 'end'} dominantBaseline="central" fontSize="10">
-                                {`${(percent * 100).toFixed(1)}%`}
-                              </text>
-                            );
-                          }}
-                          labelLine={{ stroke: isDark ? '#4b5563' : '#d1d5db' }}
-                        >
-                          {leadsByProduct.map((_, i) => (
-                            <Cell key={i} fill={pieColors[(i + 3) % pieColors.length]} />
-                          ))}
-                        </Pie>
-                        <ReTooltip 
-                          formatter={(value: number, _, entry: any) => [`${value}`, entry?.name]}
-                          contentStyle={{ 
-                            backgroundColor: isDark ? '#1b1b1b' : '#fff', 
-                            borderColor: isDark ? '#374151' : '#d4d4d4',
-                            color: isDark ? '#fff' : '#000',
-                            fontSize: '10px',
-                            borderRadius: '0px'
-                          }}
-                          itemStyle={{ color: isDark ? '#e2e8f0' : '#374151' }}
-                        />
-                        <Legend 
-                          verticalAlign="bottom" 
-                          height={36} 
-                          iconType="circle" 
-                          wrapperStyle={{ 
-                            fontSize: '10px',
-                            color: isDark ? '#e2e8f0' : '#4b5563' 
-                          }} 
-                        />
-                      </PieChart>
-                    </ResponsiveContainer>
-                  )}
-                </div>
-              </CardContent>
-            </Card>
+
+                <QueryBuilderSidebar
+                  pipelines={pipelines || []}
+                  tags={availableTags || []}
+                  products={availableProducts || []}
+                  agents={agents || []}
+                  selectedWorkspaceId={selectedWorkspaceId || workspaces?.[0]?.workspace_id || ''}
+                  onFiltersChange={canEditIndicatorFunnels ? ((filters) => {
+                    const normalize = (items: any[]) =>
+                      JSON.stringify(
+                        [...(items || [])].sort((a, b) =>
+                          `${a.type}|${a.value}|${a.operator || ''}`.localeCompare(`${b.type}|${b.value}|${b.operator || ''}`)
+                        )
+                      );
+                    setDraftFunnels((prev: any[]) => {
+                      const current = prev.find((x) => x.id === f.id);
+                      if (normalize(current?.filters || []) === normalize(filters || [])) return prev;
+                      return prev.map((x) => (x.id === f.id ? { ...x, filters } : x));
+                    });
+                    setFunnelsDirty(true);
+                  }) : undefined}
+                  initialFilters={f.filters}
+                  rehydrateNonce={rehydrateNonce}
+                  showHeader={false}
+                  disabled={!canEditIndicatorFunnels}
+                />
+              </div>
+            ))}
+
+            {canEditIndicatorFunnels && (
+              <div className="flex justify-end">
+                <Button
+                  variant="outline"
+                  className="h-8 px-3 text-xs rounded-none border-[#d4d4d4] dark:border-gray-600"
+                  onClick={() => {
+                    const nextIdx = draftFunnels.length + 1;
+                    setDraftFunnels((prev: any[]) => [
+                      ...prev,
+                      { id: `funnel-${Date.now()}-${nextIdx}`, name: `Funil ${nextIdx}`, filters: [] },
+                    ]);
+                    setFunnelsDirty(true);
+                  }}
+                >
+                  + Adicionar funil
+                </Button>
+              </div>
+            )}
+          </div>
+
+          {/* Render: indicadores por funil */}
+          <div className="space-y-3">
+            {indicatorFunnels.map((f: any) => (
+              <div key={f.id} className="grid grid-cols-1 md:grid-cols-12 gap-3 items-start">
+                <Card className="rounded-none border-gray-200 dark:border-gray-700 md:col-span-4 h-fit dark:bg-[#1b1b1b]">
+                  <CardHeader className="py-2 px-3">
+                    <CardTitle className="text-xs text-gray-700 dark:text-gray-200">
+                      Leads — {f.name}
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="p-3">
+                    <div className="grid grid-cols-1 gap-1 text-[11px] text-gray-900 dark:text-gray-100">
+                      <div className="flex justify-between border-b border-gray-50 dark:border-gray-800 pb-1"><span>Leads recebidos</span><strong>{f.leadsReceived}</strong></div>
+                      <div className="flex justify-between border-b border-gray-50 dark:border-gray-800 pb-1"><span>Leads qualificados</span><strong>{f.leadsQualified}</strong></div>
+                      <div className="flex justify-between border-b border-gray-50 dark:border-gray-800 pb-1"><span>Vendas realizadas</span><strong>{f.leadsWon}</strong></div>
+                      <div className="flex justify-between border-b border-gray-50 dark:border-gray-800 pb-1"><span>Leads perdidos 1</span><strong>{f.leadsLost1}</strong></div>
+                      <div className="flex justify-between border-b border-gray-50 dark:border-gray-800 pb-1"><span>Leads perdidos 2</span><strong>{f.leadsLost2}</strong></div>
+                      <div className="flex justify-between"><span>Leads perdidos 3</span><strong>{f.leadsLost3}</strong></div>
+                    </div>
+                  </CardContent>
+                </Card>
+
+                <Card className="rounded-none border-gray-200 dark:border-gray-700 md:col-span-8 dark:bg-[#1b1b1b]">
+                  <CardHeader className="py-2 px-3">
+                    <CardTitle className="text-xs text-gray-700 dark:text-gray-200">
+                      Leads por Etiqueta / Produto — {f.name}
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="p-3 grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="h-64">
+                      <p className="text-[11px] text-gray-600 dark:text-gray-300 mb-1 font-medium">Etiquetas (%)</p>
+                      {f.leadsByTag.length === 0 ? (
+                        <div className="text-[11px] text-gray-500 dark:text-gray-400 h-full flex items-center justify-center border border-dashed border-gray-200 dark:border-gray-800">Sem dados de etiquetas</div>
+                      ) : (
+                        <ResponsiveContainer width="100%" height="100%">
+                          <PieChart>
+                            <Pie
+                              data={f.leadsByTag}
+                              dataKey="value"
+                              nameKey="name"
+                              outerRadius={85}
+                              label={({ cx, cy, midAngle, outerRadius, percent }) => {
+                                const radius = outerRadius * 1.1;
+                                const x = cx + radius * Math.cos(-midAngle * (Math.PI / 180));
+                                const y = cy + radius * Math.sin(-midAngle * (Math.PI / 180));
+                                return (
+                                  <text x={x} y={y} fill={isDark ? '#e2e8f0' : '#4b5563'} textAnchor={x > cx ? 'start' : 'end'} dominantBaseline="central" fontSize="10">
+                                    {`${(percent * 100).toFixed(1)}%`}
+                                  </text>
+                                );
+                              }}
+                              labelLine={{ stroke: isDark ? '#4b5563' : '#d1d5db' }}
+                            >
+                              {f.leadsByTag.map((_: any, i: number) => (
+                                <Cell key={i} fill={pieColors[i % pieColors.length]} />
+                              ))}
+                            </Pie>
+                            <ReTooltip
+                              formatter={(value: number, _: any, entry: any) => [`${value}`, entry?.name]}
+                              contentStyle={{
+                                backgroundColor: isDark ? '#1b1b1b' : '#fff',
+                                borderColor: isDark ? '#374151' : '#d4d4d4',
+                                color: isDark ? '#fff' : '#000',
+                                fontSize: '10px',
+                                borderRadius: '0px',
+                              }}
+                              itemStyle={{ color: isDark ? '#e2e8f0' : '#374151' }}
+                            />
+                            <Legend
+                              verticalAlign="bottom"
+                              height={36}
+                              iconType="circle"
+                              wrapperStyle={{
+                                fontSize: '10px',
+                                color: isDark ? '#e2e8f0' : '#4b5563',
+                              }}
+                            />
+                          </PieChart>
+                        </ResponsiveContainer>
+                      )}
+                    </div>
+
+                    <div className="h-64 border-l border-gray-100 dark:border-gray-800 pl-4">
+                      <p className="text-[11px] text-gray-600 dark:text-gray-300 mb-1 font-medium">Produtos (%)</p>
+                      {f.leadsByProduct.length === 0 ? (
+                        <div className="text-[11px] text-gray-500 dark:text-gray-400 h-full flex items-center justify-center border border-dashed border-gray-200 dark:border-gray-800">Sem dados de produtos</div>
+                      ) : (
+                        <ResponsiveContainer width="100%" height="100%">
+                          <PieChart>
+                            <Pie
+                              data={f.leadsByProduct}
+                              dataKey="value"
+                              nameKey="name"
+                              outerRadius={85}
+                              label={({ cx, cy, midAngle, outerRadius, percent }) => {
+                                const radius = outerRadius * 1.1;
+                                const x = cx + radius * Math.cos(-midAngle * (Math.PI / 180));
+                                const y = cy + radius * Math.sin(-midAngle * (Math.PI / 180));
+                                return (
+                                  <text x={x} y={y} fill={isDark ? '#e2e8f0' : '#4b5563'} textAnchor={x > cx ? 'start' : 'end'} dominantBaseline="central" fontSize="10">
+                                    {`${(percent * 100).toFixed(1)}%`}
+                                  </text>
+                                );
+                              }}
+                              labelLine={{ stroke: isDark ? '#4b5563' : '#d1d5db' }}
+                            >
+                              {f.leadsByProduct.map((_: any, i: number) => (
+                                <Cell key={i} fill={pieColors[(i + 3) % pieColors.length]} />
+                              ))}
+                            </Pie>
+                            <ReTooltip
+                              formatter={(value: number, _: any, entry: any) => [`${value}`, entry?.name]}
+                              contentStyle={{
+                                backgroundColor: isDark ? '#1b1b1b' : '#fff',
+                                borderColor: isDark ? '#374151' : '#d4d4d4',
+                                color: isDark ? '#fff' : '#000',
+                                fontSize: '10px',
+                                borderRadius: '0px',
+                              }}
+                              itemStyle={{ color: isDark ? '#e2e8f0' : '#374151' }}
+                            />
+                            <Legend
+                              verticalAlign="bottom"
+                              height={36}
+                              iconType="circle"
+                              wrapperStyle={{
+                                fontSize: '10px',
+                                color: isDark ? '#e2e8f0' : '#4b5563',
+                              }}
+                            />
+                          </PieChart>
+                        </ResponsiveContainer>
+                      )}
+                    </div>
+                  </CardContent>
+                </Card>
+              </div>
+            ))}
           </div>
         </section>
 

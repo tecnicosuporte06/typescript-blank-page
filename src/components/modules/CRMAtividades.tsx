@@ -481,52 +481,57 @@ export function CRMAtividades() {
       >
         {viewMode === "list" ? (
           <div className="inline-block min-w-full align-middle bg-white dark:bg-[#111111]">
+            {/*
+              Padronização de largura das colunas no modo lista:
+              - Usar o mesmo tamanho atual do Pipeline (150px)
+              - Se exceder, usar truncate (reticências) e title para ver completo no hover
+            */}
             <table className="min-w-full border-collapse bg-white text-xs font-sans dark:bg-[#111111] dark:text-gray-100">
             <thead className="bg-[#f3f3f3] sticky top-0 z-10 dark:bg-[#2a2a2a]">
               <tr>
-                <th className="border border-[#d4d4d4] px-2 py-1 text-left font-semibold text-gray-700 min-w-[150px] group hover:bg-[#e1e1e1] cursor-pointer dark:border-gray-700 dark:text-gray-200 dark:hover:bg-[#2a2a2a]">
+                <th className="border border-[#d4d4d4] px-2 py-1 text-left font-semibold text-gray-700 min-w-[150px] w-[150px] max-w-[150px] group hover:bg-[#e1e1e1] cursor-pointer dark:border-gray-700 dark:text-gray-200 dark:hover:bg-[#2a2a2a]">
                   <div className="flex items-center gap-1">
                     <MapIcon className="h-3 w-3 text-gray-400" />
                     <span>Pipeline</span>
                   </div>
                 </th>
-                <th className="border border-[#d4d4d4] px-2 py-1 text-left font-semibold text-gray-700 min-w-[150px] group hover:bg-[#e1e1e1] cursor-pointer dark:border-gray-700 dark:text-gray-200 dark:hover:bg-[#2a2a2a]">
-                  <div className="flex items-center gap-1">
+                <th className="border border-[#d4d4d4] px-2 py-1 text-left font-semibold text-gray-700 min-w-[140px] w-[140px] max-w-[140px] group hover:bg-[#e1e1e1] cursor-pointer dark:border-gray-700 dark:text-gray-200 dark:hover:bg-[#2a2a2a]">
+                  <div className="flex items-center gap-1 whitespace-nowrap">
                     <Tag className="h-3 w-3 text-gray-400" />
                     <span>Tipo da Atividade</span>
                   </div>
                 </th>
-                <th className="border border-[#d4d4d4] px-2 py-1 text-left font-semibold text-gray-700 min-w-[200px] group hover:bg-[#e1e1e1] cursor-pointer dark:border-gray-700 dark:text-gray-200 dark:hover:bg-[#2a2a2a]">
+                <th className="border border-[#d4d4d4] px-2 py-1 text-left font-semibold text-gray-700 min-w-[150px] w-[150px] max-w-[150px] group hover:bg-[#e1e1e1] cursor-pointer dark:border-gray-700 dark:text-gray-200 dark:hover:bg-[#2a2a2a]">
                   <div className="flex items-center gap-1">
                     <AlertCircle className="h-3 w-3 text-gray-400" />
                     <span>Assunto</span>
                   </div>
                 </th>
-                <th className="border border-[#d4d4d4] px-2 py-1 text-center font-semibold text-gray-700 min-w-[120px] group hover:bg-[#e1e1e1] cursor-pointer dark:border-gray-700 dark:text-gray-200 dark:hover:bg-[#2a2a2a]">
+                <th className="border border-[#d4d4d4] px-2 py-1 text-center font-semibold text-gray-700 min-w-[150px] w-[150px] max-w-[150px] group hover:bg-[#e1e1e1] cursor-pointer dark:border-gray-700 dark:text-gray-200 dark:hover:bg-[#2a2a2a]">
                    <div className="flex items-center justify-center gap-1">
                     <CalendarClock className="h-3 w-3 text-gray-400" />
                     <span>Data Prevista</span>
                   </div>
                 </th>
-                <th className="border border-[#d4d4d4] px-2 py-1 text-left font-semibold text-gray-700 min-w-[150px] group hover:bg-[#e1e1e1] cursor-pointer dark:border-gray-700 dark:text-gray-200 dark:hover:bg-[#2a2a2a]">
+                <th className="border border-[#d4d4d4] px-2 py-1 text-left font-semibold text-gray-700 min-w-[150px] w-[150px] max-w-[150px] group hover:bg-[#e1e1e1] cursor-pointer dark:border-gray-700 dark:text-gray-200 dark:hover:bg-[#2a2a2a]">
                    <div className="flex items-center gap-1">
                     <Columns className="h-3 w-3 text-gray-400" />
                     <span>Etapa</span>
                   </div>
                 </th>
-                <th className="border border-[#d4d4d4] px-2 py-1 text-left font-semibold text-gray-700 min-w-[200px] group hover:bg-[#e1e1e1] cursor-pointer dark:border-gray-700 dark:text-gray-200 dark:hover:bg-[#2a2a2a]">
+                <th className="border border-[#d4d4d4] px-2 py-1 text-left font-semibold text-gray-700 min-w-[150px] w-[150px] max-w-[150px] group hover:bg-[#e1e1e1] cursor-pointer dark:border-gray-700 dark:text-gray-200 dark:hover:bg-[#2a2a2a]">
                    <div className="flex items-center gap-1">
                     <Briefcase className="h-3 w-3 text-gray-400" />
                     <span>Nome</span>
                   </div>
                 </th>
-                <th className="border border-[#d4d4d4] px-2 py-1 text-left font-semibold text-gray-700 min-w-[150px] group hover:bg-[#e1e1e1] cursor-pointer dark:border-gray-700 dark:text-gray-200 dark:hover:bg-[#2a2a2a]">
+                <th className="border border-[#d4d4d4] px-2 py-1 text-left font-semibold text-gray-700 min-w-[150px] w-[150px] max-w-[150px] group hover:bg-[#e1e1e1] cursor-pointer dark:border-gray-700 dark:text-gray-200 dark:hover:bg-[#2a2a2a]">
                    <div className="flex items-center gap-1">
                     <User className="h-3 w-3 text-gray-400" />
                     <span>Responsável</span>
                   </div>
                 </th>
-                <th className="border border-[#d4d4d4] px-2 py-1 text-center font-semibold text-gray-700 min-w-[120px] group hover:bg-[#e1e1e1] cursor-pointer dark:border-gray-700 dark:text-gray-200 dark:hover:bg-[#2a2a2a]">
+                <th className="border border-[#d4d4d4] px-2 py-1 text-center font-semibold text-gray-700 min-w-[150px] w-[150px] max-w-[150px] group hover:bg-[#e1e1e1] cursor-pointer dark:border-gray-700 dark:text-gray-200 dark:hover:bg-[#2a2a2a]">
                    <div className="flex items-center justify-center gap-1">
                     <Phone className="h-3 w-3 text-gray-400" />
                     <span>Telefone</span>
@@ -579,24 +584,37 @@ export function CRMAtividades() {
               ) : (
                 filteredActivities.map((activity) => (
                   <tr key={activity.id} className="hover:bg-blue-50 group h-[32px] dark:hover:bg-[#1f2937]">
-                    <td className="border border-[#e0e0e0] px-2 py-0 whitespace-nowrap dark:border-gray-700 dark:text-gray-200">
-                      {activity.pipeline_name}
+                    <td className="border border-[#e0e0e0] px-2 py-0 w-[150px] max-w-[150px] dark:border-gray-700 dark:text-gray-200">
+                      <div className="truncate" title={activity.pipeline_name || ''}>
+                        {activity.pipeline_name}
+                      </div>
                     </td>
-                    <td className="border border-[#e0e0e0] px-2 py-0 whitespace-nowrap dark:border-gray-700 dark:text-gray-200">
-                      {activity.type || "-"}
+                    <td className="border border-[#e0e0e0] px-2 py-0 w-[140px] max-w-[140px] dark:border-gray-700 dark:text-gray-200">
+                      <div className="truncate" title={activity.type || ''}>
+                        {activity.type || "-"}
+                      </div>
                     </td>
-                    <td className="border border-[#e0e0e0] px-2 py-0 whitespace-nowrap dark:border-gray-700 dark:text-gray-200 font-medium">
-                      {activity.subject}
+                    <td className="border border-[#e0e0e0] px-2 py-0 w-[150px] max-w-[150px] dark:border-gray-700 dark:text-gray-200 font-medium">
+                      <div className="truncate" title={activity.subject || ''}>
+                        {activity.subject}
+                      </div>
                     </td>
-                    <td className="border border-[#e0e0e0] px-2 py-0 text-center whitespace-nowrap dark:border-gray-700 dark:text-gray-200">
-                      {format(new Date(activity.scheduled_for), "dd/MM/yyyy HH:mm", { locale: ptBR })}
+                    <td className="border border-[#e0e0e0] px-2 py-0 text-center w-[150px] max-w-[150px] dark:border-gray-700 dark:text-gray-200">
+                      <div
+                        className="truncate mx-auto"
+                        title={format(new Date(activity.scheduled_for), "dd/MM/yyyy HH:mm", { locale: ptBR })}
+                      >
+                        {format(new Date(activity.scheduled_for), "dd/MM/yyyy HH:mm", { locale: ptBR })}
+                      </div>
                     </td>
-                    <td className="border border-[#e0e0e0] px-2 py-0 whitespace-nowrap dark:border-gray-700 dark:text-gray-200">
-                      <Badge variant="outline" className="rounded-none font-normal border-gray-300 dark:border-gray-600">
-                        {activity.stage_name}
-                      </Badge>
+                    <td className="border border-[#e0e0e0] px-2 py-0 w-[150px] max-w-[150px] dark:border-gray-700 dark:text-gray-200">
+                      <div className="truncate" title={activity.stage_name || ''}>
+                        <Badge variant="outline" className="rounded-none font-normal border-gray-300 dark:border-gray-600 max-w-full truncate">
+                          {activity.stage_name}
+                        </Badge>
+                      </div>
                     </td>
-                      <td className="border border-[#e0e0e0] px-2 py-0 whitespace-nowrap dark:border-gray-700 dark:text-gray-200">
+                      <td className="border border-[#e0e0e0] px-2 py-0 w-[150px] max-w-[150px] dark:border-gray-700 dark:text-gray-200">
                         {activity.pipeline_card_id ? (
                           <button
                             type="button"
@@ -604,17 +622,25 @@ export function CRMAtividades() {
                             className="text-black dark:text-white underline hover:opacity-80 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary rounded-sm"
                             title="Ver detalhes do negócio"
                           >
-                            {activity.contact_name && activity.contact_name !== '-' ? activity.contact_name : (activity.contact_phone || 'Sem nome')}
+                            <div className="truncate max-w-[150px]" title={activity.contact_name && activity.contact_name !== '-' ? activity.contact_name : (activity.contact_phone || 'Sem nome')}>
+                              {activity.contact_name && activity.contact_name !== '-' ? activity.contact_name : (activity.contact_phone || 'Sem nome')}
+                            </div>
                           </button>
                         ) : (
-                          activity.contact_name && activity.contact_name !== '-' ? activity.contact_name : (activity.contact_phone || 'Sem nome')
+                          <div className="truncate" title={activity.contact_name && activity.contact_name !== '-' ? activity.contact_name : (activity.contact_phone || 'Sem nome')}>
+                            {activity.contact_name && activity.contact_name !== '-' ? activity.contact_name : (activity.contact_phone || 'Sem nome')}
+                          </div>
                         )}
                       </td>
-                    <td className="border border-[#e0e0e0] px-2 py-0 whitespace-nowrap dark:border-gray-700 dark:text-gray-200">
-                      {activity.responsible_name}
+                    <td className="border border-[#e0e0e0] px-2 py-0 w-[150px] max-w-[150px] dark:border-gray-700 dark:text-gray-200">
+                      <div className="truncate" title={activity.responsible_name || ''}>
+                        {activity.responsible_name}
+                      </div>
                     </td>
-                    <td className="border border-[#e0e0e0] px-2 py-0 text-center whitespace-nowrap font-mono dark:border-gray-700 dark:text-gray-200">
-                      {activity.contact_phone}
+                    <td className="border border-[#e0e0e0] px-2 py-0 text-center w-[150px] max-w-[150px] font-mono dark:border-gray-700 dark:text-gray-200">
+                      <div className="truncate mx-auto" title={activity.contact_phone || ''}>
+                        {activity.contact_phone}
+                      </div>
                     </td>
                   </tr>
                 ))
@@ -629,12 +655,12 @@ export function CRMAtividades() {
             ) : kanbanColumns.length === 0 ? (
               <div className="text-gray-500 dark:text-gray-400 text-sm">Nenhuma atividade encontrada.</div>
             ) : (
-              <div className="h-full overflow-x-auto">
-                <div className="flex gap-3 h-full items-stretch">
+              <div className="h-full overflow-x-hidden">
+                <div className="flex gap-3 h-full items-stretch w-full min-w-0">
                 {kanbanColumns.map((col) => (
                   <div
                     key={col.name}
-                    className="w-[280px] min-w-[280px] bg-white border border-[#d4d4d4] dark:bg-[#111111] dark:border-gray-700 rounded-none flex flex-col h-full"
+                    className="flex-1 min-w-0 bg-white border border-[#d4d4d4] dark:bg-[#111111] dark:border-gray-700 rounded-none flex flex-col h-full"
                   >
                     <div className="shrink-0 bg-[#f3f3f3] dark:bg-[#3a3a3a] border-b border-[#d4d4d4] dark:border-gray-700 px-2 py-2">
                       <div className="flex items-center justify-between gap-2">

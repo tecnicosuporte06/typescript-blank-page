@@ -1862,12 +1862,12 @@ export function CRMContatos() {
               />
             </div>
 
-            {/* Campos obrigatórios do workspace */}
+            {/* Campos obrigatórios da empresa */}
             {workspaceFields.length > 0 && (
               <div>
-                <Label className="text-sm font-medium flex items-center gap-2">
-                  <Pin className="h-4 w-4 text-primary" />
-                  Campos Padrões
+                <Label className="text-sm font-medium flex items-center gap-2 text-gray-700 dark:text-gray-200">
+                  <Pin className="h-4 w-4 text-gray-500 dark:text-gray-400" />
+                  Campos obrigatórios da empresa
                 </Label>
                 <div className="space-y-3 mt-2">
                   {workspaceFields.map((field) => {
@@ -1876,10 +1876,10 @@ export function CRMContatos() {
                     return (
                       <div
                         key={field.id}
-                        className="p-3 bg-warning/10 dark:bg-warning/20 border border-warning/20 dark:border-warning/30 rounded-lg"
+                        className="p-3 bg-white dark:bg-[#1a1a1a] border border-gray-200 dark:border-gray-700 rounded-lg"
                       >
-                        <Label className="text-xs font-bold uppercase text-warning dark:text-warning">
-                          {field.field_name}
+                        <Label className="text-xs font-bold uppercase text-gray-700 dark:text-gray-300">
+                          {field.field_name} *
                         </Label>
                         <Input
                           value={currentValue}
@@ -1894,7 +1894,7 @@ export function CRMContatos() {
                             }
                           }}
                           placeholder={`Digite ${field.field_name.toLowerCase()}`}
-                          className="mt-1 border-primary dark:border-primary dark:bg-[#1a1a1a] dark:text-gray-100 dark:placeholder:text-gray-500"
+                          className="mt-1 border-gray-300 dark:border-gray-700 dark:bg-[#161616] dark:text-gray-100 dark:placeholder:text-gray-500"
                         />
                       </div>
                     );

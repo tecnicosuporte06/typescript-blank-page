@@ -65,7 +65,8 @@ export interface WhatsAppConversation {
   _updated_at?: number; // ✅ Timestamp para forçar re-render
 }
 
-export const useWhatsAppConversations = () => {
+export const useWhatsAppConversations = (options?: { enabled?: boolean }) => {
+  const enabled = options?.enabled !== false;
   const [conversations, setConversations] = useState<WhatsAppConversation[]>([]);
   const [loading, setLoading] = useState(true);
   const [isLoadingMoreConversations, setIsLoadingMoreConversations] = useState(false);
@@ -73,15 +74,7 @@ export const useWhatsAppConversations = () => {
   const { selectedWorkspace } = useWorkspace();
   const { user, logout } = useAuth();
   const { getHeaders } = useWorkspaceHeaders();
-  
-  console.log('🎯🎯🎯 [useWhatsAppConversations] Hook EXECUTADO/RENDERIZADO:', {
-    hasSelectedWorkspace: !!selectedWorkspace,
-    workspaceId: selectedWorkspace?.workspace_id,
-    conversationsCount: conversations.length,
-    timestamp: new Date().toISOString()
-  });
-  
-  console.log('🚀🚀🚀 [DEBUG] Próximo passo: useEffect do Realtime deveria executar');
+  // Evitar logs extremamente verbosos que podem travar a UI
   
   // Refs simples
   const sendingRef = useRef<Map<string, boolean>>(new Map());
@@ -158,6 +151,13 @@ export const useWhatsAppConversations = () => {
 
   const fetchConversations = useCallback(async (options?: { search?: string | null }): Promise<boolean> => {
     try {
+      if (!enabled) {
+        setLoading(false);
+        setConversations([]);
+        setHasMoreConversations(false);
+        nextCursorRef.current = null;
+        return false;
+      }
       setLoading(true);
       console.log('🔄 Carregando conversas (primeira página)...');
 
@@ -207,33 +207,10 @@ export const useWhatsAppConversations = () => {
       if (data?.counts) setConversationCounts(data.counts);
       const items = data?.items ?? [];
 
-      // ✅ Se retornou 0 conversas, tenta novamente após 1 segundo (comportamento atual)
+      // Se retornar 0 conversas, não fazer retry automático (evita loops/travas).
       if (items.length === 0) {
-        console.log('⏳ Nenhuma conversa retornada, tentando novamente em 1s...');
-        await new Promise(resolve => setTimeout(resolve, 1000));
-        if (fetchTokenRef.current !== myToken) return false; // cancelado
-
-        const { data: retryData, error: retryError } = await fetchPage(null);
-        if (retryError) throw retryError;
-        if (retryData?.counts) setConversationCounts(retryData.counts);
-
-        const retryItems = retryData?.items ?? [];
-        if (retryItems.length === 0) {
-          setLoading(false);
-          return false;
-        }
-
-        for (const raw of retryItems) {
-          const prev = conversationsById.get(raw.id);
-          conversationsById.set(raw.id, formatConversationRecord(raw, prev));
-        }
-
-        gotAny = conversationsById.size > 0;
-        setConversations(sortConversationsByActivity(Array.from(conversationsById.values())));
-        nextCursorRef.current = retryData?.nextCursor || null;
-        setHasMoreConversations(!!nextCursorRef.current);
         setLoading(false);
-        return gotAny;
+        return false;
       }
 
       for (const raw of items) {
@@ -253,9 +230,10 @@ export const useWhatsAppConversations = () => {
       setLoading(false);
       return false;
     }
-  }, [getHeaders, selectedWorkspace?.workspace_id, sortConversationsByActivity]);
+  }, [enabled, getHeaders, selectedWorkspace?.workspace_id, sortConversationsByActivity]);
 
   const loadMoreConversations = useCallback(async () => {
+    if (!enabled) return;
     if (loadingMoreConversationsRef.current) return;
     const cursor = nextCursorRef.current;
     if (!cursor || !selectedWorkspace?.workspace_id) return;

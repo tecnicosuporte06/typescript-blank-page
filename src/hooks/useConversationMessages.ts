@@ -156,7 +156,11 @@ interface UseConversationMessagesReturn {
   clearMessages: () => void;
 }
 
-export function useConversationMessages(): UseConversationMessagesReturn {
+export function useConversationMessages(options?: {
+  enableBackgroundPreload?: boolean;
+  cacheTtlMs?: number;
+  debug?: boolean;
+}): UseConversationMessagesReturn {
   const [messages, setMessages] = useState<WhatsAppMessage[]>([]);
   const [loading, setLoading] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
@@ -168,9 +172,12 @@ export function useConversationMessages(): UseConversationMessagesReturn {
   const { getHeaders } = useWorkspaceHeaders();
   const { toast } = useToast();
   
+  const debug = options?.debug ?? false;
+  const enableBackgroundPreload = options?.enableBackgroundPreload ?? false;
+  const cacheTtlMs = options?.cacheTtlMs ?? 15_000;
+
   // Cache em memória
-  const cacheRef = useRef<Map<string, { messages: WhatsAppMessage[]; timestamp: number }>>(new Map());
-  const CACHE_TTL = 0; // ✅ Desabilitar cache para sempre buscar dados frescos
+  const cacheRef = useRef<Map<string, { messages: WhatsAppMessage[]; timestamp: number; cursorBefore: string | null; hasMore: boolean }>>(new Map());
 
   // ✅ ESTABILIZAR headers com useMemo
   const headers = useMemo(() => {
@@ -183,9 +190,11 @@ export function useConversationMessages(): UseConversationMessagesReturn {
   }, [getHeaders]);
 
   const clearMessages = useCallback(() => {
-    console.log('🧹 [useConversationMessages] clearMessages chamado:', {
-      timestamp: new Date().toISOString()
-    });
+    if (debug) {
+      console.log('🧹 [useConversationMessages] clearMessages chamado:', {
+        timestamp: new Date().toISOString()
+      });
+    }
     setMessages([]);
     setHasMore(true);
     setCursorBefore(null);
@@ -196,15 +205,30 @@ export function useConversationMessages(): UseConversationMessagesReturn {
     const workspaceId = selectedWorkspace?.workspace_id;
     if (!workspaceId) return;
 
-    console.log('🔄 [useConversationMessages] loadInitial chamado:', {
-      conversationId,
-      workspaceId,
-      forceRefresh,
-      timestamp: new Date().toISOString()
-    });
+    if (debug) {
+      console.log('🔄 [useConversationMessages] loadInitial chamado:', {
+        conversationId,
+        workspaceId,
+        forceRefresh,
+        timestamp: new Date().toISOString()
+      });
+    }
 
     const cacheKey = `${workspaceId}:${conversationId}`;
-    cacheRef.current.delete(cacheKey);
+    const cached = cacheRef.current.get(cacheKey);
+    const now = Date.now();
+    const isCacheValid = cached && now - cached.timestamp <= cacheTtlMs;
+
+    if (!forceRefresh && isCacheValid) {
+      setCurrentConversationId(conversationId);
+      setMessages(cached.messages);
+      setCursorBefore(cached.cursorBefore);
+      setHasMore(cached.hasMore);
+      return;
+    }
+    if (forceRefresh) {
+      cacheRef.current.delete(cacheKey);
+    }
 
     setLoading(true);
     setMessages([]);
@@ -231,60 +255,19 @@ export function useConversationMessages(): UseConversationMessagesReturn {
       setHasMore(!!nextBefore);
       setCursorBefore(nextBefore || null);
 
-      // ✅ DISPARAR CARREGAMENTO EM BACKGROUND APÓS O INICIAL
-      if (nextBefore) {
-        setTimeout(() => triggerBackgroundLoad(conversationId, nextBefore), 1000);
-      }
+      cacheRef.current.set(cacheKey, {
+        messages: normalizedMessages,
+        timestamp: Date.now(),
+        cursorBefore: nextBefore || null,
+        hasMore: !!nextBefore
+      });
 
     } catch (error: any) {
       console.error('❌ [useConversationMessages] Erro:', error);
     } finally {
       setLoading(false);
     }
-  }, []);
-
-  // ✅ FUNÇÃO DE CARREGAMENTO OCULTO (BACKGROUND)
-  const triggerBackgroundLoad = async (conversationId: string, before: string) => {
-    let currentBefore = before;
-    let continueLoading = true;
-
-    while (continueLoading) {
-      try {
-        const { data, error } = await supabase.functions.invoke('whatsapp-get-messages', {
-          body: { 
-            conversation_id: conversationId,
-            limit: 30,
-            before: currentBefore
-          },
-          headers
-        });
-
-        if (error || !data?.items || data.items.length === 0) {
-          continueLoading = false;
-          setHasMore(false);
-          break;
-        }
-
-        const olderMessages = data.items;
-        setMessages(prev => dedupeAndSortMessages([...olderMessages, ...prev]));
-        
-        currentBefore = data.nextBefore;
-        setCursorBefore(currentBefore);
-        setHasMore(!!currentBefore);
-
-        if (!currentBefore) {
-          continueLoading = false;
-        }
-
-        // Pequeno delay para não sobrecarregar a CPU/Rede
-        await new Promise(resolve => setTimeout(resolve, 500));
-
-      } catch (e) {
-        continueLoading = false;
-        break;
-      }
-    }
-  };
+  }, [cacheTtlMs, debug, headers, selectedWorkspace?.workspace_id]);
 
   const loadMore = useCallback(async () => {
     const workspaceId = selectedWorkspace?.workspace_id;
@@ -292,12 +275,14 @@ export function useConversationMessages(): UseConversationMessagesReturn {
       return Promise.resolve();
     }
 
-    console.log('🔄 [useConversationMessages] loadMore chamado manualmente:', {
-      conversationId: currentConversationId,
-      cursorBefore,
-      hasMore,
-      timestamp: new Date().toISOString()
-    });
+    if (debug) {
+      console.log('🔄 [useConversationMessages] loadMore chamado manualmente:', {
+        conversationId: currentConversationId,
+        cursorBefore,
+        hasMore,
+        timestamp: new Date().toISOString()
+      });
+    }
 
     setLoadingMore(true);
 
@@ -324,10 +309,9 @@ export function useConversationMessages(): UseConversationMessagesReturn {
       const nextBefore = data.nextBefore;
       setCursorBefore(nextBefore || null);
       setHasMore(!!nextBefore);
-
-      // Se ainda há mais mensagens, continuar carregando em background
-      if (nextBefore) {
-        setTimeout(() => triggerBackgroundLoad(currentConversationId, nextBefore), 500);
+      // Não fazer preload em background por padrão (evita travas). Pode ser reativado via options.
+      if (enableBackgroundPreload) {
+        // noop: reservado para implementação futura com requestIdleCallback/limites
       }
 
     } catch (error: any) {
@@ -335,15 +319,17 @@ export function useConversationMessages(): UseConversationMessagesReturn {
     } finally {
       setLoadingMore(false);
     }
-  }, [currentConversationId, cursorBefore, hasMore, selectedWorkspace?.workspace_id, headers]);
+  }, [currentConversationId, cursorBefore, enableBackgroundPreload, hasMore, headers, selectedWorkspace?.workspace_id, debug]);
 
   const addMessage = useCallback((message: WhatsAppMessage) => {
-    console.log('➕ [useConversationMessages] addMessage chamado:', {
-      messageId: message.id,
-      external_id: message.external_id,
-      conversationId: message.conversation_id,
-      timestamp: new Date().toISOString()
-    });
+    if (debug) {
+      console.log('➕ [useConversationMessages] addMessage chamado:', {
+        messageId: message.id,
+        external_id: message.external_id,
+        conversationId: message.conversation_id,
+        timestamp: new Date().toISOString()
+      });
+    }
 
     setMessages(prev => {
       const existsById = prev.some(m => m.id === message.id);
@@ -363,13 +349,15 @@ export function useConversationMessages(): UseConversationMessagesReturn {
       });
 
       if (existsById || existsByExternalId || providerMatchIndex !== -1) {
-        console.log('⚠️ [useConversationMessages] Mensagem duplicada ignorada:', {
-          id: message.id,
-          external_id: message.external_id,
-          existsById,
-          existsByExternalId,
-          providerMatchIndex
-        });
+        if (debug) {
+          console.log('⚠️ [useConversationMessages] Mensagem duplicada ignorada:', {
+            id: message.id,
+            external_id: message.external_id,
+            existsById,
+            existsByExternalId,
+            providerMatchIndex
+          });
+        }
         return dedupeAndSortMessages([...prev, message]);
       }
 
@@ -385,24 +373,28 @@ export function useConversationMessages(): UseConversationMessagesReturn {
   }, []); // ✅ ESTÁVEL - lê variáveis dentro da função
 
   const updateMessage = useCallback((messageId: string, updates: Partial<WhatsAppMessage>) => {
-    console.log('🔄 [updateMessage] Chamado com:', {
-      messageId,
-      updates,
-      OLD_STATUS: messages.find(m => m.id === messageId || m.external_id === messageId)?.status,
-      NEW_STATUS: updates.status,
-      delivered_at: updates.delivered_at,
-      read_at: updates.read_at,
-      timestamp: new Date().toISOString()
-    });
+    if (debug) {
+      console.log('🔄 [updateMessage] Chamado com:', {
+        messageId,
+        updates,
+        OLD_STATUS: messages.find(m => m.id === messageId || m.external_id === messageId)?.status,
+        NEW_STATUS: updates.status,
+        delivered_at: updates.delivered_at,
+        read_at: updates.read_at,
+        timestamp: new Date().toISOString()
+      });
+    }
 
     setMessages(prev => {
       const messageIndex = prev.findIndex(m => m.id === messageId || m.external_id === messageId);
       if (messageIndex === -1) {
-        console.log('⚠️ [updateMessage] Mensagem não encontrada para update:', {
-          messageId,
-          totalMessages: prev.length,
-          availableIds: prev.map(m => ({ id: m.id, external_id: m.external_id }))
-        });
+        if (debug) {
+          console.log('⚠️ [updateMessage] Mensagem não encontrada para update:', {
+            messageId,
+            totalMessages: prev.length,
+            availableIds: prev.map(m => ({ id: m.id, external_id: m.external_id }))
+          });
+        }
         return prev;
       }
 
@@ -410,16 +402,18 @@ export function useConversationMessages(): UseConversationMessagesReturn {
       const oldMessage = newMessages[messageIndex];
       newMessages[messageIndex] = { ...oldMessage, ...updates };
 
-      console.log('✅ [updateMessage] Mensagem atualizada no estado:', {
-        messageId,
-        messageIndex,
-        oldStatus: oldMessage.status,
-        newStatus: newMessages[messageIndex].status,
-        oldDelivered: oldMessage.delivered_at,
-        newDelivered: newMessages[messageIndex].delivered_at,
-        oldRead: oldMessage.read_at,
-        newRead: newMessages[messageIndex].read_at
-      });
+      if (debug) {
+        console.log('✅ [updateMessage] Mensagem atualizada no estado:', {
+          messageId,
+          messageIndex,
+          oldStatus: oldMessage.status,
+          newStatus: newMessages[messageIndex].status,
+          oldDelivered: oldMessage.delivered_at,
+          newDelivered: newMessages[messageIndex].delivered_at,
+          oldRead: oldMessage.read_at,
+          newRead: newMessages[messageIndex].read_at
+        });
+      }
 
       if (updates.id && updates.id !== messageId) {
         const workspaceId = selectedWorkspace?.workspace_id;
@@ -466,17 +460,21 @@ export function useConversationMessages(): UseConversationMessagesReturn {
 
   // ✅ SUBSCRIPTION DE MENSAGENS (ÚNICO E CENTRALIZADO)
   useEffect(() => {
-    console.log('🔄🔄🔄 [REALTIME] useEffect EXECUTADO:', {
-      currentConversationId,
-      workspaceId: selectedWorkspace?.workspace_id,
-      timestamp: new Date().toISOString()
-    });
+    if (debug) {
+      console.log('🔄🔄🔄 [REALTIME] useEffect EXECUTADO:', {
+        currentConversationId,
+        workspaceId: selectedWorkspace?.workspace_id,
+        timestamp: new Date().toISOString()
+      });
+    }
 
     if (!currentConversationId || !selectedWorkspace?.workspace_id) {
-      console.log('⚠️ [useConversationMessages] Subscription NÃO iniciada - faltam dados:', {
-        currentConversationId,
-        workspaceId: selectedWorkspace?.workspace_id
-      });
+      if (debug) {
+        console.log('⚠️ [useConversationMessages] Subscription NÃO iniciada - faltam dados:', {
+          currentConversationId,
+          workspaceId: selectedWorkspace?.workspace_id
+        });
+      }
       return;
     }
 
@@ -487,18 +485,22 @@ export function useConversationMessages(): UseConversationMessagesReturn {
     );
     
     if (oldMessageChannels.length > 0) {
-      console.log('🧹 [REALTIME] Removendo canais antigos:', oldMessageChannels.map(ch => ch.topic));
+      if (debug) {
+        console.log('🧹 [REALTIME] Removendo canais antigos:', oldMessageChannels.map(ch => ch.topic));
+      }
       oldMessageChannels.forEach(ch => supabase.removeChannel(ch));
     }
 
     const channelName = `messages-${currentConversationId}-workspace-${selectedWorkspace.workspace_id}`;
-    console.log('🔌🔌🔌 [REALTIME] INICIANDO SUBSCRIPTION:', {
-      channelName,
-      conversationId: currentConversationId,
-      workspaceId: selectedWorkspace.workspace_id,
-      filter: `conversation_id=eq.${currentConversationId}`,
-      timestamp: new Date().toISOString()
-    });
+    if (debug) {
+      console.log('🔌🔌🔌 [REALTIME] INICIANDO SUBSCRIPTION:', {
+        channelName,
+        conversationId: currentConversationId,
+        workspaceId: selectedWorkspace.workspace_id,
+        filter: `conversation_id=eq.${currentConversationId}`,
+        timestamp: new Date().toISOString()
+      });
+    }
 
     const channel = supabase
       .channel(channelName)

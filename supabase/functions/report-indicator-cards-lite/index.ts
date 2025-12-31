@@ -1,0 +1,135 @@
+import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+
+const corsHeaders = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Headers":
+    "authorization, x-client-info, apikey, content-type, x-workspace-id, x-system-user-id, x-system-user-email",
+  "Access-Control-Allow-Methods": "POST, OPTIONS",
+  "Access-Control-Max-Age": "86400",
+};
+
+serve(async (req) => {
+  if (req.method === "OPTIONS") return new Response("ok", { status: 200, headers: corsHeaders });
+
+  try {
+    const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+    const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+    const supabase = createClient(supabaseUrl, serviceKey);
+
+    const userId = req.headers.get("x-system-user-id");
+    const workspaceIdHeader = req.headers.get("x-workspace-id");
+    const body = await req.json().catch(() => ({}));
+
+    const workspaceId = body.workspaceId || workspaceIdHeader;
+    if (!userId) {
+      return new Response(JSON.stringify({ error: "missing x-system-user-id" }), {
+        status: 401,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+    if (!workspaceId) {
+      return new Response(JSON.stringify({ error: "workspaceId is required" }), {
+        status: 400,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    // Membership check (read allowed for any member)
+    const { data: wm, error: wmError } = await supabase
+      .from("workspace_members")
+      .select("user_id, workspace_id")
+      .eq("workspace_id", workspaceId)
+      .eq("user_id", userId)
+      .maybeSingle();
+
+    if (wmError) throw wmError;
+    if (!wm) {
+      return new Response(JSON.stringify({ error: "forbidden" }), {
+        status: 403,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    // Get pipeline ids for workspace
+    const { data: pipelines, error: pipelinesError } = await supabase
+      .from("pipelines")
+      .select("id")
+      .eq("workspace_id", workspaceId);
+
+    if (pipelinesError) throw pipelinesError;
+    const pipelineIds = (pipelines || []).map((p) => p.id);
+    if (pipelineIds.length === 0) {
+      return new Response(JSON.stringify({ cards: [] }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    // Cards (minimal fields)
+    const { data: cards, error: cardsError } = await supabase
+      .from("pipeline_cards")
+      .select("id, pipeline_id, column_id, responsible_user_id, contact_id, status, qualification, created_at")
+      .in("pipeline_id", pipelineIds);
+
+    if (cardsError) throw cardsError;
+
+    const cardIds = (cards || []).map((c) => c.id);
+    const contactIds = Array.from(
+      new Set((cards || []).map((c) => (c as any).contact_id).filter(Boolean))
+    ) as string[];
+
+    // Products mapping
+    const [{ data: pcp, error: pcpError }, { data: ctags, error: ctagsError }] = await Promise.all([
+      cardIds.length
+        ? supabase.from("pipeline_cards_products").select("pipeline_card_id, product_id").in("pipeline_card_id", cardIds)
+        : Promise.resolve({ data: [], error: null }),
+      contactIds.length
+        ? supabase.from("contact_tags").select("contact_id, tag_id").in("contact_id", contactIds)
+        : Promise.resolve({ data: [], error: null }),
+    ]);
+
+    if (pcpError) throw pcpError;
+    if (ctagsError) throw ctagsError;
+
+    const productsByCard = new Map<string, string[]>();
+    (pcp || []).forEach((row: any) => {
+      if (!row?.pipeline_card_id || !row?.product_id) return;
+      const arr = productsByCard.get(row.pipeline_card_id) || [];
+      arr.push(row.product_id);
+      productsByCard.set(row.pipeline_card_id, arr);
+    });
+
+    const tagsByContact = new Map<string, string[]>();
+    (ctags || []).forEach((row: any) => {
+      if (!row?.contact_id || !row?.tag_id) return;
+      const arr = tagsByContact.get(row.contact_id) || [];
+      arr.push(row.tag_id);
+      tagsByContact.set(row.contact_id, arr);
+    });
+
+    const out = (cards || []).map((c: any) => ({
+      id: c.id,
+      pipeline_id: c.pipeline_id,
+      column_id: c.column_id,
+      responsible_user_id: c.responsible_user_id,
+      contact_id: c.contact_id,
+      status: c.status,
+      qualification: c.qualification,
+      created_at: c.created_at,
+      product_ids: productsByCard.get(c.id) || [],
+      tag_ids: c.contact_id ? tagsByContact.get(c.contact_id) || [] : [],
+    }));
+
+    return new Response(JSON.stringify({ cards: out }), {
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  } catch (e) {
+    console.error("❌ [report-indicator-cards-lite] error:", e);
+    return new Response(JSON.stringify({ error: (e as any)?.message || String(e) }), {
+      status: 500,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  }
+});
+
+

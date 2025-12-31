@@ -40,6 +40,7 @@ import { AddContactTagButton } from "@/components/chat/AddContactTagButton";
 import { AttachmentPreviewModal } from "@/components/modals/AttachmentPreviewModal";
 import { MarkAsLostModal } from "@/components/modals/MarkAsLostModal";
 import { WhatsAppChat } from "@/components/modules/WhatsAppChat";
+import { useWorkspaceContactFields } from "@/hooks/useWorkspaceContactFields";
 
 interface DealDetailsPageProps {
   cardId?: string;
@@ -61,6 +62,7 @@ export function DealDetailsPage({ cardId: propCardId, workspaceId: propWorkspace
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const { members: workspaceMembers } = useWorkspaceMembers(effectiveWorkspaceId);
+  const { fields: workspaceContactFields } = useWorkspaceContactFields(effectiveWorkspaceId || null);
   
   const [cardData, setCardData] = useState<any>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -102,6 +104,10 @@ const [manualValue, setManualValue] = useState<string>("");
   const [selectedPipelineId, setSelectedPipelineId] = useState<string>("");
   const [availablePipelines, setAvailablePipelines] = useState<any[]>([]);
   const [isLoadingPipelines, setIsLoadingPipelines] = useState(false);
+
+  // Estados para transferência rápida (aba Visão Geral)
+  const [transferPipelineId, setTransferPipelineId] = useState<string>("");
+  const [transferColumnId, setTransferColumnId] = useState<string>("");
   
   // Estado para popover de ações do card
   const [isCardActionsPopoverOpen, setIsCardActionsPopoverOpen] = useState(false);
@@ -127,6 +133,30 @@ const [noteEditContent, setNoteEditContent] = useState("");
 const [editingNoteId, setEditingNoteId] = useState<string | null>(null);
 const [editingNoteContent, setEditingNoteContent] = useState("");
 const [conversationId, setConversationId] = useState<string | null>(null);
+
+  // Editor sofisticado de detalhes do contato (campos obrigatórios + customizáveis)
+  const [isDetailsEditorOpen, setIsDetailsEditorOpen] = useState(false);
+  const [detailsDraft, setDetailsDraft] = useState<Record<string, string>>({});
+  const [customDetailKeys, setCustomDetailKeys] = useState<string[]>([]);
+  const [removedCustomDetailKeys, setRemovedCustomDetailKeys] = useState<string[]>([]);
+  const [newDetailFieldName, setNewDetailFieldName] = useState("");
+  const [newDetailFieldValue, setNewDetailFieldValue] = useState("");
+  const [isSavingDetails, setIsSavingDetails] = useState(false);
+
+  // Tema real do app (observa a classe `dark` no <html> para manter modais consistentes)
+  const [isUiDarkMode, setIsUiDarkMode] = useState(() =>
+    typeof document !== "undefined" ? document.documentElement.classList.contains("dark") : false
+  );
+
+  useEffect(() => {
+    const root = document.documentElement;
+    const update = () => setIsUiDarkMode(root.classList.contains("dark"));
+    update();
+
+    const observer = new MutationObserver(() => update());
+    observer.observe(root, { attributes: true, attributeFilter: ["class"] });
+    return () => observer.disconnect();
+  }, []);
 const [isEditingCompany, setIsEditingCompany] = useState(false);
 const [tempCompany, setTempCompany] = useState("");
 const [isSavingCompany, setIsSavingCompany] = useState(false);
@@ -573,23 +603,46 @@ const formatTime = (date: Date) => {
 
 const humanizeLabel = (label: string) => {
   if (!label) return "";
-  const cleaned = label.replace(/[_-]+/g, " ").trim();
+  const cleaned = label
+    .replace(/:+$/g, "") // evita "Faturamento::"
+    .replace(/[_-]+/g, " ")
+    .trim();
   return cleaned.charAt(0).toUpperCase() + cleaned.slice(1);
 };
 
+const normalizeFieldKey = (label: string) => {
+  return (label || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[_-]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .toLowerCase();
+};
+
   const additionalContactInfo = useMemo(() => {
-    const entries: { label: string; value: string }[] = [];
+    const valueByKey = new Map<string, { label: string; value: string }>();
+
+    const setValue = (rawLabel: string, rawValue: any) => {
+      const label = humanizeLabel(rawLabel);
+      const key = normalizeFieldKey(rawLabel);
+      if (!key) return;
+      const value = rawValue === null || rawValue === undefined ? "" : String(rawValue).trim();
+      const existing = valueByKey.get(key);
+      if (!existing) {
+        valueByKey.set(key, { label, value });
+        return;
+      }
+      // se já existe e estava vazio, deixa o valor "bom" ganhar
+      if (!existing.value && value) {
+        valueByKey.set(key, { label: existing.label || label, value });
+      }
+    };
 
     const pushFromObject = (obj?: Record<string, any>) => {
       if (obj && typeof obj === "object") {
         Object.entries(obj).forEach(([key, value]) => {
-          if (value === null || value === undefined) return;
-          const strValue = String(value).trim();
-          if (!strValue) return;
-          entries.push({
-            label: humanizeLabel(key),
-            value: strValue,
-          });
+          setValue(key, value);
         });
       }
     };
@@ -600,17 +653,262 @@ const humanizeLabel = (label: string) => {
 
     contactExtraInfo.forEach((field) => {
       if (!field.field_name) return;
-      const val = field.field_value ?? "";
-      const strValue = String(val).trim();
-      if (!strValue) return;
-      entries.push({
-        label: humanizeLabel(field.field_name),
-        value: strValue,
-      });
+      setValue(field.field_name, field.field_value ?? "");
     });
 
-    return entries;
-  }, [contact, contactExtraInfo]);
+    const requiredFields = (workspaceContactFields || [])
+      .filter((f: any) => f?.is_required && f?.field_name)
+      .sort((a: any, b: any) => (a.field_order ?? 0) - (b.field_order ?? 0));
+
+    const out: { label: string; value: string }[] = [];
+    const included = new Set<string>();
+
+    // 1) Sempre mostrar campos obrigatórios (mesmo vazios)
+    requiredFields.forEach((f: any) => {
+      const raw = String(f.field_name || "");
+      const key = normalizeFieldKey(raw);
+      if (!key) return;
+      const found = valueByKey.get(key);
+      out.push({
+        label: humanizeLabel(raw),
+        value: found?.value || "",
+      });
+      included.add(key);
+    });
+
+    // 2) Depois, mostrar campos dinâmicos preenchidos (sem duplicar)
+    for (const [key, item] of valueByKey.entries()) {
+      if (included.has(key)) continue;
+      if (!item.value) continue;
+      out.push({ label: item.label, value: item.value });
+    }
+
+    return out;
+  }, [contact, contactExtraInfo, workspaceContactFields]);
+
+  const reloadContactExtraInfo = useCallback(async () => {
+    const contactId = contact?.id;
+    if (!contactId) return;
+    try {
+      const { data: extraInfoData, error: extraInfoError } = await supabase
+        .from("contact_extra_info")
+        .select("field_name, field_value")
+        .eq("contact_id", contactId)
+        .order("created_at", { ascending: true });
+
+      if (!extraInfoError && extraInfoData) {
+        setContactExtraInfo(extraInfoData.filter((f) => f.field_name));
+      }
+    } catch (e) {
+      console.error("Erro ao recarregar campos extras do contato:", e);
+    }
+  }, [contact?.id]);
+
+  const openDetailsEditor = useCallback(() => {
+    if (!contact?.id) return;
+    const requiredFields = (workspaceContactFields || [])
+      .filter((f: any) => f?.is_required && f?.field_name)
+      .sort((a: any, b: any) => (a.field_order ?? 0) - (b.field_order ?? 0));
+
+    const existing = (contactExtraInfo || []).filter((f) => f?.field_name);
+    const existingByNorm = new Map<string, { field_name: string; field_value: string }>();
+    for (const row of existing) {
+      const key = normalizeFieldKey(row.field_name);
+      if (!key) continue;
+      const value = String(row.field_value ?? "").trim();
+      const prev = existingByNorm.get(key);
+      if (!prev || (!prev.field_value && value)) {
+        existingByNorm.set(key, { field_name: row.field_name, field_value: value });
+      }
+    }
+
+    const requiredKeysNorm = new Set<string>();
+    const nextDraft: Record<string, string> = {};
+
+    for (const f of requiredFields) {
+      const raw = String(f.field_name || "");
+      const norm = normalizeFieldKey(raw);
+      if (!norm) continue;
+      requiredKeysNorm.add(norm);
+      const found = existingByNorm.get(norm);
+      nextDraft[raw] = found?.field_value || "0";
+    }
+
+    const optionalKeys: string[] = [];
+    for (const row of existingByNorm.values()) {
+      const norm = normalizeFieldKey(row.field_name);
+      if (!norm || requiredKeysNorm.has(norm)) continue;
+      optionalKeys.push(row.field_name);
+      nextDraft[row.field_name] = row.field_value || "0";
+    }
+    optionalKeys.sort((a, b) => a.localeCompare(b, "pt-BR"));
+
+    setDetailsDraft(nextDraft);
+    setCustomDetailKeys(optionalKeys);
+    setRemovedCustomDetailKeys([]);
+    setNewDetailFieldName("");
+    setNewDetailFieldValue("");
+    setIsDetailsEditorOpen(true);
+  }, [contact?.id, contactExtraInfo, workspaceContactFields]);
+
+  const handleAddCustomDetailField = useCallback(() => {
+    const name = (newDetailFieldName || "").trim();
+    const value = (newDetailFieldValue || "").trim() || "0";
+    if (!name) return;
+    const norm = normalizeFieldKey(name);
+    if (!norm) return;
+
+    // evitar duplicar por normalização
+    const existsInRequired = (workspaceContactFields || []).some(
+      (f: any) => normalizeFieldKey(f?.field_name || "") === norm
+    );
+    const existsInCustom = customDetailKeys.some((k) => normalizeFieldKey(k) === norm);
+    if (existsInRequired || existsInCustom) {
+      toast({
+        title: "Campo já existe",
+        description: "Já existe um campo com esse nome.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setCustomDetailKeys((prev) => [...prev, name].sort((a, b) => a.localeCompare(b, "pt-BR")));
+    setDetailsDraft((prev) => ({ ...prev, [name]: value }));
+    setNewDetailFieldName("");
+    setNewDetailFieldValue("");
+  }, [customDetailKeys, newDetailFieldName, newDetailFieldValue, toast, workspaceContactFields]);
+
+  const removeCustomDetailField = useCallback((fieldName: string) => {
+    setCustomDetailKeys((prev) => prev.filter((k) => k !== fieldName));
+    setRemovedCustomDetailKeys((prev) => [...prev, fieldName]);
+    setDetailsDraft((prev) => {
+      const next = { ...prev };
+      delete next[fieldName];
+      return next;
+    });
+  }, []);
+
+  const handleSaveDetailsEditor = useCallback(async () => {
+    if (!contact?.id || !effectiveWorkspaceId) return;
+    if (isSavingDetails) return;
+
+    const existingRows = (contactExtraInfo || []).filter((f) => f?.field_name);
+    const existingByNorm = new Map<string, string>();
+    for (const row of existingRows) {
+      const key = normalizeFieldKey(row.field_name);
+      if (!key) continue;
+      if (!existingByNorm.has(key)) existingByNorm.set(key, row.field_name);
+    }
+
+    const requiredFields = (workspaceContactFields || [])
+      .filter((f: any) => f?.is_required && f?.field_name)
+      .sort((a: any, b: any) => (a.field_order ?? 0) - (b.field_order ?? 0));
+
+    setIsSavingDetails(true);
+    try {
+      // Remoções explícitas (somente customizáveis)
+      for (const rawName of removedCustomDetailKeys) {
+        const name = String(rawName || "").trim();
+        if (!name) continue;
+        const norm = normalizeFieldKey(name);
+        if (!norm) continue;
+        const existingName = existingByNorm.get(norm);
+        if (existingName) {
+          await supabase
+            .from("contact_extra_info")
+            .delete()
+            .eq("contact_id", contact.id)
+            .eq("workspace_id", effectiveWorkspaceId)
+            .eq("field_name", existingName);
+        }
+      }
+
+      // obrigatórios
+      for (const f of requiredFields) {
+        const rawName = String(f.field_name || "").trim();
+        if (!rawName) continue;
+        const norm = normalizeFieldKey(rawName);
+        if (!norm) continue;
+
+        const existingName = existingByNorm.get(norm);
+        const nextValue = String(detailsDraft[rawName] ?? "").trim() || "0";
+
+        if (existingName) {
+          await supabase
+            .from("contact_extra_info")
+            .update({ field_value: nextValue })
+            .eq("contact_id", contact.id)
+            .eq("workspace_id", effectiveWorkspaceId)
+            .eq("field_name", existingName);
+        } else {
+          await supabase
+            .from("contact_extra_info")
+            .insert({
+              contact_id: contact.id,
+              workspace_id: effectiveWorkspaceId,
+              field_name: rawName,
+              field_value: nextValue,
+            });
+        }
+      }
+
+      // customizáveis
+      for (const rawName of customDetailKeys) {
+        const name = String(rawName || "").trim();
+        if (!name) continue;
+        const norm = normalizeFieldKey(name);
+        if (!norm) continue;
+
+        const existingName = existingByNorm.get(norm);
+        const nextValue = String(detailsDraft[name] ?? "").trim() || "0";
+
+        if (existingName) {
+          await supabase
+            .from("contact_extra_info")
+            .update({ field_value: nextValue })
+            .eq("contact_id", contact.id)
+            .eq("workspace_id", effectiveWorkspaceId)
+            .eq("field_name", existingName);
+        } else {
+          await supabase
+            .from("contact_extra_info")
+            .insert({
+              contact_id: contact.id,
+              workspace_id: effectiveWorkspaceId,
+              field_name: name,
+              field_value: nextValue,
+            });
+        }
+      }
+
+      await reloadContactExtraInfo();
+      setIsDetailsEditorOpen(false);
+      toast({
+        title: "Atualizado",
+        description: "Detalhes do contato atualizados.",
+      });
+    } catch (e: any) {
+      console.error("Erro ao salvar detalhes do contato:", e);
+      toast({
+        title: "Erro",
+        description: e?.message || "Não foi possível salvar os detalhes do contato.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsSavingDetails(false);
+    }
+  }, [
+    contact?.id,
+    contactExtraInfo,
+    customDetailKeys,
+    removedCustomDetailKeys,
+    detailsDraft,
+    effectiveWorkspaceId,
+    isSavingDetails,
+    reloadContactExtraInfo,
+    toast,
+    workspaceContactFields,
+  ]);
 
   // Buscar dados do card
   const fetchCardData = useCallback(async () => {
@@ -1047,13 +1345,19 @@ const humanizeLabel = (label: string) => {
     calculateOverview();
   }, [cardData, activities, users]);
 
-  const { columns } = usePipelineColumns(selectedPipelineId || pipelineData?.id || null, effectiveWorkspaceId);
+  const pipelineIdForColumns =
+    selectedPipelineId || cardData?.pipeline_id || pipelineData?.id || null;
+  const { columns } = usePipelineColumns(pipelineIdForColumns, effectiveWorkspaceId);
+  const { columns: transferColumns, isLoading: isLoadingTransferColumns } = usePipelineColumns(
+    transferPipelineId || cardData?.pipeline_id || pipelineData?.id || null,
+    effectiveWorkspaceId
+  );
   const [timeInColumns, setTimeInColumns] = useState<Record<string, number>>({});
 
   // Carregar pipelines do workspace (para permitir mover o card entre pipelines)
   useEffect(() => {
     const fetchPipelines = async () => {
-      if (!effectiveWorkspaceId || !isColumnSelectModalOpen) return;
+      if (!effectiveWorkspaceId) return;
       try {
         setIsLoadingPipelines(true);
         const { data, error } = await supabase
@@ -1070,7 +1374,22 @@ const humanizeLabel = (label: string) => {
       }
     };
     fetchPipelines();
-  }, [effectiveWorkspaceId, isColumnSelectModalOpen]);
+  }, [effectiveWorkspaceId]);
+
+  // Preselecionar pipeline/coluna para transferência rápida quando o card carregar/mudar
+  useEffect(() => {
+    if (!cardData?.pipeline_id || !cardData?.column_id) return;
+    setTransferPipelineId(cardData.pipeline_id);
+    setTransferColumnId(cardData.column_id);
+  }, [cardData?.pipeline_id, cardData?.column_id]);
+
+  // UX: ao trocar o pipeline na transferência rápida, selecionar automaticamente a primeira coluna disponível
+  useEffect(() => {
+    if (!transferPipelineId) return;
+    if (transferColumnId) return;
+    if (!transferColumns || transferColumns.length === 0) return;
+    setTransferColumnId(transferColumns[0].id);
+  }, [transferPipelineId, transferColumnId, transferColumns]);
 
   // Preselecionar pipeline/coluna quando abrir o popover
   useEffect(() => {
@@ -2523,14 +2842,18 @@ const humanizeLabel = (label: string) => {
         </div>
 
         {/* Breadcrumb do pipeline */}
-        {pipelineData && columns && Array.isArray(columns) && columns.length > 0 && cardData && cardData.column_id && (
+        {pipelineIdForColumns && columns && Array.isArray(columns) && columns.length > 0 && cardData && cardData.column_id && (
           <div className="px-6 pb-4 border-b border-gray-200 dark:border-gray-700">
             <div className="flex items-center">
               <button 
                 className="flex items-center gap-1 text-sm text-gray-900 dark:text-gray-100 bg-transparent border-0 p-0 cursor-pointer"
                 data-testid="pipeline-info"
               >
-                <span>{pipelineData.name}</span>
+                <span>
+                  {pipelineData?.name ||
+                    availablePipelines?.find((p: any) => p.id === cardData?.pipeline_id)?.name ||
+                    "Pipeline"}
+                </span>
                 <ChevronRight className="h-4 w-4 mx-1 text-gray-400" />
                 <Popover open={isColumnSelectModalOpen} onOpenChange={setIsColumnSelectModalOpen}>
                   <PopoverTrigger asChild>
@@ -2541,7 +2864,9 @@ const humanizeLabel = (label: string) => {
                       }}
                       className="cursor-pointer hover:opacity-80 transition-opacity"
                     >
-                      {currentColumn?.name || 'Coluna não encontrada'}
+                      {currentColumn?.name ||
+                        columns?.find((c: any) => c.id === cardData?.column_id)?.name ||
+                        'Coluna não encontrada'}
                     </span>
                   </PopoverTrigger>
                   <PopoverContent 
@@ -3052,9 +3377,11 @@ const humanizeLabel = (label: string) => {
                           Responsável
                         </span>
                         <div className="flex items-center gap-2 min-w-0">
-                          <span className="font-medium text-gray-900 dark:text-gray-100 truncate max-w-[120px]">
-                            {owner?.name || "—"}
-                          </span>
+                          {owner?.name ? (
+                            <span className="font-medium text-gray-900 dark:text-gray-100 truncate max-w-[120px]">
+                              {owner.name}
+                            </span>
+                          ) : null}
                           <Select
                             value={cardData?.responsible_user_id || ""}
                             onValueChange={(value) => handleTransferResponsibleUser(value)}
@@ -3074,6 +3401,93 @@ const humanizeLabel = (label: string) => {
                                     {u.name}
                                   </SelectItem>
                                 ))
+                              )}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                      </div>
+                      <div className="space-y-1">
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="text-gray-600 dark:text-gray-400 whitespace-nowrap">
+                            Transferir Oportunidade
+                          </span>
+                          <Button
+                            variant="outline"
+                            size="icon"
+                            title="Transferir oportunidade"
+                            className="h-7 w-7 p-0 rounded-none border border-gray-300 bg-white hover:bg-gray-100 dark:bg-[#1b1b1b] dark:border-gray-700 dark:text-gray-100 dark:hover:bg-gray-800"
+                            onClick={() => handleMoveCardToColumn(transferPipelineId, transferColumnId)}
+                            disabled={
+                              !transferPipelineId ||
+                              !transferColumnId ||
+                              (transferPipelineId === cardData?.pipeline_id && transferColumnId === cardData?.column_id)
+                            }
+                          >
+                            <ChevronRight className="h-4 w-4" />
+                          </Button>
+                        </div>
+                        <div className="grid grid-cols-2 gap-2">
+                          <Select
+                            value={transferPipelineId || ""}
+                            onValueChange={(value) => {
+                              setTransferPipelineId(value);
+                              setTransferColumnId("");
+                            }}
+                            disabled={isLoadingPipelines || (availablePipelines || []).length === 0}
+                          >
+                            <SelectTrigger className="h-7 w-full text-xs rounded-none border border-gray-300 bg-white dark:bg-[#1b1b1b] dark:border-gray-700 dark:text-gray-100">
+                              <SelectValue placeholder={isLoadingPipelines ? "Carregando..." : "Pipeline"} />
+                            </SelectTrigger>
+                            <SelectContent className="rounded-none">
+                              {isLoadingPipelines ? (
+                                <SelectItem value="__loading__" disabled>
+                                  Carregando...
+                                </SelectItem>
+                              ) : (availablePipelines || []).length > 0 ? (
+                                (availablePipelines || []).map((p: any) => (
+                                  <SelectItem key={p.id} value={p.id}>
+                                    {p.name}
+                                  </SelectItem>
+                                ))
+                              ) : (
+                                <SelectItem value="__empty__" disabled>
+                                  Nenhum pipeline disponível
+                                </SelectItem>
+                              )}
+                            </SelectContent>
+                          </Select>
+
+                          <Select
+                            value={transferColumnId || ""}
+                            onValueChange={(value) => setTransferColumnId(value)}
+                            disabled={
+                              !transferPipelineId ||
+                              isLoadingTransferColumns ||
+                              !(transferColumns && transferColumns.length > 0)
+                            }
+                          >
+                            <SelectTrigger className="h-7 w-full text-xs rounded-none border border-gray-300 bg-white dark:bg-[#1b1b1b] dark:border-gray-700 dark:text-gray-100">
+                              <SelectValue
+                                placeholder={
+                                  !transferPipelineId
+                                    ? "Coluna"
+                                    : isLoadingTransferColumns
+                                      ? "Carregando..."
+                                      : "Coluna"
+                                }
+                              />
+                            </SelectTrigger>
+                            <SelectContent className="rounded-none">
+                              {transferColumns && transferColumns.length > 0 ? (
+                                transferColumns.map((c: any) => (
+                                  <SelectItem key={c.id} value={c.id}>
+                                    {c.name}
+                                  </SelectItem>
+                                ))
+                              ) : (
+                                <SelectItem value="__empty__" disabled>
+                                  Nenhuma coluna disponível
+                                </SelectItem>
                               )}
                             </SelectContent>
                           </Select>
@@ -3186,6 +3600,18 @@ const humanizeLabel = (label: string) => {
                 <ChevronDown className="h-4 w-4" />
               </CollapsibleTrigger>
               <CollapsibleContent className="pt-2 space-y-2 text-sm">
+                <div className="flex justify-end">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="h-7 px-3 text-xs rounded-none border-gray-300 dark:border-gray-700"
+                    onClick={openDetailsEditor}
+                    disabled={!contact?.id}
+                  >
+                    <Pencil className="h-3.5 w-3.5 mr-2" />
+                    Editar
+                  </Button>
+                </div>
                 <div>
                   <span className="text-gray-500 dark:text-gray-400">Status:</span>
                   <Badge className="ml-2">{cardData.status || 'aberto'}</Badge>
@@ -3197,7 +3623,12 @@ const humanizeLabel = (label: string) => {
                         {additionalContactInfo.map((item, idx) => (
                           <div key={`${item.label}-${idx}`} className="flex items-start gap-1.5">
                             <span className="text-gray-500 dark:text-gray-400">{item.label}:</span>
-                            <span className="text-gray-900 dark:text-gray-100 break-words">{item.value}</span>
+                            <span className={cn(
+                              "break-words",
+                              item.value ? "text-gray-900 dark:text-gray-100" : "text-gray-400 dark:text-gray-500"
+                            )}>
+                              {item.value || "0"}
+                            </span>
                           </div>
                         ))}
                       </div>
@@ -3737,6 +4168,7 @@ const humanizeLabel = (label: string) => {
                           { label: "Ligação não atendida", type: "Ligação não atendida", icon: Phone },
                           { label: "Ligação atendida", type: "Ligação atendida", icon: Phone },
                           { label: "Ligação abordada", type: "Ligação abordada", icon: Phone },
+                          { label: "Ligação agendada", type: "Ligação agendada", icon: Phone },
                           { label: "Ligação de follow up", type: "Ligação de follow up", icon: Phone },
                           { label: "Reunião agendada", type: "Reunião agendada", icon: CalendarIconLucide },
                           { label: "Reunião realizada", type: "Reunião realizada", icon: CalendarIconLucide },
@@ -3895,9 +4327,6 @@ const humanizeLabel = (label: string) => {
                         onChange={(e) => setActivityForm({...activityForm, description: e.target.value})}
                         className="min-h-[150px] bg-yellow-50 dark:bg-yellow-900/20 border-gray-300 dark:border-gray-600"
                       />
-                      <p className="text-xs text-gray-500 dark:text-gray-400">
-                        As anotações ficam visíveis no sistema, exceto para convidados do evento
-                      </p>
                     </div>
 
                     {/* Anexo (opcional) */}
@@ -4387,33 +4816,53 @@ const humanizeLabel = (label: string) => {
       
       {/* Modal de edição de atividade */}
       <Dialog open={isActivityEditModalOpen} onOpenChange={setIsActivityEditModalOpen}>
-        <DialogContent className="max-w-2xl p-0 overflow-hidden bg-[#0f0f0f] border-gray-800">
+        <DialogContent
+          className={cn(
+            "max-w-2xl p-0 overflow-hidden border",
+            isUiDarkMode ? "bg-[#0f0f0f] border-gray-800" : "bg-white border-gray-200"
+          )}
+        >
           <div className="flex flex-col h-full max-h-[90vh]">
-            <DialogHeader className="px-6 py-4 border-b border-gray-800 bg-[#1a1a1a] shrink-0">
-              <DialogTitle className="text-xl font-semibold text-white">Editar atividade</DialogTitle>
+            <DialogHeader
+              className={cn(
+                "px-6 py-4 border-b shrink-0",
+                isUiDarkMode ? "border-gray-800 bg-[#1a1a1a]" : "border-gray-200 bg-white"
+              )}
+            >
+              <DialogTitle
+                className={cn("text-xl font-semibold", isUiDarkMode ? "text-white" : "text-gray-900")}
+              >
+                Editar atividade
+              </DialogTitle>
           </DialogHeader>
 
             <div className="p-6 space-y-6 overflow-y-auto">
               {/* Assunto/Título */}
               <div className="space-y-2">
-                <label className="text-sm font-semibold text-gray-200">Assunto</label>
+                <label className="text-sm font-semibold text-gray-900 dark:text-gray-200">Assunto</label>
             <Input
                   placeholder={activityEditForm.type}
               value={activityEditForm.subject}
               onChange={(e) => setActivityEditForm({ ...activityEditForm, subject: e.target.value })}
-                  className="bg-[#1a1a1a] border-gray-700 h-11 text-gray-100 placeholder:text-gray-500 focus:border-blue-500"
+                  className={cn(
+                    "h-11 focus:border-blue-500",
+                    isUiDarkMode
+                      ? "bg-[#1a1a1a] border-gray-700 text-gray-100 placeholder:text-gray-500"
+                      : "bg-white border-gray-300 text-gray-900 placeholder:text-gray-400"
+                  )}
             />
               </div>
 
               {/* Ícones de tipo */}
               <div className="space-y-2">
-                <label className="text-sm font-semibold text-gray-200">Tipo de atividade</label>
+                <label className="text-sm font-semibold text-gray-900 dark:text-gray-200">Tipo de atividade</label>
             <div className="flex items-center gap-2 flex-wrap">
               {[
                 { label: "Mensagem", type: "Mensagem", icon: MessageSquareIcon },
                 { label: "Ligação não atendida", type: "Ligação não atendida", icon: Phone },
                 { label: "Ligação atendida", type: "Ligação atendida", icon: Phone },
                 { label: "Ligação abordada", type: "Ligação abordada", icon: Phone },
+                { label: "Ligação agendada", type: "Ligação agendada", icon: Phone },
                 { label: "Ligação de follow up", type: "Ligação de follow up", icon: Phone },
                 { label: "Reunião agendada", type: "Reunião agendada", icon: CalendarIconLucide },
                 { label: "Reunião realizada", type: "Reunião realizada", icon: CalendarIconLucide },
@@ -4431,13 +4880,22 @@ const humanizeLabel = (label: string) => {
                           "p-2 rounded-md transition-colors",
                           activityEditForm.type === option.type
                                 ? "bg-[#eab308] text-black"
-                                : "bg-[#1a1a1a] border border-gray-700 text-gray-400 hover:bg-[#252525] hover:text-gray-100"
+                                : isUiDarkMode
+                                  ? "bg-[#1a1a1a] border border-gray-700 text-gray-300 hover:bg-[#252525] hover:text-gray-100"
+                                  : "bg-white border border-gray-300 text-gray-700 hover:bg-gray-100"
                         )}
                       >
                         <Icon className="h-5 w-5" />
                       </button>
                     </TooltipTrigger>
-                        <TooltipContent className="bg-[#1b1b1b] border-gray-700 text-gray-100 shadow-md">
+                        <TooltipContent
+                          className={cn(
+                            "shadow-md",
+                            isUiDarkMode
+                              ? "bg-[#1b1b1b] border-gray-700 text-gray-100"
+                              : "bg-white border-gray-200 text-gray-900"
+                          )}
+                        >
                       <p>{option.label}</p>
                     </TooltipContent>
                   </Tooltip>
@@ -4450,37 +4908,66 @@ const humanizeLabel = (label: string) => {
               <div className="grid grid-cols-2 gap-6">
                 {/* Data de início */}
               <div className="space-y-2">
-                  <label className="text-sm font-semibold text-gray-200">Data de início</label>
+                  <label className="text-sm font-semibold text-gray-900 dark:text-gray-200">Data de início</label>
                 <Popover open={showEditStartDatePicker} onOpenChange={setShowEditStartDatePicker}>
                   <PopoverTrigger asChild>
-                      <Button variant="outline" className="w-full justify-start text-left font-normal bg-[#1a1a1a] border-gray-700 h-11 hover:bg-[#252525] rounded-md text-gray-100">
-                        <CalendarIconLucide className="mr-3 h-4 w-4 text-gray-400" />
+                      <Button
+                        variant="outline"
+                        className={cn(
+                          "w-full justify-start text-left font-normal h-11 rounded-md",
+                          isUiDarkMode
+                            ? "bg-[#1a1a1a] border-gray-700 text-gray-100 hover:bg-[#252525]"
+                            : "bg-white border-gray-300 text-gray-900 hover:bg-gray-100"
+                        )}
+                      >
+                        <CalendarIconLucide className={cn("mr-3 h-4 w-4", isUiDarkMode ? "text-gray-400" : "text-gray-500")} />
                       {format(activityEditForm.startDate, "dd 'de' MMM 'de' yyyy", { locale: ptBR })}
                     </Button>
                   </PopoverTrigger>
-                    <PopoverContent className="w-auto p-0 bg-[#1b1b1b] border-gray-700" align="start">
+                    <PopoverContent
+                      className={cn(
+                        "w-auto p-0",
+                        isUiDarkMode ? "bg-[#1b1b1b] border-gray-700" : "bg-white border-gray-200"
+                      )}
+                      align="start"
+                    >
                       <Calendar mode="single" selected={activityEditForm.startDate} onSelect={(date) => { if (date) { setActivityEditForm({ ...activityEditForm, startDate: date, endDate: date }); setShowEditStartDatePicker(false); } }} initialFocus />
                   </PopoverContent>
                 </Popover>
               </div>
                 {/* Hora de início */}
               <div className="space-y-2">
-                  <label className="text-sm font-semibold text-gray-200">Hora de início</label>
+                  <label className="text-sm font-semibold text-gray-900 dark:text-gray-200">Hora de início</label>
                 <Popover open={showEditStartTimePicker} onOpenChange={setShowEditStartTimePicker}>
                   <PopoverTrigger asChild>
-                      <Button variant="outline" className="w-full justify-start text-left font-normal bg-[#1a1a1a] border-gray-700 h-11 hover:bg-[#252525] rounded-md text-gray-100">
-                        <Clock className="mr-3 h-4 w-4 text-gray-400" />
+                      <Button
+                        variant="outline"
+                        className={cn(
+                          "w-full justify-start text-left font-normal h-11 rounded-md",
+                          isUiDarkMode
+                            ? "bg-[#1a1a1a] border-gray-700 text-gray-100 hover:bg-[#252525]"
+                            : "bg-white border-gray-300 text-gray-900 hover:bg-gray-100"
+                        )}
+                      >
+                        <Clock className={cn("mr-3 h-4 w-4", isUiDarkMode ? "text-gray-400" : "text-gray-500")} />
                       {activityEditForm.startTime}
                     </Button>
                   </PopoverTrigger>
-                    <PopoverContent className="w-32 p-0 bg-[#1b1b1b] border-gray-700" align="start">
+                    <PopoverContent
+                      className={cn(
+                        "w-32 p-0",
+                        isUiDarkMode ? "bg-[#1b1b1b] border-gray-700" : "bg-white border-gray-200"
+                      )}
+                      align="start"
+                    >
                       <ScrollArea className="h-60">
                         <div className="p-1">
                           {timeOptions.map((time) => (
                             <button 
                               key={time} 
                               className={cn(
-                                "w-full text-left px-3 py-2 text-sm rounded-sm hover:bg-gray-800 transition-colors text-gray-100", 
+                                "w-full text-left px-3 py-2 text-sm rounded-sm transition-colors",
+                                isUiDarkMode ? "text-gray-100 hover:bg-gray-800" : "text-gray-900 hover:bg-gray-100",
                                 activityEditForm.startTime === time && "bg-primary text-primary-foreground font-semibold"
                               )} 
                               onClick={() => { 
@@ -4516,34 +5003,70 @@ const humanizeLabel = (label: string) => {
               <div className="grid grid-cols-2 gap-6">
                 {/* Data de fim */}
               <div className="space-y-2">
-                  <label className="text-sm font-semibold text-gray-200">Data de fim</label>
+                  <label className="text-sm font-semibold text-gray-900 dark:text-gray-200">Data de fim</label>
                 <Popover open={showEditEndDatePicker} onOpenChange={setShowEditEndDatePicker}>
                   <PopoverTrigger asChild>
-                      <Button variant="outline" className="w-full justify-start text-left font-normal bg-[#1a1a1a] border-gray-700 h-11 hover:bg-[#252525] rounded-md text-gray-100">
-                        <CalendarIconLucide className="mr-3 h-4 w-4 text-gray-400" />
+                      <Button
+                        variant="outline"
+                        className={cn(
+                          "w-full justify-start text-left font-normal h-11 rounded-md",
+                          isUiDarkMode
+                            ? "bg-[#1a1a1a] border-gray-700 text-gray-100 hover:bg-[#252525]"
+                            : "bg-white border-gray-300 text-gray-900 hover:bg-gray-100"
+                        )}
+                      >
+                        <CalendarIconLucide className={cn("mr-3 h-4 w-4", isUiDarkMode ? "text-gray-400" : "text-gray-500")} />
                       {format(activityEditForm.endDate, "dd 'de' MMM 'de' yyyy", { locale: ptBR })}
                     </Button>
                   </PopoverTrigger>
-                    <PopoverContent className="w-auto p-0 bg-[#1b1b1b] border-gray-700" align="start">
+                    <PopoverContent
+                      className={cn(
+                        "w-auto p-0",
+                        isUiDarkMode ? "bg-[#1b1b1b] border-gray-700" : "bg-white border-gray-200"
+                      )}
+                      align="start"
+                    >
                       <Calendar mode="single" selected={activityEditForm.endDate} onSelect={(date) => { if (date) { setActivityEditForm({ ...activityEditForm, endDate: date }); setShowEditEndDatePicker(false); } }} initialFocus />
                   </PopoverContent>
                 </Popover>
               </div>
                 {/* Hora de fim */}
               <div className="space-y-2">
-                  <label className="text-sm font-semibold text-gray-200">Hora de fim</label>
+                  <label className="text-sm font-semibold text-gray-900 dark:text-gray-200">Hora de fim</label>
                 <Popover open={showEditEndTimePicker} onOpenChange={setShowEditEndTimePicker}>
                   <PopoverTrigger asChild>
-                      <Button variant="outline" className="w-full justify-start text-left font-normal bg-[#1a1a1a] border-gray-700 h-11 hover:bg-[#252525] rounded-md text-gray-100">
-                        <Clock className="mr-3 h-4 w-4 text-gray-400" />
+                      <Button
+                        variant="outline"
+                        className={cn(
+                          "w-full justify-start text-left font-normal h-11 rounded-md",
+                          isUiDarkMode
+                            ? "bg-[#1a1a1a] border-gray-700 text-gray-100 hover:bg-[#252525]"
+                            : "bg-white border-gray-300 text-gray-900 hover:bg-gray-100"
+                        )}
+                      >
+                        <Clock className={cn("mr-3 h-4 w-4", isUiDarkMode ? "text-gray-400" : "text-gray-500")} />
                       {activityEditForm.endTime}
                     </Button>
                   </PopoverTrigger>
-                    <PopoverContent className="w-32 p-0 bg-[#1b1b1b] border-gray-700" align="start">
+                    <PopoverContent
+                      className={cn(
+                        "w-32 p-0",
+                        isUiDarkMode ? "bg-[#1b1b1b] border-gray-700" : "bg-white border-gray-200"
+                      )}
+                      align="start"
+                    >
                       <ScrollArea className="h-60">
                         <div className="p-1">
                           {timeOptions.map((time) => (
-                            <button key={time} className={cn("w-full text-left px-3 py-2 text-sm rounded-sm hover:bg-gray-800 transition-colors text-gray-100", activityEditForm.endTime === time && "bg-primary text-primary-foreground font-semibold")} onClick={() => { setActivityEditForm({ ...activityEditForm, endTime: time }); setShowEditEndTimePicker(false); }}>
+                            <button
+                              key={time}
+                              className={cn(
+                                "w-full text-left px-3 py-2 text-sm rounded-sm transition-colors",
+                                isUiDarkMode ? "text-gray-100 hover:bg-gray-800" : "text-gray-900 hover:bg-gray-100",
+                                activityEditForm.endTime === time && "bg-primary text-primary-foreground font-semibold"
+                              )}
+                              onClick={() => { setActivityEditForm({ ...activityEditForm, endTime: time }); setShowEditEndTimePicker(false); }}
+                            >
                               {time}
                             </button>
                           ))}
@@ -4557,15 +5080,28 @@ const humanizeLabel = (label: string) => {
               {/* Responsável */}
               <div className="grid grid-cols-2 gap-6">
               <div className="space-y-2">
-                  <label className="text-sm font-semibold text-gray-200">Responsável</label>
+                <label className="text-sm font-semibold text-gray-900 dark:text-gray-200">Responsável</label>
                 <Select
                   value={activityEditForm.responsibleId}
                   onValueChange={(v) => setActivityEditForm({ ...activityEditForm, responsibleId: v })}
                 >
-                    <SelectTrigger className="bg-[#1a1a1a] border-gray-700 h-11 text-gray-100">
+                    <SelectTrigger
+                      className={cn(
+                        "h-11",
+                        isUiDarkMode
+                          ? "bg-[#1a1a1a] border-gray-700 text-gray-100"
+                          : "bg-white border-gray-300 text-gray-900"
+                      )}
+                    >
                     <SelectValue placeholder="Responsável" />
                   </SelectTrigger>
-                    <SelectContent className="bg-[#1b1b1b] border-gray-700 text-gray-100">
+                    <SelectContent
+                      className={cn(
+                        isUiDarkMode
+                          ? "bg-[#1b1b1b] border-gray-700 text-gray-100"
+                          : "bg-white border-gray-200 text-gray-900"
+                      )}
+                    >
                     {users.map((user) => (
                       <SelectItem key={user.id} value={user.id}>
                         {user.name}
@@ -4577,13 +5113,18 @@ const humanizeLabel = (label: string) => {
               </div>
 
               {/* Descrição */}
-              <div className="space-y-2">
-                <label className="text-sm font-semibold text-gray-200">Descrição</label>
+            <div className="space-y-2">
+                <label className="text-sm font-semibold text-gray-900 dark:text-gray-200">Descrição</label>
             <Textarea
                   placeholder="Adicione detalhes sobre a atividade..."
               value={activityEditForm.description}
               onChange={(e) => setActivityEditForm({ ...activityEditForm, description: e.target.value })}
-                  className="min-h-[120px] bg-[#1a1a1a] border-gray-700 text-gray-100 placeholder:text-gray-500 focus:border-blue-500"
+                  className={cn(
+                    "min-h-[120px] focus:border-blue-500",
+                    isUiDarkMode
+                      ? "bg-[#1a1a1a] border-gray-700 text-gray-100 placeholder:text-gray-500"
+                      : "bg-white border-gray-300 text-gray-900 placeholder:text-gray-400"
+                  )}
                 />
               </div>
 
@@ -4593,19 +5134,38 @@ const humanizeLabel = (label: string) => {
                   id="activity-edit-done"
                   checked={activityEditForm.markAsDone}
                   onCheckedChange={(checked) => setActivityEditForm({ ...activityEditForm, markAsDone: checked === true })}
-                  className="border-gray-700 data-[state=checked]:bg-blue-600 data-[state=checked]:border-blue-600"
+                  className={cn(
+                    isUiDarkMode ? "border-gray-700" : "border-gray-300",
+                    "data-[state=checked]:bg-blue-600 data-[state=checked]:border-blue-600"
+                  )}
                 />
-                <label htmlFor="activity-edit-done" className="text-sm font-medium text-gray-200 cursor-pointer">
+                <label
+                  htmlFor="activity-edit-done"
+                  className={cn(
+                    "text-sm font-medium cursor-pointer",
+                    isUiDarkMode ? "text-gray-200" : "text-gray-900"
+                  )}
+                >
                   Marcar como concluída
                 </label>
               </div>
               </div>
 
-            <DialogFooter className="mt-0 mx-0 mb-0 border-t border-gray-800 bg-[#1a1a1a] flex items-center justify-end gap-4 shrink-0 px-6 py-4">
+            <DialogFooter
+              className={cn(
+                "mt-0 mx-0 mb-0 border-t flex items-center justify-end gap-4 shrink-0 px-6 py-4",
+                isUiDarkMode ? "border-gray-800 bg-[#1a1a1a]" : "border-gray-200 bg-white"
+              )}
+            >
               <Button 
                 variant="outline" 
                 onClick={() => setIsActivityEditModalOpen(false)}
-                className="bg-[#1a1a1a] border-gray-700 text-gray-300 hover:bg-[#252525] hover:text-white h-10"
+                className={cn(
+                  "h-10",
+                  isUiDarkMode
+                    ? "border-gray-700 text-gray-200 hover:bg-[#252525] hover:text-white"
+                    : "border-gray-300 text-gray-700 hover:bg-gray-100"
+                )}
               >
               Cancelar
             </Button>
@@ -4723,6 +5283,158 @@ const humanizeLabel = (label: string) => {
         attachment={selectedFileForPreview}
       />
 
+      {/* Editor sofisticado: detalhes do contato (campos obrigatórios + customizáveis) */}
+      <Dialog open={isDetailsEditorOpen} onOpenChange={setIsDetailsEditorOpen}>
+        <DialogContent className="max-w-2xl p-0 overflow-hidden bg-white dark:bg-[#0f0f0f] border border-gray-200 dark:border-gray-800">
+          <DialogHeader className="px-6 py-4 border-b border-gray-200 dark:border-gray-800 bg-white dark:bg-[#0f0f0f]">
+            <DialogTitle className="text-base font-semibold text-gray-900 dark:text-white">
+              Detalhes do contato
+            </DialogTitle>
+          </DialogHeader>
+
+          <div className="p-6 space-y-5 max-h-[70vh] overflow-y-auto">
+            <div className="space-y-2">
+              <div className="text-[11px] font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
+                Campos obrigatórios
+              </div>
+              <div className="space-y-3">
+                {(workspaceContactFields || [])
+                  .filter((f: any) => f?.is_required && f?.field_name)
+                  .sort((a: any, b: any) => (a.field_order ?? 0) - (b.field_order ?? 0))
+                  .map((f: any) => {
+                    const name = String(f.field_name || "").trim();
+                    return (
+                      <div key={name} className="grid grid-cols-1 md:grid-cols-12 gap-2 items-center">
+                        <div className="md:col-span-4">
+                          <div className="text-xs font-medium text-gray-700 dark:text-gray-300 truncate" title={name}>
+                            {humanizeLabel(name)}
+                          </div>
+                        </div>
+                        <div className="md:col-span-8">
+                          <Input
+                            value={detailsDraft[name] ?? "0"}
+                            onChange={(e) =>
+                              setDetailsDraft((prev) => ({
+                                ...prev,
+                                [name]: e.target.value === "" ? "0" : e.target.value,
+                              }))
+                            }
+                            placeholder="0"
+                            className="h-9 rounded-none text-sm border-gray-300 dark:border-gray-700 dark:bg-[#111111] dark:text-gray-100"
+                          />
+                        </div>
+                      </div>
+                    );
+                  })}
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <div className="flex items-center justify-between gap-2">
+                <div className="text-[11px] font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
+                  Campos personalizados
+                </div>
+              </div>
+
+              {customDetailKeys.length > 0 ? (
+                <div className="space-y-3">
+                  {customDetailKeys.map((name) => (
+                    <div key={name} className="grid grid-cols-1 md:grid-cols-12 gap-2 items-center">
+                      <div className="md:col-span-4">
+                        <div className="text-xs font-medium text-gray-700 dark:text-gray-300 truncate" title={name}>
+                          {humanizeLabel(name)}
+                        </div>
+                      </div>
+                      <div className="md:col-span-7">
+                        <Input
+                          value={detailsDraft[name] ?? "0"}
+                          onChange={(e) =>
+                            setDetailsDraft((prev) => ({
+                              ...prev,
+                              [name]: e.target.value === "" ? "0" : e.target.value,
+                            }))
+                          }
+                          placeholder="0"
+                          className="h-9 rounded-none text-sm border-gray-300 dark:border-gray-700 dark:bg-[#111111] dark:text-gray-100"
+                        />
+                      </div>
+                      <div className="md:col-span-1 flex justify-end">
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          className="h-9 w-9 rounded-none"
+                          title="Remover campo"
+                          onClick={() => removeCustomDetailField(name)}
+                        >
+                          <X className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="text-xs text-gray-500 dark:text-gray-400">
+                  Nenhum campo personalizado.
+                </div>
+              )}
+
+              <div className="mt-4 border border-dashed border-gray-300 dark:border-gray-700 rounded-none p-3 space-y-2">
+                <div className="text-[11px] font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
+                  Adicionar campo
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                  <Input
+                    value={newDetailFieldName}
+                    onChange={(e) => setNewDetailFieldName(e.target.value)}
+                    placeholder="Nome do campo"
+                    className="h-9 rounded-none text-sm border-gray-300 dark:border-gray-700 dark:bg-[#111111] dark:text-gray-100"
+                  />
+                  <Input
+                    value={newDetailFieldValue}
+                    onChange={(e) => setNewDetailFieldValue(e.target.value)}
+                    placeholder="Valor"
+                    className="h-9 rounded-none text-sm border-gray-300 dark:border-gray-700 dark:bg-[#111111] dark:text-gray-100"
+                  />
+                </div>
+                <div className="flex justify-end">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="h-9 rounded-none text-xs border-gray-300 dark:border-gray-700"
+                    onClick={handleAddCustomDetailField}
+                    disabled={!newDetailFieldName.trim()}
+                  >
+                    <Plus className="h-4 w-4 mr-2" />
+                    Adicionar
+                  </Button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div className="px-6 py-4 border-t border-gray-200 dark:border-gray-800 bg-white dark:bg-[#0f0f0f] flex items-center justify-end gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              className="h-9 rounded-none border-gray-300 dark:border-gray-700"
+              onClick={() => setIsDetailsEditorOpen(false)}
+              disabled={isSavingDetails}
+            >
+              Cancelar
+            </Button>
+            <Button
+              type="button"
+              className="h-9 rounded-none"
+              onClick={handleSaveDetailsEditor}
+              disabled={isSavingDetails}
+            >
+              Salvar
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
     </div>
   );
 }
@@ -4784,10 +5496,17 @@ function HistoryTimelineItem({
     return withoutCountry;
   };
 
+  const parseDateSafe = (value: any): Date | null => {
+    if (!value) return null;
+    const d = new Date(value);
+    return Number.isNaN(d.getTime()) ? null : d;
+  };
+
   const EventIcon = getEventIcon(event.type, event.action);
   const isActivity = event.type?.startsWith("activity_");
   const isCompleted = event.action === "completed";
   const eventDate = event.timestamp ? new Date(event.timestamp) : new Date();
+  const scheduledForDate = parseDateSafe(event?.metadata?.scheduled_for);
   const [isActionsOpen, setIsActionsOpen] = useState(false);
   const isNote = event.type === "notes";
   const isEditingNote = isNote && editingNoteId === event.metadata?.note_id;
@@ -4898,8 +5617,21 @@ function HistoryTimelineItem({
                       activityAttachments.length > 0 ? "mb-3" : "mb-2"
                     )}>
                       <span>
+                        {isCompleted ? "Concluído em: " : "Criado em: "}
                         {format(eventDate, "d 'de' MMMM 'às' HH:mm", { locale: ptBR })}
                       </span>
+                      {scheduledForDate && (
+                        <>
+                          <span>•</span>
+                          <div className="flex items-center gap-1">
+                            <CalendarIconLucide className="h-3 w-3" />
+                            <span>
+                              Agendado para:{" "}
+                              {format(scheduledForDate, "d 'de' MMMM 'às' HH:mm", { locale: ptBR })}
+                            </span>
+                          </div>
+                        </>
+                      )}
                       {event.user_name && (
                         <>
                           <span>•</span>

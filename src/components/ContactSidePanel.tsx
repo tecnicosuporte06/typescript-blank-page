@@ -566,18 +566,18 @@ export function ContactSidePanel({
                     <CardContent className="p-0">
                       {workspaceFields.length > 0 && (
                         <div>
-                          <div className="flex items-center justify-between px-4 py-2 bg-[#fff8e1] border-b border-[#f5d37a] text-[11px] font-semibold text-amber-800 dark:bg-amber-900/20 dark:border-amber-800 dark:text-amber-200">
+                          <div className="flex items-center justify-between px-4 py-2 bg-[#f3f3f3] border-b border-[#d4d4d4] text-[11px] font-semibold text-gray-700 dark:bg-[#2d2d2d] dark:border-gray-700 dark:text-gray-300">
                             <div className="flex items-center gap-2">
                               <Pin className="h-3.5 w-3.5" />
-                              Campos obrigatórios do workspace
+                              Campos obrigatórios da empresa
                             </div>
                             <span>{workspaceFields.length} campo(s)</span>
                           </div>
                           <table className="min-w-full text-xs border-b border-[#d4d4d4] dark:border-gray-700">
-                            <thead className="bg-[#fef4d7] text-[10px] uppercase tracking-wide text-left text-amber-900 dark:bg-amber-900/40 dark:text-amber-200">
+                            <thead className="bg-[#ededed] text-[10px] uppercase tracking-wide text-left text-gray-600 dark:bg-[#2d2d2d] dark:text-gray-400">
                               <tr>
-                                <th className="px-3 py-2 border border-[#ecd7a1] w-48 dark:border-amber-800">Campo</th>
-                                <th className="px-3 py-2 border border-[#ecd7a1] dark:border-amber-800">Valor</th>
+                                <th className="px-3 py-2 border border-[#d4d4d4] w-48 dark:border-gray-700">Campo</th>
+                                <th className="px-3 py-2 border border-[#d4d4d4] dark:border-gray-700">Valor</th>
                               </tr>
                             </thead>
                             <tbody>
@@ -586,11 +586,11 @@ export function ContactSidePanel({
                                 const fieldIndex = customFields.findIndex(f => f.key === field.field_name);
                                 
                                 return (
-                                  <tr key={field.id} className="bg-white hover:bg-[#fffdf5] dark:bg-[#1f1f1f] dark:hover:bg-[#2d2d2d]">
-                                    <td className="px-3 py-2 border border-[#f0e2bf] font-semibold text-[11px] text-amber-900 dark:border-gray-700 dark:text-amber-200">
+                                  <tr key={field.id} className="bg-white hover:bg-blue-50 transition-colors dark:bg-[#1f1f1f] dark:hover:bg-[#2d2d2d]">
+                                    <td className="px-3 py-2 border border-[#e0e0e0] font-semibold text-[11px] text-gray-800 dark:border-gray-700 dark:text-gray-300">
                                       {field.field_name} *
                                     </td>
-                                    <td className="px-3 py-2 border border-[#f0e2bf] dark:border-gray-700">
+                                    <td className="px-3 py-2 border border-[#e0e0e0] dark:border-gray-700">
                                       {editingFieldIndex === fieldIndex && editingFieldType === 'value' ? (
                                         <input
                                           type="text"
@@ -613,27 +613,45 @@ export function ContactSidePanel({
                                             }
                                           }}
                                           autoFocus
-                                          className="w-full bg-transparent border border-amber-400 focus:border-amber-500 focus:ring-0 text-sm px-2 py-1 rounded-none dark:text-gray-200 dark:border-amber-600"
+                                          className="w-full bg-transparent border border-primary focus:border-primary focus:ring-0 text-sm px-2 py-1 rounded-none dark:text-gray-200"
+                                        />
+                                      ) : !currentValue ? (
+                                        <input
+                                          type="text"
+                                          value={currentValue}
+                                          placeholder=""
+                                          onChange={(e) => {
+                                            if (fieldIndex !== -1) {
+                                              updateCustomField(fieldIndex, 'value', e.target.value);
+                                            } else {
+                                              // cria o campo na primeira digitação
+                                              setCustomFields(prev => [...prev, { key: field.field_name, value: e.target.value }]);
+                                            }
+                                          }}
+                                          onBlur={async () => {
+                                            // só salva se existir algum valor (evita criar entrada vazia sem intenção)
+                                            if (fieldIndex !== -1 ? Boolean(customFields[fieldIndex]?.value?.trim()) : false) {
+                                              await handleSaveCustomFields();
+                                            }
+                                          }}
+                                          onKeyDown={(e) => {
+                                            if (e.key === 'Enter') {
+                                              e.currentTarget.blur();
+                                            }
+                                          }}
+                                          className="w-full bg-transparent border border-primary focus:border-primary focus:ring-0 text-sm px-2 py-1 rounded-none dark:text-gray-200"
                                         />
                                       ) : (
                                         <button
                                           type="button"
                                           onDoubleClick={() => {
-                                            if (fieldIndex === -1) {
-                                              setCustomFields(prev => [...prev, { key: field.field_name, value: '' }]);
-                                              setTimeout(() => {
-                                                setEditingFieldIndex(customFields.length);
-                                                setEditingFieldType('value');
-                                              }, 0);
-                                            } else {
-                                              setEditingFieldIndex(fieldIndex);
-                                              setEditingFieldType('value');
-                                            }
+                                            setEditingFieldIndex(fieldIndex);
+                                            setEditingFieldType('value');
                                           }}
-                                          className="w-full text-left text-sm text-gray-800 truncate hover:bg-amber-50 px-2 py-1 rounded-none dark:text-gray-300 dark:hover:bg-amber-900/20"
+                                          className="w-full text-left text-sm text-gray-800 truncate hover:bg-blue-50 px-2 py-1 rounded-none dark:text-gray-300 dark:hover:bg-[#2d2d2d]"
                                           title="Clique duas vezes para editar"
                                         >
-                                          {currentValue || 'Clique para adicionar'}
+                                          {currentValue}
                                         </button>
                                       )}
                                     </td>

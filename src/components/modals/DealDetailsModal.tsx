@@ -2774,6 +2774,21 @@ export function DealDetailsModal({
                                     {format(new Date(event.timestamp), "dd/MM/yyyy 'às' HH:mm", { locale: ptBR })}
                                   </span>
                                 </div>
+                                {String(event.type || "").startsWith("activity_") && eventMetadata?.scheduled_for && (
+                                  <div className="flex items-center gap-2 mt-1">
+                                    <CalendarIconLucide className={cn(
+                                      "w-3 h-3",
+                                      isDarkMode ? "text-gray-500" : "text-gray-400"
+                                    )} />
+                                    <span className={cn(
+                                      "text-[10px]",
+                                      isDarkMode ? "text-gray-500" : "text-gray-500"
+                                    )}>
+                                      Agendado para:{" "}
+                                      {format(new Date(eventMetadata.scheduled_for), "dd/MM/yyyy 'às' HH:mm", { locale: ptBR })}
+                                    </span>
+                                  </div>
+                                )}
 
                                 {(event.user_name || eventMetadata.changed_by_name) && (
                                   <div className={cn(
@@ -2843,7 +2858,7 @@ export function DealDetailsModal({
                         {item.subject}
                       </h4>
                       <div className={cn("text-xs mb-2", isDarkMode ? "text-gray-400" : "text-gray-500")}>
-                        <p className="mb-0.5">Criado em:</p>
+                        <p className="mb-0.5">Agendado para:</p>
                         <p className="mb-1">{format(new Date(item.date), "dd/MM/yyyy 'às' HH:mm", { locale: ptBR })}</p>
                         {item.type === 'activity' && item.completed_at && (
                           <>
