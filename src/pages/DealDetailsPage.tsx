@@ -1154,6 +1154,21 @@ const normalizeFieldKey = (label: string) => {
 
       if (error) throw error;
 
+      // Marcar oferta se a coluna de destino for etapa de oferta
+      const resolveColumn = () => {
+        if (newPipelineId === pipelineIdForColumns) {
+          return columns?.find((c: any) => c.id === newColumnId);
+        }
+        return transferColumns?.find((c: any) => c.id === newColumnId);
+      };
+      const targetColumn = resolveColumn();
+      if (targetColumn?.is_offer_stage) {
+        await supabase
+          .from('pipeline_cards')
+          .update({ oferta: true })
+          .eq('id', cardId);
+      }
+
       toast({
         title: "Card movido",
         description: "O card foi movido com sucesso.",
@@ -3411,20 +3426,7 @@ const normalizeFieldKey = (label: string) => {
                           <span className="text-gray-600 dark:text-gray-400 whitespace-nowrap">
                             Transferir Oportunidade
                           </span>
-                          <Button
-                            variant="outline"
-                            size="icon"
-                            title="Transferir oportunidade"
-                            className="h-7 w-7 p-0 rounded-none border border-gray-300 bg-white hover:bg-gray-100 dark:bg-[#1b1b1b] dark:border-gray-700 dark:text-gray-100 dark:hover:bg-gray-800"
-                            onClick={() => handleMoveCardToColumn(transferPipelineId, transferColumnId)}
-                            disabled={
-                              !transferPipelineId ||
-                              !transferColumnId ||
-                              (transferPipelineId === cardData?.pipeline_id && transferColumnId === cardData?.column_id)
-                            }
-                          >
-                            <ChevronRight className="h-4 w-4" />
-                          </Button>
+                          {/* Botão de transferir removido a pedido */}
                         </div>
                         <div className="grid grid-cols-2 gap-2">
                           <Select
@@ -4449,9 +4451,6 @@ const normalizeFieldKey = (label: string) => {
                           disabled={isUploadingFile}
                         >
                           Salvar
-                        </Button>
-                        <Button variant="ghost" size="icon">
-                          <Copy className="h-4 w-4" />
                         </Button>
                       </div>
                     </div>

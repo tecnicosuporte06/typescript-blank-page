@@ -13,7 +13,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Pie, PieChart, ResponsiveContainer, Cell, Tooltip as ReTooltip, Legend } from 'recharts';
+import { Pie, PieChart, ResponsiveContainer, Cell, Tooltip as ReTooltip, Legend, LineChart, Line, XAxis, YAxis, CartesianGrid } from 'recharts';
 import { Filter, Users, Download, Loader2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { QueryBuilderSidebar } from './QueryBuilderSidebar';
@@ -279,6 +279,81 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
     }
   };
 
+  const normalizeFunnelGroups = (funnelFilters: any): any[] => {
+    if (!Array.isArray(funnelFilters)) return [];
+    // Novo formato: array de grupos
+    if (funnelFilters[0]?.pipeline !== undefined) {
+      return funnelFilters.map((g: any) => ({
+        pipeline: g.pipeline ?? 'all',
+        column: g.column ?? 'all',
+        team: g.team ?? 'all',
+        tags: Array.isArray(g.tags) ? g.tags.filter(Boolean) : [],
+        products: Array.isArray(g.products) ? g.products.filter(Boolean) : [],
+        dateRange: g.dateRange
+          ? {
+              from: g.dateRange.from ? new Date(g.dateRange.from) : undefined,
+              to: g.dateRange.to ? new Date(g.dateRange.to) : undefined,
+            }
+          : {},
+        status: g.status ?? 'all',
+        value: g.value ? { value: g.value.value, operator: g.value.operator } : null,
+      }));
+    }
+    // Legado: FilterItem[]
+    const byType = new Map<string, any[]>();
+    funnelFilters.forEach((f) => {
+      const arr = byType.get(f.type) || [];
+      arr.push(f);
+      byType.set(f.type, arr);
+    });
+    const pipeline = byType.get('pipeline')?.[0]?.value || 'all';
+    const column = byType.get('column')?.[0]?.value || 'all';
+    const team = byType.get('team')?.[0]?.value || 'all';
+    const status = byType.get('status')?.[0]?.value || 'all';
+    const tagsArr = (byType.get('tags') || []).map((t) => t.value).filter(Boolean);
+    const productsArr = (byType.get('products') || []).map((t) => t.value).filter(Boolean);
+    const valueItem = byType.get('value')?.[0];
+    const date = byType.get('date')?.[0];
+    let parsedRange: { from?: Date; to?: Date } = {};
+    if (date?.value && date.operator === 'between') {
+      const [from, to] = String(date.value).split('|');
+      const dFrom = from ? new Date(from) : null;
+      const dTo = to ? new Date(to) : null;
+      if (dFrom && !Number.isNaN(dFrom.getTime()) && dTo && !Number.isNaN(dTo.getTime())) {
+        parsedRange = { from: dFrom, to: dTo };
+      }
+    }
+    return [{
+      pipeline,
+      column,
+      team,
+      tags: tagsArr,
+      products: productsArr,
+      dateRange: parsedRange,
+      status,
+      value: valueItem ? { value: valueItem.value, operator: valueItem.operator } : null,
+    }];
+  };
+
+  const sanitizeGroupsForPersist = (groups: any[]) =>
+    (groups || []).map((g) => ({
+      pipeline: g.pipeline ?? 'all',
+      column: g.column ?? 'all',
+      team: g.team ?? 'all',
+      tags: Array.isArray(g.tags) ? g.tags.filter(Boolean) : [],
+      products: Array.isArray(g.products) ? g.products.filter(Boolean) : [],
+      dateRange: g.dateRange
+        ? {
+            from: g.dateRange.from ? new Date(g.dateRange.from).toISOString() : undefined,
+            to: g.dateRange.to ? new Date(g.dateRange.to).toISOString() : undefined,
+          }
+        : {},
+      status: g.status ?? 'all',
+      value: g.value ? { value: g.value.value ?? '', operator: g.value.operator } : null,
+    }));
+
+  const serializeGroups = (groups: any[]) => JSON.stringify(groups || []);
+
   const fetchData = async () => {
     if (!user?.id) return;
     setIsLoading(true);
@@ -308,18 +383,20 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
 
       // Contacts (leads)
       // @ts-ignore simplificando tipagem dinâmica para evitar profundidade de generics
+      // Seleciona tudo para evitar erro 42703 em ambientes sem colunas opcionais
       let contactsQuery = supabase
         .from('contacts')
-        .select('id, created_at, responsible_id, status, workspace_id');
+        .select('*');
       if (hasDateRange && from && to) {
         contactsQuery = contactsQuery.gte('created_at', from).lte('created_at', to);
       }
 
       // Activities (ligações/mensagens/reuniões)
       // @ts-ignore simplificando tipagem dinâmica
+      // Seleciona tudo para evitar erro 42703 em ambientes sem colunas opcionais
       let activitiesQuery = supabase
         .from('activities')
-        .select('id, contact_id, responsible_id, type, status, created_at, workspace_id');
+        .select('*');
       if (hasDateRange && from && to) {
         activitiesQuery = activitiesQuery.gte('created_at', from).lte('created_at', to);
       }
@@ -334,14 +411,13 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
 
       // Ranking de Trabalho (agregado por responsável e tipo) — tipos oficiais do sistema
       // Obs: para usuários comuns, restringe ao próprio responsável (mantém mesma regra de permissão do relatório)
-      const teamWorkRankingQuery = selectedWorkspaceId
-        ? supabase.rpc('report_team_work_ranking', {
-            p_workspace_id: selectedWorkspaceId,
-            p_from: from,
-            p_to: to,
-            p_responsible_id: userRole === 'user' ? user.id : null,
-          })
-        : Promise.resolve({ data: [], error: null } as any);
+      const teamWorkRankingQuery = supabase.rpc('report_team_work_ranking', {
+        // Ignora filtros: a função agora conta tudo no banco
+        p_workspace_id: null,
+        p_from: null,
+        p_to: null,
+        p_responsible_id: null,
+      });
 
       // Workspace filter
       if (selectedWorkspaceId) {
@@ -365,10 +441,18 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
         { data: workRankingData, error: workRankingError },
       ] = await Promise.all([contactsQuery, activitiesQuery, conversationsQuery, teamWorkRankingQuery]);
 
-      if (contactsError) throw contactsError;
-      if (activitiesError) throw activitiesError;
-      if (conversationsError) throw conversationsError;
-      if (workRankingError) throw workRankingError;
+      if (contactsError) {
+        console.error('❌ Erro ao buscar contacts:', contactsError);
+      }
+      if (activitiesError) {
+        console.error('❌ Erro ao buscar activities:', activitiesError);
+      }
+      if (conversationsError) {
+        console.error('❌ Erro ao buscar conversations:', conversationsError);
+      }
+      if (workRankingError) {
+        console.error('❌ Erro ao buscar report_team_work_ranking:', workRankingError);
+      }
 
       const contactsFiltered = (((contactsData as unknown) as ContactRecord[]) || []);
 
@@ -391,6 +475,8 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
       const activitiesFiltered = (((activitiesData as unknown) as ActivityRecord[]) || []);
 
       const conversationsFiltered = (conversationsData || []);
+
+      console.log('📊 RPC report_team_work_ranking rows:', Array.isArray(workRankingData) ? workRankingData.length : 'n/a', workRankingData);
 
       setContacts(finalContacts);
       setActivities(activitiesFiltered);
@@ -456,7 +542,7 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
     const normalized = (savedFunnels || []).map((f: any, idx: number) => ({
       id: String(f.id || `funnel-${idx + 1}`),
       name: String(f.name || `Funil ${idx + 1}`),
-      filters: Array.isArray(f.filters) ? f.filters : [],
+      filters: normalizeFunnelGroups(Array.isArray(f.filters) ? f.filters : []),
     }));
     setDraftFunnels(normalized);
     setSavedSnapshot(normalized);
@@ -485,170 +571,220 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
     const nameByTagId = new Map((availableTags || []).map((t: any) => [t.id, t.name]));
     const nameByProductId = new Map((availableProducts || []).map((p: any) => [p.id, p.name]));
 
-    const parseDateFilter = (filters: any[]) => {
-      const date = (filters || []).find((f) => f.type === 'date' && f.operator === 'between' && f.value);
-      if (!date) return null;
-      const [from, to] = String(date.value).split('|');
-      const dFrom = from ? new Date(from) : null;
-      const dTo = to ? new Date(to) : null;
-      if (!dFrom || !dTo || Number.isNaN(dFrom.getTime()) || Number.isNaN(dTo.getTime())) return null;
-      return { from: dFrom.getTime(), to: dTo.getTime() };
-    };
-
     const apply = (funnel: any) => {
-      const filters = Array.isArray(funnel?.filters) ? funnel.filters : [];
-      const pipeline = filters.find((f: any) => f.type === 'pipeline')?.value || '';
-      const column = filters.find((f: any) => f.type === 'column')?.value || '';
-      const team = filters.find((f: any) => f.type === 'team')?.value || '';
-      const status = filters.find((f: any) => f.type === 'status')?.value || '';
-      const valueFilter = filters.find((f: any) => f.type === 'value');
-      const tagFilters = (filters || []).filter((f: any) => f.type === 'tags').map((x: any) => x.value);
-      const productFilters = (filters || []).filter((f: any) => f.type === 'products').map((x: any) => x.value);
-      const dateRange = parseDateFilter(filters);
+      const groups = normalizeFunnelGroups(Array.isArray(funnel?.filters) ? funnel.filters : []);
 
-      // 1) Filtra cards (pipeline/coluna/status/valor/time)
-      let cardsF = [...(cards || [])] as any[];
-      if (pipeline && pipeline !== 'all') cardsF = cardsF.filter((c) => c.pipeline_id === pipeline);
-      if (column && column !== 'all') cardsF = cardsF.filter((c) => c.column_id === column);
-      if (team && team !== 'all') {
-        if (team === 'ia') cardsF = cardsF.filter((c) => !c.responsible_user_id);
-        else cardsF = cardsF.filter((c) => c.responsible_user_id === team);
-      }
-      if (status && status !== 'all') {
-        cardsF = cardsF.filter((c) => (c.status || '').toLowerCase() === String(status).toLowerCase());
-      }
-      if (valueFilter?.value) {
-        const valueNum = parseFloat(valueFilter.value);
-        if (!Number.isNaN(valueNum)) {
-          switch (valueFilter.operator) {
-            case 'greater':
-              cardsF = cardsF.filter((c) => (c.value || 0) > valueNum);
-              break;
-            case 'less':
-              cardsF = cardsF.filter((c) => (c.value || 0) < valueNum);
-              break;
-            case 'equals':
-            default:
-              cardsF = cardsF.filter((c) => c.value === valueNum);
-              break;
-          }
-        }
-      }
-
-      // 1b) Filtra por produtos selecionados
-      if (productFilters.length > 0) {
-        cardsF = cardsF.filter((c) => (c.products || []).some((p: any) => p?.product_id && productFilters.includes(p.product_id)));
-      }
-
-      // 2) Filtra por tags: reduz universo por contact_id
-      let allowedContactIds: Set<string> | null = null;
-      if (tagFilters.length > 0) {
-        allowedContactIds = new Set<string>();
-        (tags || []).forEach((t: any) => {
-          if (!t?.contact_id || !t?.tag_id) return;
-          if (tagFilters.includes(t.tag_id)) allowedContactIds?.add(t.contact_id);
-        });
-        cardsF = cardsF.filter((c) => c.contact_id && allowedContactIds?.has(c.contact_id));
-      }
-
-      // 3) Universo de contatos do funil
-      const contactIdsFromCards = new Set<string>(cardsF.map((c) => c.contact_id).filter(Boolean));
-      const withinDate = (iso?: string) => {
-        if (!dateRange) return true;
-        if (!iso) return false;
-        const t = new Date(iso).getTime();
-        return t >= dateRange.from && t <= dateRange.to;
+      const agg = {
+        leadsReceived: 0,
+        leadsQualified: 0,
+        leadsOffer: 0,
+        leadsWon: 0,
+        leadsLost1: 0,
+        leadsLost2: 0,
+        leadsLost3: 0,
+        leadsByTag: new Map<string, number>(),
+        leadsByProduct: new Map<string, number>(),
+        series: new Map<string, { received: number; qualified: number }>(),
       };
 
-      let contactsF = (contacts || []).filter((c: any) => contactIdsFromCards.has(c.id));
-      let conversationsF = (conversations || []).filter((c: any) => contactIdsFromCards.has(c.contact_id));
-      let activitiesF = (activities || []).filter((a: any) => a.contact_id && contactIdsFromCards.has(a.contact_id));
+      const addToMap = (map: Map<string, number>, name: string, value: number) => {
+        map.set(name, (map.get(name) || 0) + value);
+      };
+      const addSeries = (dateKey: string, incReceived: number, incQualified: number) => {
+        const curr = agg.series.get(dateKey) || { received: 0, qualified: 0 };
+        curr.received += incReceived;
+        curr.qualified += incQualified;
+        agg.series.set(dateKey, curr);
+      };
 
-      // time / equipe (aplica em contatos/conversas/atividades)
-      if (team && team !== 'all') {
-        if (team === 'ia') {
-          contactsF = contactsF.filter((c: any) => !c.responsible_id);
-          conversationsF = conversationsF.filter((c: any) => !c.assigned_user_id);
-          activitiesF = activitiesF.filter((a: any) => !a.responsible_id);
-        } else {
-          contactsF = contactsF.filter((c: any) => c.responsible_id === team);
-          conversationsF = conversationsF.filter((c: any) => c.assigned_user_id === team);
-          activitiesF = activitiesF.filter((a: any) => a.responsible_id === team);
+      groups.forEach((g: any) => {
+        const pipeline = g.pipeline || 'all';
+        const column = g.column || 'all';
+        const team = g.team || 'all';
+        const status = g.status || 'all';
+        const tagFilters = Array.isArray(g.tags) ? g.tags : [];
+        const productFilters = Array.isArray(g.products) ? g.products : [];
+        const dateRange = g.dateRange
+          ? {
+              from: g.dateRange.from ? new Date(g.dateRange.from).getTime() : undefined,
+              to: g.dateRange.to ? new Date(g.dateRange.to).getTime() : undefined,
+            }
+          : null;
+        const valueFilter = g.value;
+
+        const withinDate = (iso?: string) => {
+          if (!dateRange || (!dateRange.from && !dateRange.to)) return true;
+          if (!iso) return false;
+          const t = new Date(iso).getTime();
+          if (Number.isNaN(t)) return false;
+          if (dateRange.from && t < dateRange.from) return false;
+          if (dateRange.to && t > dateRange.to) return false;
+          return true;
+        };
+
+        let cardsF = [...(cards || [])] as any[];
+        if (pipeline !== 'all') cardsF = cardsF.filter((c) => c.pipeline_id === pipeline);
+        if (column !== 'all') cardsF = cardsF.filter((c) => c.column_id === column);
+        if (team !== 'all') {
+          if (team === 'ia') cardsF = cardsF.filter((c) => !c.responsible_user_id);
+          else cardsF = cardsF.filter((c) => c.responsible_user_id === team);
         }
-      }
+        if (status && status !== 'all') {
+          cardsF = cardsF.filter((c) => (c.status || '').toLowerCase() === String(status).toLowerCase());
+        }
+        if (valueFilter?.value) {
+          const valueNum = parseFloat(valueFilter.value);
+          if (!Number.isNaN(valueNum)) {
+            switch (valueFilter.operator) {
+              case 'greater':
+                cardsF = cardsF.filter((c) => (c.value || 0) > valueNum);
+                break;
+              case 'less':
+                cardsF = cardsF.filter((c) => (c.value || 0) < valueNum);
+                break;
+              default:
+                cardsF = cardsF.filter((c) => c.value === valueNum);
+            }
+          }
+        }
+        if (productFilters.length > 0) {
+          cardsF = cardsF.filter((c) => (c.products || []).some((p: any) => p?.product_id && productFilters.includes(p.product_id)));
+        }
 
-      // data (se existir)
-      if (dateRange) {
-        contactsF = contactsF.filter((c: any) => withinDate(c.created_at));
-        conversationsF = conversationsF.filter((c: any) => withinDate(c.created_at));
-        activitiesF = activitiesF.filter((a: any) => withinDate(a.created_at));
-      }
+        // data em cards (entrada/registro)
+        if (dateRange && (dateRange.from || dateRange.to)) {
+          cardsF = cardsF.filter((c: any) => {
+            // se não tiver created_at, mantém para evitar quedas bruscas
+            if (!c.created_at) return true;
+            return withinDate(c.created_at);
+          });
+        }
 
-      // ✅ Leads recebidos = quantidade de CARDS no funil/coluna filtrados (estado atual)
-      // - Pipeline "all" => todos os cards
-      // - Pipeline selecionado => cards do pipeline
-      // - Pipeline + coluna => cards que estão na coluna
-      const leadsReceivedF = cardsF.length;
-      const leadsQualifiedF = contactsF.filter((c: any) => (c.status || '').toLowerCase() === 'qualified').length;
-      const leadsOfferF = contactsF.filter((c: any) => (c.status || '').toLowerCase() === 'offer').length;
-      const leadsWonF = cardsF.filter((c: any) => {
-        const s = (c.status || '').toLowerCase();
-        return s === 'won' || s === 'ganho' || s === 'venda' || s === 'success' || s === 'sucesso';
-      }).length;
-      const leadsQualifiedCardsF = cardsF.filter((c: any) => String(c.qualification || '').toLowerCase() === 'qualified').length;
-      const leadsLost1F = contactsF.filter((c: any) => (c.status || '').toLowerCase() === 'lost_offer').length;
-      const leadsLost2F = contactsF.filter((c: any) => (c.status || '').toLowerCase() === 'lost_no_offer').length;
-      const leadsLost3F = contactsF.filter((c: any) => (c.status || '').toLowerCase() === 'lost_not_fit').length;
+        if (tagFilters.length > 0) {
+          const allowed = new Set<string>();
+          (tags || []).forEach((t: any) => {
+            if (t?.contact_id && t?.tag_id && tagFilters.includes(t.tag_id)) allowed.add(t.contact_id);
+          });
+          cardsF = cardsF.filter((c) => c.contact_id && allowed.has(c.contact_id));
+        }
 
-      // Pie: tags (contatos únicos por tag)
-      const byTag = new Map<string, Set<string>>();
-      (tags || []).forEach((t: any) => {
-        if (!t?.contact_id || !t?.tag_id) return;
-        if (!contactIdsFromCards.has(t.contact_id)) return;
-        if (tagFilters.length > 0 && !tagFilters.includes(t.tag_id)) return;
-        const name = nameByTagId.get(t.tag_id) || t.tag_id || 'Etiqueta';
-        if (!byTag.has(name)) byTag.set(name, new Set());
-        byTag.get(name)!.add(t.contact_id);
-      });
-      const leadsByTagF = Array.from(byTag.entries())
-        .map(([name, set]) => ({ name, value: set.size }))
-        .filter((x) => x.value > 0)
-        .sort((a, b) => b.value - a.value);
+        const contactIdsFromCards = new Set<string>(cardsF.map((c) => c.contact_id).filter(Boolean));
+        let contactsF = (contacts || []).filter((c: any) => contactIdsFromCards.has(c.id));
+        let conversationsF = (conversations || []).filter((c: any) => contactIdsFromCards.has(c.contact_id));
+        let activitiesF = (activities || []).filter((a: any) => a.contact_id && contactIdsFromCards.has(a.contact_id));
 
-      // Pie: produtos (contatos únicos por produto)
-      const byProduct = new Map<string, Set<string>>();
-      cardsF.forEach((c: any) => {
-        if (!c?.contact_id) return;
-        (c.products || []).forEach((p: any) => {
-          const pid = p?.product_id;
-          if (!pid) return;
-          const name = nameByProductId.get(pid) || pid || 'Produto';
-          if (!byProduct.has(name)) byProduct.set(name, new Set());
-          byProduct.get(name)!.add(c.contact_id);
+        if (team && team !== 'all') {
+          if (team === 'ia') {
+            contactsF = contactsF.filter((c: any) => !c.responsible_id);
+            conversationsF = conversationsF.filter((c: any) => !c.assigned_user_id);
+            activitiesF = activitiesF.filter((a: any) => !a.responsible_id);
+          } else {
+            contactsF = contactsF.filter((c: any) => c.responsible_id === team);
+            conversationsF = conversationsF.filter((c: any) => c.assigned_user_id === team);
+            activitiesF = activitiesF.filter((a: any) => a.responsible_id === team);
+          }
+        }
+
+        if (dateRange && (dateRange.from || dateRange.to)) {
+          contactsF = contactsF.filter((c: any) => withinDate(c.created_at));
+          conversationsF = conversationsF.filter((c: any) => withinDate(c.created_at));
+          activitiesF = activitiesF.filter((a: any) => withinDate(a.created_at));
+        }
+
+        const leadsReceivedF = cardsF.length;
+        const leadsQualifiedF = contactsF.filter((c: any) => (c.status || '').toLowerCase() === 'qualified').length;
+        const leadsOfferF = contactsF.filter((c: any) => (c.status || '').toLowerCase() === 'offer').length;
+        const leadsWonF = cardsF.filter((c: any) => {
+          const s = (c.status || '').toLowerCase();
+          return s === 'won' || s === 'ganho' || s === 'venda' || s === 'success' || s === 'sucesso';
+        }).length;
+        const leadsQualifiedCardsF = cardsF.filter((c: any) => String(c.qualification || '').toLowerCase() === 'qualified').length;
+        const leadsLost1F = contactsF.filter((c: any) => (c.status || '').toLowerCase() === 'lost_offer').length;
+        const leadsLost2F = contactsF.filter((c: any) => (c.status || '').toLowerCase() === 'lost_no_offer').length;
+        const leadsLost3F = contactsF.filter((c: any) => (c.status || '').toLowerCase() === 'lost_not_fit').length;
+
+        agg.leadsReceived += leadsReceivedF;
+        agg.leadsQualified += leadsQualifiedCardsF;
+        agg.leadsOffer += leadsOfferF;
+        agg.leadsWon += leadsWonF;
+        agg.leadsLost1 += leadsLost1F;
+        agg.leadsLost2 += leadsLost2F;
+        agg.leadsLost3 += leadsLost3F;
+
+        // Séries diárias (usamos created_at dos cards para recebidos; contatos qualificados para qualified)
+        cardsF.forEach((c: any) => {
+          if (!c?.created_at) return;
+          const key = format(new Date(c.created_at), 'yyyy-MM-dd');
+          addSeries(key, 1, 0);
         });
-      });
-      const leadsByProductF = Array.from(byProduct.entries())
-        .map(([name, set]) => ({ name, value: set.size }))
-        .filter((x) => x.value > 0)
-        .sort((a, b) => b.value - a.value);
+        contactsF
+          .filter((c: any) => (c.status || '').toLowerCase() === 'qualified')
+          .forEach((c: any) => {
+            if (!c?.created_at) return;
+            const key = format(new Date(c.created_at), 'yyyy-MM-dd');
+            addSeries(key, 0, 1);
+          });
 
-        return {
+        const byTag = new Map<string, number>();
+        (tags || []).forEach((t: any) => {
+          if (!t?.contact_id || !t?.tag_id) return;
+          if (!contactIdsFromCards.has(t.contact_id)) return;
+          if (tagFilters.length > 0 && !tagFilters.includes(t.tag_id)) return;
+          const name = nameByTagId.get(t.tag_id) || t.tag_id || 'Etiqueta';
+          byTag.set(name, (byTag.get(name) || 0) + 1);
+        });
+        byTag.forEach((v, k) => addToMap(agg.leadsByTag, k, v));
+
+        const byProduct = new Map<string, number>();
+        cardsF.forEach((c: any) => {
+          if (!c?.contact_id) return;
+          (c.products || []).forEach((p: any) => {
+            const pid = p?.product_id;
+            if (!pid) return;
+            if (productFilters.length > 0 && !productFilters.includes(pid)) return;
+            const name = nameByProductId.get(pid) || pid || 'Produto';
+            byProduct.set(name, (byProduct.get(name) || 0) + 1);
+          });
+        });
+        byProduct.forEach((v, k) => addToMap(agg.leadsByProduct, k, v));
+      });
+
+      return {
         id: funnel.id,
         name: funnel.name,
-        leadsReceived: leadsReceivedF,
-          leadsQualified: leadsQualifiedCardsF,
-        leadsOffer: leadsOfferF,
-        leadsWon: leadsWonF,
-        leadsLost1: leadsLost1F,
-        leadsLost2: leadsLost2F,
-        leadsLost3: leadsLost3F,
-        leadsByTag: leadsByTagF,
-        leadsByProduct: leadsByProductF,
+        leadsReceived: agg.leadsReceived,
+        leadsQualified: agg.leadsQualified,
+        leadsOffer: agg.leadsOffer,
+        leadsWon: agg.leadsWon,
+        leadsLost1: agg.leadsLost1,
+        leadsLost2: agg.leadsLost2,
+        leadsLost3: agg.leadsLost3,
+        leadsByTag: Array.from(agg.leadsByTag.entries()).map(([name, value]) => ({ name, value })).filter((x) => x.value > 0).sort((a, b) => b.value - a.value),
+        leadsByProduct: Array.from(agg.leadsByProduct.entries()).map(([name, value]) => ({ name, value })).filter((x) => x.value > 0).sort((a, b) => b.value - a.value),
+        leadsSeries: Array.from(agg.series.entries())
+          .map(([date, obj]) => ({ date, received: obj.received, qualified: obj.qualified }))
+          .sort((a, b) => a.date.localeCompare(b.date)),
       };
     };
 
     return (draftFunnels || []).map(apply);
   }, [availableProducts, availableTags, activities, cards, contacts, conversations, draftFunnels, tags]);
+
+  const leadsSeriesGlobal = useMemo(() => {
+    const m = new Map<string, { received: number; qualified: number }>();
+    (indicatorFunnels || []).forEach((f: any) => {
+      (f?.leadsSeries || []).forEach((p: any) => {
+        const key = p.date;
+        const curr = m.get(key) || { received: 0, qualified: 0 };
+        curr.received += Number(p.received || 0);
+        curr.qualified += Number(p.qualified || 0);
+        m.set(key, curr);
+      });
+    });
+    return Array.from(m.entries())
+      .map(([date, obj]) => ({ date, received: obj.received, qualified: obj.qualified }))
+      .sort((a, b) => a.date.localeCompare(b.date));
+  }, [indicatorFunnels]);
 
   const leadsByTag = useMemo(() => {
     const nameById = new Map((availableTags || []).map((t) => [t.id, t.name]));
@@ -874,18 +1010,50 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
       ensure(p.responsible_id).proposals += 1;
     });
 
+    const parseNumber = (v: any) => {
+      if (v === null || v === undefined) return 0;
+      if (typeof v === 'number') return Number.isFinite(v) ? v : 0;
+      const parsed = Number(String(v).replace(',', '.'));
+      return Number.isFinite(parsed) ? parsed : 0;
+    };
+
     cards.forEach((c) => {
       const s = (c.status || '').toLowerCase();
-      if (s === 'won' || s === 'ganho' || s === 'venda' || s === 'success' || s === 'sucesso') {
-        const target = ensure(c.responsible_user_id);
-        target.sales += 1;
-        target.revenue += c.value || 0;
-        
-        // Calcular quantidade real de produtos vendidos
-        const cardProducts = Array.isArray(c.products) ? c.products : [];
-        const totalProductsQuantity = cardProducts.reduce((sum, pcp: any) => sum + (pcp.quantity || 1), 0);
-        target.products += totalProductsQuantity;
-      }
+      const isWon = s === 'won' || s === 'ganho' || s === 'venda' || s === 'success' || s === 'sucesso';
+      if (!isWon) return;
+
+      const cardProducts = Array.isArray(c.products) ? c.products : [];
+      const hasProducts = cardProducts.length > 0;
+      if (!hasProducts) return; // considerar somente cartões ganhos com produto vinculado
+
+      const target = ensure(c.responsible_user_id);
+      if (!target) return;
+
+      const revenueFromProducts = cardProducts.reduce((sum, pcp: any) => {
+        const total = parseNumber(pcp.total_value ?? pcp.total ?? pcp.total_price);
+        const unit = parseNumber(
+          pcp.unit_value ??
+          pcp.price ??
+          pcp.value ??
+          pcp.amount ??
+          pcp.product_value ??
+          pcp.product?.value ??
+          pcp.unitPrice ??
+          pcp.unit_price
+        );
+        const qty = parseNumber(pcp.quantity || 1);
+        const base = total > 0 ? total : unit * (qty || 1);
+        return sum + base;
+      }, 0);
+
+      // Se produtos não carregarem valor, use fallback do card.value
+      const revenue = revenueFromProducts > 0 ? revenueFromProducts : Number(c.value || 0);
+
+      const totalProductsQuantity = cardProducts.reduce((sum, pcp: any) => sum + Number(pcp.quantity || 1), 0);
+
+      target.sales += 1;
+      target.revenue += revenue;
+      target.products += totalProductsQuantity;
     });
 
     return Object.values(agg);
@@ -922,7 +1090,8 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
     });
 
     const ensure = (id: string | null | undefined) => {
-      const key = id || 'ia';
+      if (!id) return null; // não lista dados sem responsável
+      const key = id;
       if (!agg[key]) {
         agg[key] = {
           id: key,
@@ -945,6 +1114,7 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
 
     (teamWorkRankingData || []).forEach((r) => {
       const t = ensure(r.responsible_id);
+      if (!t) return;
       t.mensagem = Number(r.mensagem || 0);
       t.ligacao_nao_atendida = Number(r.ligacao_nao_atendida || 0);
       t.ligacao_atendida = Number(r.ligacao_atendida || 0);
@@ -1080,17 +1250,6 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
                       >
                         Limpar
                       </Button>
-                      <Button
-                        variant="ghost"
-                        className="h-7 px-2 text-[11px] rounded-none text-red-600 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-900/20"
-                        onClick={() => {
-                          setDraftFunnels((prev: any[]) => prev.filter((x) => x.id !== f.id));
-                          setFunnelsDirty(true);
-                        }}
-                        disabled={draftFunnels.length <= 1}
-                      >
-                        Remover
-                      </Button>
                     </div>
                   )}
                 </div>
@@ -1102,16 +1261,12 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
                   agents={agents || []}
                   selectedWorkspaceId={selectedWorkspaceId || workspaces?.[0]?.workspace_id || ''}
                   onFiltersChange={canEditIndicatorFunnels ? ((filters) => {
-                    const normalize = (items: any[]) =>
-                      JSON.stringify(
-                        [...(items || [])].sort((a, b) =>
-                          `${a.type}|${a.value}|${a.operator || ''}`.localeCompare(`${b.type}|${b.value}|${b.operator || ''}`)
-                        )
-                      );
+                    const cleaned = sanitizeGroupsForPersist(filters || []);
+                    const sig = serializeGroups(cleaned);
                     setDraftFunnels((prev: any[]) => {
                       const current = prev.find((x) => x.id === f.id);
-                      if (normalize(current?.filters || []) === normalize(filters || [])) return prev;
-                      return prev.map((x) => (x.id === f.id ? { ...x, filters } : x));
+                      if (serializeGroups(current?.filters || []) === sig) return prev;
+                      return prev.map((x) => (x.id === f.id ? { ...x, filters: cleaned } : x));
                     });
                     setFunnelsDirty(true);
                   }) : undefined}
@@ -1123,31 +1278,69 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
               </div>
             ))}
 
-            {canEditIndicatorFunnels && (
-              <div className="flex justify-end">
-                <Button
-                  variant="outline"
-                  className="h-8 px-3 text-xs rounded-none border-[#d4d4d4] dark:border-gray-600"
-                  onClick={() => {
-                    const nextIdx = draftFunnels.length + 1;
-                    setDraftFunnels((prev: any[]) => [
-                      ...prev,
-                      { id: `funnel-${Date.now()}-${nextIdx}`, name: `Funil ${nextIdx}`, filters: [] },
-                    ]);
-                    setFunnelsDirty(true);
-                  }}
-                >
-                  + Adicionar funil
-                </Button>
-              </div>
-            )}
           </div>
+
+          {/* Gráfico global (agora acima dos cards de indicadores) */}
+          {leadsSeriesGlobal.length > 0 && (
+            <Card className="rounded-none border-gray-200 dark:border-gray-700 dark:bg-[#1b1b1b]">
+              <CardHeader className="py-2 px-3">
+                <CardTitle className="text-xs text-gray-700 dark:text-gray-200">
+                  Evolução de Leads — Geral
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="p-3">
+                <div className="h-52">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <LineChart data={leadsSeriesGlobal}>
+                      <CartesianGrid strokeDasharray="3 3" stroke={isDark ? '#1f2937' : '#e5e7eb'} />
+                      <XAxis
+                        dataKey="date"
+                        tick={{ fontSize: 10, fill: isDark ? '#e5e7eb' : '#4b5563' }}
+                        stroke={isDark ? '#e5e7eb' : '#4b5563'}
+                        tickFormatter={(val: string) => format(new Date(val), 'dd/MM')}
+                      />
+                      <YAxis
+                        tick={{ fontSize: 10, fill: isDark ? '#e5e7eb' : '#4b5563' }}
+                        stroke={isDark ? '#e5e7eb' : '#4b5563'}
+                        allowDecimals={false}
+                      />
+                      <ReTooltip
+                        formatter={(value: number, name: string) => [value, (name === 'received' || name === 'Recebidos') ? 'Recebidos' : 'Qualificados']}
+                        labelFormatter={(label: string) => `Data: ${format(new Date(label), 'dd/MM/yyyy')}`}
+                        contentStyle={{
+                          backgroundColor: isDark ? '#1b1b1b' : '#fff',
+                          borderColor: isDark ? '#374151' : '#d4d4d4',
+                          color: isDark ? '#fff' : '#000',
+                          fontSize: '10px',
+                          borderRadius: '0px',
+                        }}
+                        itemStyle={{ color: isDark ? '#e2e8f0' : '#374151' }}
+                      />
+                      <Legend
+                        verticalAlign="top"
+                        height={24}
+                        iconType="circle"
+                        wrapperStyle={{
+                          fontSize: '10px',
+                          color: isDark ? '#ffffff' : '#4b5563',
+                          paddingBottom: '4px',
+                        }}
+                        formatter={(value: string) => (value === 'received' || value === 'Recebidos' ? 'Recebidos' : 'Qualificados')}
+                      />
+                      <Line type="monotone" dataKey="received" name="Recebidos" stroke="#3B82F6" strokeWidth={2} dot={false} />
+                      <Line type="monotone" dataKey="qualified" name="Qualificados" stroke="#F59E0B" strokeWidth={2} dot={false} />
+                    </LineChart>
+                  </ResponsiveContainer>
+                </div>
+              </CardContent>
+            </Card>
+          )}
 
           {/* Render: indicadores por funil */}
           <div className="space-y-3">
             {indicatorFunnels.map((f: any) => (
               <div key={f.id} className="grid grid-cols-1 md:grid-cols-12 gap-3 items-start">
-                <Card className="rounded-none border-gray-200 dark:border-gray-700 md:col-span-4 h-fit dark:bg-[#1b1b1b]">
+                <Card className="rounded-none border-gray-200 dark:border-gray-700 md:col-span-3 h-fit dark:bg-[#1b1b1b]">
                   <CardHeader className="py-2 px-3">
                     <CardTitle className="text-xs text-gray-700 dark:text-gray-200">
                       Leads — {f.name}
@@ -1155,130 +1348,157 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
                   </CardHeader>
                   <CardContent className="p-3">
                     <div className="grid grid-cols-1 gap-1 text-[11px] text-gray-900 dark:text-gray-100">
-                      <div className="flex justify-between border-b border-gray-50 dark:border-gray-800 pb-1"><span>Leads recebidos</span><strong>{f.leadsReceived}</strong></div>
-                      <div className="flex justify-between border-b border-gray-50 dark:border-gray-800 pb-1"><span>Leads qualificados</span><strong>{f.leadsQualified}</strong></div>
-                      <div className="flex justify-between border-b border-gray-50 dark:border-gray-800 pb-1"><span>Vendas realizadas</span><strong>{f.leadsWon}</strong></div>
-                      <div className="flex justify-between border-b border-gray-50 dark:border-gray-800 pb-1"><span>Leads perdidos 1</span><strong>{f.leadsLost1}</strong></div>
-                      <div className="flex justify-between border-b border-gray-50 dark:border-gray-800 pb-1"><span>Leads perdidos 2</span><strong>{f.leadsLost2}</strong></div>
-                      <div className="flex justify-between"><span>Leads perdidos 3</span><strong>{f.leadsLost3}</strong></div>
+                      {[
+                        { label: 'Leads recebidos', value: f.leadsReceived },
+                        { label: 'Leads qualificados', value: f.leadsQualified },
+                        { label: 'Vendas realizadas', value: f.leadsWon },
+                        { label: 'Leads perdidos 1', value: f.leadsLost1 },
+                        { label: 'Leads perdidos 2', value: f.leadsLost2 },
+                        { label: 'Leads perdidos 3', value: f.leadsLost3 },
+                      ].map((item, idx) => (
+                        <div
+                          key={item.label}
+                          className={`flex items-center justify-between ${idx < 5 ? 'border-b border-gray-50 dark:border-gray-800 pb-1' : ''}`}
+                        >
+                          <span className="truncate pr-2">{item.label}</span>
+                          <strong className="text-xs whitespace-nowrap min-w-[32px] text-right">{item.value}</strong>
+                        </div>
+                      ))}
                     </div>
                   </CardContent>
                 </Card>
 
-                <Card className="rounded-none border-gray-200 dark:border-gray-700 md:col-span-8 dark:bg-[#1b1b1b]">
+                <Card className="rounded-none border-gray-200 dark:border-gray-700 md:col-span-9 dark:bg-[#1b1b1b]">
                   <CardHeader className="py-2 px-3">
                     <CardTitle className="text-xs text-gray-700 dark:text-gray-200">
                       Leads por Etiqueta / Produto — {f.name}
                     </CardTitle>
                   </CardHeader>
                   <CardContent className="p-3 grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div className="h-64">
-                      <p className="text-[11px] text-gray-600 dark:text-gray-300 mb-1 font-medium">Etiquetas (%)</p>
-                      {f.leadsByTag.length === 0 ? (
-                        <div className="text-[11px] text-gray-500 dark:text-gray-400 h-full flex items-center justify-center border border-dashed border-gray-200 dark:border-gray-800">Sem dados de etiquetas</div>
-                      ) : (
-                        <ResponsiveContainer width="100%" height="100%">
-                          <PieChart>
-                            <Pie
-                              data={f.leadsByTag}
-                              dataKey="value"
-                              nameKey="name"
-                              outerRadius={85}
-                              label={({ cx, cy, midAngle, outerRadius, percent }) => {
-                                const radius = outerRadius * 1.1;
-                                const x = cx + radius * Math.cos(-midAngle * (Math.PI / 180));
-                                const y = cy + radius * Math.sin(-midAngle * (Math.PI / 180));
-                                return (
-                                  <text x={x} y={y} fill={isDark ? '#e2e8f0' : '#4b5563'} textAnchor={x > cx ? 'start' : 'end'} dominantBaseline="central" fontSize="10">
-                                    {`${(percent * 100).toFixed(1)}%`}
-                                  </text>
-                                );
-                              }}
-                              labelLine={{ stroke: isDark ? '#4b5563' : '#d1d5db' }}
-                            >
-                              {f.leadsByTag.map((_: any, i: number) => (
-                                <Cell key={i} fill={pieColors[i % pieColors.length]} />
-                              ))}
-                            </Pie>
-                            <ReTooltip
-                              formatter={(value: number, _: any, entry: any) => [`${value}`, entry?.name]}
-                              contentStyle={{
-                                backgroundColor: isDark ? '#1b1b1b' : '#fff',
-                                borderColor: isDark ? '#374151' : '#d4d4d4',
-                                color: isDark ? '#fff' : '#000',
-                                fontSize: '10px',
-                                borderRadius: '0px',
-                              }}
-                              itemStyle={{ color: isDark ? '#e2e8f0' : '#374151' }}
-                            />
-                            <Legend
-                              verticalAlign="bottom"
-                              height={36}
-                              iconType="circle"
-                              wrapperStyle={{
-                                fontSize: '10px',
-                                color: isDark ? '#e2e8f0' : '#4b5563',
-                              }}
-                            />
-                          </PieChart>
-                        </ResponsiveContainer>
-                      )}
+                    <div className="h-64 flex gap-3">
+                      <div className="w-36 text-[11px] text-gray-700 dark:text-gray-200 flex flex-col gap-1 overflow-y-auto">
+                        <p className="font-semibold text-gray-700 dark:text-gray-200 mb-2">Etiquetas</p>
+                        {f.leadsByTag.length === 0 ? (
+                          <span className="text-gray-500 dark:text-gray-400">Sem dados</span>
+                        ) : (
+                          f.leadsByTag.map((item: any, i: number) => (
+                            <div key={item.name} className="flex items-center gap-2">
+                              <span
+                                className="h-2.5 w-2.5 rounded-full inline-block"
+                                style={{ backgroundColor: pieColors[i % pieColors.length] }}
+                              />
+                              <span className="truncate" title={item.name}>{item.name}</span>
+                            </div>
+                          ))
+                        )}
+                      </div>
+                      <div className="flex-1">
+                        {f.leadsByTag.length === 0 ? (
+                          <div className="text-[11px] text-gray-500 dark:text-gray-400 h-full flex items-center justify-center border border-dashed border-gray-200 dark:border-gray-800">Sem dados de etiquetas</div>
+                        ) : (
+                          <ResponsiveContainer width="100%" height="100%">
+                            <PieChart>
+                              <Pie
+                                data={f.leadsByTag}
+                                dataKey="value"
+                                nameKey="name"
+                                outerRadius={85}
+                                label={({ cx, cy, midAngle, outerRadius, percent }) => {
+                                  const radius = outerRadius * 1.1;
+                                  const x = cx + radius * Math.cos(-midAngle * (Math.PI / 180));
+                                  const y = cy + radius * Math.sin(-midAngle * (Math.PI / 180));
+                                  return (
+                                    <text x={x} y={y} fill={isDark ? '#ffffff' : '#4b5563'} textAnchor={x > cx ? 'start' : 'end'} dominantBaseline="central" fontSize="10">
+                                      {`${(percent * 100).toFixed(1)}%`}
+                                    </text>
+                                  );
+                                }}
+                                labelLine={{ stroke: isDark ? '#4b5563' : '#d1d5db' }}
+                              >
+                                {f.leadsByTag.map((_: any, i: number) => (
+                                  <Cell key={i} fill={pieColors[i % pieColors.length]} />
+                                ))}
+                              </Pie>
+                              <ReTooltip
+                                formatter={(value: number, _: any, entry: any) => [`${value}`, entry?.name]}
+                                contentStyle={{
+                                  backgroundColor: isDark ? '#1b1b1b' : '#fff',
+                                  borderColor: isDark ? '#374151' : '#d4d4d4',
+                                  color: isDark ? '#fff' : '#000',
+                                  fontSize: '10px',
+                                  borderRadius: '0px',
+                                }}
+                                itemStyle={{ color: isDark ? '#e2e8f0' : '#374151' }}
+                              />
+                            </PieChart>
+                          </ResponsiveContainer>
+                        )}
+                      </div>
                     </div>
 
-                    <div className="h-64 border-l border-gray-100 dark:border-gray-800 pl-4">
-                      <p className="text-[11px] text-gray-600 dark:text-gray-300 mb-1 font-medium">Produtos (%)</p>
-                      {f.leadsByProduct.length === 0 ? (
-                        <div className="text-[11px] text-gray-500 dark:text-gray-400 h-full flex items-center justify-center border border-dashed border-gray-200 dark:border-gray-800">Sem dados de produtos</div>
-                      ) : (
-                        <ResponsiveContainer width="100%" height="100%">
-                          <PieChart>
-                            <Pie
-                              data={f.leadsByProduct}
-                              dataKey="value"
-                              nameKey="name"
-                              outerRadius={85}
-                              label={({ cx, cy, midAngle, outerRadius, percent }) => {
-                                const radius = outerRadius * 1.1;
-                                const x = cx + radius * Math.cos(-midAngle * (Math.PI / 180));
-                                const y = cy + radius * Math.sin(-midAngle * (Math.PI / 180));
-                                return (
-                                  <text x={x} y={y} fill={isDark ? '#e2e8f0' : '#4b5563'} textAnchor={x > cx ? 'start' : 'end'} dominantBaseline="central" fontSize="10">
-                                    {`${(percent * 100).toFixed(1)}%`}
-                                  </text>
-                                );
-                              }}
-                              labelLine={{ stroke: isDark ? '#4b5563' : '#d1d5db' }}
-                            >
-                              {f.leadsByProduct.map((_: any, i: number) => (
-                                <Cell key={i} fill={pieColors[(i + 3) % pieColors.length]} />
-                              ))}
-                            </Pie>
-                            <ReTooltip
-                              formatter={(value: number, _: any, entry: any) => [`${value}`, entry?.name]}
-                              contentStyle={{
-                                backgroundColor: isDark ? '#1b1b1b' : '#fff',
-                                borderColor: isDark ? '#374151' : '#d4d4d4',
-                                color: isDark ? '#fff' : '#000',
-                                fontSize: '10px',
-                                borderRadius: '0px',
-                              }}
-                              itemStyle={{ color: isDark ? '#e2e8f0' : '#374151' }}
-                            />
-                            <Legend
-                              verticalAlign="bottom"
-                              height={36}
-                              iconType="circle"
-                              wrapperStyle={{
-                                fontSize: '10px',
-                                color: isDark ? '#e2e8f0' : '#4b5563',
-                              }}
-                            />
-                          </PieChart>
-                        </ResponsiveContainer>
-                      )}
+                    <div className="h-64 flex gap-3 border-l border-gray-100 dark:border-gray-800 pl-4">
+                      <div className="w-36 text-[11px] text-gray-700 dark:text-gray-200 flex flex-col gap-1 overflow-y-auto">
+                        <p className="font-semibold text-gray-700 dark:text-gray-200 mb-2">Produtos</p>
+                        {f.leadsByProduct.length === 0 ? (
+                          <span className="text-gray-500 dark:text-gray-400">Sem dados</span>
+                        ) : (
+                          f.leadsByProduct.map((item: any, i: number) => (
+                            <div key={item.name} className="flex items-center gap-2">
+                              <span
+                                className="h-2.5 w-2.5 rounded-full inline-block"
+                                style={{ backgroundColor: pieColors[(i + 3) % pieColors.length] }}
+                              />
+                              <span className="truncate" title={item.name}>{item.name}</span>
+                            </div>
+                          ))
+                        )}
+                      </div>
+                      <div className="flex-1">
+                        {f.leadsByProduct.length === 0 ? (
+                          <div className="text-[11px] text-gray-500 dark:text-gray-400 h-full flex items-center justify-center border border-dashed border-gray-200 dark:border-gray-800">Sem dados de produtos</div>
+                        ) : (
+                          <ResponsiveContainer width="100%" height="100%">
+                            <PieChart>
+                              <Pie
+                                data={f.leadsByProduct}
+                                dataKey="value"
+                                nameKey="name"
+                                outerRadius={85}
+                                label={({ cx, cy, midAngle, outerRadius, percent }) => {
+                                  const radius = outerRadius * 1.1;
+                                  const x = cx + radius * Math.cos(-midAngle * (Math.PI / 180));
+                                  const y = cy + radius * Math.sin(-midAngle * (Math.PI / 180));
+                                  return (
+                                    <text x={x} y={y} fill={isDark ? '#ffffff' : '#4b5563'} textAnchor={x > cx ? 'start' : 'end'} dominantBaseline="central" fontSize="10">
+                                      {`${(percent * 100).toFixed(1)}%`}
+                                    </text>
+                                  );
+                                }}
+                                labelLine={{ stroke: isDark ? '#4b5563' : '#d1d5db' }}
+                              >
+                                {f.leadsByProduct.map((_: any, i: number) => (
+                                  <Cell key={i} fill={pieColors[(i + 3) % pieColors.length]} />
+                                ))}
+                              </Pie>
+                              <ReTooltip
+                                formatter={(value: number, _: any, entry: any) => [`${value}`, entry?.name]}
+                                contentStyle={{
+                                  backgroundColor: isDark ? '#1b1b1b' : '#fff',
+                                  borderColor: isDark ? '#374151' : '#d4d4d4',
+                                  color: isDark ? '#fff' : '#000',
+                                  fontSize: '10px',
+                                  borderRadius: '0px',
+                                }}
+                                itemStyle={{ color: isDark ? '#e2e8f0' : '#374151' }}
+                              />
+                            </PieChart>
+                          </ResponsiveContainer>
+                        )}
+                      </div>
                     </div>
                   </CardContent>
                 </Card>
+
               </div>
             ))}
           </div>

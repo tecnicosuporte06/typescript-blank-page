@@ -41,6 +41,7 @@ export function EditarColunaModal({
   const [name, setName] = useState(columnName);
   const [color, setColor] = useState(columnColor);
   const [icon, setIcon] = useState(columnIcon);
+  const [isOfferStage, setIsOfferStage] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [activeTab, setActiveTab] = useState('settings');
   const [viewAllDealsUsers, setViewAllDealsUsers] = useState<string[]>([]);
@@ -56,6 +57,7 @@ export function EditarColunaModal({
       setName(columnName);
       setColor(columnColor);
       setIcon(columnIcon || 'Circle');
+      setIsOfferStage(false);
       setActiveTab('settings');
       loadViewAllPermissions();
     }
@@ -67,7 +69,7 @@ export function EditarColunaModal({
     try {
       const { data, error } = await supabase
         .from('pipeline_columns')
-        .select('view_all_deals_permissions')
+        .select('view_all_deals_permissions, is_offer_stage')
         .eq('id', columnId)
         .single();
 
@@ -75,6 +77,7 @@ export function EditarColunaModal({
 
       const viewAllPermissions = data?.view_all_deals_permissions;
       setViewAllDealsUsers(Array.isArray(viewAllPermissions) ? viewAllPermissions.filter((p): p is string => typeof p === 'string') : []);
+      setIsOfferStage(!!data?.is_offer_stage);
     } catch (error) {
       console.error('Erro ao carregar permissões de negócios:', error);
     }
@@ -106,10 +109,24 @@ export function EditarColunaModal({
           name: name.trim(),
           color,
           icon,
+          is_offer_stage: isOfferStage,
         },
       });
 
       if (error) throw error;
+
+      // Garantir persistência do flag (caso a edge function ignore campos extras)
+      try {
+        const { error: flagError } = await supabase
+          .from('pipeline_columns')
+          .update({ is_offer_stage: isOfferStage })
+          .eq('id', columnId);
+        if (flagError) {
+          console.warn('⚠️ Não foi possível persistir is_offer_stage via supabase.from:', flagError);
+        }
+      } catch (e) {
+        console.warn('⚠️ Falha ao tentar persistir is_offer_stage diretamente:', e);
+      }
 
       toast({
         title: "Sucesso",
@@ -225,6 +242,17 @@ export function EditarColunaModal({
                   className={`h-8 text-xs rounded-none border-gray-300 dark:border-gray-700 bg-white dark:bg-[#1b1b1b] text-gray-900 dark:text-gray-100 focus-visible:ring-0`}
                 />
               </div>
+
+            <div className="flex items-center gap-2 pt-2">
+              <Checkbox
+                id="is-offer-stage"
+                checked={isOfferStage}
+                onCheckedChange={(checked) => setIsOfferStage(!!checked)}
+              />
+              <Label htmlFor="is-offer-stage" className="text-xs font-semibold text-gray-700 dark:text-gray-200">
+                É Etapa de Oferta?
+              </Label>
+            </div>
 
 
               <DialogFooter className={`pt-4 flex-col sm:flex-row gap-2 bg-gray-50 dark:bg-[#1a1a1a] border-t border-[#d4d4d4] dark:border-gray-700 -mx-6 -mb-6 p-4 mt-4`}>

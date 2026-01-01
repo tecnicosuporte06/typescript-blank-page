@@ -47,6 +47,7 @@ export interface PipelineColumn {
   created_at: string;
   permissions?: string[]; // Array de user_ids que podem ver esta coluna
   view_all_deals_permissions?: string[]; // Array de user_ids que podem ver todos os negócios desta coluna
+  is_offer_stage?: boolean; // etapa de oferta
 }
 
 export interface PipelineCard {
@@ -610,7 +611,22 @@ export function PipelinesProvider({ children }: { children: React.ReactNode }) {
 
   const moveCard = useCallback(async (cardId: string, newColumnId: string) => {
     await updateCard(cardId, { column_id: newColumnId });
-  }, [updateCard]);
+    // Se a coluna de destino for etapa de oferta, marca oferta=true no card
+    const targetColumn = columns.find((c) => c.id === newColumnId);
+    if (targetColumn?.is_offer_stage) {
+      try {
+        const { error: ofertaError } = await supabase
+          .from('pipeline_cards')
+          .update({ oferta: true })
+          .eq('id', cardId);
+        if (ofertaError) {
+          console.error('Erro ao marcar oferta=true (moveCard):', ofertaError);
+        }
+      } catch (e) {
+        console.error('Erro ao marcar oferta=true (moveCard):', e);
+      }
+    }
+  }, [updateCard, columns]);
 
   const moveCardOptimistic = useCallback(async (cardId: string, newColumnId: string) => {
     const previousCards = [...cards];
@@ -652,6 +668,22 @@ export function PipelinesProvider({ children }: { children: React.ReactNode }) {
 
       console.log('✅ [Optimistic] Backend confirmou mudança');
       console.log('⏳ [Optimistic] Aguardando evento realtime...');
+
+      // Se a coluna de destino for etapa de oferta, marcar oferta=true
+      const targetColumn = columns.find((c) => c.id === newColumnId);
+      if (targetColumn?.is_offer_stage) {
+        try {
+          const { error: ofertaError } = await supabase
+            .from('pipeline_cards')
+            .update({ oferta: true })
+            .eq('id', cardId);
+          if (ofertaError) {
+            console.error('Erro ao marcar oferta=true (moveCardOptimistic):', ofertaError);
+          }
+        } catch (e) {
+          console.error('Erro ao marcar oferta=true (moveCardOptimistic):', e);
+        }
+      }
 
       // Enviar broadcast manual para garantir atualização cross-aba mesmo se o evento do DB não chegar
       try {

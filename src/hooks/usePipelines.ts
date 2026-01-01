@@ -22,6 +22,7 @@ export interface PipelineColumn {
   order_position: number;
   permissions?: string[];
   view_all_deals_permissions?: string[];
+  is_offer_stage?: boolean;
   created_at: string;
 }
 

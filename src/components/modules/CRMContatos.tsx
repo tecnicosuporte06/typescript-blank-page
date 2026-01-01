@@ -101,6 +101,7 @@ export function CRMContatos() {
   const [isFieldConfigModalOpen, setIsFieldConfigModalOpen] = useState(false);
   const [isImportModalOpen, setIsImportModalOpen] = useState(false);
   const [isImporting, setIsImporting] = useState(false);
+  const [isExporting, setIsExporting] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const headerCheckboxRef = useRef<HTMLButtonElement>(null);
   const { tags } = useTags();
@@ -1109,27 +1110,120 @@ export function CRMContatos() {
     setSelectedContactForTag(null);
   };
 
-  const handleExportCSV = () => {
-    const targetContacts = selectedIds.length > 0
-      ? contacts.filter((contact) => selectedIds.includes(contact.id))
-      : contacts;
-
-    if (targetContacts.length === 0) {
+  const handleExportCSV = async () => {
+    if (!selectedWorkspace?.workspace_id) {
       toast({
-        title: "Nenhum contato para exportar",
-        description: selectedIds.length > 0
-          ? "Selecione contatos válidos para exportar."
-          : "Não há contatos disponíveis para exportação.",
+        title: "Erro",
+        description: "Selecione um workspace para exportar.",
         variant: "destructive",
       });
       return;
     }
 
+    setIsExporting(true);
+    try {
+      // Buscar contatos a exportar:
+      // - Se houver seleção, busca pelos IDs selecionados (mesmo fora da página)
+      // - Caso contrário, busca todos os contatos do workspace (sem paginação)
+      let baseContacts: any[] = [];
+      if (selectedIds.length > 0) {
+        const { data, error } = await supabase
+          .from("contacts")
+          .select("*")
+          .in("id", selectedIds);
+        if (error) throw error;
+        baseContacts = data || [];
+      } else {
+        const { data, error } = await supabase
+          .from("contacts")
+          .select("*")
+          .eq("workspace_id", selectedWorkspace.workspace_id)
+          .order("created_at", { ascending: false });
+        if (error) throw error;
+        baseContacts = data || [];
+      }
+
+      if (!baseContacts || baseContacts.length === 0) {
+        toast({
+          title: "Nenhum contato para exportar",
+          description: selectedIds.length > 0
+            ? "Selecione contatos válidos para exportar."
+            : "Não há contatos disponíveis para exportação.",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      // Buscar tags e extra_info para todos os contatos selecionados/base
+      const contactIds = baseContacts.map((c) => c.id);
+      let contactTagsData: any[] = [];
+      let contactExtraInfoData: any[] = [];
+
+      if (contactIds.length > 0) {
+        try {
+          const { data: tagsData } = await supabase
+            .from("contact_tags")
+            .select("contact_id, tags:tag_id (id, name, color)")
+            .in("contact_id", contactIds);
+          contactTagsData = tagsData || [];
+        } catch (tagsError) {
+          console.warn("⚠️ [Export] Falha ao buscar tags (não bloqueia):", tagsError);
+        }
+
+        try {
+          const { data: extraInfoData } = await supabase
+            .from("contact_extra_info")
+            .select("contact_id, field_name, field_value")
+            .in("contact_id", contactIds);
+          contactExtraInfoData = extraInfoData || [];
+        } catch (extraError) {
+          console.warn("⚠️ [Export] Falha ao buscar extra_info (não bloqueia):", extraError);
+        }
+      }
+
+      // Normalizar contatos com tags/extra_info
+      const contactsForExport = baseContacts.map((contact) => {
+        const mergedExtraInfo: Record<string, any> = {
+          ...((contact.extra_info as Record<string, any>) || {}),
+        };
+
+        if (contactExtraInfoData.length > 0) {
+          contactExtraInfoData
+            .filter((extra) => extra.contact_id === contact.id)
+            .forEach((extra) => {
+              const key = extra.field_name;
+              if (!key) return;
+              mergedExtraInfo[key] = extra.field_value ?? "";
+            });
+        }
+
+        const contactTags =
+          contactTagsData
+            .filter((ct) => ct.contact_id === contact.id)
+            .map((ct) => ({
+              id: ct.tags?.id || "",
+              name: ct.tags?.name || "",
+              color: ct.tags?.color || "#808080",
+            })) || [];
+
+        return {
+          id: contact.id,
+          name: contact.name,
+          phone: contact.phone || "",
+          email: contact.email || "",
+          createdAt: format(new Date(contact.created_at), "dd/MM/yyyy HH:mm:ss"),
+          created_at: contact.created_at,
+          tags: contactTags,
+          profile_image_url: contact.profile_image_url,
+          extra_info: mergedExtraInfo,
+        };
+      });
+
     const baseHeaders = ["Nome", "Telefone", "Email", "Data de Criação"];
     const workspaceFieldNames = workspaceFields.map((field) => field.field_name);
     const extraInfoKeySet = new Set<string>();
 
-    targetContacts.forEach((contact) => {
+    contactsForExport.forEach((contact) => {
       const extraInfo = contact.extra_info;
       if (extraInfo && typeof extraInfo === "object" && !Array.isArray(extraInfo)) {
         Object.keys(extraInfo).forEach((key) => {
@@ -1171,7 +1265,7 @@ export function CRMContatos() {
 
     const csvContent = [
       headers.map((header) => escapeCSVValue(header)).join(","),
-      ...targetContacts.map((contact) => {
+      ...contactsForExport.map((contact) => {
         const createdAtFormatted = contact.created_at ? format(new Date(contact.created_at), "dd/MM/yyyy HH:mm") : "";
         const extraInfo = contact.extra_info && typeof contact.extra_info === "object" && !Array.isArray(contact.extra_info)
           ? (contact.extra_info as Record<string, unknown>)
@@ -1203,20 +1297,34 @@ export function CRMContatos() {
 
     toast({
       title: "Exportação concluída",
-      description: `${targetContacts.length} contato(s) exportado(s) com sucesso.`,
+      description: `${contactsForExport.length} contato(s) exportado(s) com sucesso.`,
     });
+    } catch (error) {
+      console.error("❌ [Export] Erro ao exportar contatos:", error);
+      toast({
+        title: "Erro ao exportar",
+        description: error?.message || "Não foi possível exportar os contatos.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsExporting(false);
+    }
   };
 
   const handleDownloadTemplate = () => {
-    const headers = ["Nome", "Telefone", "Email"];
-    const exampleRow = ["João da Silva", "5511999999999", "joao@email.com"];
+    const sep = ";";
+    const headers = ["Nome", "Empresa", "Telefone", "Etiquetas", "Email"];
+    // Forçar telefone como texto no Excel usando ="..." e separar etiquetas por vírgula
+    const exampleRow = ["João da Silva", "ACME", '="5511999999999"', "VIP,Ativo", "joao@email.com"];
     
     const csvContent = [
-      headers.join(","),
-      exampleRow.join(",")
+      "sep=;",
+      headers.join(sep),
+      exampleRow.join(sep)
     ].join("\n");
 
-    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+    // Prepend BOM to avoid charset issues in Excel
+    const blob = new Blob(["\uFEFF", csvContent], { type: "text/csv;charset=utf-8;" });
     const link = document.createElement("a");
     const url = URL.createObjectURL(blob);
     link.setAttribute("href", url);
@@ -1229,6 +1337,62 @@ export function CRMContatos() {
     toast({
       title: "Modelo baixado",
       description: "O modelo de importação foi baixado com sucesso.",
+    });
+  };
+
+  const handleDownloadFullTemplate = () => {
+    const sep = ";";
+    const headers = [
+      "Nome",
+      "Empresa",
+      "Etiquetas",
+      "Telefone",
+      "Email",
+      "Status do negócio",
+      "R$",
+      "Etapa",
+      "Pipeline",
+      "Fila",
+      "Usuário responsável",
+      "Data que foi marcado ganho",
+      "Data de criação do negócio",
+    ];
+    const exampleRow = [
+      "João da Silva",          // Nome
+      "ACME",                  // Empresa
+      "VIP,Ativo",             // Etiquetas
+      '="5511999999999"',      // Telefone (como texto)
+      "joao@acme.com",         // Email
+      "ganho",                 // Status do negócio
+      "15000",                 // R$
+      "Fechado",               // Etapa
+      "Pipeline A",            // Pipeline
+      "Suporte",               // Fila
+      "gestor@acme.com",       // Usuário responsável
+      "2025-12-01",            // Data que foi marcado ganho
+      "2025-11-10",            // Data de criação do negócio
+    ];
+
+    const csvContent = [
+      "sep=;",
+      headers.join(sep),
+      exampleRow.join(sep)
+    ].join("\n");
+
+    // Prepend BOM to avoid charset issues in Excel
+    const blob = new Blob(["\uFEFF", csvContent], { type: "text/csv;charset=utf-8;" });
+    const link = document.createElement("a");
+    const url = URL.createObjectURL(blob);
+    link.setAttribute("href", url);
+    link.setAttribute("download", "modelo_importacao_completo.csv");
+    link.style.visibility = "hidden";
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+
+    toast({
+      title: "Modelo completo baixado",
+      description: "O modelo de importação (contato + oportunidade) foi baixado.",
     });
   };
 
@@ -1258,19 +1422,88 @@ export function CRMContatos() {
       const headers = lines[0].split(",").map((h) => h.trim().replace(/"/g, ""));
       const dataLines = lines.slice(1);
 
+      // Detecta se é importação completa (tem Pipeline e Etapa) ou básica
+      const hasPipeline = headers.some((h) => h.toLowerCase().includes("pipeline"));
+      const hasEtapa = headers.some((h) => h.toLowerCase().includes("etapa"));
+      const isFullImport = hasPipeline && hasEtapa;
+
       let imported = 0;
       let errors = 0;
 
+      // Pré-carregar dados auxiliares para importação completa
+      let pipelinesByName: Record<string, any> = {};
+      let columnsByPipelineAndName: Record<string, any> = {};
+      let usersByEmail: Record<string, any> = {};
+      let usersByName: Record<string, any> = {};
+
+      if (isFullImport) {
+        // Pipelines e colunas do workspace
+        const { data: pipelines } = await supabase
+          .from("pipelines")
+          .select("id, name")
+          .eq("workspace_id", selectedWorkspace.workspace_id);
+        (pipelines || []).forEach((p: any) => {
+          pipelinesByName[p.name?.toLowerCase()?.trim() || ""] = p;
+        });
+
+        const { data: cols } = await supabase
+          .from("pipeline_columns")
+          .select("id, name, pipeline_id")
+          .eq("workspace_id", selectedWorkspace.workspace_id);
+        (cols || []).forEach((c: any) => {
+          const key = `${c.pipeline_id}::${(c.name || "").toLowerCase().trim()}`;
+          columnsByPipelineAndName[key] = c;
+        });
+
+        // Usuários do workspace (system_users via workspace_members)
+        const { data: members } = await supabase
+          .from("workspace_members")
+          .select("user_id, system_users (id, name, email)")
+          .eq("workspace_id", selectedWorkspace.workspace_id);
+        (members || []).forEach((m: any) => {
+          const u = m.system_users;
+          if (!u) return;
+          if (u.email) usersByEmail[u.email.toLowerCase().trim()] = u;
+          if (u.name) usersByName[u.name.toLowerCase().trim()] = u;
+        });
+      }
+
+      const normalizePhoneForStorage = (rawPhone: string): string | null => {
+        if (!rawPhone) return null;
+        const digitsOnly = rawPhone.replace(/\D/g, "");
+        if (!digitsOnly) return null;
+        return digitsOnly.startsWith("55") ? digitsOnly : `55${digitsOnly}`;
+      };
+
+      const parseDate = (value: string): string | null => {
+        if (!value) return null;
+        // Tenta ISO direto
+        const isoTry = new Date(value);
+        if (!Number.isNaN(isoTry.getTime())) return isoTry.toISOString();
+        // Tenta dd/MM/yyyy
+        const parts = value.split("/");
+        if (parts.length === 3) {
+          const [d, m, y] = parts.map((p) => parseInt(p, 10));
+          if (!Number.isNaN(d) && !Number.isNaN(m) && !Number.isNaN(y)) {
+            const date = new Date(Date.UTC(y, m - 1, d));
+            if (!Number.isNaN(date.getTime())) return date.toISOString();
+          }
+        }
+        return null;
+      };
+
       for (const line of dataLines) {
         const values = line.split(",").map((v) => v.trim().replace(/"/g, ""));
-        
-        const nameIndex = headers.findIndex((h) => h.toLowerCase().includes("nome"));
-        const phoneIndex = headers.findIndex((h) => h.toLowerCase().includes("telefone"));
-        const emailIndex = headers.findIndex((h) => h.toLowerCase().includes("email"));
+        const getVal = (match: string) => {
+          const idx = headers.findIndex((h) => h.toLowerCase().includes(match.toLowerCase()));
+          return idx >= 0 ? values[idx] : "";
+        };
 
-        const name = values[nameIndex] || "";
-        const phone = values[phoneIndex] || "";
-        const email = values[emailIndex] || "";
+        const name = getVal("nome");
+        const phone = getVal("telefone");
+        const email = getVal("email");
+        const empresa = getVal("empresa");
+        const etiquetasRaw = getVal("etiquetas");
 
         if (!name) {
           errors++;
@@ -1278,27 +1511,157 @@ export function CRMContatos() {
         }
 
         try {
-          // Normalizar telefone para o mesmo formato usado pela webhook (55 + dígitos)
-          const normalizePhoneForStorage = (rawPhone: string): string | null => {
-            if (!rawPhone) return null;
-            const digitsOnly = rawPhone.replace(/\D/g, "");
-            if (!digitsOnly) return null;
-            return digitsOnly.startsWith("55") ? digitsOnly : `55${digitsOnly}`;
-          };
-
           const normalizedPhone = normalizePhoneForStorage(phone);
 
-          const { error } = await supabase.from("contacts").insert({
+          // 1) Criar/atualizar contato
+          // Match por telefone ou email
+          let contactId: string | null = null;
+          if (normalizedPhone) {
+            const { data: existingByPhone } = await supabase
+              .from("contacts")
+              .select("id")
+              .eq("workspace_id", selectedWorkspace.workspace_id)
+              .eq("phone", normalizedPhone)
+              .maybeSingle();
+            if (existingByPhone?.id) contactId = existingByPhone.id;
+          }
+          if (!contactId && email) {
+            const { data: existingByEmail } = await supabase
+              .from("contacts")
+              .select("id")
+              .eq("workspace_id", selectedWorkspace.workspace_id)
+              .eq("email", email)
+              .maybeSingle();
+            if (existingByEmail?.id) contactId = existingByEmail.id;
+          }
+
+          const contactPayload: any = {
             name,
             phone: normalizedPhone,
-            email,
+            email: email || null,
             workspace_id: selectedWorkspace.workspace_id,
-          });
+            extra_info: empresa ? { empresa } : {},
+          };
 
-          if (error) throw error;
+          if (contactId) {
+            const { error: updErr } = await supabase
+              .from("contacts")
+              .update(contactPayload)
+              .eq("id", contactId);
+            if (updErr) throw updErr;
+          } else {
+            const { data: inserted, error: insErr } = await supabase
+              .from("contacts")
+              .insert(contactPayload)
+              .select("id")
+              .single();
+            if (insErr) throw insErr;
+            contactId = inserted?.id || null;
+          }
+
+          // 2) Aplicar etiquetas (tags) se houver
+          if (contactId && etiquetasRaw) {
+            const tagNames = etiquetasRaw.split(",").map((t) => t.trim()).filter(Boolean);
+            if (tagNames.length > 0) {
+              for (const tagName of tagNames) {
+                try {
+                  let tagId: string | null = null;
+                  const { data: existingTag } = await supabase
+                    .from("tags")
+                    .select("id")
+                    .eq("workspace_id", selectedWorkspace.workspace_id)
+                    .eq("name", tagName)
+                    .maybeSingle();
+                  if (existingTag?.id) {
+                    tagId = existingTag.id;
+                  } else {
+                    const { data: newTag, error: tagErr } = await supabase
+                      .from("tags")
+                      .insert({ name: tagName, workspace_id: selectedWorkspace.workspace_id })
+                      .select("id")
+                      .single();
+                    if (tagErr) throw tagErr;
+                    tagId = newTag?.id || null;
+                  }
+
+                  if (tagId) {
+                    await supabase
+                      .from("contact_tags")
+                      .upsert({ contact_id: contactId, tag_id: tagId }, { onConflict: "contact_id,tag_id" });
+                  }
+                } catch (tagError) {
+                  console.warn("⚠️ [Import] Falha ao aplicar tag:", tagError);
+                }
+              }
+            }
+          }
+
+          // 3) Se importação completa, criar oportunidade (pipeline_card)
+          if (isFullImport && contactId) {
+            const statusNegocio = (getVal("status do negócio") || "").toLowerCase();
+            const valorRaw = getVal("r$");
+            const etapaName = getVal("etapa");
+            const pipelineName = getVal("pipeline");
+            const filaName = getVal("fila");
+            const responsavelRaw = getVal("usuário responsável");
+            const dataGanhoRaw = getVal("data que foi marcado ganho");
+            const dataCriacaoRaw = getVal("data de criação do negócio");
+
+            // Resolver pipeline / etapa
+            const pipeline = pipelinesByName[pipelineName?.toLowerCase()?.trim() || ""];
+            if (!pipeline) {
+              errors++;
+              continue; // pipeline não encontrado
+            }
+            const colKey = `${pipeline.id}::${(etapaName || "").toLowerCase().trim()}`;
+            const column = columnsByPipelineAndName[colKey];
+            if (!column) {
+              errors++;
+              continue; // etapa não encontrada
+            }
+
+            // Resolver responsável
+            let responsibleId: string | null = null;
+            if (responsavelRaw) {
+              const byEmail = usersByEmail[responsavelRaw.toLowerCase().trim()];
+              const byName = usersByName[responsavelRaw.toLowerCase().trim()];
+              responsibleId = byEmail?.id || byName?.id || null;
+            }
+
+            // Status
+            let cardStatus = "open";
+            if (statusNegocio.includes("ganho") || statusNegocio.includes("win")) cardStatus = "won";
+            else if (statusNegocio.includes("perd") || statusNegocio.includes("loss")) cardStatus = "lost";
+
+            const valor = valorRaw ? parseFloat(valorRaw.replace(/[^\d.-]/g, "")) : 0;
+            const wonAt = cardStatus === "won" ? parseDate(dataGanhoRaw) : null;
+            const createdAtCard = parseDate(dataCriacaoRaw);
+
+            // Inserir card
+            const insertPayload: any = {
+              pipeline_id: pipeline.id,
+              column_id: column.id,
+              contact_id: contactId,
+              value: Number.isFinite(valor) ? valor : 0,
+              status: cardStatus,
+              title: name,
+            };
+            if (responsibleId) insertPayload.responsible_user_id = responsibleId;
+            if (createdAtCard) insertPayload.created_at = createdAtCard;
+            if (wonAt && cardStatus === "won") insertPayload.won_at = wonAt;
+            if (filaName) insertPayload.queue_name = filaName;
+
+            const { error: cardError } = await supabase.from("pipeline_cards").insert(insertPayload);
+            if (cardError) {
+              console.error("Erro ao criar oportunidade:", cardError);
+              errors++;
+              continue;
+            }
+          }
+
           imported++;
         } catch (error) {
-          console.error("Erro ao importar contato:", error);
+          console.error("Erro ao importar linha:", error);
           errors++;
         }
       }
@@ -1307,7 +1670,7 @@ export function CRMContatos() {
 
       toast({
         title: "Importação concluída",
-        description: `${imported} contatos importados com sucesso${errors > 0 ? `. ${errors} erros encontrados.` : "."}`,
+        description: `${imported} registro(s) importado(s) com sucesso${errors > 0 ? `. ${errors} erro(s) encontrados.` : "."}`,
       });
     } catch (error) {
       console.error("Erro ao processar CSV:", error);
@@ -1441,9 +1804,10 @@ export function CRMContatos() {
               variant="ghost"
               className="h-8 px-2 hover:bg-gray-200 rounded-sm flex flex-col items-center justify-center gap-0.5 text-gray-700 dark:text-gray-200 dark:hover:bg-[#2a2a2a]"
               onClick={handleExportCSV}
+              disabled={isExporting}
             >
               <Download className="h-4 w-4 text-black dark:text-white" />
-              <span className="text-[9px]">Exportar</span>
+              <span className="text-[9px]">{isExporting ? "..." : "Exportar"}</span>
             </Button>
 
              <Button 
@@ -1455,6 +1819,27 @@ export function CRMContatos() {
             >
               <Upload className="h-4 w-4 text-black dark:text-white" />
               <span className="text-[9px]">{isImporting ? "..." : "Importar"}</span>
+            </Button>
+
+            {/* Modelos de importação */}
+            <Button
+              size="sm"
+              variant="ghost"
+              className="h-8 px-2 hover:bg-gray-200 rounded-sm flex flex-col items-center justify-center gap-0.5 text-gray-700 dark:text-gray-200 dark:hover:bg-[#2a2a2a]"
+              onClick={handleDownloadTemplate}
+            >
+              <Download className="h-4 w-4 text-black dark:text-white" />
+              <span className="text-[9px]">Modelo básico</span>
+            </Button>
+
+            <Button
+              size="sm"
+              variant="ghost"
+              className="h-8 px-2 hover:bg-gray-200 rounded-sm flex flex-col items-center justify-center gap-0.5 text-gray-700 dark:text-gray-200 dark:hover:bg-[#2a2a2a]"
+              onClick={handleDownloadFullTemplate}
+            >
+              <Download className="h-4 w-4 text-black dark:text-white" />
+              <span className="text-[9px]">Modelo completo</span>
             </Button>
 
             <Button
@@ -1500,6 +1885,12 @@ export function CRMContatos() {
                 <th className="border border-[#d4d4d4] px-2 py-1 text-center font-semibold text-gray-700 min-w-[120px] group hover:bg-[#e1e1e1] cursor-pointer dark:border-gray-700 dark:text-gray-200 dark:hover:bg-[#2a2a2a]">
                    <div className="flex items-center justify-between">
                     <span>Número</span>
+                    <div className="w-[1px] h-3 bg-gray-400 mx-1" />
+                  </div>
+                </th>
+                <th className="border border-[#d4d4d4] px-2 py-1 text-center font-semibold text-gray-700 min-w-[180px] group hover:bg-[#e1e1e1] cursor-pointer dark:border-gray-700 dark:text-gray-200 dark:hover:bg-[#2a2a2a]">
+                   <div className="flex items-center justify-between">
+                    <span>Empresa</span>
                     <div className="w-[1px] h-3 bg-gray-400 mx-1" />
                   </div>
                 </th>
@@ -1553,6 +1944,9 @@ export function CRMContatos() {
                         <div className="h-4 w-24 bg-gray-100 dark:bg-gray-800 animate-pulse rounded-sm mx-auto" />
                       </td>
                       <td className="border border-[#e0e0e0] px-2 py-1 text-center dark:border-gray-700">
+                        <div className="h-4 w-28 bg-gray-100 dark:bg-gray-800 animate-pulse rounded-sm mx-auto" />
+                      </td>
+                      <td className="border border-[#e0e0e0] px-2 py-1 text-center dark:border-gray-700">
                         <div className="h-4 w-32 bg-gray-100 dark:bg-gray-800 animate-pulse rounded-sm mx-auto" />
                       </td>
                       <td className="border border-[#e0e0e0] px-2 py-1 text-center dark:border-gray-700">
@@ -1567,7 +1961,7 @@ export function CRMContatos() {
                 </>
               ) : filteredContacts.length === 0 && !isLoading ? (
                 <tr>
-                  <td colSpan={7} className="border border-[#e0e0e0] text-center py-12 bg-gray-50 dark:border-gray-700 dark:bg-[#1a1a1a]">
+                  <td colSpan={8} className="border border-[#e0e0e0] text-center py-12 bg-gray-50 dark:border-gray-700 dark:bg-[#1a1a1a]">
                     <div className="flex flex-col items-center gap-2">
                       <User className="h-8 w-8 text-gray-300 dark:text-gray-500" />
                       <p className="text-gray-500 font-medium dark:text-gray-300">
@@ -1661,6 +2055,15 @@ export function CRMContatos() {
                     {/* Phone */}
                     <td className="border border-[#e0e0e0] px-2 py-0 text-right text-gray-600 whitespace-nowrap font-mono bg-white dark:bg-[#111111] dark:border-gray-700 dark:text-gray-200">
                       {contact.phone}
+                    </td>
+
+                    {/* Empresa */}
+                    <td className="border border-[#e0e0e0] px-2 py-0 text-gray-600 whitespace-nowrap truncate bg-white dark:bg-[#111111] dark:border-gray-700 dark:text-gray-200">
+                      {contact.extra_info?.empresa ||
+                        contact.extra_info?.Empresa ||
+                        contact.extra_info?.company ||
+                        contact.extra_info?.Company ||
+                        ""}
                     </td>
 
                     {/* Email */}

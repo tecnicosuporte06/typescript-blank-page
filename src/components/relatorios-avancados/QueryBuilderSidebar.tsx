@@ -1,8 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Filter, Calendar as CalendarIcon, Tag } from 'lucide-react';
+import { Filter, Calendar as CalendarIcon, Plus } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Input } from '@/components/ui/input';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Calendar } from '@/components/ui/calendar';
 import { cn } from '@/lib/utils';
@@ -17,18 +16,29 @@ interface QueryBuilderSidebarProps {
   products?: { id: string; name: string }[];
   agents: { id: string; name: string }[];
   selectedWorkspaceId?: string;
-  onFiltersChange?: (filters: FilterItem[]) => void;
-  initialFilters?: FilterItem[];
+  onFiltersChange?: (filters: FilterGroupPayload[]) => void;
+  initialFilters?: FilterGroupPayload[] | LegacyFilterItem[];
   rehydrateNonce?: number;
   showHeader?: boolean;
   disabled?: boolean;
 }
 
-export interface FilterItem {
+export interface LegacyFilterItem {
   type: 'pipeline' | 'column' | 'team' | 'tags' | 'products' | 'date' | 'status' | 'value';
   value: string;
   operator?: string;
 }
+
+export type FilterGroupPayload = {
+  pipeline?: string;
+  column?: string;
+  team?: string;
+  tags?: string[];
+  products?: string[];
+  dateRange?: { from?: Date; to?: Date } | null;
+  status?: string;
+  value?: { value?: string; operator?: string } | null;
+};
 
 export function QueryBuilderSidebar({
   pipelines,
@@ -42,91 +52,66 @@ export function QueryBuilderSidebar({
   showHeader = true,
   disabled = false,
 }: QueryBuilderSidebarProps) {
-  // ✅ Default = sem filtro (mostrar tudo)
-  const [pipelineFilter, setPipelineFilter] = useState<string>('all');
-  const [columnFilter, setColumnFilter] = useState<string>('all');
-  const [teamFilter, setTeamFilter] = useState<string>('all');
-  const [selectedTags, setSelectedTags] = useState<string[]>([]);
-  const [dateRange, setDateRange] = useState<{ from?: Date; to?: Date }>({});
-  const [statusFilter, setStatusFilter] = useState<string>('all');
-  const [selectedProducts, setSelectedProducts] = useState<string[]>([]);
-  const [openTagPopover, setOpenTagPopover] = useState(false);
-  const [openProductPopover, setOpenProductPopover] = useState(false);
+  type FilterGroup = {
+    id: string;
+    pipeline: string;
+    column: string;
+    team: string;
+    tags: string[];
+    products: string[];
+    dateRange: { from?: Date; to?: Date };
+    status: string;
+    value?: { value?: string; operator?: string } | null;
+  };
+
+  const makeGroup = (): FilterGroup => ({
+    id: `fg-${Date.now()}-${Math.random().toString(16).slice(2)}`,
+    pipeline: 'all',
+    column: 'all',
+    team: 'all',
+    tags: [],
+    products: [],
+    dateRange: {},
+    status: 'all',
+  });
+
+  const [groups, setGroups] = useState<FilterGroup[]>([makeGroup()]);
+  const [openTags, setOpenTags] = useState<Record<string, boolean>>({});
+  const [openProducts, setOpenProducts] = useState<Record<string, boolean>>({});
 
   const { columns: pipelineColumns, isLoading: loadingColumns } = usePipelineColumns(
-    pipelineFilter && pipelineFilter !== 'all' ? pipelineFilter : null,
+    groups[0]?.pipeline && groups[0]?.pipeline !== 'all' ? groups[0]?.pipeline : null,
     selectedWorkspaceId
   );
-
-  const filters = useMemo(() => {
-    const f: FilterItem[] = [];
-    // "all" significa sem filtro
-    if (pipelineFilter && pipelineFilter !== 'all') f.push({ type: 'pipeline', value: pipelineFilter });
-    if (columnFilter && columnFilter !== 'all') f.push({ type: 'column', value: columnFilter });
-    if (teamFilter && teamFilter !== 'all') f.push({ type: 'team', value: teamFilter });
-    if (selectedTags.length > 0) selectedTags.forEach((t) => f.push({ type: 'tags', value: t }));
-    if (selectedProducts.length > 0) selectedProducts.forEach((p) => f.push({ type: 'products', value: p }));
-    if (dateRange.from && dateRange.to) {
-      f.push({
-        type: 'date',
-        value: `${dateRange.from.toISOString()}|${dateRange.to.toISOString()}`,
-        operator: 'between'
-      });
-    }
-    if (statusFilter && statusFilter !== 'all') f.push({ type: 'status', value: statusFilter });
-    return f;
-  }, [pipelineFilter, columnFilter, teamFilter, selectedTags, selectedProducts, dateRange, statusFilter]);
 
   const isHydratingRef = useRef(false);
   const userTouchedRef = useRef(false);
   const lastInitialSigRef = useRef<string | null>(null);
-  const serializeFilters = (items: FilterItem[] | undefined) => {
-    const arr = Array.isArray(items) ? [...items] : [];
-    // ordena para comparação estável
-    arr.sort((a, b) =>
-      `${a.type}|${a.value}|${a.operator || ''}`.localeCompare(`${b.type}|${b.value}|${b.operator || ''}`)
-    );
-    return JSON.stringify(arr);
-  };
+  const serializeGroups = (items: FilterGroupPayload[] | undefined) => JSON.stringify(items || []);
 
-  // Quando o pai quer forçar re-hidratação (ex.: Desfazer / carregar preset), libera novamente.
-  useEffect(() => {
-    userTouchedRef.current = false;
-  }, [rehydrateNonce]);
+  const normalizeIncoming = (incoming?: FilterGroupPayload[] | LegacyFilterItem[]) => {
+    if (!incoming || !Array.isArray(incoming)) return [makeGroup()];
 
-  // Reset coluna quando pipeline mudar
-  useEffect(() => {
-    if (isHydratingRef.current) return;
-    // Se estiver em "Todos os Funis", coluna não se aplica
-    if (pipelineFilter === 'all') {
-      setColumnFilter('all');
-      return;
-    }
-    setColumnFilter('all');
-  }, [pipelineFilter]);
-
-  useEffect(() => {
-    if (isHydratingRef.current) return;
-    onFiltersChange?.(filters);
-  }, [filters, onFiltersChange]);
-
-  // Init (presets / múltiplos funis)
-  useEffect(() => {
-    if (!initialFilters) return;
-    // Evita "surto": depois que o usuário mexe manualmente, não re-hidrata automaticamente
-    if (userTouchedRef.current) return;
-
-    // Evita loop/flicker: só re-hidrata se o conteúdo realmente mudou
-    const incomingSig = serializeFilters(initialFilters);
-    if (incomingSig === lastInitialSigRef.current) return;
-    const currentSig = serializeFilters(filters);
-    if (incomingSig === currentSig) {
-      lastInitialSigRef.current = incomingSig;
-      return;
+    // Novo formato: array de grupos
+    if ((incoming as FilterGroupPayload[])[0]?.pipeline !== undefined) {
+      const typed = incoming as FilterGroupPayload[];
+      return typed.map((g) => ({
+        ...makeGroup(),
+        pipeline: g.pipeline ?? 'all',
+        column: g.column ?? 'all',
+        team: g.team ?? 'all',
+        tags: Array.isArray(g.tags) ? g.tags.filter(Boolean) : [],
+        products: Array.isArray(g.products) ? g.products.filter(Boolean) : [],
+        dateRange: g.dateRange || {},
+        status: g.status ?? 'all',
+        value: g.value ?? null,
+      }));
     }
 
-    const byType = new Map<string, FilterItem[]>();
-    initialFilters.forEach((f) => {
+    // Formato legado: FilterItem[]
+    const legacy = incoming as LegacyFilterItem[];
+    const byType = new Map<string, LegacyFilterItem[]>();
+    legacy.forEach((f) => {
       const arr = byType.get(f.type) || [];
       arr.push(f);
       byType.set(f.type, arr);
@@ -138,6 +123,7 @@ export function QueryBuilderSidebar({
     const status = byType.get('status')?.[0]?.value || 'all';
     const tagsArr = (byType.get('tags') || []).map((t) => t.value).filter(Boolean);
     const productsArr = (byType.get('products') || []).map((t) => t.value).filter(Boolean);
+    const valueItem = byType.get('value')?.[0];
 
     const date = byType.get('date')?.[0];
     let parsedRange: { from?: Date; to?: Date } = {};
@@ -150,29 +136,88 @@ export function QueryBuilderSidebar({
       }
     }
 
+    return [{
+      ...makeGroup(),
+      pipeline,
+      column,
+      team,
+      tags: tagsArr,
+      products: productsArr,
+      dateRange: parsedRange,
+      status,
+      value: valueItem ? { value: valueItem.value, operator: valueItem.operator } : null,
+    }];
+  };
+
+  const sanitizedGroups = useMemo(
+    () =>
+      (groups || []).map(({ id, ...rest }) => ({
+        ...rest,
+      })),
+    [groups]
+  );
+
+  // Quando o pai quer forçar re-hidratação (ex.: Desfazer / carregar preset), libera novamente.
+  useEffect(() => {
+    userTouchedRef.current = false;
+  }, [rehydrateNonce]);
+
+  // Reset coluna quando pipeline do primeiro grupo mudar
+  useEffect(() => {
+    if (isHydratingRef.current) return;
+    setGroups((prev) => {
+      if (prev.length === 0) return prev;
+      const [first, ...rest] = prev;
+      return [{ ...first, column: 'all' }, ...rest];
+    });
+  }, [groups[0]?.pipeline]);
+
+  useEffect(() => {
+    if (isHydratingRef.current) return;
+    onFiltersChange?.(sanitizedGroups);
+  }, [sanitizedGroups, onFiltersChange]);
+
+  // Init (presets / múltiplos funis)
+  useEffect(() => {
+    if (!initialFilters) return;
+    // Evita "surto": depois que o usuário mexe manualmente, não re-hidrata automaticamente
+    if (userTouchedRef.current) return;
+
+    const normalizedGroups = normalizeIncoming(initialFilters);
+    const incomingSig = serializeGroups(normalizedGroups.map(({ id, ...rest }) => rest));
+    const currentSig = serializeGroups(sanitizedGroups);
+    if (incomingSig === lastInitialSigRef.current || incomingSig === currentSig) {
+      lastInitialSigRef.current = incomingSig;
+      return;
+    }
+
     isHydratingRef.current = true;
     lastInitialSigRef.current = incomingSig;
-    setPipelineFilter(pipeline);
-    setColumnFilter(column);
-    setTeamFilter(team);
-    setSelectedTags(tagsArr);
-    setSelectedProducts(productsArr);
-    setDateRange(parsedRange);
-    setStatusFilter(status);
-    // libera após o próximo tick (garante que o effect de reset de coluna não dispare logo após a hidratação)
+    setGroups(normalizedGroups);
     window.setTimeout(() => {
       isHydratingRef.current = false;
     }, 0);
-  }, [initialFilters]);
+  }, [initialFilters, sanitizedGroups]);
 
   const clearAll = () => {
-    setPipelineFilter('all');
-    setColumnFilter('all');
-    setTeamFilter('all');
-    setSelectedTags([]);
-    setSelectedProducts([]);
-    setDateRange({});
-    setStatusFilter('all');
+    setGroups([makeGroup()]);
+  };
+
+  const updateGroup = (id: string, patch: Partial<FilterGroup>) => {
+    userTouchedRef.current = true;
+    setGroups((prev) => prev.map((g) => (g.id === id ? { ...g, ...patch } : g)));
+  };
+
+  const addGroup = () => {
+    userTouchedRef.current = true;
+    setGroups((prev) => [...prev, makeGroup()]);
+  };
+
+  const removeGroup = (id: string) => {
+    setGroups((prev) => {
+      if (prev.length === 1) return prev; // mantém pelo menos um
+      return prev.filter((g) => g.id !== id);
+    });
   };
 
   return (
@@ -194,248 +239,262 @@ export function QueryBuilderSidebar({
         </div>
       )}
 
-      <div className="flex flex-nowrap gap-2 items-center overflow-x-auto pb-1">
-        {/* Pipeline */}
-        <Select
-          value={pipelineFilter}
-          onValueChange={(v) => {
-            userTouchedRef.current = true;
-            setPipelineFilter(v);
-          }}
-          disabled={(pipelines || []).length === 0}
-        >
-          <SelectTrigger className="h-9 text-xs rounded-none border-[#d4d4d4] dark:border-gray-700 bg-white dark:bg-[#2d2d2d] min-w-[140px]">
-            <SelectValue placeholder={(pipelines || []).length === 0 ? 'Nenhum pipeline' : 'Pipeline'} />
-          </SelectTrigger>
-          <SelectContent className="rounded-none border-[#d4d4d4] dark:border-gray-700">
-            <SelectItem value="all">Todos os Funis</SelectItem>
-            {(pipelines || []).map((p) => (
-              <SelectItem key={p.id} value={p.id}>
-                {p.name}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-
-        {/* Coluna / Etapa (ao lado do Pipeline) */}
-        <Select
-          value={columnFilter}
-          onValueChange={(v) => {
-            userTouchedRef.current = true;
-            setColumnFilter(v);
-          }}
-          disabled={!pipelineFilter || pipelineFilter === 'all' || loadingColumns || (pipelineColumns || []).length === 0}
-        >
-          <SelectTrigger className="h-9 text-xs rounded-none border-[#d4d4d4] dark:border-gray-700 bg-white dark:bg-[#2d2d2d] min-w-[140px]">
-            <SelectValue
-              placeholder={
-                !pipelineFilter
-                  ? 'Selecione um pipeline'
-                  : pipelineFilter === 'all'
-                    ? 'Etapa'
-                    : loadingColumns
-                      ? 'Carregando...'
-                      : (pipelineColumns || []).length === 0
-                        ? 'Sem etapas'
-                        : 'Etapa'
-              }
-            />
-          </SelectTrigger>
-          <SelectContent className="rounded-none border-[#d4d4d4] dark:border-gray-700">
-            <SelectItem value="all">Todas as Etapas</SelectItem>
-            {(pipelineColumns || []).map((c) => (
-              <SelectItem key={c.id} value={c.id}>
-                {c.name}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-
-        {/* Equipe */}
-        <Select
-          value={teamFilter}
-          onValueChange={(v) => {
-            userTouchedRef.current = true;
-            setTeamFilter(v);
-          }}
-        >
-          <SelectTrigger className="h-9 text-xs rounded-none border-[#d4d4d4] dark:border-gray-700 bg-white dark:bg-[#2d2d2d] min-w-[140px]">
-            <SelectValue placeholder="Equipe (usuário)" />
-          </SelectTrigger>
-          <SelectContent className="rounded-none border-[#d4d4d4] dark:border-gray-700">
-            <SelectItem value="all">Todas</SelectItem>
-            <SelectItem value="ia">Agente IA</SelectItem>
-            {(agents || []).map((a) => (
-              <SelectItem key={a.id} value={a.id}>
-                {a.name}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-
-        {/* Tags multi */}
-        <Popover open={openTagPopover} onOpenChange={setOpenTagPopover}>
-          <PopoverTrigger asChild>
-            <Button
-              variant="outline"
-              className="h-9 px-3 text-xs rounded-none border-[#d4d4d4] dark:border-gray-700 bg-white dark:bg-[#2d2d2d] min-w-[160px] justify-between"
-              disabled={(tags || []).length === 0}
-            >
-              <span className="flex items-center gap-1">
-                <Tag className="h-3.5 w-3.5" />
-                {selectedTags.length > 0 ? `${selectedTags.length} etiqueta(s)` : 'Etiquetas'}
-              </span>
-              <span className="text-[10px] text-gray-500 dark:text-gray-400">{selectedTags.length > 0 ? 'editar' : 'selecionar'}</span>
-            </Button>
-          </PopoverTrigger>
-          <PopoverContent className="w-56 p-2 rounded-none border-[#d4d4d4] dark:border-gray-700 bg-white dark:bg-[#0f0f0f]" align="start">
-            <div className="space-y-1 max-h-64 overflow-y-auto">
-              {(tags || []).map((t) => {
-                const checked = selectedTags.includes(t.id);
-                return (
-                  <label key={t.id} className="flex items-center gap-2 text-xs text-gray-700 dark:text-gray-200 px-1 py-1 rounded hover:bg-gray-100 dark:hover:bg-gray-800 cursor-pointer">
-                    <Checkbox
-                      checked={checked}
-                      onCheckedChange={(state) => {
-                        userTouchedRef.current = true;
-                        const next = state ? [...selectedTags, t.id] : selectedTags.filter((id) => id !== t.id);
-                        setSelectedTags(next);
-                      }}
-                      className="h-3.5 w-3.5"
-                    />
-                    <span>{t.name}</span>
-                  </label>
-                );
-              })}
-              {(!tags || tags.length === 0) && <div className="text-[11px] text-gray-500">Nenhuma etiqueta disponível</div>}
-            </div>
-          </PopoverContent>
-        </Popover>
-
-        {/* Data (range) */}
-        <Popover>
-          <PopoverTrigger asChild>
-            <Button
-              variant="outline"
-              className={cn(
-                'h-9 px-3 text-xs rounded-none border-[#d4d4d4] dark:border-gray-700 bg-white dark:bg-[#2d2d2d] min-w-[180px] justify-start',
-                !dateRange.from && !dateRange.to && 'text-gray-500 dark:text-gray-400'
-              )}
-            >
-              <CalendarIcon className="mr-2 h-3.5 w-3.5" />
-              {dateRange.from && dateRange.to
-                ? `${format(dateRange.from, 'dd/MM/yyyy')} - ${format(dateRange.to, 'dd/MM/yyyy')}`
-                : 'Período'}
-            </Button>
-          </PopoverTrigger>
-          <PopoverContent className="w-auto p-2 rounded-none border-[#d4d4d4] dark:border-gray-700 bg-white dark:bg-[#0f0f0f]" align="start">
-            <Calendar
-              mode="range"
-              selected={dateRange}
-              onSelect={(range) => {
+      <div className="flex flex-col gap-2">
+        {groups.map((g, idx) => (
+          <div key={g.id} className="flex flex-nowrap gap-2 items-center overflow-x-auto pb-1">
+            {/* Pipeline */}
+            <Select
+              value={g.pipeline}
+              onValueChange={(v) => {
                 userTouchedRef.current = true;
-                setDateRange(range || {});
+                updateGroup(g.id, { pipeline: v, column: 'all' });
               }}
-              numberOfMonths={1}
-              locale={ptBR}
-            />
-            <div className="flex justify-end mt-2">
-              <Button
-                size="sm"
-                variant="outline"
-                className="h-7 px-2 text-xs rounded-none"
-                onClick={() => {
-                  userTouchedRef.current = true;
-                  setDateRange({});
-                }}
-              >
-                Limpar
-              </Button>
-            </div>
-          </PopoverContent>
-        </Popover>
-
-        {/* Status */}
-        <Select
-          value={statusFilter}
-          onValueChange={(v) => {
-            userTouchedRef.current = true;
-            setStatusFilter(v);
-          }}
-        >
-          <SelectTrigger className="h-9 text-xs rounded-none border-[#d4d4d4] dark:border-gray-700 bg-white dark:bg-[#2d2d2d] min-w-[140px]">
-            <SelectValue placeholder="Status" />
-          </SelectTrigger>
-          <SelectContent className="rounded-none border-[#d4d4d4] dark:border-gray-700">
-            <SelectItem value="all">Todos</SelectItem>
-            <SelectItem value="open">Aberto</SelectItem>
-            <SelectItem value="won">Ganho</SelectItem>
-            <SelectItem value="lost">Perdido</SelectItem>
-            <SelectItem value="qualified">Qualificado</SelectItem>
-            <SelectItem value="offer">Com Oferta</SelectItem>
-          </SelectContent>
-        </Select>
-
-        {/* Produtos (no lugar do "Igual a") */}
-        <Popover open={openProductPopover} onOpenChange={setOpenProductPopover}>
-          <PopoverTrigger asChild>
-            <Button
-              variant="outline"
-              className="h-9 px-3 text-xs rounded-none border-[#d4d4d4] dark:border-gray-700 bg-white dark:bg-[#2d2d2d] min-w-[160px] justify-between"
-              disabled={(products || []).length === 0}
+              disabled={(pipelines || []).length === 0}
             >
-              <span className="flex items-center gap-1">
-                {selectedProducts.length > 0 ? `${selectedProducts.length} produto(s)` : 'Produtos'}
-              </span>
-              <span className="text-[10px] text-gray-500 dark:text-gray-400">
-                {selectedProducts.length > 0 ? 'editar' : 'selecionar'}
-              </span>
-            </Button>
-          </PopoverTrigger>
-          <PopoverContent
-            className="w-64 p-2 rounded-none border-[#d4d4d4] dark:border-gray-700 bg-white dark:bg-[#0f0f0f]"
-            align="start"
-          >
-            <div className="space-y-1 max-h-64 overflow-y-auto">
-              {(products || []).map((p) => {
-                const checked = selectedProducts.includes(p.id);
-                return (
-                  <label
-                    key={p.id}
-                    className="flex items-center gap-2 text-xs text-gray-700 dark:text-gray-200 px-1 py-1 rounded hover:bg-gray-100 dark:hover:bg-gray-800 cursor-pointer"
-                  >
+              <SelectTrigger className="h-9 text-xs rounded-none border-[#d4d4d4] dark:border-gray-700 bg-white dark:bg-[#2d2d2d] min-w-[140px]">
+                <SelectValue placeholder="Todos os Pipelines" />
+              </SelectTrigger>
+              <SelectContent className="rounded-none border-[#d4d4d4] dark:border-gray-700">
+                <SelectItem value="all">Todos os Pipelines</SelectItem>
+                {(pipelines || []).map((p) => (
+                  <SelectItem key={p.id} value={p.id}>
+                    {p.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+
+            {/* Coluna / Etapa */}
+            <Select
+              value={g.column}
+              onValueChange={(v) => {
+                userTouchedRef.current = true;
+                updateGroup(g.id, { column: v });
+              }}
+              disabled={!g.pipeline || g.pipeline === 'all' || loadingColumns || (pipelineColumns || []).length === 0}
+            >
+              <SelectTrigger className="h-9 text-xs rounded-none border-[#d4d4d4] dark:border-gray-700 bg-white dark:bg-[#2d2d2d] min-w-[140px]">
+                <SelectValue
+                  placeholder={
+                    g.pipeline === 'all'
+                      ? 'Todas as Etapas'
+                      : loadingColumns
+                        ? 'Carregando...'
+                        : (pipelineColumns || []).length === 0
+                          ? 'Sem etapas'
+                          : 'Etapa'
+                  }
+                />
+              </SelectTrigger>
+              <SelectContent className="rounded-none border-[#d4d4d4] dark:border-gray-700">
+                <SelectItem value="all">Todas as Etapas</SelectItem>
+                {(pipelineColumns || []).map((c) => (
+                  <SelectItem key={c.id} value={c.id}>
+                    {c.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+
+            {/* Equipe */}
+            <Select
+              value={g.team}
+              onValueChange={(v) => {
+                userTouchedRef.current = true;
+                updateGroup(g.id, { team: v });
+              }}
+            >
+              <SelectTrigger className="h-9 text-xs rounded-none border-[#d4d4d4] dark:border-gray-700 bg-white dark:bg-[#2d2d2d] min-w-[140px]">
+                <SelectValue placeholder="Todos os Agentes" />
+              </SelectTrigger>
+              <SelectContent className="rounded-none border-[#d4d4d4] dark:border-gray-700">
+                <SelectItem value="all">Todas</SelectItem>
+                <SelectItem value="ia">Agente IA</SelectItem>
+                {(agents || []).map((a) => (
+                  <SelectItem key={a.id} value={a.id}>
+                    {a.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+
+            {/* Etiquetas (multi select via popover) */}
+            <Popover open={!!openTags[g.id]} onOpenChange={(o) => setOpenTags((prev) => ({ ...prev, [g.id]: o }))}>
+              <PopoverTrigger asChild>
+                <Button
+                  variant="outline"
+                  className="h-9 px-3 text-xs rounded-none border-[#d4d4d4] dark:border-gray-700 bg-white dark:bg-[#2d2d2d] min-w-[160px] justify-between"
+                  disabled={(tags || []).length === 0}
+                >
+                  <span className="flex items-center gap-1">
                     <Checkbox
-                      checked={checked}
-                      onCheckedChange={(state) => {
-                        userTouchedRef.current = true;
-                        const next = state ? [...selectedProducts, p.id] : selectedProducts.filter((id) => id !== p.id);
-                        setSelectedProducts(next);
-                      }}
-                      className="h-3.5 w-3.5"
+                      checked={g.tags.length === (tags?.length || 0) && g.tags.length > 0}
+                      className="h-3.5 w-3.5 pointer-events-none"
                     />
-                    <span className="truncate" title={p.name}>
-                      {p.name}
-                    </span>
-                  </label>
-                );
-              })}
-              {(!products || products.length === 0) && <div className="text-[11px] text-gray-500">Nenhum produto disponível</div>}
+                    {g.tags.length > 0 ? `${g.tags.length} etiqueta(s)` : 'Todas as Etiquetas'}
+                  </span>
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="w-56 p-2 rounded-none border-[#d4d4d4] dark:border-gray-700 bg-white dark:bg-[#0f0f0f]" align="start">
+                <div className="space-y-1 max-h-64 overflow-y-auto">
+                  {(tags || []).map((t) => {
+                    const checked = g.tags.includes(t.id);
+                    return (
+                      <label
+                        key={t.id}
+                        className="flex items-center gap-2 text-xs text-gray-700 dark:text-gray-200 px-1 py-1 rounded hover:bg-gray-100 dark:hover:bg-gray-800 cursor-pointer"
+                      >
+                        <Checkbox
+                          checked={checked}
+                          onCheckedChange={(state) => {
+                            const next = state ? [...g.tags, t.id] : g.tags.filter((id) => id !== t.id);
+                            updateGroup(g.id, { tags: next });
+                          }}
+                          className="h-3.5 w-3.5"
+                        />
+                        <span className="truncate" title={t.name}>{t.name}</span>
+                      </label>
+                    );
+                  })}
+                  {(!tags || tags.length === 0) && <div className="text-[11px] text-gray-500">Nenhuma etiqueta disponível</div>}
+                </div>
+              </PopoverContent>
+            </Popover>
+
+            {/* Data (range) */}
+            <Popover>
+              <PopoverTrigger asChild>
+                <Button
+                  variant="outline"
+                  className={cn(
+                    'h-9 px-3 text-xs rounded-none border-[#d4d4d4] dark:border-gray-700 bg-white dark:bg-[#2d2d2d] min-w-[180px] justify-start',
+                    !g.dateRange.from && !g.dateRange.to && 'text-gray-500 dark:text-gray-400'
+                  )}
+                >
+                  <CalendarIcon className="mr-2 h-3.5 w-3.5" />
+                  {g.dateRange.from && g.dateRange.to
+                    ? `${format(g.dateRange.from, 'dd/MM/yyyy')} - ${format(g.dateRange.to, 'dd/MM/yyyy')}`
+                    : 'Período'}
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="w-auto p-2 rounded-none border-[#d4d4d4] dark:border-gray-700 bg-white dark:bg-[#0f0f0f]" align="start">
+                <Calendar
+                  mode="range"
+                  selected={g.dateRange}
+                  onSelect={(range) => {
+                    updateGroup(g.id, { dateRange: range || {} });
+                  }}
+                  numberOfMonths={1}
+                  locale={ptBR}
+                />
+                <div className="flex justify-end mt-2">
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="h-7 px-2 text-xs rounded-none"
+                    onClick={() => {
+                      updateGroup(g.id, { dateRange: {} });
+                    }}
+                  >
+                    Limpar
+                  </Button>
+                </div>
+              </PopoverContent>
+            </Popover>
+
+            {/* Status */}
+            <Select
+              value={g.status}
+              onValueChange={(v) => {
+                userTouchedRef.current = true;
+                updateGroup(g.id, { status: v });
+              }}
+            >
+              <SelectTrigger className="h-9 text-xs rounded-none border-[#d4d4d4] dark:border-gray-700 bg-white dark:bg-[#2d2d2d] min-w-[140px]">
+                <SelectValue placeholder="Todos os Status" />
+              </SelectTrigger>
+              <SelectContent className="rounded-none border-[#d4d4d4] dark:border-gray-700">
+                <SelectItem value="all">Todos</SelectItem>
+                <SelectItem value="open">Aberto</SelectItem>
+                <SelectItem value="won">Ganho</SelectItem>
+                <SelectItem value="lost">Perdido</SelectItem>
+                <SelectItem value="qualified">Qualificado</SelectItem>
+                <SelectItem value="offer">Com Oferta</SelectItem>
+              </SelectContent>
+            </Select>
+
+            {/* Produtos (multi select via popover) */}
+            <Popover open={!!openProducts[g.id]} onOpenChange={(o) => setOpenProducts((prev) => ({ ...prev, [g.id]: o }))}>
+              <PopoverTrigger asChild>
+                <Button
+                  variant="outline"
+                  className="h-9 text-xs rounded-none border-[#d4d4d4] dark:border-gray-700 bg-white dark:bg-[#2d2d2d] min-w-[160px] justify-between"
+                  disabled={(products || []).length === 0}
+                >
+                  <span className="flex items-center gap-1">
+                    <Checkbox
+                      checked={g.products.length === (products?.length || 0) && g.products.length > 0}
+                      className="h-3.5 w-3.5 pointer-events-none"
+                    />
+                    {g.products.length > 0 ? `${g.products.length} produto(s)` : 'Todos os Produtos'}
+                  </span>
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="w-56 p-2 rounded-none border-[#d4d4d4] dark:border-gray-700 bg-white dark:bg-[#0f0f0f]" align="start">
+                <div className="space-y-1 max-h-64 overflow-y-auto">
+                  {(products || []).map((p) => {
+                    const checked = g.products.includes(p.id);
+                    return (
+                      <label
+                        key={p.id}
+                        className="flex items-center gap-2 text-xs text-gray-700 dark:text-gray-200 px-1 py-1 rounded hover:bg-gray-100 dark:hover:bg-gray-800 cursor-pointer"
+                      >
+                        <Checkbox
+                          checked={checked}
+                          onCheckedChange={(state) => {
+                            const next = state ? [...g.products, p.id] : g.products.filter((id) => id !== p.id);
+                            updateGroup(g.id, { products: next });
+                          }}
+                          className="h-3.5 w-3.5"
+                        />
+                        <span className="truncate" title={p.name}>{p.name}</span>
+                      </label>
+                    );
+                  })}
+                  {(!products || products.length === 0) && <div className="text-[11px] text-gray-500">Nenhum produto disponível</div>}
+                </div>
+              </PopoverContent>
+            </Popover>
+
+            <div className="flex items-center gap-1">
+              {/* Remover grupo (se houver mais de um) */}
+              {groups.length > 1 && (
+                <Button
+                  variant="outline"
+                  className="h-9 px-2 text-xs rounded-none border-[#d4d4d4] dark:border-gray-700 bg-white dark:bg-[#2d2d2d]"
+                  onClick={() => removeGroup(g.id)}
+                  disabled={disabled}
+                  title="Remover filtro"
+                >
+                  ×
+                </Button>
+              )}
+
+              {/* Adicionar novo grupo (só no último) */}
+              {idx === groups.length - 1 && (
+                <Button
+                  variant="outline"
+                  className="h-9 px-2 text-xs rounded-none border-[#d4d4d4] dark:border-gray-700 bg-white dark:bg-[#2d2d2d]"
+                  onClick={addGroup}
+                  disabled={disabled}
+                  title="Adicionar filtro"
+                >
+                  <Plus className="h-4 w-4" />
+                </Button>
+              )}
             </div>
-            <div className="flex justify-end mt-2">
-              <Button
-                size="sm"
-                variant="outline"
-                className="h-7 px-2 text-xs rounded-none"
-                onClick={() => {
-                  userTouchedRef.current = true;
-                  setSelectedProducts([]);
-                }}
-              >
-                Limpar
-              </Button>
-            </div>
-          </PopoverContent>
-        </Popover>
+          </div>
+        ))}
       </div>
     </div>
   );
