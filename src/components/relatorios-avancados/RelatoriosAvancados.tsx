@@ -1792,7 +1792,7 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
               Nova Conversão
             </Button>
           </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3">
             {/* Conversões Customizadas */}
             {customConversions.map((conv) => {
               const countA = cardsScoped.filter(c => 
@@ -1927,7 +1927,7 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
             })}
 
             {customConversions.length === 0 && (
-              <Card className="rounded-none border-gray-200 dark:border-gray-700 dark:bg-[#1b1b1b]">
+              <Card className="rounded-none border-gray-200 dark:border-gray-700 dark:bg-[#1b1b1b] sm:col-span-2 md:col-span-3 lg:col-span-4 xl:col-span-5">
                 <CardContent className="p-3">
                   <div className="text-[11px] text-gray-600 dark:text-gray-300">
                     Nenhuma conversão criada. Clique em <span className="font-medium">Nova Conversão</span>.
@@ -1993,7 +1993,7 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
             </Button>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3">
             {teamConversions.map((conv) => {
               const countA = teamMetricCounts.get(conv.metricA) || 0;
               const countB = teamMetricCounts.get(conv.metricB) || 0;
@@ -2120,7 +2120,7 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
             })}
 
             {teamConversions.length === 0 && (
-              <Card className="rounded-none border-gray-200 dark:border-gray-700 dark:bg-[#1b1b1b]">
+              <Card className="rounded-none border-gray-200 dark:border-gray-700 dark:bg-[#1b1b1b] sm:col-span-2 md:col-span-3 lg:col-span-4 xl:col-span-5">
                 <CardContent className="p-3">
                   <div className="text-[11px] text-gray-600 dark:text-gray-300">
                     Nenhuma conversão criada. Clique em <span className="font-medium">Nova Conversão</span>.
