@@ -9,12 +9,13 @@ import { format, subDays, startOfDay, endOfDay } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { Button } from '@/components/ui/button';
 import { Calendar } from '@/components/ui/calendar';
+import { Input } from '@/components/ui/input';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Pie, PieChart, ResponsiveContainer, Cell, Tooltip as ReTooltip, Legend, LineChart, Line, XAxis, YAxis, CartesianGrid } from 'recharts';
-import { Filter, Users, Download, Loader2 } from 'lucide-react';
+import { Filter, Users, Download, Loader2, Check, X, Plus, Trash2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { QueryBuilderSidebar } from './QueryBuilderSidebar';
 import { useReportIndicatorFunnelPresets } from '@/hooks/useReportIndicatorFunnelPresets';
@@ -75,6 +76,26 @@ interface TagRecord {
 
 const pieColors = ['#10B981', '#3B82F6', '#F59E0B', '#EF4444', '#8B5CF6', '#14B8A6', '#6366F1'];
 
+interface CustomConversion {
+  id: string;
+  name: string;
+  pipelineA: string;
+  columnA: string;
+  pipelineB: string;
+  columnB: string;
+  isEditing?: boolean;
+}
+
+type TeamMetricKey = 'leads' | `activity:${string}`;
+
+interface TeamConversion {
+  id: string;
+  name: string;
+  metricA: TeamMetricKey;
+  metricB: TeamMetricKey;
+  isEditing?: boolean;
+}
+
 export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProps) {
   const { theme } = useTheme();
   const isDark = theme === 'dark';
@@ -82,6 +103,11 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
   const { user, userRole } = useAuth();
   const { pipelines: ctxPipelines, fetchPipelines: fetchCtxPipelines } = usePipelinesContext();
   const { getHeaders } = useWorkspaceHeaders();
+
+  const [customConversions, setCustomConversions] = useState<CustomConversion[]>([]);
+  const [pipelineColumnsMap, setPipelineColumnsMap] = useState<Record<string, { id: string, name: string }[]>>({});
+  const [loadingColumnsMap, setLoadingColumnsMap] = useState<Record<string, boolean>>({});
+  const [teamConversions, setTeamConversions] = useState<TeamConversion[]>([]);
 
   // ✅ Por padrão: sem recorte (carrega tudo). Só filtra por período quando o usuário escolher.
   const [periodPreset, setPeriodPreset] = useState<PeriodPreset>('all');
@@ -115,6 +141,7 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
   const [savedSnapshot, setSavedSnapshot] = useState<any[]>([]);
   const [funnelsDirty, setFunnelsDirty] = useState(false);
   const [rehydrateNonce, setRehydrateNonce] = useState(0);
+  const canSaveFilters = true;
 
   const applyPreset = (preset: PeriodPreset) => {
     setPeriodPreset(preset);
@@ -354,6 +381,139 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
 
   const serializeGroups = (groups: any[]) => JSON.stringify(groups || []);
 
+  useEffect(() => {
+    const userKey = user?.id ? `relatorios:conversoes:${user.id}` : null;
+    if (userKey) {
+      const raw = localStorage.getItem(userKey);
+      if (raw) {
+        try {
+          const parsed = JSON.parse(raw);
+          if (Array.isArray(parsed)) {
+            setCustomConversions(parsed);
+            // Busca as colunas para cada pipeline salvo
+            parsed.forEach((conv: CustomConversion) => {
+              if (conv.pipelineA && conv.pipelineA !== 'all') fetchColumnsForPipeline(conv.pipelineA);
+              if (conv.pipelineB && conv.pipelineB !== 'all') fetchColumnsForPipeline(conv.pipelineB);
+            });
+          }
+        } catch (e) {
+          console.error("Erro ao carregar conversões customizadas:", e);
+        }
+      }
+    }
+  }, [user?.id]);
+
+  useEffect(() => {
+    const userKey = user?.id ? `relatorios:equipe_conversoes:${user.id}` : null;
+    if (!userKey) return;
+    const raw = localStorage.getItem(userKey);
+    if (!raw) return;
+    try {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) setTeamConversions(parsed);
+    } catch (e) {
+      console.error('Erro ao carregar conversões (equipe):', e);
+    }
+  }, [user?.id]);
+
+  const saveCustomConversions = (conversions: CustomConversion[]) => {
+    const userKey = user?.id ? `relatorios:conversoes:${user.id}` : null;
+    if (userKey) {
+      localStorage.setItem(userKey, JSON.stringify(conversions.map(c => ({ ...c, isEditing: false }))));
+    }
+  };
+
+  const saveTeamConversions = (conversions: TeamConversion[]) => {
+    const userKey = user?.id ? `relatorios:equipe_conversoes:${user.id}` : null;
+    if (!userKey) return;
+    localStorage.setItem(
+      userKey,
+      JSON.stringify((conversions || []).map((c) => ({ ...c, isEditing: false })))
+    );
+  };
+
+  const addCustomConversion = () => {
+    const newConv: CustomConversion = {
+      id: crypto.randomUUID(),
+      name: '',
+      pipelineA: 'all',
+      columnA: 'all',
+      pipelineB: 'all',
+      columnB: 'all',
+      isEditing: true,
+    };
+    setCustomConversions(prev => [...prev, newConv]);
+  };
+
+  const addTeamConversion = () => {
+    const newConv: TeamConversion = {
+      id: crypto.randomUUID(),
+      name: '',
+      metricA: 'leads',
+      metricB: 'leads',
+      isEditing: true,
+    };
+    setTeamConversions((prev) => [...prev, newConv]);
+  };
+
+  const removeCustomConversion = (id: string) => {
+    const next = customConversions.filter(c => c.id !== id);
+    setCustomConversions(next);
+    saveCustomConversions(next);
+  };
+
+  const removeTeamConversion = (id: string) => {
+    const next = teamConversions.filter((c) => c.id !== id);
+    setTeamConversions(next);
+    saveTeamConversions(next);
+  };
+
+  const normalizeText = (s?: string | null) =>
+    (s || '')
+      .toLowerCase()
+      .trim()
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '');
+
+  const fetchColumnsForPipeline = async (pipelineId: string) => {
+    if (!pipelineId || pipelineId === 'all' || (pipelineColumnsMap[pipelineId] && pipelineColumnsMap[pipelineId].length > 0)) return;
+    
+    setLoadingColumnsMap(prev => ({ ...prev, [pipelineId]: true }));
+    try {
+      console.log(`🔍 Buscando colunas para o pipeline: ${pipelineId}`);
+      const { data, error } = await supabase
+        .from('pipeline_columns')
+        .select('id, name')
+        .eq('pipeline_id', pipelineId)
+        // `order_position`/`position` variam entre schemas; `name` é o mais consistente
+        .order('name', { ascending: true });
+      
+      if (error) {
+        console.error(`❌ Erro ao buscar colunas para ${pipelineId}:`, error);
+        throw error;
+      }
+      
+      console.log(`✅ ${data?.length || 0} colunas encontradas para ${pipelineId}`);
+      setPipelineColumnsMap(prev => ({ ...prev, [pipelineId]: data || [] }));
+    } catch (e) {
+      console.error(`❌ Falha na busca de colunas:`, e);
+    } finally {
+      setLoadingColumnsMap(prev => ({ ...prev, [pipelineId]: false }));
+    }
+  };
+
+  // Efeito para garantir que as colunas sejam carregadas ao editar ou carregar conversões
+  useEffect(() => {
+    customConversions.forEach(conv => {
+      if (conv.pipelineA && conv.pipelineA !== 'all' && !pipelineColumnsMap[conv.pipelineA]) {
+        fetchColumnsForPipeline(conv.pipelineA);
+      }
+      if (conv.pipelineB && conv.pipelineB !== 'all' && !pipelineColumnsMap[conv.pipelineB]) {
+        fetchColumnsForPipeline(conv.pipelineB);
+      }
+    });
+  }, [customConversions, pipelineColumnsMap]);
+
   const fetchData = async () => {
     if (!user?.id) return;
     setIsLoading(true);
@@ -538,8 +698,26 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
   }, [selectedWorkspaceId]);
 
   // Inicializa o draft a partir do preset salvo
+  // carregar presets salvos por usuário (prioriza localStorage do usuário)
   useEffect(() => {
-    const normalized = (savedFunnels || []).map((f: any, idx: number) => ({
+    const userKey = user?.id ? `relatorios:filtros:${user.id}` : null;
+    let fromUser: any[] | null = null;
+    if (userKey) {
+      const raw = localStorage.getItem(userKey);
+      if (raw) {
+        try {
+          const parsed = JSON.parse(raw);
+          if (Array.isArray(parsed)) fromUser = parsed;
+        } catch {
+          fromUser = null;
+        }
+      }
+    }
+
+    // se existir localStorage (mesmo vazio), ele prevalece; senão usa savedFunnels
+    const hasUserStorage = fromUser !== null;
+    const source = hasUserStorage ? (fromUser as any[] | null) || [] : (savedFunnels || []);
+    const normalized = (source || []).map((f: any, idx: number) => ({
       id: String(f.id || `funnel-${idx + 1}`),
       name: String(f.name || `Funil ${idx + 1}`),
       filters: normalizeFunnelGroups(Array.isArray(f.filters) ? f.filters : []),
@@ -548,22 +726,50 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
     setSavedSnapshot(normalized);
     setFunnelsDirty(false);
     setRehydrateNonce((n) => n + 1);
-  }, [savedFunnels]);
+  }, [savedFunnels, user?.id]);
 
   useEffect(() => {
     fetchData();
   }, [periodPreset, startDate, endDate, selectedAgent, userRole, selectedFunnel, selectedTags, selectedWorkspaceId, pipelines.length]);
 
-  const leadsReceived = conversations.length;
-  const leadsQualified = contacts.filter((c) => (c.status || '').toLowerCase() === 'qualified').length;
-  const leadsOffer = contacts.filter((c) => (c.status || '').toLowerCase() === 'offer').length;
-  const leadsWon = cards.filter((c) => {
+  const contactsScoped = useMemo(() => {
+    if (userRole === 'user' && user?.id) {
+      return contacts.filter((c) => c.responsible_id === user.id);
+    }
+    return contacts;
+  }, [contacts, userRole, user?.id]);
+
+  const conversationsScoped = useMemo(() => {
+    if (userRole === 'user' && user?.id) {
+      return conversations.filter((c) => c.assigned_user_id === user.id);
+    }
+    return conversations;
+  }, [conversations, userRole, user?.id]);
+
+  const activitiesScoped = useMemo(() => {
+    if (userRole === 'user' && user?.id) {
+      return activities.filter((a) => a.responsible_id === user.id);
+    }
+    return activities;
+  }, [activities, userRole, user?.id]);
+
+  const cardsScoped = useMemo(() => {
+    if (userRole === 'user' && user?.id) {
+      return cards.filter((c) => c.responsible_user_id === user.id);
+    }
+    return cards;
+  }, [cards, userRole, user?.id]);
+
+  const leadsReceived = conversationsScoped.length;
+  const leadsQualified = contactsScoped.filter((c) => (c.status || '').toLowerCase() === 'qualified').length;
+  const leadsOffer = contactsScoped.filter((c) => (c.status || '').toLowerCase() === 'offer').length;
+  const leadsWon = cardsScoped.filter((c) => {
     const s = (c.status || '').toLowerCase();
     return s === 'won' || s === 'ganho' || s === 'venda' || s === 'success' || s === 'sucesso';
   }).length;
-  const leadsLost1 = contacts.filter((c) => (c.status || '').toLowerCase() === 'lost_offer').length;
-  const leadsLost2 = contacts.filter((c) => (c.status || '').toLowerCase() === 'lost_no_offer').length;
-  const leadsLost3 = contacts.filter((c) => (c.status || '').toLowerCase() === 'lost_not_fit').length;
+  const leadsLost1 = contactsScoped.filter((c) => (c.status || '').toLowerCase() === 'lost_offer').length;
+  const leadsLost2 = contactsScoped.filter((c) => (c.status || '').toLowerCase() === 'lost_no_offer').length;
+  const leadsLost3 = contactsScoped.filter((c) => (c.status || '').toLowerCase() === 'lost_not_fit').length;
   const leadsLostTotal = leadsLost1 + leadsLost2 + leadsLost3;
 
   // Indicadores por funil (múltiplos) — aplicam somente no bloco "Funil – Indicadores"
@@ -622,7 +828,7 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
           return true;
         };
 
-        let cardsF = [...(cards || [])] as any[];
+        let cardsF = [...(cardsScoped || [])] as any[];
         if (pipeline !== 'all') cardsF = cardsF.filter((c) => c.pipeline_id === pipeline);
         if (column !== 'all') cardsF = cardsF.filter((c) => c.column_id === column);
         if (team !== 'all') {
@@ -669,9 +875,9 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
         }
 
         const contactIdsFromCards = new Set<string>(cardsF.map((c) => c.contact_id).filter(Boolean));
-        let contactsF = (contacts || []).filter((c: any) => contactIdsFromCards.has(c.id));
-        let conversationsF = (conversations || []).filter((c: any) => contactIdsFromCards.has(c.contact_id));
-        let activitiesF = (activities || []).filter((a: any) => a.contact_id && contactIdsFromCards.has(a.contact_id));
+        let contactsF = (contactsScoped || []).filter((c: any) => contactIdsFromCards.has(c.id));
+        let conversationsF = (conversationsScoped || []).filter((c: any) => contactIdsFromCards.has(c.contact_id));
+        let activitiesF = (activitiesScoped || []).filter((a: any) => a.contact_id && contactIdsFromCards.has(a.contact_id));
 
         if (team && team !== 'all') {
           if (team === 'ia') {
@@ -902,6 +1108,50 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
 
   const conversion = (num: number, den: number) => (den > 0 ? Number(((num / den) * 100).toFixed(1)) : 0);
 
+  // Opções para conversões dinâmicas de Equipe – Conversão
+  const teamMetricOptions = useMemo(() => {
+    const activityLabels = [
+      'Mensagem',
+      'Ligação Não Atendida',
+      'Ligação Atendida',
+      'Ligação Abordada',
+      'Ligação Agendada',
+      'Ligação de Follow up',
+      'Reunião Agendada',
+      'Reunião Realizada',
+      'Reunião Não Realizada',
+      'Reunião Reagendada',
+      'WhatsApp Enviado',
+    ];
+    return [
+      { key: 'leads' as TeamMetricKey, label: 'Leads' },
+      ...activityLabels.map((l) => ({ key: `activity:${l}` as TeamMetricKey, label: l })),
+    ];
+  }, []);
+
+  const teamMetricCounts = useMemo(() => {
+    const counts = new Map<TeamMetricKey, number>();
+    // Leads = cards no recorte atual
+    counts.set('leads', (cardsScoped || []).length);
+
+    // Atividades por type (normalizado)
+    const byType = new Map<string, number>();
+    (activitiesScoped || []).forEach((a: any) => {
+      const key = normalizeText(a?.type);
+      if (!key) return;
+      byType.set(key, (byType.get(key) || 0) + 1);
+    });
+
+    teamMetricOptions.forEach((opt) => {
+      if (opt.key === 'leads') return;
+      const rawLabel = opt.key.replace(/^activity:/, '');
+      const k = normalizeText(rawLabel);
+      counts.set(opt.key, byType.get(k) || 0);
+    });
+
+    return counts;
+  }, [activitiesScoped, cardsScoped, teamMetricOptions]);
+
   // Agrupamentos por responsável para rankings
   const agentMap = useMemo(() => {
     const map = new Map<string, { name: string }>();
@@ -1017,7 +1267,7 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
       return Number.isFinite(parsed) ? parsed : 0;
     };
 
-    cards.forEach((c) => {
+    cardsScoped.forEach((c) => {
       const s = (c.status || '').toLowerCase();
       const isWon = s === 'won' || s === 'ganho' || s === 'venda' || s === 'success' || s === 'sucesso';
       if (!isWon) return;
@@ -1175,8 +1425,8 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
         </div>
 
         {/* Corpo */}
-        <div className="flex-1 overflow-auto bg-[#e6e6e6] dark:bg-[#050505] relative">
-          <div className="inline-block min-w-full align-middle bg-white dark:bg-[#111111]">
+        <div className="flex-1 overflow-y-auto overflow-x-hidden bg-[#e6e6e6] dark:bg-[#050505] relative">
+          <div className="block w-full align-middle bg-white dark:bg-[#111111]">
             <div className="p-4 space-y-4">
               {/* Área Principal */}
               <div className="flex flex-col overflow-hidden border border-[#d4d4d4] dark:border-gray-800 bg-white dark:bg-[#0f0f0f] shadow-sm p-4 space-y-6 min-h-0">
@@ -1196,34 +1446,24 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
             </div>
 
             <div className="flex items-center gap-2">
-              {canEditIndicatorFunnels && (
-                <>
-                  <Button
-                    variant="outline"
-                    className="h-8 px-3 text-xs rounded-none border-[#d4d4d4] dark:border-gray-600"
-                    onClick={() => {
-                      setDraftFunnels(savedSnapshot);
+              {canSaveFilters && (
+                <Button
+                  className="h-8 px-3 text-xs rounded-none"
+                  onClick={async () => {
+                    const ok = await savePreset(draftFunnels);
+                    if (ok) {
+                      setSavedSnapshot(draftFunnels);
                       setFunnelsDirty(false);
-                      setRehydrateNonce((n) => n + 1);
-                    }}
-                    disabled={!funnelsDirty || loadingFunnelsPreset}
-                  >
-                    Desfazer
-                  </Button>
-                  <Button
-                    className="h-8 px-3 text-xs rounded-none"
-                    onClick={async () => {
-                      const ok = await savePreset(draftFunnels);
-                      if (ok) {
-                        setSavedSnapshot(draftFunnels);
-                        setFunnelsDirty(false);
+                      const userKey = user?.id ? `relatorios:filtros:${user.id}` : null;
+                      if (userKey) {
+                        localStorage.setItem(userKey, JSON.stringify(draftFunnels));
                       }
-                    }}
-                    disabled={!funnelsDirty || loadingFunnelsPreset}
-                  >
-                    Salvar
-                  </Button>
-                </>
+                    }
+                  }}
+                  disabled={!funnelsDirty || loadingFunnelsPreset}
+                >
+                  Salvar
+                </Button>
               )}
             </div>
           </div>
@@ -1232,44 +1472,27 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
           <div className="space-y-3">
             {draftFunnels.map((f: any, idx: number) => (
               <div key={f.id} className="border border-gray-200 dark:border-gray-700 bg-white dark:bg-[#0f0f0f]">
-                <div className="flex items-center justify-between px-3 py-2 border-b border-gray-200 dark:border-gray-700 bg-[#f3f3f3] dark:bg-[#1a1a1a]">
-                  <div className="flex items-center gap-2 min-w-0">
-                    <span className="text-xs font-semibold text-gray-900 dark:text-gray-100 truncate">
-                      {f.name || `Funil ${idx + 1}`}
-                    </span>
-                  </div>
-                  {canEditIndicatorFunnels && (
-                    <div className="flex items-center gap-2">
-                      <Button
-                        variant="outline"
-                        className="h-7 px-2 text-[11px] rounded-none border-[#d4d4d4] dark:border-gray-600"
-                        onClick={() => {
-                          setDraftFunnels((prev: any[]) => prev.map((x) => (x.id === f.id ? { ...x, filters: [] } : x)));
-                          setFunnelsDirty(true);
-                        }}
-                      >
-                        Limpar
-                      </Button>
-                    </div>
-                  )}
-                </div>
-
                 <QueryBuilderSidebar
                   pipelines={pipelines || []}
                   tags={availableTags || []}
                   products={availableProducts || []}
                   agents={agents || []}
                   selectedWorkspaceId={selectedWorkspaceId || workspaces?.[0]?.workspace_id || ''}
-                  onFiltersChange={canEditIndicatorFunnels ? ((filters) => {
+                  onFiltersChange={(filters) => {
                     const cleaned = sanitizeGroupsForPersist(filters || []);
                     const sig = serializeGroups(cleaned);
                     setDraftFunnels((prev: any[]) => {
                       const current = prev.find((x) => x.id === f.id);
                       if (serializeGroups(current?.filters || []) === sig) return prev;
-                      return prev.map((x) => (x.id === f.id ? { ...x, filters: cleaned } : x));
+                      const next = prev.map((x) => (x.id === f.id ? { ...x, filters: cleaned } : x));
+                      const userKey = user?.id ? `relatorios:filtros:${user.id}` : null;
+                      if (userKey) {
+                        localStorage.setItem(userKey, JSON.stringify(next));
+                      }
+                      return next;
                     });
                     setFunnelsDirty(true);
-                  }) : undefined}
+                  }}
                   initialFilters={f.filters}
                   rehydrateNonce={rehydrateNonce}
                   showHeader={false}
@@ -1506,29 +1729,164 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
 
         {/* Funil – Conversão */}
         <section className="space-y-3">
-          <div className="flex items-center gap-2 text-sm font-semibold text-gray-900 dark:text-gray-100">
-            <Filter className="h-4 w-4" />
-            Funil – Conversão
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2 text-sm font-semibold text-gray-900 dark:text-gray-100">
+              <Filter className="h-4 w-4" />
+              Funil – Conversão
+            </div>
+            <Button 
+              variant="outline" 
+              size="sm" 
+              className="h-7 px-2 text-[10px] rounded-none border-dashed border-[#d4d4d4] dark:border-gray-700"
+              onClick={addCustomConversion}
+            >
+              <Plus className="h-3 w-3 mr-1" />
+              Nova Conversão
+            </Button>
           </div>
-          <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-4 gap-3">
-            {[
-              { label: '% Leads qualificados / recebidos', value: conversion(leadsQualified, leadsReceived) },
-              { label: '% Leads com oferta / qualificados', value: conversion(leadsOffer, leadsQualified) },
-              { label: '% Vendas / oferta', value: conversion(leadsWon, leadsOffer) },
-                  { label: '% Leads por etiqueta', value: conversion(leadsByTag.reduce((a, b) => a + b.value, 0), leadsReceived) },
-                  { label: '% Leads por produto', value: conversion(leadsByProduct.reduce((a, b) => a + b.value, 0), leadsReceived) },
-              { label: '% Perdidos 1 / recebidos', value: conversion(leadsLost1, leadsReceived) },
-              { label: '% Perdidos 2 / recebidos', value: conversion(leadsLost2, leadsReceived) },
-              { label: '% Perdidos 3 / recebidos', value: conversion(leadsLost3, leadsReceived) },
-              { label: '% Perdidos total / recebidos', value: conversion(leadsLostTotal, leadsReceived) },
-            ].map((item) => (
-              <Card key={item.label} className="rounded-none border-gray-200 dark:border-gray-700 dark:bg-[#1b1b1b]">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+            {/* Conversões Customizadas */}
+            {customConversions.map((conv) => {
+              const countA = cardsScoped.filter(c => 
+                (conv.pipelineA === 'all' || c.pipeline_id === conv.pipelineA) && 
+                (conv.columnA === 'all' || c.column_id === conv.columnA)
+              ).length;
+              const countB = cardsScoped.filter(c => 
+                (conv.pipelineB === 'all' || c.pipeline_id === conv.pipelineB) && 
+                (conv.columnB === 'all' || c.column_id === conv.columnB)
+              ).length;
+              const result = conversion(countA, countB);
+
+              if (conv.isEditing) {
+                return (
+                  <Card key={conv.id} className="rounded-none border-blue-200 dark:border-blue-900 bg-blue-50/30 dark:bg-blue-900/10">
+                    <CardContent className="p-2 space-y-2">
+                      <Input
+                        placeholder="Título da conversão (ex: Leads / Vendas)"
+                        value={conv.name}
+                        onChange={(e) => setCustomConversions(prev => prev.map(c => c.id === conv.id ? { ...c, name: e.target.value } : c))}
+                        className="h-7 text-[10px] rounded-none border-[#d4d4d4] dark:border-gray-700"
+                      />
+                      <div className="flex flex-col gap-1.5">
+                        <div className="flex items-center gap-1">
+                          <Select 
+                            value={conv.pipelineA} 
+                            onValueChange={(v) => {
+                              setCustomConversions(prev => prev.map(c => c.id === conv.id ? { ...c, pipelineA: v, columnA: 'all' } : c));
+                              fetchColumnsForPipeline(v);
+                            }}
+                          >
+                            <SelectTrigger className="h-7 text-[10px] min-w-[80px] rounded-none border-[#d4d4d4] dark:border-gray-700">
+                              <SelectValue placeholder="Pipeline A" />
+                            </SelectTrigger>
+                            <SelectContent className="text-[10px]">
+                              <SelectItem value="all">Todos os Pipelines</SelectItem>
+                              {pipelines.map(p => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}
+                            </SelectContent>
+                          </Select>
+                          <span className="text-[10px] text-gray-400">/</span>
+                          <Select 
+                            value={conv.columnA} 
+                            onValueChange={(v) => setCustomConversions(prev => prev.map(c => c.id === conv.id ? { ...c, columnA: v } : c))}
+                            disabled={conv.pipelineA === 'all'}
+                          >
+                            <SelectTrigger className="h-7 text-[10px] min-w-[80px] rounded-none border-[#d4d4d4] dark:border-gray-700">
+                              <SelectValue placeholder={loadingColumnsMap[conv.pipelineA] ? "..." : "Etapas"} />
+                            </SelectTrigger>
+                            <SelectContent className="text-[10px]">
+                              <SelectItem value="all">Todas as Etapas</SelectItem>
+                              {(pipelineColumnsMap[conv.pipelineA] || []).map(c => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <div className="flex items-center gap-1">
+                          <Select 
+                            value={conv.pipelineB} 
+                            onValueChange={(v) => {
+                              setCustomConversions(prev => prev.map(c => c.id === conv.id ? { ...c, pipelineB: v, columnB: 'all' } : c));
+                              fetchColumnsForPipeline(v);
+                            }}
+                          >
+                            <SelectTrigger className="h-7 text-[10px] min-w-[80px] rounded-none border-[#d4d4d4] dark:border-gray-700">
+                              <SelectValue placeholder="Pipeline B" />
+                            </SelectTrigger>
+                            <SelectContent className="text-[10px]">
+                              <SelectItem value="all">Todos os Pipelines</SelectItem>
+                              {pipelines.map(p => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}
+                            </SelectContent>
+                          </Select>
+                          <span className="text-[10px] text-gray-400">/</span>
+                          <Select 
+                            value={conv.columnB} 
+                            onValueChange={(v) => setCustomConversions(prev => prev.map(c => c.id === conv.id ? { ...c, columnB: v } : c))}
+                            disabled={conv.pipelineB === 'all'}
+                          >
+                            <SelectTrigger className="h-7 text-[10px] min-w-[80px] rounded-none border-[#d4d4d4] dark:border-gray-700">
+                              <SelectValue placeholder={loadingColumnsMap[conv.pipelineB] ? "..." : "Etapas"} />
+                            </SelectTrigger>
+                            <SelectContent className="text-[10px]">
+                              <SelectItem value="all">Todas as Etapas</SelectItem>
+                              {(pipelineColumnsMap[conv.pipelineB] || []).map(c => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                      </div>
+                      <div className="flex items-center justify-end gap-1 pt-1">
+                        <Button 
+                          size="icon" variant="ghost" className="h-6 w-6 text-green-600"
+                          onClick={() => {
+                            const next = customConversions.map(c => c.id === conv.id ? { ...c, isEditing: false } : c);
+                            setCustomConversions(next);
+                            saveCustomConversions(next);
+                          }}
+                        >
+                          <Check className="h-3.5 w-3.5" />
+                        </Button>
+                        <Button size="icon" variant="ghost" className="h-6 w-6 text-red-600" onClick={() => removeCustomConversion(conv.id)}>
+                          <X className="h-3.5 w-3.5" />
+                        </Button>
+                      </div>
+                    </CardContent>
+                  </Card>
+                );
+              }
+
+              return (
+                <Card key={conv.id} className="rounded-none border-gray-200 dark:border-gray-700 dark:bg-[#1b1b1b] relative group">
+                  <CardContent className="p-3">
+                    <div className="flex flex-col gap-0.5 mb-1">
+                      <div className="text-[11px] font-medium text-gray-700 dark:text-gray-200 truncate">{conv.name || 'Conversão'}</div>
+                    </div>
+                    <div className="text-xl font-semibold text-gray-900 dark:text-gray-100">{result}%</div>
+                    <div className="absolute top-1 right-1 opacity-0 group-hover:opacity-100 transition-opacity flex gap-0.5">
+                      <Button 
+                        size="icon" variant="ghost" className="h-5 w-5" 
+                        onClick={() => {
+                          setCustomConversions(prev => prev.map(c => c.id === conv.id ? { ...c, isEditing: true } : c));
+                          fetchColumnsForPipeline(conv.pipelineA);
+                          fetchColumnsForPipeline(conv.pipelineB);
+                        }}
+                      >
+                        <Plus className="h-3 w-3 rotate-45" />
+                      </Button>
+                      <Button size="icon" variant="ghost" className="h-5 w-5 text-red-400" onClick={() => removeCustomConversion(conv.id)}>
+                        <Trash2 className="h-3 w-3" />
+                      </Button>
+                    </div>
+                  </CardContent>
+                </Card>
+              );
+            })}
+
+            {customConversions.length === 0 && (
+              <Card className="rounded-none border-gray-200 dark:border-gray-700 dark:bg-[#1b1b1b]">
                 <CardContent className="p-3">
-                  <div className="text-[11px] text-gray-600 dark:text-gray-300">{item.label}</div>
-                  <div className="text-xl font-semibold text-gray-900 dark:text-gray-100">{item.value}%</div>
+                  <div className="text-[11px] text-gray-600 dark:text-gray-300">
+                    Nenhuma conversão criada. Clique em <span className="font-medium">Nova Conversão</span>.
+                  </div>
                 </CardContent>
               </Card>
-            ))}
+            )}
           </div>
         </section>
 
@@ -1539,7 +1897,7 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
             Equipe – Indicadores
           </div>
           <div className="overflow-auto border border-gray-200 dark:border-gray-700">
-            <table className="min-w-full text-xs">
+              <table className="min-w-full text-xs table-auto">
               <thead className="bg-gray-100 dark:bg-[#1a1a1a] text-gray-700 dark:text-gray-200">
                 <tr>
                   <th className="px-3 py-2 text-left">Indicador</th>
@@ -1569,33 +1927,159 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
           </div>
         </section>
 
-        {/* Equipe – Conversão */}
+        {/* Equipe – Conversão (dinâmica) */}
         <section className="space-y-3">
-          <div className="flex items-center gap-2 text-sm font-semibold text-gray-900 dark:text-gray-100">
-            <Users className="h-4 w-4" />
-            Equipe – Conversão
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2 text-sm font-semibold text-gray-900 dark:text-gray-100">
+              <Users className="h-4 w-4" />
+              Equipe – Conversão
+            </div>
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-7 px-2 text-[10px] rounded-none border-dashed border-[#d4d4d4] dark:border-gray-700"
+              onClick={addTeamConversion}
+            >
+              <Plus className="h-3 w-3 mr-1" />
+              Nova Conversão
+            </Button>
           </div>
-          <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-4 gap-3">
-            {[
-              { label: '% Ligações realizadas / leads', value: conversion(calls.length, leadsReceived) },
-              { label: '% Ligações atendidas / realizadas', value: conversion(callsAttended.length, calls.length) },
-              { label: '% Ligações não atendidas / realizadas', value: conversion(callsNotAttended.length, calls.length) },
-              { label: '% Ligações abordadas / atendidas', value: conversion(callsApproached.length, callsAttended.length) },
-              { label: '% Ligações abordadas / realizadas', value: conversion(callsApproached.length, calls.length) },
-              { label: '% Mensagens / leads', value: conversion(messages.length, leadsReceived) },
-              { label: '% Reuniões agendadas / leads', value: conversion(meetings.length, leadsReceived) },
-              { label: '% Reuniões agendadas / abordadas', value: conversion(meetings.length, callsApproached.length) },
-              { label: '% Reuniões realizadas / agendadas', value: conversion(meetings.filter((m) => m.status === 'realizada').length, meetings.length) },
-              { label: '% Propostas / reuniões realizadas', value: conversion(proposals.length, meetings.filter((m) => m.status === 'realizada').length) },
-              { label: '% Vendas / propostas', value: conversion(leadsWon, proposals.length) },
-            ].map((item) => (
-              <Card key={item.label} className="rounded-none border-gray-200 dark:border-gray-700 dark:bg-[#1b1b1b]">
+
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+            {teamConversions.map((conv) => {
+              const countA = teamMetricCounts.get(conv.metricA) || 0;
+              const countB = teamMetricCounts.get(conv.metricB) || 0;
+              const result = conversion(countA, countB);
+
+              const labelA = teamMetricOptions.find((o) => o.key === conv.metricA)?.label || 'A';
+              const labelB = teamMetricOptions.find((o) => o.key === conv.metricB)?.label || 'B';
+
+              if (conv.isEditing) {
+                return (
+                  <Card key={conv.id} className="rounded-none border-blue-200 dark:border-blue-900 bg-blue-50/30 dark:bg-blue-900/10">
+                    <CardContent className="p-2 space-y-2">
+                      <Input
+                        placeholder="Título da conversão"
+                        value={conv.name}
+                        onChange={(e) =>
+                          setTeamConversions((prev) => prev.map((c) => (c.id === conv.id ? { ...c, name: e.target.value } : c)))
+                        }
+                        className="h-7 text-[10px] rounded-none border-[#d4d4d4] dark:border-gray-700"
+                      />
+
+                      <div className="flex items-center gap-1">
+                        <Select
+                          value={conv.metricA}
+                          onValueChange={(v) =>
+                            setTeamConversions((prev) => prev.map((c) => (c.id === conv.id ? { ...c, metricA: v as TeamMetricKey } : c)))
+                          }
+                        >
+                          <SelectTrigger className="h-7 text-[10px] min-w-[110px] rounded-none border-[#d4d4d4] dark:border-gray-700">
+                            <SelectValue placeholder="Métrica A" />
+                          </SelectTrigger>
+                          <SelectContent className="text-[10px]">
+                            {teamMetricOptions.map((o) => (
+                              <SelectItem key={o.key} value={o.key}>
+                                {o.label}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+
+                        <span className="text-[10px] text-gray-400">/</span>
+
+                        <Select
+                          value={conv.metricB}
+                          onValueChange={(v) =>
+                            setTeamConversions((prev) => prev.map((c) => (c.id === conv.id ? { ...c, metricB: v as TeamMetricKey } : c)))
+                          }
+                        >
+                          <SelectTrigger className="h-7 text-[10px] min-w-[110px] rounded-none border-[#d4d4d4] dark:border-gray-700">
+                            <SelectValue placeholder="Métrica B" />
+                          </SelectTrigger>
+                          <SelectContent className="text-[10px]">
+                            {teamMetricOptions.map((o) => (
+                              <SelectItem key={o.key} value={o.key}>
+                                {o.label}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+
+                      <div className="flex items-center justify-end gap-1 pt-1">
+                        <Button
+                          size="icon"
+                          variant="ghost"
+                          className="h-6 w-6 text-green-600"
+                          onClick={() => {
+                            const next = teamConversions.map((c) => (c.id === conv.id ? { ...c, isEditing: false } : c));
+                            setTeamConversions(next);
+                            saveTeamConversions(next);
+                          }}
+                          title="Salvar"
+                        >
+                          <Check className="h-3.5 w-3.5" />
+                        </Button>
+                        <Button
+                          size="icon"
+                          variant="ghost"
+                          className="h-6 w-6 text-red-600"
+                          onClick={() => removeTeamConversion(conv.id)}
+                          title="Remover"
+                        >
+                          <X className="h-3.5 w-3.5" />
+                        </Button>
+                      </div>
+                    </CardContent>
+                  </Card>
+                );
+              }
+
+              return (
+                <Card key={conv.id} className="rounded-none border-gray-200 dark:border-gray-700 dark:bg-[#1b1b1b] relative group">
+                  <CardContent className="p-3">
+                    <div className="flex flex-col gap-0.5 mb-1">
+                      <div className="text-[11px] font-medium text-gray-700 dark:text-gray-200 truncate">{conv.name || 'Conversão'}</div>
+                      <div className="text-[10px] text-gray-500 dark:text-gray-400 truncate">
+                        {labelA} / {labelB}
+                      </div>
+                    </div>
+                    <div className="text-xl font-semibold text-gray-900 dark:text-gray-100">{result}%</div>
+                    <div className="absolute top-1 right-1 opacity-0 group-hover:opacity-100 transition-opacity flex gap-0.5">
+                      <Button
+                        size="icon"
+                        variant="ghost"
+                        className="h-5 w-5"
+                        onClick={() => setTeamConversions((prev) => prev.map((c) => (c.id === conv.id ? { ...c, isEditing: true } : c)))}
+                        title="Editar"
+                      >
+                        <Plus className="h-3 w-3 rotate-45" />
+                      </Button>
+                      <Button
+                        size="icon"
+                        variant="ghost"
+                        className="h-5 w-5 text-red-400"
+                        onClick={() => removeTeamConversion(conv.id)}
+                        title="Remover"
+                      >
+                        <Trash2 className="h-3 w-3" />
+                      </Button>
+                    </div>
+                  </CardContent>
+                </Card>
+              );
+            })}
+
+            {teamConversions.length === 0 && (
+              <Card className="rounded-none border-gray-200 dark:border-gray-700 dark:bg-[#1b1b1b]">
                 <CardContent className="p-3">
-                  <div className="text-[11px] text-gray-600 dark:text-gray-300">{item.label}</div>
-                  <div className="text-xl font-semibold text-gray-900 dark:text-gray-100">{item.value}%</div>
+                  <div className="text-[11px] text-gray-600 dark:text-gray-300">
+                    Nenhuma conversão criada. Clique em <span className="font-medium">Nova Conversão</span>.
+                  </div>
                 </CardContent>
               </Card>
-            ))}
+            )}
           </div>
         </section>
 
@@ -1606,7 +2090,7 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
             Equipe – Ranking de Vendas
           </div>
           <div className="overflow-auto border border-gray-200 dark:border-gray-700">
-            <table className="min-w-full text-xs">
+              <table className="min-w-full text-xs table-auto">
               <thead className="bg-gray-100 dark:bg-[#1a1a1a] text-gray-700 dark:text-gray-200">
                 <tr>
                   <th className="px-3 py-2 text-left">Usuário</th>

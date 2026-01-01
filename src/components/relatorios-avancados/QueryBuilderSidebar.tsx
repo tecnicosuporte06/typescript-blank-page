@@ -241,7 +241,7 @@ export function QueryBuilderSidebar({
 
       <div className="flex flex-col gap-2">
         {groups.map((g, idx) => (
-          <div key={g.id} className="flex flex-nowrap gap-2 items-center overflow-x-auto pb-1">
+          <div key={g.id} className="flex flex-nowrap items-center gap-1 pb-1 text-[11px] overflow-x-auto scrollbar-hide w-full">
             {/* Pipeline */}
             <Select
               value={g.pipeline}
@@ -251,8 +251,8 @@ export function QueryBuilderSidebar({
               }}
               disabled={(pipelines || []).length === 0}
             >
-              <SelectTrigger className="h-9 text-xs rounded-none border-[#d4d4d4] dark:border-gray-700 bg-white dark:bg-[#2d2d2d] min-w-[140px]">
-                <SelectValue placeholder="Todos os Pipelines" />
+              <SelectTrigger className="h-8 text-[11px] rounded-none border-[#d4d4d4] dark:border-gray-700 bg-white dark:bg-[#2d2d2d] min-w-[90px] px-2">
+                <SelectValue placeholder="Pipeline" />
               </SelectTrigger>
               <SelectContent className="rounded-none border-[#d4d4d4] dark:border-gray-700">
                 <SelectItem value="all">Todos os Pipelines</SelectItem>
@@ -273,15 +273,15 @@ export function QueryBuilderSidebar({
               }}
               disabled={!g.pipeline || g.pipeline === 'all' || loadingColumns || (pipelineColumns || []).length === 0}
             >
-              <SelectTrigger className="h-9 text-xs rounded-none border-[#d4d4d4] dark:border-gray-700 bg-white dark:bg-[#2d2d2d] min-w-[140px]">
+              <SelectTrigger className="h-8 text-[11px] rounded-none border-[#d4d4d4] dark:border-gray-700 bg-white dark:bg-[#2d2d2d] min-w-[95px] px-2">
                 <SelectValue
                   placeholder={
                     g.pipeline === 'all'
-                      ? 'Todas as Etapas'
+                      ? 'Etapas'
                       : loadingColumns
-                        ? 'Carregando...'
+                        ? '...'
                         : (pipelineColumns || []).length === 0
-                          ? 'Sem etapas'
+                          ? 'Vazio'
                           : 'Etapa'
                   }
                 />
@@ -304,11 +304,11 @@ export function QueryBuilderSidebar({
                 updateGroup(g.id, { team: v });
               }}
             >
-              <SelectTrigger className="h-9 text-xs rounded-none border-[#d4d4d4] dark:border-gray-700 bg-white dark:bg-[#2d2d2d] min-w-[140px]">
+              <SelectTrigger className="h-8 text-[11px] rounded-none border-[#d4d4d4] dark:border-gray-700 bg-white dark:bg-[#2d2d2d] min-w-[85px] px-2">
                 <SelectValue placeholder="Todos os Agentes" />
               </SelectTrigger>
               <SelectContent className="rounded-none border-[#d4d4d4] dark:border-gray-700">
-                <SelectItem value="all">Todas</SelectItem>
+                <SelectItem value="all">Todos os Agentes</SelectItem>
                 <SelectItem value="ia">Agente IA</SelectItem>
                 {(agents || []).map((a) => (
                   <SelectItem key={a.id} value={a.id}>
@@ -323,7 +323,7 @@ export function QueryBuilderSidebar({
               <PopoverTrigger asChild>
                 <Button
                   variant="outline"
-                  className="h-9 px-3 text-xs rounded-none border-[#d4d4d4] dark:border-gray-700 bg-white dark:bg-[#2d2d2d] min-w-[160px] justify-between"
+                  className="h-8 px-2 text-[11px] rounded-none border-[#d4d4d4] dark:border-gray-700 bg-white dark:bg-[#2d2d2d] min-w-[105px] justify-between"
                   disabled={(tags || []).length === 0}
                 >
                   <span className="flex items-center gap-1">
@@ -331,7 +331,7 @@ export function QueryBuilderSidebar({
                       checked={g.tags.length === (tags?.length || 0) && g.tags.length > 0}
                       className="h-3.5 w-3.5 pointer-events-none"
                     />
-                    {g.tags.length > 0 ? `${g.tags.length} etiqueta(s)` : 'Todas as Etiquetas'}
+                    {g.tags.length > 0 ? `${g.tags.length} etiq.` : 'Etiquetas'}
                   </span>
                 </Button>
               </PopoverTrigger>
@@ -361,28 +361,26 @@ export function QueryBuilderSidebar({
               </PopoverContent>
             </Popover>
 
-            {/* Data (range) */}
+            {/* Data inicial */}
             <Popover>
               <PopoverTrigger asChild>
                 <Button
                   variant="outline"
                   className={cn(
-                    'h-9 px-3 text-xs rounded-none border-[#d4d4d4] dark:border-gray-700 bg-white dark:bg-[#2d2d2d] min-w-[180px] justify-start',
-                    !g.dateRange.from && !g.dateRange.to && 'text-gray-500 dark:text-gray-400'
+                    'h-8 px-2 text-[11px] rounded-none border-[#d4d4d4] dark:border-gray-700 bg-white dark:bg-[#2d2d2d] min-w-[90px] justify-start',
+                    !g.dateRange.from && 'text-gray-500 dark:text-gray-400'
                   )}
                 >
-                  <CalendarIcon className="mr-2 h-3.5 w-3.5" />
-                  {g.dateRange.from && g.dateRange.to
-                    ? `${format(g.dateRange.from, 'dd/MM/yyyy')} - ${format(g.dateRange.to, 'dd/MM/yyyy')}`
-                    : 'Período'}
+                  <CalendarIcon className="mr-1 h-3 w-3" />
+                  {g.dateRange.from ? format(g.dateRange.from, 'dd/MM/yy') : 'Início'}
                 </Button>
               </PopoverTrigger>
               <PopoverContent className="w-auto p-2 rounded-none border-[#d4d4d4] dark:border-gray-700 bg-white dark:bg-[#0f0f0f]" align="start">
                 <Calendar
-                  mode="range"
-                  selected={g.dateRange}
-                  onSelect={(range) => {
-                    updateGroup(g.id, { dateRange: range || {} });
+                  mode="single"
+                  selected={g.dateRange.from}
+                  onSelect={(date) => {
+                    updateGroup(g.id, { dateRange: { ...g.dateRange, from: date || undefined } });
                   }}
                   numberOfMonths={1}
                   locale={ptBR}
@@ -393,7 +391,48 @@ export function QueryBuilderSidebar({
                     variant="outline"
                     className="h-7 px-2 text-xs rounded-none"
                     onClick={() => {
-                      updateGroup(g.id, { dateRange: {} });
+                      const { to } = g.dateRange || {};
+                      updateGroup(g.id, { dateRange: to ? { to } : {} });
+                    }}
+                  >
+                    Limpar
+                  </Button>
+                </div>
+              </PopoverContent>
+            </Popover>
+
+            {/* Data final */}
+            <Popover>
+              <PopoverTrigger asChild>
+                <Button
+                  variant="outline"
+                  className={cn(
+                    'h-8 px-2 text-[11px] rounded-none border-[#d4d4d4] dark:border-gray-700 bg-white dark:bg-[#2d2d2d] min-w-[90px] justify-start',
+                    !g.dateRange.to && 'text-gray-500 dark:text-gray-400'
+                  )}
+                >
+                  <CalendarIcon className="mr-1 h-3 w-3" />
+                  {g.dateRange.to ? format(g.dateRange.to, 'dd/MM/yy') : 'Fim'}
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="w-auto p-2 rounded-none border-[#d4d4d4] dark:border-gray-700 bg-white dark:bg-[#0f0f0f]" align="start">
+                <Calendar
+                  mode="single"
+                  selected={g.dateRange.to}
+                  onSelect={(date) => {
+                    updateGroup(g.id, { dateRange: { ...g.dateRange, to: date || undefined } });
+                  }}
+                  numberOfMonths={1}
+                  locale={ptBR}
+                />
+                <div className="flex justify-end mt-2">
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="h-7 px-2 text-xs rounded-none"
+                    onClick={() => {
+                      const { from } = g.dateRange || {};
+                      updateGroup(g.id, { dateRange: from ? { from } : {} });
                     }}
                   >
                     Limpar
@@ -410,11 +449,11 @@ export function QueryBuilderSidebar({
                 updateGroup(g.id, { status: v });
               }}
             >
-              <SelectTrigger className="h-9 text-xs rounded-none border-[#d4d4d4] dark:border-gray-700 bg-white dark:bg-[#2d2d2d] min-w-[140px]">
+              <SelectTrigger className="h-8 text-[11px] rounded-none border-[#d4d4d4] dark:border-gray-700 bg-white dark:bg-[#2d2d2d] min-w-[85px] px-2">
                 <SelectValue placeholder="Todos os Status" />
               </SelectTrigger>
               <SelectContent className="rounded-none border-[#d4d4d4] dark:border-gray-700">
-                <SelectItem value="all">Todos</SelectItem>
+                <SelectItem value="all">Todos os Status</SelectItem>
                 <SelectItem value="open">Aberto</SelectItem>
                 <SelectItem value="won">Ganho</SelectItem>
                 <SelectItem value="lost">Perdido</SelectItem>
@@ -428,7 +467,7 @@ export function QueryBuilderSidebar({
               <PopoverTrigger asChild>
                 <Button
                   variant="outline"
-                  className="h-9 text-xs rounded-none border-[#d4d4d4] dark:border-gray-700 bg-white dark:bg-[#2d2d2d] min-w-[160px] justify-between"
+                  className="h-8 text-[11px] rounded-none border-[#d4d4d4] dark:border-gray-700 bg-white dark:bg-[#2d2d2d] min-w-[105px] justify-between px-2"
                   disabled={(products || []).length === 0}
                 >
                   <span className="flex items-center gap-1">
@@ -436,7 +475,7 @@ export function QueryBuilderSidebar({
                       checked={g.products.length === (products?.length || 0) && g.products.length > 0}
                       className="h-3.5 w-3.5 pointer-events-none"
                     />
-                    {g.products.length > 0 ? `${g.products.length} produto(s)` : 'Todos os Produtos'}
+                    {g.products.length > 0 ? `${g.products.length} prod.` : 'Produtos'}
                   </span>
                 </Button>
               </PopoverTrigger>
@@ -466,12 +505,11 @@ export function QueryBuilderSidebar({
               </PopoverContent>
             </Popover>
 
-            <div className="flex items-center gap-1">
-              {/* Remover grupo (se houver mais de um) */}
+            <div className="flex items-center gap-1 shrink-0">
               {groups.length > 1 && (
                 <Button
                   variant="outline"
-                  className="h-9 px-2 text-xs rounded-none border-[#d4d4d4] dark:border-gray-700 bg-white dark:bg-[#2d2d2d]"
+                  className="h-8 px-2 text-[11px] rounded-none border-[#d4d4d4] dark:border-gray-700 bg-white dark:bg-[#2d2d2d]"
                   onClick={() => removeGroup(g.id)}
                   disabled={disabled}
                   title="Remover filtro"
@@ -479,18 +517,31 @@ export function QueryBuilderSidebar({
                   ×
                 </Button>
               )}
-
-              {/* Adicionar novo grupo (só no último) */}
               {idx === groups.length - 1 && (
-                <Button
-                  variant="outline"
-                  className="h-9 px-2 text-xs rounded-none border-[#d4d4d4] dark:border-gray-700 bg-white dark:bg-[#2d2d2d]"
-                  onClick={addGroup}
-                  disabled={disabled}
-                  title="Adicionar filtro"
-                >
-                  <Plus className="h-4 w-4" />
-                </Button>
+                <>
+                  <Button
+                    variant="outline"
+                    className="h-8 px-2 text-[11px] rounded-none border-[#d4d4d4] dark:border-gray-700 bg-white dark:bg-[#2d2d2d] flex items-center gap-1"
+                    onClick={addGroup}
+                    disabled={disabled}
+                    title="Adicionar filtro"
+                  >
+                    <Plus className="h-3.5 w-3.5" />
+                    Incluir
+                  </Button>
+                  <Button
+                    variant="outline"
+                    className="h-8 px-2 text-[11px] rounded-none border-[#d4d4d4] dark:border-gray-700 bg-white dark:bg-[#2d2d2d]"
+                    onClick={() => {
+                      setGroups([makeGroup()]);
+                      userTouchedRef.current = true;
+                    }}
+                    disabled={disabled}
+                    title="Limpar filtro"
+                  >
+                    Limpar
+                  </Button>
+                </>
               )}
             </div>
           </div>
