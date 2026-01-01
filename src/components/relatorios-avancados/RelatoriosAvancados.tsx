@@ -97,8 +97,12 @@ interface TeamConversion {
 }
 
 export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProps) {
-  const { theme } = useTheme();
-  const isDark = theme === 'dark';
+  const { theme, resolvedTheme } = useTheme();
+  // `theme` pode ser "system"; `resolvedTheme` nem sempre vem preenchido dependendo do setup.
+  // Em runtime, a fonte mais confiável é a classe `dark` no <html>.
+  const isDark =
+    (typeof document !== 'undefined' && document.documentElement.classList.contains('dark')) ||
+    (resolvedTheme ?? theme) === 'dark';
   const { selectedWorkspace, workspaces: ctxWorkspaces } = useWorkspace();
   const { user, userRole } = useAuth();
   const { pipelines: ctxPipelines, fetchPipelines: fetchCtxPipelines } = usePipelinesContext();
@@ -1563,14 +1567,14 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
           <div className="space-y-3">
             {indicatorFunnels.map((f: any) => (
               <div key={f.id} className="grid grid-cols-1 md:grid-cols-12 gap-3 items-start">
-                <Card className="rounded-none border-gray-200 dark:border-gray-700 md:col-span-3 h-fit dark:bg-[#1b1b1b]">
-                  <CardHeader className="py-2 px-3">
+                <Card className="rounded-none border-gray-200 dark:border-gray-700 md:col-span-2 h-fit dark:bg-[#1b1b1b]">
+                  <CardHeader className="py-1.5 px-2">
                     <CardTitle className="text-xs text-gray-700 dark:text-gray-200">
                       Leads — {f.name}
                     </CardTitle>
                   </CardHeader>
-                  <CardContent className="p-3">
-                    <div className="grid grid-cols-1 gap-1 text-[11px] text-gray-900 dark:text-gray-100">
+                  <CardContent className="p-2">
+                    <div className="grid grid-cols-1 gap-0.5 text-[11px] text-gray-900 dark:text-gray-100">
                       {[
                         { label: 'Leads recebidos', value: f.leadsReceived },
                         { label: 'Leads qualificados', value: f.leadsQualified },
@@ -1581,17 +1585,17 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
                       ].map((item, idx) => (
                         <div
                           key={item.label}
-                          className={`flex items-center justify-between ${idx < 5 ? 'border-b border-gray-50 dark:border-gray-800 pb-1' : ''}`}
+                          className={`flex items-center justify-between ${idx < 5 ? 'border-b border-gray-50 dark:border-gray-800 pb-0.5' : ''}`}
                         >
-                          <span className="truncate pr-2">{item.label}</span>
-                          <strong className="text-xs whitespace-nowrap min-w-[32px] text-right">{item.value}</strong>
+                          <span className="truncate pr-2 leading-4">{item.label}</span>
+                          <strong className="text-xs whitespace-nowrap min-w-[28px] text-right tabular-nums leading-4">{item.value}</strong>
                         </div>
                       ))}
                     </div>
                   </CardContent>
                 </Card>
 
-                <Card className="rounded-none border-gray-200 dark:border-gray-700 md:col-span-9 dark:bg-[#1b1b1b]">
+                <Card className="rounded-none border-gray-200 dark:border-gray-700 md:col-span-10 dark:bg-[#1b1b1b]">
                   <CardHeader className="py-2 px-3">
                     <CardTitle className="text-xs text-gray-700 dark:text-gray-200">
                       Leads por Etiqueta / Produto — {f.name}
@@ -1599,20 +1603,42 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
                   </CardHeader>
                   <CardContent className="p-3 grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div className="h-64 flex gap-3">
-                      <div className="w-36 text-[11px] text-gray-700 dark:text-gray-200 flex flex-col gap-1 overflow-y-auto">
+                      <div className="w-64 text-[11px] text-gray-700 dark:text-gray-200 flex flex-col gap-1 overflow-y-auto">
                         <p className="font-semibold text-gray-700 dark:text-gray-200 mb-2">Etiquetas</p>
                         {f.leadsByTag.length === 0 ? (
                           <span className="text-gray-500 dark:text-gray-400">Sem dados</span>
                         ) : (
-                          f.leadsByTag.map((item: any, i: number) => (
-                            <div key={item.name} className="flex items-center gap-2">
-                              <span
-                                className="h-2.5 w-2.5 rounded-full inline-block"
-                                style={{ backgroundColor: pieColors[i % pieColors.length] }}
-                              />
-                              <span className="truncate" title={item.name}>{item.name}</span>
-                            </div>
-                          ))
+                          (() => {
+                            const total = f.leadsByTag.reduce((sum: number, it: any) => sum + Number(it?.value || 0), 0) || 0;
+                            return (
+                              <div className="border border-gray-100 dark:border-gray-800">
+                                <div className="grid grid-cols-[14px_1fr_44px_52px] gap-2 px-2 py-1 text-[10px] font-semibold text-gray-600 dark:text-gray-300 border-b border-gray-100 dark:border-gray-800">
+                                  <span />
+                                  <span>Nome</span>
+                                  <span className="text-right tabular-nums">Qtd</span>
+                                  <span className="text-right tabular-nums">%</span>
+                                </div>
+                                {f.leadsByTag.map((item: any, i: number) => {
+                                  const qty = Number(item?.value || 0);
+                                  const pct = total > 0 ? (qty / total) * 100 : 0;
+                                  return (
+                                    <div
+                                      key={item.name}
+                                      className="grid grid-cols-[14px_1fr_44px_52px] gap-2 px-2 py-1 border-b border-gray-50 dark:border-gray-800 last:border-b-0"
+                                    >
+                                      <span
+                                        className="h-2.5 w-2.5 rounded-full inline-block mt-[3px]"
+                                        style={{ backgroundColor: pieColors[i % pieColors.length] }}
+                                      />
+                                      <span className="truncate" title={item.name}>{item.name}</span>
+                                      <span className="text-right tabular-nums">{qty}</span>
+                                      <span className="text-right tabular-nums">{pct.toFixed(1)}%</span>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            );
+                          })()
                         )}
                       </div>
                       <div className="flex-1">
@@ -1660,20 +1686,42 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
                     </div>
 
                     <div className="h-64 flex gap-3 border-l border-gray-100 dark:border-gray-800 pl-4">
-                      <div className="w-36 text-[11px] text-gray-700 dark:text-gray-200 flex flex-col gap-1 overflow-y-auto">
+                      <div className="w-64 text-[11px] text-gray-700 dark:text-gray-200 flex flex-col gap-1 overflow-y-auto">
                         <p className="font-semibold text-gray-700 dark:text-gray-200 mb-2">Produtos</p>
                         {f.leadsByProduct.length === 0 ? (
                           <span className="text-gray-500 dark:text-gray-400">Sem dados</span>
                         ) : (
-                          f.leadsByProduct.map((item: any, i: number) => (
-                            <div key={item.name} className="flex items-center gap-2">
-                              <span
-                                className="h-2.5 w-2.5 rounded-full inline-block"
-                                style={{ backgroundColor: pieColors[(i + 3) % pieColors.length] }}
-                              />
-                              <span className="truncate" title={item.name}>{item.name}</span>
-                            </div>
-                          ))
+                          (() => {
+                            const total = f.leadsByProduct.reduce((sum: number, it: any) => sum + Number(it?.value || 0), 0) || 0;
+                            return (
+                              <div className="border border-gray-100 dark:border-gray-800">
+                                <div className="grid grid-cols-[14px_1fr_44px_52px] gap-2 px-2 py-1 text-[10px] font-semibold text-gray-600 dark:text-gray-300 border-b border-gray-100 dark:border-gray-800">
+                                  <span />
+                                  <span>Nome</span>
+                                  <span className="text-right tabular-nums">Qtd</span>
+                                  <span className="text-right tabular-nums">%</span>
+                                </div>
+                                {f.leadsByProduct.map((item: any, i: number) => {
+                                  const qty = Number(item?.value || 0);
+                                  const pct = total > 0 ? (qty / total) * 100 : 0;
+                                  return (
+                                    <div
+                                      key={item.name}
+                                      className="grid grid-cols-[14px_1fr_44px_52px] gap-2 px-2 py-1 border-b border-gray-50 dark:border-gray-800 last:border-b-0"
+                                    >
+                                      <span
+                                        className="h-2.5 w-2.5 rounded-full inline-block mt-[3px]"
+                                        style={{ backgroundColor: pieColors[(i + 3) % pieColors.length] }}
+                                      />
+                                      <span className="truncate" title={item.name}>{item.name}</span>
+                                      <span className="text-right tabular-nums">{qty}</span>
+                                      <span className="text-right tabular-nums">{pct.toFixed(1)}%</span>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            );
+                          })()
                         )}
                       </div>
                       <div className="flex-1">
