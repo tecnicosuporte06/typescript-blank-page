@@ -42,6 +42,21 @@ interface ActivityRecord {
   status?: string | null;
 }
 
+type TeamWorkRankingRow = {
+  responsible_id: string | null;
+  mensagem: number | null;
+  ligacao_nao_atendida: number | null;
+  ligacao_atendida: number | null;
+  ligacao_abordada: number | null;
+  ligacao_agendada: number | null;
+  ligacao_follow_up: number | null;
+  reuniao_agendada: number | null;
+  reuniao_realizada: number | null;
+  reuniao_nao_realizada: number | null;
+  reuniao_reagendada: number | null;
+  whatsapp_enviado: number | null;
+};
+
 interface PipelineCardRecord {
   id: string;
   contact_id?: string | null;
@@ -88,6 +103,7 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
   const [contacts, setContacts] = useState<ContactRecord[]>([]);
   const [conversations, setConversations] = useState<any[]>([]);
   const [activities, setActivities] = useState<ActivityRecord[]>([]);
+  const [teamWorkRankingData, setTeamWorkRankingData] = useState<TeamWorkRankingRow[]>([]);
   const [cards, setCards] = useState<PipelineCardRecord[]>([]);
   const [tags, setTags] = useState<TagRecord[]>([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -316,6 +332,17 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
         conversationsQuery = conversationsQuery.gte('created_at', from).lte('created_at', to);
       }
 
+      // Ranking de Trabalho (agregado por responsável e tipo) — tipos oficiais do sistema
+      // Obs: para usuários comuns, restringe ao próprio responsável (mantém mesma regra de permissão do relatório)
+      const teamWorkRankingQuery = selectedWorkspaceId
+        ? supabase.rpc('report_team_work_ranking', {
+            p_workspace_id: selectedWorkspaceId,
+            p_from: from,
+            p_to: to,
+            p_responsible_id: userRole === 'user' ? user.id : null,
+          })
+        : Promise.resolve({ data: [], error: null } as any);
+
       // Workspace filter
       if (selectedWorkspaceId) {
         contactsQuery = contactsQuery.eq('workspace_id', selectedWorkspaceId);
@@ -334,12 +361,14 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
       const [
         { data: contactsData, error: contactsError },
         { data: activitiesData, error: activitiesError },
-        { data: conversationsData, error: conversationsError }
-      ] = await Promise.all([contactsQuery, activitiesQuery, conversationsQuery]);
+        { data: conversationsData, error: conversationsError },
+        { data: workRankingData, error: workRankingError },
+      ] = await Promise.all([contactsQuery, activitiesQuery, conversationsQuery, teamWorkRankingQuery]);
 
       if (contactsError) throw contactsError;
       if (activitiesError) throw activitiesError;
       if (conversationsError) throw conversationsError;
+      if (workRankingError) throw workRankingError;
 
       const contactsFiltered = (((contactsData as unknown) as ContactRecord[]) || []);
 
@@ -367,6 +396,7 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
       setActivities(activitiesFiltered);
       setCards(cardsFiltered);
       setConversations(conversationsFiltered);
+      setTeamWorkRankingData(((workRankingData as unknown) as TeamWorkRankingRow[]) || []);
       // Tags para gráficos: derivadas dos cards LITE (tag_ids)
       const tagRows: any[] = [];
       (cardsLite || []).forEach((card: any) => {
@@ -871,24 +901,81 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
   }, [teamAggregates]);
 
   const rankingTrabalho = useMemo<any[]>(() => {
-    const list = [...teamAggregates].map((row) => {
+    // Base: todos os agentes do workspace com contagem 0 (para aparecerem mesmo sem atividades)
+    const agg: Record<string, any> = {};
+    agents.forEach((a) => {
+      agg[a.id] = {
+        id: a.id,
+        name: a.name,
+        mensagem: 0,
+        ligacao_nao_atendida: 0,
+        ligacao_atendida: 0,
+        ligacao_abordada: 0,
+        ligacao_agendada: 0,
+        ligacao_follow_up: 0,
+        reuniao_agendada: 0,
+        reuniao_realizada: 0,
+        reuniao_nao_realizada: 0,
+        reuniao_reagendada: 0,
+        whatsapp_enviado: 0,
+      };
+    });
+
+    const ensure = (id: string | null | undefined) => {
+      const key = id || 'ia';
+      if (!agg[key]) {
+        agg[key] = {
+          id: key,
+          name: key === 'ia' ? 'Agente IA' : 'Sem responsável',
+          mensagem: 0,
+          ligacao_nao_atendida: 0,
+          ligacao_atendida: 0,
+          ligacao_abordada: 0,
+          ligacao_agendada: 0,
+          ligacao_follow_up: 0,
+          reuniao_agendada: 0,
+          reuniao_realizada: 0,
+          reuniao_nao_realizada: 0,
+          reuniao_reagendada: 0,
+          whatsapp_enviado: 0,
+        };
+      }
+      return agg[key];
+    };
+
+    (teamWorkRankingData || []).forEach((r) => {
+      const t = ensure(r.responsible_id);
+      t.mensagem = Number(r.mensagem || 0);
+      t.ligacao_nao_atendida = Number(r.ligacao_nao_atendida || 0);
+      t.ligacao_atendida = Number(r.ligacao_atendida || 0);
+      t.ligacao_abordada = Number(r.ligacao_abordada || 0);
+      t.ligacao_agendada = Number(r.ligacao_agendada || 0);
+      t.ligacao_follow_up = Number(r.ligacao_follow_up || 0);
+      t.reuniao_agendada = Number(r.reuniao_agendada || 0);
+      t.reuniao_realizada = Number(r.reuniao_realizada || 0);
+      t.reuniao_nao_realizada = Number(r.reuniao_nao_realizada || 0);
+      t.reuniao_reagendada = Number(r.reuniao_reagendada || 0);
+      t.whatsapp_enviado = Number(r.whatsapp_enviado || 0);
+    });
+
+    const list = Object.values(agg).map((row: any) => {
       const total =
-        (row.calls || 0) +
-        (row.callsAttended || 0) +
-        (row.callsNotAttended || 0) +
-        (row.callsApproached || 0) +
-        (row.callsFollowUp || 0) +
-        (row.messages || 0) +
-        (row.whatsappSent || 0) +
-        (row.meetings || 0) +
-        (row.meetingsDone || 0) +
-        (row.meetingsNotDone || 0) +
-        (row.meetingsRescheduled || 0) +
-        (row.proposals || 0);
+        (row.mensagem || 0) +
+        (row.ligacao_nao_atendida || 0) +
+        (row.ligacao_atendida || 0) +
+        (row.ligacao_abordada || 0) +
+        (row.ligacao_agendada || 0) +
+        (row.ligacao_follow_up || 0) +
+        (row.reuniao_agendada || 0) +
+        (row.reuniao_realizada || 0) +
+        (row.reuniao_nao_realizada || 0) +
+        (row.reuniao_reagendada || 0) +
+        (row.whatsapp_enviado || 0);
       return { ...row, total };
     });
-    return list.sort((a, b) => (b.total || 0) - (a.total || 0));
-  }, [teamAggregates]);
+
+    return list.sort((a: any, b: any) => (b.total || 0) - (a.total || 0));
+  }, [agents, teamWorkRankingData]);
 
   const hasDateRange = !!(startDate && endDate);
   const periodLabel = !hasDateRange
@@ -1337,18 +1424,17 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
               <thead className="bg-gray-100 dark:bg-[#1a1a1a] text-gray-700 dark:text-gray-200">
                 <tr>
                   <th className="px-3 py-2 text-left">Usuário</th>
-                  <th className="px-3 py-2 text-right">Msgs</th>
-                  <th className="px-3 py-2 text-right">WhatsApp</th>
-                  <th className="px-3 py-2 text-right">Lig. realizadas</th>
-                  <th className="px-3 py-2 text-right">Lig. atendidas</th>
-                  <th className="px-3 py-2 text-right">Lig. não atendidas</th>
-                  <th className="px-3 py-2 text-right">Lig. abordadas</th>
-                  <th className="px-3 py-2 text-right">Lig. follow-up</th>
-                  <th className="px-3 py-2 text-right">Reun. agendadas</th>
-                  <th className="px-3 py-2 text-right">Reun. realizadas</th>
-                  <th className="px-3 py-2 text-right">Reun. não realizadas</th>
-                  <th className="px-3 py-2 text-right">Reun. reagendadas</th>
-                  <th className="px-3 py-2 text-right">Propostas</th>
+                  <th className="px-3 py-2 text-right">Mensagem</th>
+                  <th className="px-3 py-2 text-right">Ligação não atendida</th>
+                  <th className="px-3 py-2 text-right">Ligação atendida</th>
+                  <th className="px-3 py-2 text-right">Ligação abordada</th>
+                  <th className="px-3 py-2 text-right">Ligação agendada</th>
+                  <th className="px-3 py-2 text-right">Ligação de follow up</th>
+                  <th className="px-3 py-2 text-right">Reunião agendada</th>
+                  <th className="px-3 py-2 text-right">Reunião realizada</th>
+                  <th className="px-3 py-2 text-right">Reunião não realizada</th>
+                  <th className="px-3 py-2 text-right">Reunião reagendada</th>
+                  <th className="px-3 py-2 text-right">WhatsApp enviado</th>
                   <th className="px-3 py-2 text-right">Total</th>
                 </tr>
               </thead>
@@ -1356,18 +1442,17 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
                 {rankingTrabalho.map((row) => (
                   <tr key={row.id} className="border-t border-gray-200 dark:border-gray-800">
                     <td className="px-3 py-2">{row.name}</td>
-                    <td className="px-3 py-2 text-right">{row.messages}</td>
-                    <td className="px-3 py-2 text-right">{row.whatsappSent}</td>
-                    <td className="px-3 py-2 text-right">{row.calls}</td>
-                    <td className="px-3 py-2 text-right">{row.callsAttended}</td>
-                    <td className="px-3 py-2 text-right">{row.callsNotAttended}</td>
-                    <td className="px-3 py-2 text-right">{row.callsApproached}</td>
-                    <td className="px-3 py-2 text-right">{row.callsFollowUp}</td>
-                    <td className="px-3 py-2 text-right">{row.meetings}</td>
-                    <td className="px-3 py-2 text-right">{row.meetingsDone}</td>
-                    <td className="px-3 py-2 text-right">{row.meetingsNotDone}</td>
-                    <td className="px-3 py-2 text-right">{row.meetingsRescheduled}</td>
-                    <td className="px-3 py-2 text-right">{row.proposals}</td>
+                    <td className="px-3 py-2 text-right">{row.mensagem}</td>
+                    <td className="px-3 py-2 text-right">{row.ligacao_nao_atendida}</td>
+                    <td className="px-3 py-2 text-right">{row.ligacao_atendida}</td>
+                    <td className="px-3 py-2 text-right">{row.ligacao_abordada}</td>
+                    <td className="px-3 py-2 text-right">{row.ligacao_agendada}</td>
+                    <td className="px-3 py-2 text-right">{row.ligacao_follow_up}</td>
+                    <td className="px-3 py-2 text-right">{row.reuniao_agendada}</td>
+                    <td className="px-3 py-2 text-right">{row.reuniao_realizada}</td>
+                    <td className="px-3 py-2 text-right">{row.reuniao_nao_realizada}</td>
+                    <td className="px-3 py-2 text-right">{row.reuniao_reagendada}</td>
+                    <td className="px-3 py-2 text-right">{row.whatsapp_enviado}</td>
                     <td className="px-3 py-2 text-right font-semibold">{row.total}</td>
                   </tr>
                 ))}
