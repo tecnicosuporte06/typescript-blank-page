@@ -1353,6 +1353,7 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
 
   const teamAggregates = useMemo<any[]>(() => {
     const agg: Record<string, any> = {};
+    const agentIdSet = new Set((agents || []).map((a) => a.id));
     
     // 1. Inicializar com TODOS os agentes do workspace
     agents.forEach((a) => {
@@ -1380,11 +1381,42 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
 
     // Entrada para "Agente IA" se houver dados atribuídos a IA (null)
     const ensure = (id: string | null | undefined) => {
-      const key = id || 'ia';
+      // null/undefined = Agente IA (mantém no ranking se houver dados)
+      if (!id) {
+        const key = 'ia';
+        if (!agg[key]) {
+          agg[key] = {
+            id: key,
+            name: 'Agente IA',
+            leads: 0,
+            calls: 0,
+            callsAttended: 0,
+            callsNotAttended: 0,
+            callsApproached: 0,
+            callsFollowUp: 0,
+            messages: 0,
+            whatsappSent: 0,
+            meetings: 0,
+            meetingsDone: 0,
+            meetingsNotDone: 0,
+            meetingsRescheduled: 0,
+            proposals: 0,
+            sales: 0,
+            revenue: 0,
+            products: 0,
+          };
+        }
+        return agg[key];
+      }
+
+      // Se não for um usuário/agente do workspace, não entra no ranking
+      if (!agentIdSet.has(id)) return null;
+
+      const key = id;
       if (!agg[key]) {
         agg[key] = {
           id: key,
-          name: key === 'ia' ? 'Agente IA' : 'Sem responsável',
+          name: agentMap.get(key)?.name || 'Usuário',
           leads: 0,
           calls: 0,
           callsAttended: 0,
@@ -1407,11 +1439,14 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
     };
 
     contacts.forEach((c) => {
-      ensure(c.responsible_id).leads += 1;
+      const t = ensure(c.responsible_id);
+      if (!t) return;
+      t.leads += 1;
     });
 
     activities.forEach((act) => {
       const target = ensure(act.responsible_id);
+      if (!target) return;
       const t = norm(act.type);
 
       // Mensagens
@@ -1449,7 +1484,9 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
 
     // Propostas provenientes da coleção dedicada (compatibilidade)
     proposals.forEach((p) => {
-      ensure(p.responsible_id).proposals += 1;
+      const t = ensure(p.responsible_id);
+      if (!t) return;
+      t.proposals += 1;
     });
 
     const parseNumber = (v: any) => {
@@ -1513,6 +1550,7 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
   const rankingTrabalho = useMemo<any[]>(() => {
     // Base: todos os agentes do workspace com contagem 0 (para aparecerem mesmo sem atividades)
     const agg: Record<string, any> = {};
+    const agentIdSet = new Set((agents || []).map((a) => a.id));
     agents.forEach((a) => {
       agg[a.id] = {
         id: a.id,
@@ -1533,11 +1571,13 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
 
     const ensure = (id: string | null | undefined) => {
       if (!id) return null; // não lista dados sem responsável
+      // Só lista usuários do workspace
+      if (!agentIdSet.has(id)) return null;
       const key = id;
       if (!agg[key]) {
         agg[key] = {
           id: key,
-          name: key === 'ia' ? 'Agente IA' : 'Sem responsável',
+          name: agentMap.get(key)?.name || 'Usuário',
           mensagem: 0,
           ligacao_nao_atendida: 0,
           ligacao_atendida: 0,
