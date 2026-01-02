@@ -2260,6 +2260,7 @@ serve(async (req) => {
             if (body.description !== undefined) updateData.description = body.description;
             if (body.value !== undefined) updateData.value = body.value;
             if (body.status !== undefined) updateData.status = body.status;
+            if (body.qualification !== undefined) updateData.qualification = body.qualification;
             if (body.tags !== undefined) updateData.tags = body.tags;
             if (body.responsible_user_id !== undefined) updateData.responsible_user_id = body.responsible_user_id;
 
@@ -2274,11 +2275,12 @@ serve(async (req) => {
             let previousColumnId: string | null = null;
             let conversationIdFromCard: string | null = null;
             let previousResponsibleId: string | null = null;
+            let currentQualification: string = 'unqualified';
             
             try {
               const { data: currentCard, error: fetchError } = await supabaseClient
                 .from('pipeline_cards')
-                .select('column_id, conversation_id, contact_id, responsible_user_id')
+                .select('column_id, conversation_id, contact_id, responsible_user_id, qualification')
                 .eq('id', cardId)
                 .single();
               
@@ -2292,11 +2294,13 @@ serve(async (req) => {
                 previousColumnId = (currentCard as any)?.column_id || null;
                 conversationIdFromCard = (currentCard as any)?.conversation_id || null;
                 previousResponsibleId = (currentCard as any)?.responsible_user_id || null;
+                currentQualification = String((currentCard as any)?.qualification || 'unqualified');
                 
                 console.log(`📋 ✅ Dados atuais do card:`);
                 console.log(`    • Coluna atual: ${previousColumnId}`);
                 console.log(`    • conversation_id atual: ${conversationIdFromCard}`);
                 console.log(`    • responsável atual: ${previousResponsibleId}`);
+                  console.log(`    • qualificação atual: ${currentQualification}`);
                 
                 if (body.column_id !== undefined) {
                   console.log(`📋 ✅ Nova coluna sendo definida: ${body.column_id}`);
@@ -2306,6 +2310,29 @@ serve(async (req) => {
               }
             } catch (fetchErr) {
               console.error(`❌ Exception ao buscar card atual:`, fetchErr);
+            }
+
+            // Regra: status "ganho" só é permitido se qualificação for "qualified"
+            try {
+              const nextStatus = String(updateData.status || '').toLowerCase();
+              const isWon =
+                nextStatus === 'ganho' ||
+                nextStatus === 'won' ||
+                nextStatus.includes('ganh');
+              if (isWon) {
+                const nextQualification = String(updateData.qualification || currentQualification || 'unqualified').toLowerCase();
+                if (nextQualification !== 'qualified') {
+                  return new Response(
+                    JSON.stringify({
+                      error: 'qualification_required',
+                      message: 'Você precisa qualificar o negócio antes de marcar como ganho.'
+                    }),
+                    { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+                  );
+                }
+              }
+            } catch (e) {
+              console.error('❌ Erro ao validar qualificação para ganho:', e);
             }
 
             // ✅ Atualizar moved_to_column_at quando card muda de coluna

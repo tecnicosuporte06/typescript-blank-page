@@ -575,6 +575,7 @@ export function DealDetailsModal({
   const [selectedCardId, setSelectedCardId] = useState<string>(cardId);
   const [selectedColumnId, setSelectedColumnId] = useState<string>(currentColumnId);
   const [cardStatus, setCardStatus] = useState<'aberto' | 'ganho' | 'perda'>('aberto');
+  const [cardQualification, setCardQualification] = useState<'unqualified' | 'qualified' | 'disqualified'>('unqualified');
   const [availableCards, setAvailableCards] = useState<any[]>([]);
   const [cardTimeline, setCardTimeline] = useState<any[]>([]);
   const [pipelineActions, setPipelineActions] = useState<any[]>([]);
@@ -922,6 +923,23 @@ export function DealDetailsModal({
 
   const processActionExecution = async (action: any) => {
     try {
+      // Regra: só pode marcar como ganho se estiver qualificado
+      const statusMap: Record<string, string> = {
+        'Ganho': 'ganho',
+        'Perda': 'perda',
+        'Aberto': 'aberto',
+      };
+      const normalizedStatusPreview = statusMap[action?.deal_state] || 'aberto';
+      const isWinAction = String(normalizedStatusPreview).toLowerCase() === 'ganho';
+      if (isWinAction && cardQualification !== 'qualified') {
+        toast({
+          title: "Não foi possível marcar como ganho",
+          description: "Você precisa qualificar o negócio antes de marcar como ganho.",
+          variant: "destructive",
+        });
+        return;
+      }
+
       setIsExecutingAction(true);
       console.log('🎬 Executando ação:', action);
       console.log('📍 Dados do card antes da ação:', {
@@ -948,11 +966,6 @@ export function DealDetailsModal({
       console.log('✅ Executando transferência...');
 
       // Atualizar o card para o pipeline/coluna de destino usando contexto (Edge Function)
-      const statusMap: Record<string, string> = {
-        'Ganho': 'ganho',
-        'Perda': 'perda',
-        'Aberto': 'aberto',
-      };
       const normalizedStatus = statusMap[action.deal_state] || 'aberto';
 
       await updateCard(selectedCardId, {
@@ -1034,6 +1047,8 @@ export function DealDetailsModal({
       setSelectedPipelineId(currentCard.pipeline_id);
       setSelectedColumnId(currentCard.column_id);
       setCardStatus((currentCard.status as 'aberto' | 'ganho' | 'perda') || 'aberto');
+      const q = (currentCard as any)?.qualification;
+      setCardQualification(q === 'qualified' || q === 'disqualified' || q === 'unqualified' ? q : 'unqualified');
       console.log('🔄 [3/4] Estados atualizados com dados do banco');
       
       let contactIdToUse: string | null = currentCard.contact_id;

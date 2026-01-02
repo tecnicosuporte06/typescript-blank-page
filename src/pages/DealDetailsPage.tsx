@@ -1586,6 +1586,17 @@ const normalizeFieldKey = (label: string) => {
   const handleMarkAsWon = async () => {
     // Manter por compatibilidade se necessário, mas vamos preferir executeAction
     if (!cardId) return;
+
+    // Regra: só pode marcar como ganho se estiver qualificado
+    const q = normalizeDealQualification(cardData?.qualification);
+    if (q !== 'qualified') {
+      toast({
+        title: "Não foi possível marcar como ganho",
+        description: "Você precisa qualificar o negócio antes de marcar como ganho.",
+        variant: "destructive",
+      });
+      return;
+    }
     
     try {
       const headers = getHeaders();
@@ -1724,6 +1735,26 @@ const normalizeFieldKey = (label: string) => {
       return;
     }
 
+    // Regra: só pode marcar como ganho se estiver qualificado
+    const statusMap: Record<string, string> = {
+      'Ganho': 'ganho',
+      'Perda': 'perda',
+      'Aberto': 'aberto'
+    };
+    const newStatusPreview = statusMap[action.deal_state] || 'aberto';
+    const isWinAction = String(newStatusPreview).toLowerCase() === 'ganho';
+    if (isWinAction) {
+      const q = normalizeDealQualification(cardData?.qualification);
+      if (q !== 'qualified') {
+        toast({
+          title: "Não foi possível marcar como ganho",
+          description: "Você precisa qualificar o negócio antes de marcar como ganho.",
+          variant: "destructive",
+        });
+        return;
+      }
+    }
+
     setIsExecutingAction(true);
 
     try {
@@ -1737,12 +1768,6 @@ const normalizeFieldKey = (label: string) => {
       };
 
       // Determinar o novo status baseado na regra da ação
-      const statusMap: Record<string, string> = {
-        'Ganho': 'ganho',
-        'Perda': 'perda',
-        'Aberto': 'aberto'
-      };
-      
       const newStatus = statusMap[action.deal_state] || 'aberto';
       body.status = newStatus;
 
