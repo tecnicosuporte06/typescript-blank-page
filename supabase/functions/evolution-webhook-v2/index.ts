@@ -951,6 +951,35 @@ serve(async (req) => {
       }
     }
 
+    // ✅ Outbound messages (fromMe=true): include minimal metadata so N8N can route dynamically
+    if (!processedData && workspaceId && payload.data && (payload.data.message || EVENT.includes('MESSAGE')) && payload.data?.key?.fromMe === true) {
+      const messageData = payload.data;
+      const remoteJid = messageData.key?.remoteJid || '';
+
+      // Ignore group/broadcast outbound messages as well
+      if (remoteJid.endsWith('@g.us') || remoteJid.endsWith('@broadcast')) {
+        processedData = {
+          skipped: true,
+          reason: remoteJid.endsWith('@g.us') ? 'group_message' : 'broadcast_message',
+          remoteJid,
+        };
+      } else {
+        const phoneNumber = remoteJid ? extractPhoneFromRemoteJid(remoteJid) : null;
+        const evolutionMessageId = messageData.key?.id; // 22 chars
+        const evolutionKeyId = payload.data?.keyId || messageData.keyId; // 40 chars (if available)
+
+        processedData = {
+          phone_number: phoneNumber,
+          external_id: evolutionMessageId,
+          evolution_key_id: evolutionKeyId,
+          instance: instanceName,
+          connection_id: connectionData?.id,
+          direction: 'outbound',
+          requires_processing: false,
+        };
+      }
+    }
+
     // ✅ FORWARD OBRIGATÓRIO AO N8N - Com fallback
     const finalWebhookUrl = webhookUrl || Deno.env.get('N8N_FALLBACK_URL');
     
@@ -1004,12 +1033,16 @@ serve(async (req) => {
         });
 
         // Prepare N8N payload with ORIGINAL Evolution data structure + context
+        const resolvedConnectionId = (processedData as any)?.connection_id || connectionData?.id || null;
         const n8nPayload = {
           // Original Evolution API payload (preserving ALL data from Evolution)
           ...payload,
           
           // Additional context fields for convenience
           workspace_id: workspaceId,
+          connection_id: resolvedConnectionId,
+          instance_name: instanceName || null,
+          connection_phone: connectionData?.phone_number || null,
           processed_data: processedData,
           timestamp: new Date().toISOString(),
           request_id: requestId,

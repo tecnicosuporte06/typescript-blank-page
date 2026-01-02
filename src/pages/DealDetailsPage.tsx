@@ -2423,11 +2423,13 @@ const normalizeFieldKey = (label: string) => {
     // Se tem produto selecionado, adicionar produto
     if (selectedProductId) {
       try {
+        const selectedProduct = (availableProducts || []).find((p: any) => p.id === selectedProductId);
         const { error } = await supabase
           .from('pipeline_cards_products')
           .insert({
             pipeline_card_id: cardId,
             product_id: selectedProductId,
+            product_name_snapshot: selectedProduct?.name || null,
           });
 
         if (error) throw error;
@@ -2503,7 +2505,7 @@ const normalizeFieldKey = (label: string) => {
         });
       }
     }
-  }, [cardId, selectedProductId, manualValue, toast]);
+  }, [cardId, selectedProductId, manualValue, toast, availableProducts]);
 
   // Remover produto do card
   const handleRemoveProduct = useCallback(async (productRelationId: string) => {

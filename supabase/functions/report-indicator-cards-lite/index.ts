@@ -81,7 +81,10 @@ serve(async (req) => {
     // Products mapping
     const [{ data: pcp, error: pcpError }, { data: ctags, error: ctagsError }] = await Promise.all([
       cardIds.length
-        ? supabase.from("pipeline_cards_products").select("pipeline_card_id, product_id").in("pipeline_card_id", cardIds)
+        ? supabase
+            .from("pipeline_cards_products")
+            .select("pipeline_card_id, product_id, product_name_snapshot")
+            .in("pipeline_card_id", cardIds)
         : Promise.resolve({ data: [], error: null }),
       contactIds.length
         ? supabase.from("contact_tags").select("contact_id, tag_id").in("contact_id", contactIds)
@@ -91,12 +94,17 @@ serve(async (req) => {
     if (pcpError) throw pcpError;
     if (ctagsError) throw ctagsError;
 
-    const productsByCard = new Map<string, string[]>();
+    const productIdsByCard = new Map<string, string[]>();
+    const productItemsByCard = new Map<string, Array<{ product_id: string; product_name_snapshot: string | null }>>();
     (pcp || []).forEach((row: any) => {
       if (!row?.pipeline_card_id || !row?.product_id) return;
-      const arr = productsByCard.get(row.pipeline_card_id) || [];
+      const arr = productIdsByCard.get(row.pipeline_card_id) || [];
       arr.push(row.product_id);
-      productsByCard.set(row.pipeline_card_id, arr);
+      productIdsByCard.set(row.pipeline_card_id, arr);
+
+      const items = productItemsByCard.get(row.pipeline_card_id) || [];
+      items.push({ product_id: row.product_id, product_name_snapshot: row.product_name_snapshot ?? null });
+      productItemsByCard.set(row.pipeline_card_id, items);
     });
 
     const tagsByContact = new Map<string, string[]>();
@@ -116,7 +124,8 @@ serve(async (req) => {
       status: c.status,
       qualification: c.qualification,
       created_at: c.created_at,
-      product_ids: productsByCard.get(c.id) || [],
+      product_ids: productIdsByCard.get(c.id) || [],
+      product_items: productItemsByCard.get(c.id) || [],
       tag_ids: c.contact_id ? tagsByContact.get(c.contact_id) || [] : [],
     }));
 

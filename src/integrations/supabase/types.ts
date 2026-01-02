@@ -782,6 +782,7 @@ export type Database = {
           profile_image_updated_at: string | null
           profile_image_url: string | null
           updated_at: string
+          whatsapp_lid: string | null
           workspace_id: string
         }
         Insert: {
@@ -796,6 +797,7 @@ export type Database = {
           profile_image_updated_at?: string | null
           profile_image_url?: string | null
           updated_at?: string
+          whatsapp_lid?: string | null
           workspace_id: string
         }
         Update: {
@@ -810,6 +812,7 @@ export type Database = {
           profile_image_updated_at?: string | null
           profile_image_url?: string | null
           updated_at?: string
+          whatsapp_lid?: string | null
           workspace_id?: string
         }
         Relationships: [
@@ -2256,6 +2259,7 @@ export type Database = {
           is_recurring: boolean
           pipeline_card_id: string
           product_id: string | null
+          product_name_snapshot: string | null
           quantity: number
           recurring_interval: string | null
           recurring_value: number | null
@@ -2270,6 +2274,7 @@ export type Database = {
           is_recurring?: boolean
           pipeline_card_id: string
           product_id?: string | null
+          product_name_snapshot?: string | null
           quantity?: number
           recurring_interval?: string | null
           recurring_value?: number | null
@@ -2284,6 +2289,7 @@ export type Database = {
           is_recurring?: boolean
           pipeline_card_id?: string
           product_id?: string | null
+          product_name_snapshot?: string | null
           quantity?: number
           recurring_interval?: string | null
           recurring_value?: number | null
@@ -2889,6 +2895,48 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "workspaces_view"
             referencedColumns: ["workspace_id"]
+          },
+        ]
+      }
+      report_user_settings: {
+        Row: {
+          created_at: string
+          id: string
+          settings: Json
+          updated_at: string
+          user_id: string
+          workspace_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          settings?: Json
+          updated_at?: string
+          user_id: string
+          workspace_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          settings?: Json
+          updated_at?: string
+          user_id?: string
+          workspace_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "report_user_settings_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "system_users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "report_user_settings_workspace_id_fkey"
+            columns: ["workspace_id"]
+            isOneToOne: false
+            referencedRelation: "workspaces"
+            referencedColumns: ["id"]
           },
         ]
       }

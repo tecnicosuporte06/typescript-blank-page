@@ -15,10 +15,11 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Pie, PieChart, ResponsiveContainer, Cell, Tooltip as ReTooltip, Legend, LineChart, Line, XAxis, YAxis, CartesianGrid } from 'recharts';
-import { Filter, Users, Download, Loader2, Check, X, Plus, Trash2 } from 'lucide-react';
+import { Filter, Users, Download, Loader2, Check, X, Plus, Trash2, Pencil } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { QueryBuilderSidebar } from './QueryBuilderSidebar';
 import { useReportIndicatorFunnelPresets } from '@/hooks/useReportIndicatorFunnelPresets';
+import { useReportUserSettings } from '@/hooks/useReportUserSettings';
 import { useWorkspaceHeaders } from '@/lib/workspaceHeaders';
 
 type PeriodPreset = 'all' | 'today' | 'last7' | 'last30' | 'custom';
@@ -139,9 +140,12 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
   const [isLoading, setIsLoading] = useState(false);
   const [viewMode, setViewMode] = useState<'list' | 'bi' | 'kpis' | 'funnel'>('funnel');
   // Preset/draft: Funis (múltiplos) do bloco "Funil – Indicadores"
-  const { savedFunnels, canEdit: canEditIndicatorFunnels, loading: loadingFunnelsPreset, savePreset } =
+  const { savedFunnels, canEdit: canEditIndicatorFunnels, loading: loadingFunnelsPreset } =
     useReportIndicatorFunnelPresets(selectedWorkspaceId);
+  const { settings: userSettings, saveSettings: saveUserSettings, loading: loadingUserSettings } =
+    useReportUserSettings(selectedWorkspaceId);
   const [draftFunnels, setDraftFunnels] = useState<any[]>([]);
+  const [editingMetricsFunnelId, setEditingMetricsFunnelId] = useState<string | null>(null);
   const [savedSnapshot, setSavedSnapshot] = useState<any[]>([]);
   const [funnelsDirty, setFunnelsDirty] = useState(false);
   const [rehydrateNonce, setRehydrateNonce] = useState(0);
@@ -385,55 +389,34 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
 
   const serializeGroups = (groups: any[]) => JSON.stringify(groups || []);
 
-  useEffect(() => {
-    const userKey = user?.id ? `relatorios:conversoes:${user.id}` : null;
-    if (userKey) {
-      const raw = localStorage.getItem(userKey);
-      if (raw) {
-        try {
-          const parsed = JSON.parse(raw);
-          if (Array.isArray(parsed)) {
-            setCustomConversions(parsed);
-            // Busca as colunas para cada pipeline salvo
-            parsed.forEach((conv: CustomConversion) => {
-              if (conv.pipelineA && conv.pipelineA !== 'all') fetchColumnsForPipeline(conv.pipelineA);
-              if (conv.pipelineB && conv.pipelineB !== 'all') fetchColumnsForPipeline(conv.pipelineB);
-            });
-          }
-        } catch (e) {
-          console.error("Erro ao carregar conversões customizadas:", e);
-        }
-      }
-    }
-  }, [user?.id]);
+  const buildFunnelsForDb = (funnels: any[]) =>
+    (funnels || []).map((f: any, idx: number) => ({
+      id: String(f.id || `funnel-${idx + 1}`),
+      name: String(f.name || `Funil ${idx + 1}`),
+      filters: sanitizeGroupsForPersist(Array.isArray(f.filters) ? f.filters : []),
+      lead_metrics: (Array.isArray(f.lead_metrics) ? f.lead_metrics : [])
+        .map((m: any, mi: number) => ({
+          id: String(m?.id || `metric-${mi + 1}`),
+          title: String(m?.title || m?.name || 'Métrica'),
+          pipeline: String(m?.pipeline || 'all'),
+          column: String(m?.column || 'all'),
+        }))
+        .filter((m: any) => m.id && m.title),
+    }));
 
-  useEffect(() => {
-    const userKey = user?.id ? `relatorios:equipe_conversoes:${user.id}` : null;
-    if (!userKey) return;
-    const raw = localStorage.getItem(userKey);
-    if (!raw) return;
-    try {
-      const parsed = JSON.parse(raw);
-      if (Array.isArray(parsed)) setTeamConversions(parsed);
-    } catch (e) {
-      console.error('Erro ao carregar conversões (equipe):', e);
-    }
-  }, [user?.id]);
-
-  const saveCustomConversions = (conversions: CustomConversion[]) => {
-    const userKey = user?.id ? `relatorios:conversoes:${user.id}` : null;
-    if (userKey) {
-      localStorage.setItem(userKey, JSON.stringify(conversions.map(c => ({ ...c, isEditing: false }))));
-    }
-  };
-
-  const saveTeamConversions = (conversions: TeamConversion[]) => {
-    const userKey = user?.id ? `relatorios:equipe_conversoes:${user.id}` : null;
-    if (!userKey) return;
-    localStorage.setItem(
-      userKey,
-      JSON.stringify((conversions || []).map((c) => ({ ...c, isEditing: false })))
-    );
+  const persistUserReportSettings = async (next?: {
+    funnels?: any[];
+    customConversions?: CustomConversion[];
+    teamConversions?: TeamConversion[];
+  }) => {
+    const funnelsToSave = buildFunnelsForDb(next?.funnels ?? draftFunnels);
+    const conversionsToSave = (next?.customConversions ?? customConversions).map((c) => ({ ...c, isEditing: false }));
+    const teamToSave = (next?.teamConversions ?? teamConversions).map((c) => ({ ...c, isEditing: false }));
+    await saveUserSettings({
+      funnels: funnelsToSave,
+      customConversions: conversionsToSave,
+      teamConversions: teamToSave,
+    });
   };
 
   const addCustomConversion = () => {
@@ -463,13 +446,84 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
   const removeCustomConversion = (id: string) => {
     const next = customConversions.filter(c => c.id !== id);
     setCustomConversions(next);
-    saveCustomConversions(next);
+    persistUserReportSettings({ customConversions: next });
   };
 
   const removeTeamConversion = (id: string) => {
     const next = teamConversions.filter((c) => c.id !== id);
     setTeamConversions(next);
-    saveTeamConversions(next);
+    persistUserReportSettings({ teamConversions: next });
+  };
+
+  const addLeadMetric = (funnelId: string) => {
+    const id = crypto.randomUUID();
+    setDraftFunnels((prev: any[]) =>
+      prev.map((f) =>
+        f.id === funnelId
+          ? {
+              ...f,
+              lead_metrics: [
+                ...(Array.isArray(f.lead_metrics) ? f.lead_metrics : []),
+                {
+                  id,
+                  title: '',
+                  pipeline: (pipelines?.[0]?.id || 'all'),
+                  column: 'all',
+                  isEditing: true,
+                },
+              ],
+            }
+          : f
+      )
+    );
+    setFunnelsDirty(true);
+  };
+
+  const patchLeadMetric = (funnelId: string, metricId: string, patch: any) => {
+    setDraftFunnels((prev: any[]) =>
+      prev.map((f) => {
+        if (f.id !== funnelId) return f;
+        const metrics = Array.isArray(f.lead_metrics) ? f.lead_metrics : [];
+        return {
+          ...f,
+          lead_metrics: metrics.map((m: any) => (m.id === metricId ? { ...m, ...patch } : m)),
+        };
+      })
+    );
+    setFunnelsDirty(true);
+  };
+
+  const removeLeadMetric = async (funnelId: string, metricId: string) => {
+    const nextFunnels = (draftFunnels || []).map((f: any) => {
+      if (f.id !== funnelId) return f;
+      const metrics = Array.isArray(f.lead_metrics) ? f.lead_metrics : [];
+      return { ...f, lead_metrics: metrics.filter((m: any) => m.id !== metricId) };
+    });
+    setDraftFunnels(nextFunnels);
+    await persistUserReportSettings({ funnels: nextFunnels });
+    setFunnelsDirty(false);
+  };
+
+  const saveLeadMetric = async (funnelId: string, metricId: string) => {
+    // validação mínima
+    const funnel = (draftFunnels || []).find((f: any) => f.id === funnelId);
+    const metric = (funnel?.lead_metrics || []).find((m: any) => m.id === metricId);
+    if (!metric) return;
+    if (!String(metric.title || '').trim()) return;
+    if (!metric.pipeline || metric.pipeline === 'all') return;
+    if (!metric.column || metric.column === 'all') return;
+
+    const nextFunnels = (draftFunnels || []).map((f: any) => {
+      if (f.id !== funnelId) return f;
+      const metrics = Array.isArray(f.lead_metrics) ? f.lead_metrics : [];
+      return {
+        ...f,
+        lead_metrics: metrics.map((m: any) => (m.id === metricId ? { ...m, isEditing: false } : m)),
+      };
+    });
+    setDraftFunnels(nextFunnels);
+    await persistUserReportSettings({ funnels: nextFunnels });
+    setFunnelsDirty(false);
   };
 
   const normalizeText = (s?: string | null) =>
@@ -543,6 +597,58 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
       } catch (e) {
         console.error("Erro ao buscar cards via report-indicator-cards-lite:", e);
         cardsLite = [];
+      }
+
+      // Garantir nomes de produtos referenciados nos cards (evita exibir UUID quando o cache não contém o produto)
+      try {
+        if (selectedWorkspaceId && cardsLite.length > 0) {
+          const productIds = Array.from(
+            new Set(
+              cardsLite
+                .flatMap((c: any) => (Array.isArray(c?.product_ids) ? c.product_ids : []))
+                .filter(Boolean)
+            )
+          ) as string[];
+
+          const chunk = <T,>(arr: T[], size: number) => {
+            const out: T[][] = [];
+            for (let i = 0; i < arr.length; i += size) out.push(arr.slice(i, i + size));
+            return out;
+          };
+
+          if (productIds.length > 0) {
+            const chunks = chunk(productIds, 500);
+            const results = await Promise.all(
+              chunks.map((ids) =>
+                supabase
+                  .from("products")
+                  .select("id, name")
+                  .eq("workspace_id", selectedWorkspaceId)
+                  .in("id", ids)
+              )
+            );
+
+            const fetched = results
+              .flatMap((r) => (Array.isArray(r.data) ? r.data : []))
+              .filter((p: any) => p?.id);
+
+            if (fetched.length > 0) {
+              setAvailableProducts((prev: any[]) => {
+                const map = new Map<string, any>();
+                (prev || []).forEach((p: any) => {
+                  if (p?.id) map.set(p.id, p);
+                });
+                fetched.forEach((p: any) => {
+                  const existing = map.get(p.id) || {};
+                  map.set(p.id, { ...existing, ...p });
+                });
+                return Array.from(map.values());
+              });
+            }
+          }
+        }
+      } catch (e) {
+        console.warn("⚠️ Não foi possível enriquecer nomes de produtos do relatório:", e);
       }
 
       // Contacts (leads)
@@ -631,7 +737,11 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
         column_id: c.column_id ?? null,
         responsible_user_id: c.responsible_user_id ?? null,
         created_at: c.created_at ?? null,
-        products: Array.isArray(c.product_ids) ? c.product_ids.map((pid: string) => ({ product_id: pid })) : [],
+        products: Array.isArray(c.product_items) && c.product_items.length > 0
+          ? c.product_items.map((pi: any) => ({ product_id: pi.product_id ?? null, product_name_snapshot: pi.product_name_snapshot ?? null }))
+          : Array.isArray(c.product_ids)
+            ? c.product_ids.map((pid: string) => ({ product_id: pid, product_name_snapshot: null }))
+            : [],
       }));
 
       const finalContacts = contactsFiltered;
@@ -701,36 +811,46 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
     }
   }, [selectedWorkspaceId]);
 
-  // Inicializa o draft a partir do preset salvo
-  // carregar presets salvos por usuário (prioriza localStorage do usuário)
+  // Inicializa o draft a partir das configurações do usuário (DB).
+  // Fallback: usa o preset padrão do workspace (read-only para users comuns).
   useEffect(() => {
-    const userKey = user?.id ? `relatorios:filtros:${user.id}` : null;
-    let fromUser: any[] | null = null;
-    if (userKey) {
-      const raw = localStorage.getItem(userKey);
-      if (raw) {
-        try {
-          const parsed = JSON.parse(raw);
-          if (Array.isArray(parsed)) fromUser = parsed;
-        } catch {
-          fromUser = null;
-        }
-      }
-    }
+    if (!user?.id) return;
 
-    // se existir localStorage (mesmo vazio), ele prevalece; senão usa savedFunnels
-    const hasUserStorage = fromUser !== null;
-    const source = hasUserStorage ? (fromUser as any[] | null) || [] : (savedFunnels || []);
-    const normalized = (source || []).map((f: any, idx: number) => ({
+    const sourceFunnels = Array.isArray(userSettings?.funnels) && userSettings!.funnels!.length > 0
+      ? (userSettings!.funnels as any[])
+      : (savedFunnels || []);
+
+    const normalizeLeadMetrics = (metricsRaw: any[] | undefined) =>
+      (Array.isArray(metricsRaw) ? metricsRaw : [])
+        .map((m: any, idx: number) => ({
+          id: String(m?.id || `metric-${idx + 1}-${crypto.randomUUID()}`),
+          title: String(m?.title || m?.name || 'Métrica'),
+          pipeline: String(m?.pipeline || 'all'),
+          column: String(m?.column || 'all'),
+          isEditing: false,
+        }))
+        .filter((m: any) => m.id && m.title);
+
+    const normalized = (sourceFunnels || []).map((f: any, idx: number) => ({
       id: String(f.id || `funnel-${idx + 1}`),
       name: String(f.name || `Funil ${idx + 1}`),
       filters: normalizeFunnelGroups(Array.isArray(f.filters) ? f.filters : []),
+      lead_metrics: normalizeLeadMetrics(f.lead_metrics),
     }));
+
     setDraftFunnels(normalized);
     setSavedSnapshot(normalized);
     setFunnelsDirty(false);
     setRehydrateNonce((n) => n + 1);
-  }, [savedFunnels, user?.id]);
+
+    // Conversões também vêm do banco (settings do usuário)
+    if (Array.isArray(userSettings?.customConversions)) {
+      setCustomConversions((userSettings!.customConversions as any[]).map((c: any) => ({ ...c, isEditing: false })));
+    }
+    if (Array.isArray(userSettings?.teamConversions)) {
+      setTeamConversions((userSettings!.teamConversions as any[]).map((c: any) => ({ ...c, isEditing: false })));
+    }
+  }, [savedFunnels, user?.id, userSettings]);
 
   useEffect(() => {
     fetchData();
@@ -783,15 +903,15 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
 
     const apply = (funnel: any) => {
       const groups = normalizeFunnelGroups(Array.isArray(funnel?.filters) ? funnel.filters : []);
+      const leadMetricsCfg = Array.isArray(funnel?.lead_metrics) ? funnel.lead_metrics : [];
+      const metricSets = new Map<string, Set<string>>();
+      leadMetricsCfg.forEach((m: any) => metricSets.set(String(m?.id || ''), new Set<string>()));
 
       const agg = {
         leadsReceived: 0,
         leadsQualified: 0,
         leadsOffer: 0,
         leadsWon: 0,
-        leadsLost1: 0,
-        leadsLost2: 0,
-        leadsLost3: 0,
         leadsByTag: new Map<string, number>(),
         leadsByProduct: new Map<string, number>(),
         series: new Map<string, { received: number; qualified: number }>(),
@@ -878,6 +998,63 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
           cardsF = cardsF.filter((c) => c.contact_id && allowed.has(c.contact_id));
         }
 
+        // Base para métricas customizadas: aplica filtros do grupo, mas NÃO trava pipeline/coluna do grupo
+        // (a métrica escolhe pipeline/coluna livremente)
+        let cardsBase = [...(cardsScoped || [])] as any[];
+        if (team !== 'all') {
+          if (team === 'ia') cardsBase = cardsBase.filter((c) => !c.responsible_user_id);
+          else cardsBase = cardsBase.filter((c) => c.responsible_user_id === team);
+        }
+        if (status && status !== 'all') {
+          cardsBase = cardsBase.filter((c) => (c.status || '').toLowerCase() === String(status).toLowerCase());
+        }
+        if (valueFilter?.value) {
+          const valueNum = parseFloat(valueFilter.value);
+          if (!Number.isNaN(valueNum)) {
+            switch (valueFilter.operator) {
+              case 'greater':
+                cardsBase = cardsBase.filter((c) => (c.value || 0) > valueNum);
+                break;
+              case 'less':
+                cardsBase = cardsBase.filter((c) => (c.value || 0) < valueNum);
+                break;
+              default:
+                cardsBase = cardsBase.filter((c) => c.value === valueNum);
+            }
+          }
+        }
+        if (productFilters.length > 0) {
+          cardsBase = cardsBase.filter((c) => (c.products || []).some((p: any) => p?.product_id && productFilters.includes(p.product_id)));
+        }
+        if (dateRange && (dateRange.from || dateRange.to)) {
+          cardsBase = cardsBase.filter((c: any) => {
+            if (!c.created_at) return true;
+            return withinDate(c.created_at);
+          });
+        }
+        if (tagFilters.length > 0) {
+          const allowed = new Set<string>();
+          (tags || []).forEach((t: any) => {
+            if (t?.contact_id && t?.tag_id && tagFilters.includes(t.tag_id)) allowed.add(t.contact_id);
+          });
+          cardsBase = cardsBase.filter((c) => c.contact_id && allowed.has(c.contact_id));
+        }
+
+        // Aplicar métricas (pipeline/coluna) e agregar por set (evita double count entre grupos)
+        if (leadMetricsCfg.length > 0) {
+          leadMetricsCfg.forEach((m: any) => {
+            const id = String(m?.id || '');
+            const set = metricSets.get(id);
+            if (!set) return;
+            const mp = String(m?.pipeline || 'all');
+            const mc = String(m?.column || 'all');
+            let scoped = cardsBase;
+            if (mp !== 'all') scoped = scoped.filter((c: any) => c.pipeline_id === mp);
+            if (mc !== 'all') scoped = scoped.filter((c: any) => c.column_id === mc);
+            scoped.forEach((c: any) => c?.id && set.add(String(c.id)));
+          });
+        }
+
         const contactIdsFromCards = new Set<string>(cardsF.map((c) => c.contact_id).filter(Boolean));
         let contactsF = (contactsScoped || []).filter((c: any) => contactIdsFromCards.has(c.id));
         let conversationsF = (conversationsScoped || []).filter((c: any) => contactIdsFromCards.has(c.contact_id));
@@ -909,31 +1086,19 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
           return s === 'won' || s === 'ganho' || s === 'venda' || s === 'success' || s === 'sucesso';
         }).length;
         const leadsQualifiedCardsF = cardsF.filter((c: any) => String(c.qualification || '').toLowerCase() === 'qualified').length;
-        const leadsLost1F = contactsF.filter((c: any) => (c.status || '').toLowerCase() === 'lost_offer').length;
-        const leadsLost2F = contactsF.filter((c: any) => (c.status || '').toLowerCase() === 'lost_no_offer').length;
-        const leadsLost3F = contactsF.filter((c: any) => (c.status || '').toLowerCase() === 'lost_not_fit').length;
 
         agg.leadsReceived += leadsReceivedF;
         agg.leadsQualified += leadsQualifiedCardsF;
         agg.leadsOffer += leadsOfferF;
         agg.leadsWon += leadsWonF;
-        agg.leadsLost1 += leadsLost1F;
-        agg.leadsLost2 += leadsLost2F;
-        agg.leadsLost3 += leadsLost3F;
 
-        // Séries diárias (usamos created_at dos cards para recebidos; contatos qualificados para qualified)
+        // Séries diárias: baseadas em cards (entrada no funil) e qualificação do card
         cardsF.forEach((c: any) => {
           if (!c?.created_at) return;
           const key = format(new Date(c.created_at), 'yyyy-MM-dd');
-          addSeries(key, 1, 0);
+          const isQualified = String(c.qualification || '').toLowerCase() === 'qualified';
+          addSeries(key, 1, isQualified ? 1 : 0);
         });
-        contactsF
-          .filter((c: any) => (c.status || '').toLowerCase() === 'qualified')
-          .forEach((c: any) => {
-            if (!c?.created_at) return;
-            const key = format(new Date(c.created_at), 'yyyy-MM-dd');
-            addSeries(key, 0, 1);
-          });
 
         const byTag = new Map<string, number>();
         (tags || []).forEach((t: any) => {
@@ -952,7 +1117,7 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
             const pid = p?.product_id;
             if (!pid) return;
             if (productFilters.length > 0 && !productFilters.includes(pid)) return;
-            const name = nameByProductId.get(pid) || pid || 'Produto';
+            const name = nameByProductId.get(pid) || p?.product_name_snapshot || pid || 'Produto';
             byProduct.set(name, (byProduct.get(name) || 0) + 1);
           });
         });
@@ -966,9 +1131,11 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
         leadsQualified: agg.leadsQualified,
         leadsOffer: agg.leadsOffer,
         leadsWon: agg.leadsWon,
-        leadsLost1: agg.leadsLost1,
-        leadsLost2: agg.leadsLost2,
-        leadsLost3: agg.leadsLost3,
+        lead_metrics: leadMetricsCfg.map((m: any, idx: number) => {
+          const id = String(m?.id || `metric-${idx + 1}`);
+          const value = metricSets.get(id)?.size || 0;
+          return { ...m, id, value };
+        }),
         leadsByTag: Array.from(agg.leadsByTag.entries()).map(([name, value]) => ({ name, value })).filter((x) => x.value > 0).sort((a, b) => b.value - a.value),
         leadsByProduct: Array.from(agg.leadsByProduct.entries()).map(([name, value]) => ({ name, value })).filter((x) => x.value > 0).sort((a, b) => b.value - a.value),
         leadsSeries: Array.from(agg.series.entries())
@@ -1046,6 +1213,7 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
   const leadsByProduct = useMemo(() => {
     const nameById = new Map((availableProducts || []).map((p) => [p.id, p.name]));
     const map = new Map<string, number>();
+    const snapshotNameById = new Map<string, string>();
 
     // 1. Processa os contatos únicos por produto no período filtrado
     if (cards && cards.length > 0) {
@@ -1058,6 +1226,9 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
         (c.products || []).forEach((p) => {
           const productId = p.product_id;
           if (!productId) return;
+
+          const snap = p.product_name_snapshot;
+          if (snap && !snapshotNameById.has(productId)) snapshotNameById.set(productId, snap);
           
           if (!productContacts.has(productId)) productContacts.set(productId, new Set());
           productContacts.get(productId)?.add(contactId);
@@ -1065,7 +1236,7 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
       });
 
       productContacts.forEach((contacts, productId) => {
-        const name = nameById.get(productId) || productId || 'Produto';
+        const name = nameById.get(productId) || snapshotNameById.get(productId) || productId || 'Produto';
         map.set(name, contacts.size);
       });
     }
@@ -1454,17 +1625,11 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
                 <Button
                   className="h-8 px-3 text-xs rounded-none"
                   onClick={async () => {
-                    const ok = await savePreset(draftFunnels);
-                    if (ok) {
-                      setSavedSnapshot(draftFunnels);
-                      setFunnelsDirty(false);
-                      const userKey = user?.id ? `relatorios:filtros:${user.id}` : null;
-                      if (userKey) {
-                        localStorage.setItem(userKey, JSON.stringify(draftFunnels));
-                      }
-                    }
+                    await persistUserReportSettings({ funnels: draftFunnels });
+                    setSavedSnapshot(draftFunnels);
+                    setFunnelsDirty(false);
                   }}
-                  disabled={!funnelsDirty || loadingFunnelsPreset}
+                  disabled={!funnelsDirty || loadingUserSettings}
                 >
                   Salvar
                 </Button>
@@ -1489,10 +1654,6 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
                       const current = prev.find((x) => x.id === f.id);
                       if (serializeGroups(current?.filters || []) === sig) return prev;
                       const next = prev.map((x) => (x.id === f.id ? { ...x, filters: cleaned } : x));
-                      const userKey = user?.id ? `relatorios:filtros:${user.id}` : null;
-                      if (userKey) {
-                        localStorage.setItem(userKey, JSON.stringify(next));
-                      }
                       return next;
                     });
                     setFunnelsDirty(true);
@@ -1500,7 +1661,7 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
                   initialFilters={f.filters}
                   rehydrateNonce={rehydrateNonce}
                   showHeader={false}
-                  disabled={!canEditIndicatorFunnels}
+                  disabled={false}
                 />
               </div>
             ))}
@@ -1566,32 +1727,205 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
           {/* Render: indicadores por funil */}
           <div className="space-y-3">
             {indicatorFunnels.map((f: any) => (
-              <div key={f.id} className="grid grid-cols-1 md:grid-cols-12 gap-3 items-start">
-                <Card className="rounded-none border-gray-200 dark:border-gray-700 md:col-span-2 h-fit dark:bg-[#1b1b1b]">
+              <div key={f.id} className="grid grid-cols-1 md:grid-cols-12 gap-3 items-stretch">
+                <Card className="rounded-none border-gray-200 dark:border-gray-700 md:col-span-2 h-full flex flex-col dark:bg-[#1b1b1b] group relative">
                   <CardHeader className="py-1.5 px-2">
-                    <CardTitle className="text-xs text-gray-700 dark:text-gray-200">
-                      Leads — {f.name}
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent className="p-2">
-                    <div className="grid grid-cols-1 gap-0.5 text-[11px] text-gray-900 dark:text-gray-100">
-                      {[
-                        { label: 'Leads recebidos', value: f.leadsReceived },
-                        { label: 'Leads qualificados', value: f.leadsQualified },
-                        { label: 'Vendas realizadas', value: f.leadsWon },
-                        { label: 'Leads perdidos 1', value: f.leadsLost1 },
-                        { label: 'Leads perdidos 2', value: f.leadsLost2 },
-                        { label: 'Leads perdidos 3', value: f.leadsLost3 },
-                      ].map((item, idx) => (
-                        <div
-                          key={item.label}
-                          className={`flex items-center justify-between ${idx < 5 ? 'border-b border-gray-50 dark:border-gray-800 pb-0.5' : ''}`}
-                        >
-                          <span className="truncate pr-2 leading-4">{item.label}</span>
-                          <strong className="text-xs whitespace-nowrap min-w-[28px] text-right tabular-nums leading-4">{item.value}</strong>
-                        </div>
-                      ))}
+                    <div className="flex items-center justify-between gap-2">
+                      <CardTitle className="text-xs text-gray-700 dark:text-gray-200">
+                        Leads — {f.name}
+                      </CardTitle>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        className={cn(
+                          "h-7 px-2 rounded-none text-[10px] border border-transparent hover:border-gray-200 dark:hover:border-gray-700",
+                          "opacity-0 group-hover:opacity-100 transition-opacity",
+                          editingMetricsFunnelId === f.id && "opacity-100"
+                        )}
+                        onClick={() => setEditingMetricsFunnelId((cur) => (cur === f.id ? null : f.id))}
+                        title="Editar métricas"
+                      >
+                        Editar métricas
+                      </Button>
                     </div>
+                  </CardHeader>
+                  <CardContent className="p-2 flex flex-col h-full">
+                    {(() => {
+                      const baseRows = [
+                        { label: "Leads recebidos", value: f.leadsReceived },
+                        { label: "Leads qualificados", value: f.leadsQualified },
+                        { label: "Vendas realizadas", value: f.leadsWon },
+                      ];
+                      const metricRows = (Array.isArray(f.lead_metrics) ? f.lead_metrics : [])
+                        .filter((m: any) => !m?.isEditing && String(m?.title || "").trim())
+                        .map((m: any) => ({ label: String(m.title), value: Number(m.value || 0) }));
+                      const rows = [...baseRows, ...metricRows];
+
+                      return (
+                        <div className="grid grid-cols-1 gap-0.5 text-[11px] text-gray-900 dark:text-gray-100">
+                          {rows.map((item, idx) => (
+                            <div
+                              key={`${item.label}-${idx}`}
+                              className={cn(
+                                "flex items-center justify-between",
+                                idx < rows.length - 1 && "border-b border-gray-50 dark:border-gray-800 pb-0.5"
+                              )}
+                            >
+                              <span className="truncate pr-2 leading-4">{item.label}</span>
+                              <strong className="text-xs whitespace-nowrap min-w-[28px] text-right tabular-nums leading-4">{item.value}</strong>
+                            </div>
+                          ))}
+                        </div>
+                      );
+                    })()}
+
+                    {/* Aviso (para não ficar “vazio” quando houver poucas linhas) */}
+                    {editingMetricsFunnelId !== f.id && (
+                      <div className="mt-auto pt-2">
+                        <div className="text-[10px] text-gray-500 dark:text-gray-400 border border-dashed border-gray-200 dark:border-gray-800 px-2 py-2 leading-4">
+                          Passe o mouse no título e clique em <span className="font-semibold">Editar métricas</span> para adicionar contagens por <span className="font-semibold">pipeline/coluna</span>.
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Editor (apenas quando o usuário clicar em "Editar métricas") */}
+                    {editingMetricsFunnelId === f.id && (
+                      <div className="mt-2 pt-2 border-t border-gray-100 dark:border-gray-800">
+                        <div className="flex items-center justify-between gap-2">
+                          <div className="text-[10px] font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
+                            Editar métricas
+                          </div>
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            className="h-7 px-2 rounded-none text-[10px]"
+                            onClick={() => addLeadMetric(f.id)}
+                            disabled={(pipelines || []).length === 0}
+                          >
+                            <Plus className="h-3.5 w-3.5 mr-2" />
+                            Adicionar
+                          </Button>
+                        </div>
+
+                        <div className="mt-2 space-y-2">
+                          {(Array.isArray(f.lead_metrics) ? f.lead_metrics : []).length === 0 && (
+                            <div className="text-[10px] text-gray-500 dark:text-gray-400 border border-dashed border-gray-200 dark:border-gray-800 px-2 py-1">
+                              Clique em <span className="font-semibold">Adicionar</span>, escolha título/pipeline/coluna e confirme no ✓.
+                            </div>
+                          )}
+
+                          {(Array.isArray(f.lead_metrics) ? f.lead_metrics : []).map((m: any) => {
+                            const pipelineId = String(m?.pipeline || "all");
+                            const columnId = String(m?.column || "all");
+                            const cols = pipelineId !== "all" ? (pipelineColumnsMap[pipelineId] || []) : [];
+                            const isEditing = !!m?.isEditing;
+                            const title = String(m?.title || "");
+
+                            return (
+                              <div key={m.id} className="border border-gray-100 dark:border-gray-800 p-2">
+                                <div className="flex items-center justify-between gap-2">
+                                  <div className="min-w-0 flex-1">
+                                    {isEditing ? (
+                                      <Input
+                                        value={title}
+                                        onChange={(e) => patchLeadMetric(f.id, m.id, { title: e.target.value })}
+                                        placeholder="Título (ex.: Perdidos 1)"
+                                        className="h-8 rounded-none text-[11px] border-gray-300 dark:border-gray-700 dark:bg-[#111111]"
+                                      />
+                                    ) : (
+                                      <span className="text-[11px] font-semibold text-gray-800 dark:text-gray-200 truncate" title={title || "Métrica"}>
+                                        {title || "Métrica"}
+                                      </span>
+                                    )}
+                                  </div>
+
+                                  <div className="flex items-center gap-1">
+                                    {isEditing ? (
+                                      <Button
+                                        type="button"
+                                        variant="ghost"
+                                        size="icon"
+                                        className="h-8 w-8 rounded-none"
+                                        title="Salvar"
+                                        onClick={() => saveLeadMetric(f.id, m.id)}
+                                      >
+                                        <Check className="h-4 w-4" />
+                                      </Button>
+                                    ) : (
+                                      <Button
+                                        type="button"
+                                        variant="ghost"
+                                        size="icon"
+                                        className="h-8 w-8 rounded-none"
+                                        title="Editar"
+                                        onClick={() => patchLeadMetric(f.id, m.id, { isEditing: true })}
+                                      >
+                                        <Pencil className="h-4 w-4" />
+                                      </Button>
+                                    )}
+
+                                    <Button
+                                      type="button"
+                                      variant="ghost"
+                                      size="icon"
+                                      className="h-8 w-8 rounded-none text-red-500 hover:bg-red-50 dark:hover:bg-red-900/30"
+                                      title="Remover"
+                                      onClick={() => removeLeadMetric(f.id, m.id)}
+                                    >
+                                      <X className="h-4 w-4" />
+                                    </Button>
+                                  </div>
+                                </div>
+
+                                {isEditing && (
+                                  <div className="mt-2 grid grid-cols-2 gap-1">
+                                    <Select
+                                      value={pipelineId}
+                                      onValueChange={(v) => {
+                                        fetchColumnsForPipeline(v);
+                                        patchLeadMetric(f.id, m.id, { pipeline: v, column: "all" });
+                                      }}
+                                    >
+                                      <SelectTrigger className="h-8 text-[10px] rounded-none border-[#d4d4d4] dark:border-gray-700 bg-white dark:bg-[#2d2d2d] px-2">
+                                        <SelectValue placeholder="Pipeline" />
+                                      </SelectTrigger>
+                                      <SelectContent className="rounded-none border-[#d4d4d4] dark:border-gray-700">
+                                        <SelectItem value="all">Selecione Pipeline</SelectItem>
+                                        {(pipelines || []).map((p) => (
+                                          <SelectItem key={p.id} value={p.id}>
+                                            {p.name}
+                                          </SelectItem>
+                                        ))}
+                                      </SelectContent>
+                                    </Select>
+
+                                    <Select
+                                      value={columnId}
+                                      onValueChange={(v) => patchLeadMetric(f.id, m.id, { column: v })}
+                                      disabled={pipelineId === "all"}
+                                    >
+                                      <SelectTrigger className="h-8 text-[10px] rounded-none border-[#d4d4d4] dark:border-gray-700 bg-white dark:bg-[#2d2d2d] px-2">
+                                        <SelectValue placeholder={pipelineId === "all" ? "Selecione pipeline" : "Coluna"} />
+                                      </SelectTrigger>
+                                      <SelectContent className="rounded-none border-[#d4d4d4] dark:border-gray-700">
+                                        <SelectItem value="all">Selecione Coluna</SelectItem>
+                                        {cols.map((c: any) => (
+                                          <SelectItem key={c.id} value={c.id}>
+                                            {c.name}
+                                          </SelectItem>
+                                        ))}
+                                      </SelectContent>
+                                    </Select>
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
                   </CardContent>
                 </Card>
 
@@ -1641,46 +1975,48 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
                           })()
                         )}
                       </div>
-                      <div className="flex-1">
+                      <div className="flex-1 flex flex-col justify-end">
                         {f.leadsByTag.length === 0 ? (
                           <div className="text-[11px] text-gray-500 dark:text-gray-400 h-full flex items-center justify-center border border-dashed border-gray-200 dark:border-gray-800">Sem dados de etiquetas</div>
                         ) : (
-                          <ResponsiveContainer width="100%" height="100%">
-                            <PieChart>
-                              <Pie
-                                data={f.leadsByTag}
-                                dataKey="value"
-                                nameKey="name"
-                                outerRadius={85}
-                                label={({ cx, cy, midAngle, outerRadius, percent }) => {
-                                  const radius = outerRadius * 1.1;
-                                  const x = cx + radius * Math.cos(-midAngle * (Math.PI / 180));
-                                  const y = cy + radius * Math.sin(-midAngle * (Math.PI / 180));
-                                  return (
-                                    <text x={x} y={y} fill={isDark ? '#ffffff' : '#4b5563'} textAnchor={x > cx ? 'start' : 'end'} dominantBaseline="central" fontSize="10">
-                                      {`${(percent * 100).toFixed(1)}%`}
-                                    </text>
-                                  );
-                                }}
-                                labelLine={{ stroke: isDark ? '#4b5563' : '#d1d5db' }}
-                              >
-                                {f.leadsByTag.map((_: any, i: number) => (
-                                  <Cell key={i} fill={pieColors[i % pieColors.length]} />
-                                ))}
-                              </Pie>
-                              <ReTooltip
-                                formatter={(value: number, _: any, entry: any) => [`${value}`, entry?.name]}
-                                contentStyle={{
-                                  backgroundColor: isDark ? '#1b1b1b' : '#fff',
-                                  borderColor: isDark ? '#374151' : '#d4d4d4',
-                                  color: isDark ? '#fff' : '#000',
-                                  fontSize: '10px',
-                                  borderRadius: '0px',
-                                }}
-                                itemStyle={{ color: isDark ? '#e2e8f0' : '#374151' }}
-                              />
-                            </PieChart>
-                          </ResponsiveContainer>
+                          <div className="h-56">
+                            <ResponsiveContainer width="100%" height="100%">
+                              <PieChart>
+                                <Pie
+                                  data={f.leadsByTag}
+                                  dataKey="value"
+                                  nameKey="name"
+                                  outerRadius={82}
+                                  label={({ cx, cy, midAngle, outerRadius, percent }) => {
+                                    const radius = outerRadius * 1.1;
+                                    const x = cx + radius * Math.cos(-midAngle * (Math.PI / 180));
+                                    const y = cy + radius * Math.sin(-midAngle * (Math.PI / 180));
+                                    return (
+                                      <text x={x} y={y} fill={isDark ? '#ffffff' : '#4b5563'} textAnchor={x > cx ? 'start' : 'end'} dominantBaseline="central" fontSize="10">
+                                        {`${(percent * 100).toFixed(1)}%`}
+                                      </text>
+                                    );
+                                  }}
+                                  labelLine={{ stroke: isDark ? '#4b5563' : '#d1d5db' }}
+                                >
+                                  {f.leadsByTag.map((_: any, i: number) => (
+                                    <Cell key={i} fill={pieColors[i % pieColors.length]} />
+                                  ))}
+                                </Pie>
+                                <ReTooltip
+                                  formatter={(value: number, _: any, entry: any) => [`${value}`, entry?.name]}
+                                  contentStyle={{
+                                    backgroundColor: isDark ? '#1b1b1b' : '#fff',
+                                    borderColor: isDark ? '#374151' : '#d4d4d4',
+                                    color: isDark ? '#fff' : '#000',
+                                    fontSize: '10px',
+                                    borderRadius: '0px',
+                                  }}
+                                  itemStyle={{ color: isDark ? '#e2e8f0' : '#374151' }}
+                                />
+                              </PieChart>
+                            </ResponsiveContainer>
+                          </div>
                         )}
                       </div>
                     </div>
@@ -1724,46 +2060,48 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
                           })()
                         )}
                       </div>
-                      <div className="flex-1">
+                      <div className="flex-1 flex flex-col justify-end">
                         {f.leadsByProduct.length === 0 ? (
                           <div className="text-[11px] text-gray-500 dark:text-gray-400 h-full flex items-center justify-center border border-dashed border-gray-200 dark:border-gray-800">Sem dados de produtos</div>
                         ) : (
-                          <ResponsiveContainer width="100%" height="100%">
-                            <PieChart>
-                              <Pie
-                                data={f.leadsByProduct}
-                                dataKey="value"
-                                nameKey="name"
-                                outerRadius={85}
-                                label={({ cx, cy, midAngle, outerRadius, percent }) => {
-                                  const radius = outerRadius * 1.1;
-                                  const x = cx + radius * Math.cos(-midAngle * (Math.PI / 180));
-                                  const y = cy + radius * Math.sin(-midAngle * (Math.PI / 180));
-                                  return (
-                                    <text x={x} y={y} fill={isDark ? '#ffffff' : '#4b5563'} textAnchor={x > cx ? 'start' : 'end'} dominantBaseline="central" fontSize="10">
-                                      {`${(percent * 100).toFixed(1)}%`}
-                                    </text>
-                                  );
-                                }}
-                                labelLine={{ stroke: isDark ? '#4b5563' : '#d1d5db' }}
-                              >
-                                {f.leadsByProduct.map((_: any, i: number) => (
-                                  <Cell key={i} fill={pieColors[(i + 3) % pieColors.length]} />
-                                ))}
-                              </Pie>
-                              <ReTooltip
-                                formatter={(value: number, _: any, entry: any) => [`${value}`, entry?.name]}
-                                contentStyle={{
-                                  backgroundColor: isDark ? '#1b1b1b' : '#fff',
-                                  borderColor: isDark ? '#374151' : '#d4d4d4',
-                                  color: isDark ? '#fff' : '#000',
-                                  fontSize: '10px',
-                                  borderRadius: '0px',
-                                }}
-                                itemStyle={{ color: isDark ? '#e2e8f0' : '#374151' }}
-                              />
-                            </PieChart>
-                          </ResponsiveContainer>
+                          <div className="h-56">
+                            <ResponsiveContainer width="100%" height="100%">
+                              <PieChart>
+                                <Pie
+                                  data={f.leadsByProduct}
+                                  dataKey="value"
+                                  nameKey="name"
+                                  outerRadius={82}
+                                  label={({ cx, cy, midAngle, outerRadius, percent }) => {
+                                    const radius = outerRadius * 1.1;
+                                    const x = cx + radius * Math.cos(-midAngle * (Math.PI / 180));
+                                    const y = cy + radius * Math.sin(-midAngle * (Math.PI / 180));
+                                    return (
+                                      <text x={x} y={y} fill={isDark ? '#ffffff' : '#4b5563'} textAnchor={x > cx ? 'start' : 'end'} dominantBaseline="central" fontSize="10">
+                                        {`${(percent * 100).toFixed(1)}%`}
+                                      </text>
+                                    );
+                                  }}
+                                  labelLine={{ stroke: isDark ? '#4b5563' : '#d1d5db' }}
+                                >
+                                  {f.leadsByProduct.map((_: any, i: number) => (
+                                    <Cell key={i} fill={pieColors[(i + 3) % pieColors.length]} />
+                                  ))}
+                                </Pie>
+                                <ReTooltip
+                                  formatter={(value: number, _: any, entry: any) => [`${value}`, entry?.name]}
+                                  contentStyle={{
+                                    backgroundColor: isDark ? '#1b1b1b' : '#fff',
+                                    borderColor: isDark ? '#374151' : '#d4d4d4',
+                                    color: isDark ? '#fff' : '#000',
+                                    fontSize: '10px',
+                                    borderRadius: '0px',
+                                  }}
+                                  itemStyle={{ color: isDark ? '#e2e8f0' : '#374151' }}
+                                />
+                              </PieChart>
+                            </ResponsiveContainer>
+                          </div>
                         )}
                       </div>
                     </div>
@@ -1885,7 +2223,7 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
                           onClick={() => {
                             const next = customConversions.map(c => c.id === conv.id ? { ...c, isEditing: false } : c);
                             setCustomConversions(next);
-                            saveCustomConversions(next);
+                            persistUserReportSettings({ customConversions: next });
                           }}
                         >
                           <Check className="h-3.5 w-3.5" />
@@ -1915,7 +2253,7 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
                           fetchColumnsForPipeline(conv.pipelineB);
                         }}
                       >
-                        <Plus className="h-3 w-3 rotate-45" />
+                        <Pencil className="h-3 w-3" />
                       </Button>
                       <Button size="icon" variant="ghost" className="h-5 w-5 text-red-400" onClick={() => removeCustomConversion(conv.id)}>
                         <Trash2 className="h-3 w-3" />
@@ -2063,7 +2401,7 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
                           onClick={() => {
                             const next = teamConversions.map((c) => (c.id === conv.id ? { ...c, isEditing: false } : c));
                             setTeamConversions(next);
-                            saveTeamConversions(next);
+                            persistUserReportSettings({ teamConversions: next });
                           }}
                           title="Salvar"
                         >
@@ -2102,7 +2440,7 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
                         onClick={() => setTeamConversions((prev) => prev.map((c) => (c.id === conv.id ? { ...c, isEditing: true } : c)))}
                         title="Editar"
                       >
-                        <Plus className="h-3 w-3 rotate-45" />
+                        <Pencil className="h-3 w-3" />
                       </Button>
                       <Button
                         size="icon"

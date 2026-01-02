@@ -84,6 +84,22 @@ async function downloadMedia(url: string, maxRetries = 3): Promise<ArrayBuffer> 
   throw new Error('Failed after retries');
 }
 
+function sanitizePhoneNumber(raw: string): string {
+  return String(raw || '').replace(/\D/g, '');
+}
+
+function extractPhoneFromZapiId(raw: string | null | undefined): string | null {
+  if (!raw) return null;
+  const s = String(raw);
+  // Common WhatsApp identifiers that carry the real phone number
+  if (s.includes('@c.us') || s.includes('@s.whatsapp.net')) {
+    return sanitizePhoneNumber(s);
+  }
+  // Some Z-API payloads may already be digits
+  if (/^\d{8,15}$/.test(s)) return s;
+  return null;
+}
+
 serve(async (req) => {
   const id = `${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
   
@@ -194,6 +210,59 @@ serve(async (req) => {
         console.log(`🔄 [${id}] Status normalizado: ${data.status} → ${normalizedStatus}`);
       }
       
+      // Resolver identificador do chat/contato
+      const chatLid: string | null =
+        (typeof data.chatLid === 'string' && data.chatLid) ||
+        (typeof data.phone === 'string' && data.phone.endsWith('@lid') ? data.phone : null) ||
+        null;
+
+      const rawPhoneId: string | null =
+        (typeof data.phone === 'string' && data.phone) ||
+        null;
+
+      // Se vier número real, extraímos. Se vier @lid, tentamos resolver via mapeamento persistido
+      let resolvedContactPhone: string | null = extractPhoneFromZapiId(rawPhoneId);
+      let resolvedContactId: string | null = null;
+
+      try {
+        // Caso 1: temos telefone real e também um LID -> salvar mapeamento para uso futuro
+        if (resolvedContactPhone && chatLid && conn.workspace_id) {
+          const { data: contactRow } = await supabase
+            .from('contacts')
+            .select('id, whatsapp_lid')
+            .eq('workspace_id', conn.workspace_id)
+            .eq('phone', resolvedContactPhone)
+            .maybeSingle();
+
+          if (contactRow?.id) {
+            resolvedContactId = contactRow.id;
+            if (!contactRow.whatsapp_lid || contactRow.whatsapp_lid !== chatLid) {
+              await supabase
+                .from('contacts')
+                .update({ whatsapp_lid: chatLid, updated_at: new Date().toISOString() })
+                .eq('id', contactRow.id);
+            }
+          }
+        }
+
+        // Caso 2: veio só @lid -> resolver contato via whatsapp_lid
+        if (!resolvedContactPhone && chatLid && conn.workspace_id) {
+          const { data: byLid } = await supabase
+            .from('contacts')
+            .select('id, phone')
+            .eq('workspace_id', conn.workspace_id)
+            .eq('whatsapp_lid', chatLid)
+            .maybeSingle();
+
+          if (byLid?.phone) {
+            resolvedContactPhone = String(byLid.phone);
+            resolvedContactId = byLid.id || null;
+          }
+        }
+      } catch (e) {
+        console.warn(`⚠️ [${id}] Failed to resolve/save LID mapping:`, e);
+      }
+
       // ✅ ATUALIZAR STATUS DA MENSAGEM NO BANCO DE DADOS
       if (data.type === 'MessageStatusCallback' && data.ids && data.ids.length > 0) {
         const messageExternalId = data.ids[0]; // ID da mensagem no Z-API
@@ -264,6 +333,9 @@ serve(async (req) => {
         client_token: clientToken, // ✅ Client token da instância Z-API
         workspace_id: conn.workspace_id,
         connection_id: conn.id,
+        contact_phone: resolvedContactPhone,
+        contact_id: resolvedContactId,
+        chat_lid: chatLid,
         external_id: externalId,
         status: normalizedStatus, // ✅ Status normalizado
         timestamp: new Date().toISOString(),

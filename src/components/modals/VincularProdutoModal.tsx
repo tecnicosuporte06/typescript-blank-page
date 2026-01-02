@@ -126,6 +126,7 @@ export function VincularProdutoModal({
         const { error: insertError } = await supabase.from("pipeline_cards_products").insert({
           pipeline_card_id: cardId,
           product_id: selectedProduct.id,
+          product_name_snapshot: selectedProduct.name,
           workspace_id: selectedWorkspace.workspace_id,
           quantity: 1,
           unit_value: selectedProduct.value,
