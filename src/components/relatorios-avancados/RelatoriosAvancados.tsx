@@ -457,6 +457,10 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
 
   const addLeadMetric = (funnelId: string) => {
     const id = crypto.randomUUID();
+    const defaultPipelineId = pipelines?.[0]?.id || 'all';
+    if (defaultPipelineId !== 'all') {
+      fetchColumnsForPipeline(defaultPipelineId);
+    }
     setDraftFunnels((prev: any[]) =>
       prev.map((f) =>
         f.id === funnelId
@@ -467,7 +471,7 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
                 {
                   id,
                   title: '',
-                  pipeline: (pipelines?.[0]?.id || 'all'),
+                  pipeline: defaultPipelineId,
                   column: 'all',
                   isEditing: true,
                 },
@@ -571,6 +575,19 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
       }
     });
   }, [customConversions, pipelineColumnsMap]);
+
+  // Garantir que colunas existam também para pipelines usados nas métricas (evita precisar "trocar pipeline" para carregar)
+  useEffect(() => {
+    if (!editingMetricsFunnelId) return;
+    const funnel = (draftFunnels || []).find((f: any) => f.id === editingMetricsFunnelId);
+    const metrics = Array.isArray(funnel?.lead_metrics) ? funnel.lead_metrics : [];
+    metrics.forEach((m: any) => {
+      const pid = String(m?.pipeline || 'all');
+      if (pid && pid !== 'all' && !pipelineColumnsMap[pid]) {
+        fetchColumnsForPipeline(pid);
+      }
+    });
+  }, [editingMetricsFunnelId, draftFunnels, pipelineColumnsMap]);
 
   const fetchData = async () => {
     if (!user?.id) return;
