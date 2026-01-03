@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -37,6 +37,7 @@ export function TransferirModal({
   const [targetResponsibleId, setTargetResponsibleId] = useState<string>("none");
   const [workspaceUsers, setWorkspaceUsers] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(false);
+  const didAutoTransferRef = useRef(false);
   
   // Lógica de desabilitação: se fila selecionada (não "none"), desabilitar responsável e vice-versa
   const isQueueDisabled = !!targetResponsibleId && targetResponsibleId !== "" && targetResponsibleId !== "none";
@@ -64,6 +65,13 @@ export function TransferirModal({
     }
   }, [isOpen, selectedWorkspace?.workspace_id]);
 
+  // Reset de auto-transfer a cada abertura do modal
+  useEffect(() => {
+    if (isOpen) {
+      didAutoTransferRef.current = false;
+    }
+  }, [isOpen]);
+
   // Fetch columns when pipeline changes
   useEffect(() => {
     if (targetPipelineId) {
@@ -73,6 +81,20 @@ export function TransferirModal({
       setTargetColumnId("");
     }
   }, [targetPipelineId]);
+
+  // ✅ Transferir automaticamente ao selecionar Pipeline + Etapa (sem precisar clicar no botão)
+  useEffect(() => {
+    if (!isOpen) return;
+    if (isLoading) return;
+    if (!targetPipelineId || !targetColumnId) return;
+    if (selectedCards.length === 0) return;
+    if (didAutoTransferRef.current) return;
+
+    didAutoTransferRef.current = true;
+    // fire-and-forget (o handleTransfer já fecha modal e chama refresh)
+    void handleTransfer();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen, isLoading, targetPipelineId, targetColumnId, selectedCards.length]);
 
   const fetchWorkspaceUsers = async () => {
     try {

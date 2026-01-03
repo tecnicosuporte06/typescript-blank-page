@@ -499,7 +499,7 @@ function DraggableDeal({
         {...attributes}
         {...(rootDragListeners ?? {})}
         className={cn(
-          "bg-white dark:bg-[#1b1b1b] border-l-4 shadow-sm rounded-none hover:shadow-md transition-all mb-1.5 md:mb-2 relative min-h-[85px] md:min-h-[95px]",
+          "bg-white dark:bg-[#1b1b1b] border-l-4 shadow-sm rounded-none hover:shadow-md transition-all mb-1.5 md:mb-2 relative min-h-[85px] md:min-h-[95px] touch-none",
           !isSelectionMode && "cursor-pointer",
           isSelectionMode && "cursor-pointer hover:bg-accent/50 dark:hover:bg-[#2a2a2a]",
           isSelected && isSelectionMode && "ring-2 ring-primary bg-accent/30 dark:bg-primary/20"
@@ -1080,14 +1080,12 @@ const [selectedCardForProduct, setSelectedCardForProduct] = useState<{
     fetchAgentId();
   }, [selectedConversationForAgent]);
 
-  // ✅ Sensor otimizado para drag fluido e natural (Press and Hold)
+  // ✅ Sensor otimizado para drag fluido (inicia ao mover alguns px; evita "press and hold" travado)
   const sensors = useSensors(
     useSensor(PointerSensor, {
       activationConstraint: {
-        // ✅ Delay para diferenciar click de drag (press and hold)
-        delay: 250,
-        // ✅ Tolerância de movimento durante o delay para não cancelar o drag por tremores
-        tolerance: 10,
+        // ✅ Começa o drag assim que o usuário mover (mantém clique intacto)
+        distance: 2,
       }
     })
   );
@@ -1366,14 +1364,11 @@ const [selectedCardForProduct, setSelectedCardForProduct] = useState<{
     setActiveId(activeId);
   }, []);
   const handleDragOver = useCallback((event: DragOverEvent) => {
-    const {
-      over
-    } = event;
-    if (over && over.id.toString().startsWith('column-')) {
-      setDragOverColumn(over.id.toString().replace('column-', ''));
-    } else {
-      setDragOverColumn(null);
-    }
+    const { over } = event;
+    const next =
+      over && over.id.toString().startsWith('column-') ? over.id.toString().replace('column-', '') : null;
+    // ✅ Evita setState redundante (reduz re-render durante drag)
+    setDragOverColumn((prev) => (prev === next ? prev : next));
   }, []);
   const handleDragEnd = useCallback(async (event: DragEndEvent) => {
     const {
@@ -2348,19 +2343,8 @@ const [selectedCardForProduct, setSelectedCardForProduct] = useState<{
 
             // Calculate total value of cards in this column
             const calculateColumnTotal = () => {
-              const total = columnCards.reduce((sum, card) => {
-                const effectiveValue = getCardEffectiveValue(card);
-                console.log('💰 [Desktop Total] Card:', {
-                  cardId: card.id,
-                  cardValue: card.value,
-                  effectiveValue,
-                  hasProducts: !!card.products,
-                  products: card.products
-                });
-                return sum + effectiveValue;
-              }, 0);
-              console.log('📊 [Desktop Total] Total calculado:', total, 'para', columnCards.length, 'cards na coluna', column.name);
-              return total;
+              // ⚡️ Sem logs (evita travamentos durante drag/re-render)
+              return columnCards.reduce((sum, card) => sum + getCardEffectiveValue(card), 0);
             };
             const formatCurrency = (value: number) => {
               return new Intl.NumberFormat('pt-BR', {
@@ -2644,23 +2628,34 @@ const [selectedCardForProduct, setSelectedCardForProduct] = useState<{
           {draggedColumn ? (() => {
             const column = columns.find(col => col.id === draggedColumn);
             if (!column) return null;
-            const overlayCards = getFilteredCards(column.id);
-            const totalValue = overlayCards.reduce((sum, card) => sum + getCardEffectiveValue(card), 0);
+            const overlayCardsCount = getFilteredCards(column.id).length;
             return (
-              <div className="w-[260px] rounded-md border-2 border-primary bg-white shadow-2xl p-3 space-y-2">
-                <div className="flex items-center justify-between">
-                  <h4 className="text-sm font-semibold text-gray-900 truncate">{column.name}</h4>
-                  <Badge variant="outline" className="rounded-none text-[10px] px-2 py-0">
-                    {overlayCards.length} {overlayCards.length === 1 ? 'negócio' : 'negócios'}
-                  </Badge>
-                </div>
-                <div className="text-xs text-muted-foreground flex items-center justify-between">
-                  <span>Total</span>
-                  <span className="font-semibold text-gray-900">{formatCurrency(totalValue)}</span>
-                </div>
-                <div className="flex items-center gap-2 text-[10px] text-muted-foreground">
-                  <div className="w-2 h-2 rounded-full" style={{ backgroundColor: column.color }} />
-                  Arraste para reordenar etapas
+              <div
+                className="rounded-none border border-[#d4d4d4] dark:border-gray-700 shadow-2xl overflow-hidden"
+                style={{
+                  width: `${columnWidth ?? 240}px`,
+                  minWidth: `${columnWidth ?? 240}px`,
+                }}
+              >
+                {/* ✅ Apenas o TOPO da coluna (sem corpo branco) */}
+                <div className="bg-[#f3f3f3] dark:bg-[#1f1f1f] p-2 border-b border-[#d4d4d4] dark:border-gray-700">
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0">
+                      <h3 className="font-semibold text-foreground dark:text-gray-100 text-sm truncate">
+                        {column.name}
+                      </h3>
+                      <div className="text-[10px] text-muted-foreground dark:text-gray-400">
+                        {overlayCardsCount} {overlayCardsCount === 1 ? 'negócio' : 'negócios'}
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2 shrink-0">
+                      <div className="w-2 h-2 rounded-full" style={{ backgroundColor: column.color }} />
+                      <GripVertical className="h-4 w-4 text-muted-foreground dark:text-gray-400" />
+                    </div>
+                  </div>
+                  <div className="mt-1 text-[10px] text-muted-foreground dark:text-gray-400">
+                    Arraste para reordenar etapas
+                  </div>
                 </div>
               </div>
             );

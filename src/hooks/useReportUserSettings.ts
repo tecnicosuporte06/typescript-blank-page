@@ -7,6 +7,8 @@ export type ReportUserSettingsPayload = {
   funnels?: any[];
   customConversions?: any[];
   teamConversions?: any[];
+  customConversionsFilter?: any;
+  teamConversionsFilter?: any;
 };
 
 export function useReportUserSettings(workspaceId?: string) {

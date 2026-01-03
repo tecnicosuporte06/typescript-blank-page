@@ -836,7 +836,7 @@ export function AutomationModal({
       case 'add_tag':
         return (
           <div className="space-y-2">
-            <Label className={`text-gray-700 dark:text-gray-200`}>Tag</Label>
+            <Label className={`text-gray-700 dark:text-gray-200`}>Etiqueta</Label>
             <Select
               value={action.action_config?.tag_id || ''}
               onValueChange={(value) => updateActionConfig(action.id, { tag_id: value })}

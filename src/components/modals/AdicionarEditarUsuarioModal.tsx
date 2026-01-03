@@ -29,13 +29,17 @@ interface AdicionarEditarUsuarioModalProps {
   onOpenChange: (open: boolean) => void;
   editingUser?: SystemUser | null;
   onSuccess?: () => void;
+  workspaceId?: string;
+  lockWorkspace?: boolean;
 }
 
 export function AdicionarEditarUsuarioModal({ 
   open, 
   onOpenChange, 
   editingUser, 
-  onSuccess 
+  onSuccess,
+  workspaceId,
+  lockWorkspace
 }: AdicionarEditarUsuarioModalProps) {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
@@ -59,6 +63,12 @@ export function AdicionarEditarUsuarioModal({
   const { workspaces, isLoading: workspacesLoading } = useWorkspaces();
   const { connections, isLoading: connectionsLoading } = useWorkspaceConnections(selectedWorkspaceId);
   const { createUser, updateUser } = useSystemUsers();
+
+  useEffect(() => {
+    if (open && workspaceId) {
+      setSelectedWorkspaceId(workspaceId);
+    }
+  }, [open, workspaceId]);
   
   const uploadAvatar = async (file: File, userId: string): Promise<string | null> => {
     try {
@@ -416,7 +426,7 @@ export function AdicionarEditarUsuarioModal({
           </div>
 
           {/* Empresa Selection */}
-          {workspaces.length > 0 && (
+          {workspaces.length > 0 && !lockWorkspace && (
             <div className="space-y-4">
               <h3 className="font-semibold text-xs text-gray-700 dark:text-gray-300 uppercase tracking-wide">Empresa</h3>
               <div className="space-y-1.5">

@@ -11,6 +11,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { usePipelineColumns } from '@/hooks/usePipelineColumns';
 
 interface QueryBuilderSidebarProps {
+  className?: string;
   pipelines: { id: string; name: string }[];
   tags: { id: string; name: string }[];
   products?: { id: string; name: string }[];
@@ -21,6 +22,7 @@ interface QueryBuilderSidebarProps {
   rehydrateNonce?: number;
   showHeader?: boolean;
   disabled?: boolean;
+  layout?: 'panel' | 'inline';
 }
 
 export interface LegacyFilterItem {
@@ -41,6 +43,7 @@ export type FilterGroupPayload = {
 };
 
 export function QueryBuilderSidebar({
+  className,
   pipelines,
   tags,
   products = [],
@@ -51,6 +54,7 @@ export function QueryBuilderSidebar({
   rehydrateNonce,
   showHeader = true,
   disabled = false,
+  layout = 'panel',
 }: QueryBuilderSidebarProps) {
   type FilterGroup = {
     id: string;
@@ -220,8 +224,24 @@ export function QueryBuilderSidebar({
     });
   };
 
+  const isInline = layout === 'inline';
+  const inlineTrigger = "h-7 text-[10px] rounded-none border-dashed border-[#d4d4d4] dark:border-gray-700 bg-transparent px-2 w-auto min-w-0 flex-1 basis-0 [&_*]:min-w-0";
+  const panelTrigger = "h-8 text-[11px] rounded-none border-[#d4d4d4] dark:border-gray-700 bg-white dark:bg-[#2d2d2d] px-2";
+  const triggerClass = (extra?: string) => cn(isInline ? inlineTrigger : panelTrigger, extra);
+  const inlineBtn = "h-7 px-2 text-[10px] rounded-none border-dashed border-[#d4d4d4] dark:border-gray-700 bg-transparent w-auto min-w-0 flex-[0_1_auto] [&_*]:min-w-0";
+  const panelBtn = "h-8 px-2 text-[11px] rounded-none border-[#d4d4d4] dark:border-gray-700 bg-white dark:bg-[#2d2d2d]";
+  const btnClass = (extra?: string) => cn(isInline ? inlineBtn : panelBtn, extra);
+
   return (
-    <div className={cn("w-full bg-white dark:bg-[#1a1a1a] border border-gray-200 dark:border-gray-700 flex flex-col gap-2 p-3", disabled && "opacity-70 pointer-events-none")}>
+    <div
+      className={cn(
+        isInline
+          ? "w-full bg-transparent border-0 p-0 flex flex-col gap-2 min-w-0"
+          : "w-full bg-white dark:bg-[#1a1a1a] border border-gray-200 dark:border-gray-700 flex flex-col gap-2 p-3",
+        disabled && "opacity-70 pointer-events-none",
+        className
+      )}
+    >
       {showHeader && (
         <div className="flex items-center justify-between">
           <h3 className="text-xs font-semibold text-gray-700 dark:text-gray-300 flex items-center gap-2 uppercase tracking-wide">
@@ -239,9 +259,21 @@ export function QueryBuilderSidebar({
         </div>
       )}
 
-      <div className="flex flex-col gap-2">
+      <div
+        className={cn(
+          isInline
+            ? "flex flex-col gap-2 w-full min-w-0"
+            : "flex flex-col gap-2"
+        )}
+      >
         {groups.map((g, idx) => (
-          <div key={g.id} className="flex flex-nowrap items-center gap-1 pb-1 text-[11px] overflow-x-auto scrollbar-hide w-full">
+          <div
+            key={g.id}
+            className={cn(
+              "flex flex-nowrap items-center gap-1 text-[11px] scrollbar-hide",
+              isInline ? "overflow-hidden pb-0 w-full min-w-0" : "overflow-x-auto pb-1 w-full"
+            )}
+          >
             {/* Pipeline */}
             <Select
               value={g.pipeline}
@@ -251,7 +283,7 @@ export function QueryBuilderSidebar({
               }}
               disabled={(pipelines || []).length === 0}
             >
-              <SelectTrigger className="h-8 text-[11px] rounded-none border-[#d4d4d4] dark:border-gray-700 bg-white dark:bg-[#2d2d2d] min-w-[90px] px-2">
+              <SelectTrigger className={triggerClass(isInline ? "min-w-[90px]" : "min-w-[90px]")}>
                 <SelectValue placeholder="Pipeline" />
               </SelectTrigger>
               <SelectContent className="rounded-none border-[#d4d4d4] dark:border-gray-700">
@@ -273,7 +305,7 @@ export function QueryBuilderSidebar({
               }}
               disabled={!g.pipeline || g.pipeline === 'all' || loadingColumns || (pipelineColumns || []).length === 0}
             >
-              <SelectTrigger className="h-8 text-[11px] rounded-none border-[#d4d4d4] dark:border-gray-700 bg-white dark:bg-[#2d2d2d] min-w-[95px] px-2">
+              <SelectTrigger className={triggerClass(isInline ? "min-w-[90px]" : "min-w-[95px]")}>
                 <SelectValue
                   placeholder={
                     g.pipeline === 'all'
@@ -304,7 +336,7 @@ export function QueryBuilderSidebar({
                 updateGroup(g.id, { team: v });
               }}
             >
-              <SelectTrigger className="h-8 text-[11px] rounded-none border-[#d4d4d4] dark:border-gray-700 bg-white dark:bg-[#2d2d2d] min-w-[85px] px-2">
+              <SelectTrigger className={triggerClass(isInline ? "min-w-[90px]" : "min-w-[85px]")}>
                 <SelectValue placeholder="Todos os Agentes" />
               </SelectTrigger>
               <SelectContent className="rounded-none border-[#d4d4d4] dark:border-gray-700">
@@ -323,15 +355,17 @@ export function QueryBuilderSidebar({
               <PopoverTrigger asChild>
                 <Button
                   variant="outline"
-                  className="h-8 px-2 text-[11px] rounded-none border-[#d4d4d4] dark:border-gray-700 bg-white dark:bg-[#2d2d2d] min-w-[105px] justify-between"
+                  className={btnClass(isInline ? "min-w-[90px] justify-center" : "min-w-[105px] justify-between")}
                   disabled={(tags || []).length === 0}
                 >
-                  <span className="flex items-center gap-1">
+                  <span className="flex items-center gap-1 min-w-0">
                     <Checkbox
                       checked={g.tags.length === (tags?.length || 0) && g.tags.length > 0}
                       className="h-3.5 w-3.5 pointer-events-none"
                     />
-                    {g.tags.length > 0 ? `${g.tags.length} etiq.` : 'Etiquetas'}
+                    <span className="truncate">
+                      {g.tags.length > 0 ? `${g.tags.length} etiq.` : 'Etiquetas'}
+                    </span>
                   </span>
                 </Button>
               </PopoverTrigger>
@@ -367,12 +401,12 @@ export function QueryBuilderSidebar({
                 <Button
                   variant="outline"
                   className={cn(
-                    'h-8 px-2 text-[11px] rounded-none border-[#d4d4d4] dark:border-gray-700 bg-white dark:bg-[#2d2d2d] min-w-[90px] justify-start',
+                    isInline ? "h-7 px-2 text-[10px] rounded-none border-dashed border-[#d4d4d4] dark:border-gray-700 bg-transparent min-w-[90px] w-auto flex-[0_1_auto] justify-start overflow-hidden" : "h-8 px-2 text-[11px] rounded-none border-[#d4d4d4] dark:border-gray-700 bg-white dark:bg-[#2d2d2d] min-w-[90px] justify-start",
                     !g.dateRange.from && 'text-gray-500 dark:text-gray-400'
                   )}
                 >
                   <CalendarIcon className="mr-1 h-3 w-3" />
-                  {g.dateRange.from ? format(g.dateRange.from, 'dd/MM/yy') : 'Início'}
+                  <span className="truncate">{g.dateRange.from ? format(g.dateRange.from, 'dd/MM/yy') : 'Início'}</span>
                 </Button>
               </PopoverTrigger>
               <PopoverContent className="w-auto p-2 rounded-none border-[#d4d4d4] dark:border-gray-700 bg-white dark:bg-[#0f0f0f]" align="start">
@@ -407,12 +441,12 @@ export function QueryBuilderSidebar({
                 <Button
                   variant="outline"
                   className={cn(
-                    'h-8 px-2 text-[11px] rounded-none border-[#d4d4d4] dark:border-gray-700 bg-white dark:bg-[#2d2d2d] min-w-[90px] justify-start',
+                    isInline ? "h-7 px-2 text-[10px] rounded-none border-dashed border-[#d4d4d4] dark:border-gray-700 bg-transparent min-w-[90px] w-auto flex-[0_1_auto] justify-start overflow-hidden" : "h-8 px-2 text-[11px] rounded-none border-[#d4d4d4] dark:border-gray-700 bg-white dark:bg-[#2d2d2d] min-w-[90px] justify-start",
                     !g.dateRange.to && 'text-gray-500 dark:text-gray-400'
                   )}
                 >
                   <CalendarIcon className="mr-1 h-3 w-3" />
-                  {g.dateRange.to ? format(g.dateRange.to, 'dd/MM/yy') : 'Fim'}
+                  <span className="truncate">{g.dateRange.to ? format(g.dateRange.to, 'dd/MM/yy') : 'Fim'}</span>
                 </Button>
               </PopoverTrigger>
               <PopoverContent className="w-auto p-2 rounded-none border-[#d4d4d4] dark:border-gray-700 bg-white dark:bg-[#0f0f0f]" align="start">
@@ -449,7 +483,7 @@ export function QueryBuilderSidebar({
                 updateGroup(g.id, { status: v });
               }}
             >
-              <SelectTrigger className="h-8 text-[11px] rounded-none border-[#d4d4d4] dark:border-gray-700 bg-white dark:bg-[#2d2d2d] min-w-[85px] px-2">
+              <SelectTrigger className={triggerClass(isInline ? "min-w-[90px]" : "min-w-[85px]")}>
                 <SelectValue placeholder="Todos os Status" />
               </SelectTrigger>
               <SelectContent className="rounded-none border-[#d4d4d4] dark:border-gray-700">
@@ -467,15 +501,17 @@ export function QueryBuilderSidebar({
               <PopoverTrigger asChild>
                 <Button
                   variant="outline"
-                  className="h-8 text-[11px] rounded-none border-[#d4d4d4] dark:border-gray-700 bg-white dark:bg-[#2d2d2d] min-w-[105px] justify-between px-2"
+                  className={btnClass(isInline ? "min-w-[90px] justify-center px-2" : "min-w-[105px] justify-between px-2")}
                   disabled={(products || []).length === 0}
                 >
-                  <span className="flex items-center gap-1">
+                  <span className="flex items-center gap-1 min-w-0">
                     <Checkbox
                       checked={g.products.length === (products?.length || 0) && g.products.length > 0}
                       className="h-3.5 w-3.5 pointer-events-none"
                     />
-                    {g.products.length > 0 ? `${g.products.length} prod.` : 'Produtos'}
+                    <span className="truncate">
+                      {g.products.length > 0 ? `${g.products.length} prod.` : 'Produtos'}
+                    </span>
                   </span>
                 </Button>
               </PopoverTrigger>
@@ -509,7 +545,7 @@ export function QueryBuilderSidebar({
               {groups.length > 1 && (
                 <Button
                   variant="outline"
-                  className="h-8 px-2 text-[11px] rounded-none border-[#d4d4d4] dark:border-gray-700 bg-white dark:bg-[#2d2d2d]"
+                  className={btnClass(isInline ? "w-[34px] justify-center" : "")}
                   onClick={() => removeGroup(g.id)}
                   disabled={disabled}
                   title="Remover filtro"
@@ -517,21 +553,21 @@ export function QueryBuilderSidebar({
                   ×
                 </Button>
               )}
-              {idx === groups.length - 1 && (
+              {((!isInline && idx === groups.length - 1) || (isInline && idx === 0)) && (
                 <>
                   <Button
                     variant="outline"
-                    className="h-8 px-2 text-[11px] rounded-none border-[#d4d4d4] dark:border-gray-700 bg-white dark:bg-[#2d2d2d] flex items-center gap-1"
+                    className={btnClass(isInline ? "min-w-[42px] justify-center flex items-center gap-1 px-2" : "flex items-center gap-1")}
                     onClick={addGroup}
                     disabled={disabled}
                     title="Adicionar filtro"
                   >
                     <Plus className="h-3.5 w-3.5" />
-                    Incluir
+                    <span className={cn("truncate", isInline && "hidden sm:inline")}>Incluir</span>
                   </Button>
                   <Button
                     variant="outline"
-                    className="h-8 px-2 text-[11px] rounded-none border-[#d4d4d4] dark:border-gray-700 bg-white dark:bg-[#2d2d2d]"
+                    className={btnClass(isInline ? "min-w-[42px] justify-center px-2" : "")}
                     onClick={() => {
                       setGroups([makeGroup()]);
                       userTouchedRef.current = true;
@@ -539,7 +575,8 @@ export function QueryBuilderSidebar({
                     disabled={disabled}
                     title="Limpar filtro"
                   >
-                    Limpar
+                    <span className={cn("truncate", isInline && "hidden sm:inline")}>Limpar</span>
+                    <span className={cn("truncate", isInline ? "sm:hidden" : "hidden")}>✕</span>
                   </Button>
                 </>
               )}

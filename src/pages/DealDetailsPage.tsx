@@ -1406,6 +1406,12 @@ const normalizeFieldKey = (label: string) => {
     setTransferColumnId(transferColumns[0].id);
   }, [transferPipelineId, transferColumnId, transferColumns]);
 
+  // ✅ Transferência rápida: ao selecionar Pipeline + Coluna, transferir imediatamente o card
+  useEffect(() => {
+    if (!transferPipelineId || !transferColumnId) return;
+    void handleMoveCardToColumn(transferPipelineId, transferColumnId);
+  }, [transferPipelineId, transferColumnId, handleMoveCardToColumn]);
+
   // Preselecionar pipeline/coluna quando abrir o popover
   useEffect(() => {
     if (!isColumnSelectModalOpen) return;

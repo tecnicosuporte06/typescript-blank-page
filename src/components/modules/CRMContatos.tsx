@@ -315,7 +315,7 @@ export function CRMContatos() {
   // Resetar página ao mudar termo de busca
   useEffect(() => {
     setPage(1);
-  }, [searchTerm, pageSize]);
+  }, [searchTerm, selectedTagIds, pageSize]);
 
   // ✅ CARREGAR CONTATOS AUTOMATICAMENTE quando workspace ou página mudar
   useEffect(() => {
@@ -342,6 +342,36 @@ export function CRMContatos() {
         const end = start + pageSize - 1;
 
         const search = searchTerm.trim();
+        const hasTagFilter = selectedTagIds.length > 0;
+        const hasAnyFilter = !!search || hasTagFilter;
+
+        let tagFilteredContactIds: string[] | null = null;
+        if (hasTagFilter) {
+          // Buscar IDs de contatos que tenham pelo menos uma das tags selecionadas
+          const { data: tagLinks, error: tagLinksError } = await supabase
+            .from("contact_tags")
+            .select("contact_id")
+            .in("tag_id", selectedTagIds);
+
+          if (tagLinksError) {
+            console.error("❌ [CRMContatos] Error fetching contact_tags:", tagLinksError);
+            toast({
+              title: "Erro ao filtrar por etiqueta",
+              description: tagLinksError.message || "Não foi possível aplicar o filtro de etiquetas.",
+              variant: "destructive",
+            });
+            setContacts([]);
+            setTotalCount(0);
+            return;
+          }
+
+          tagFilteredContactIds = Array.from(new Set((tagLinks || []).map((x: any) => String(x.contact_id)).filter(Boolean)));
+          if (tagFilteredContactIds.length === 0) {
+            setContacts([]);
+            setTotalCount(0);
+            return;
+          }
+        }
 
         let query = supabase
           .from("contacts")
@@ -353,7 +383,14 @@ export function CRMContatos() {
 
         if (search) {
           query = query.or(`name.ilike.%${search}%,phone.ilike.%${search}%`);
-        } else {
+        }
+
+        if (tagFilteredContactIds && tagFilteredContactIds.length > 0) {
+          query = query.in("id", tagFilteredContactIds);
+        }
+
+        // Sem filtros -> paginação normal. Com filtros (busca ou etiqueta) -> traz tudo na primeira tela.
+        if (!hasAnyFilter) {
           query = query.range(start, end);
         }
 
@@ -469,7 +506,7 @@ export function CRMContatos() {
     };
 
     loadContacts();
-  }, [selectedWorkspace?.workspace_id, toast, page, searchTerm, pageSize]); // ✅ workspace_id, página, busca, tamanho de página e toast como dependências
+  }, [selectedWorkspace?.workspace_id, toast, page, searchTerm, selectedTagIds, pageSize]); // ✅ inclui filtros (busca + tags)
 
   // Real-time subscription for contacts changes
   useEffect(() => {
@@ -578,12 +615,7 @@ export function CRMContatos() {
     }
 
     // Se tags estão selecionadas, o contato deve ter pelo menos uma das tags selecionadas
-    const contactTagIds = contact.tags
-      .map((tag) => {
-        const foundTag = tags.find((t) => t.name === tag.name);
-        return foundTag?.id;
-      })
-      .filter(Boolean);
+    const contactTagIds = contact.tags.map((t) => t.id).filter(Boolean);
 
     const matchesTag = selectedTagIds.some((selectedId) => contactTagIds.includes(selectedId));
 

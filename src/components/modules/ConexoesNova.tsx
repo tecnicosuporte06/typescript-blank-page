@@ -1323,9 +1323,9 @@ export function ConexoesNova({ workspaceId }: ConexoesNovaProps) {
               {/* Modal Content Wrapper */}
               {isCreateModalOpen && (
                 <DialogContent className="max-w-2xl bg-white text-gray-900 dark:bg-[#0b0b0b] dark:text-gray-100 dark:border-gray-700 sm:rounded-none">
-                  <DialogHeader className="px-4 py-2 bg-primary text-primary-foreground border-b border-[#d4d4d4] rounded-t-none dark:border-gray-700">
-                    <DialogTitle className="text-primary-foreground">{isEditMode ? 'Editar Conexão' : 'Nova Conexão'}</DialogTitle>
-                    <div className="text-sm text-primary-foreground/90">
+                  <DialogHeader className="px-4 py-2 bg-primary text-primary-foreground dark:text-white border-b border-[#d4d4d4] rounded-t-none dark:border-gray-700">
+                    <DialogTitle className="text-primary-foreground dark:text-white">{isEditMode ? 'Editar Conexão' : 'Nova Conexão'}</DialogTitle>
+                    <div className="text-sm text-primary-foreground/90 dark:text-white/90">
                       {isEditMode ? 'Edite os detalhes da sua conexão.' : 'Adicione uma nova conexão WhatsApp ao seu workspace.'}
                     </div>
                   </DialogHeader>

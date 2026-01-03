@@ -14,13 +14,31 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Pie, PieChart, ResponsiveContainer, Cell, Tooltip as ReTooltip, Legend, LineChart, Line, XAxis, YAxis, CartesianGrid } from 'recharts';
-import { Filter, Users, Download, Loader2, Check, X, Plus, Trash2, Pencil } from 'lucide-react';
+import { ResponsiveContainer, Tooltip as ReTooltip, Legend, LineChart, Line, XAxis, YAxis, CartesianGrid } from 'recharts';
+import { Filter, Users, Download, Loader2, Check, X, Plus, Trash2, Pencil, GripVertical } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { QueryBuilderSidebar } from './QueryBuilderSidebar';
 import { useReportIndicatorFunnelPresets } from '@/hooks/useReportIndicatorFunnelPresets';
 import { useReportUserSettings } from '@/hooks/useReportUserSettings';
 import { useWorkspaceHeaders } from '@/lib/workspaceHeaders';
+import { Checkbox } from '@/components/ui/checkbox';
+import {
+  DndContext,
+  closestCenter,
+  PointerSensor,
+  KeyboardSensor,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+} from '@dnd-kit/core';
+import {
+  SortableContext,
+  useSortable,
+  arrayMove,
+  rectSortingStrategy,
+  sortableKeyboardCoordinates,
+} from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
 
 type PeriodPreset = 'all' | 'today' | 'last7' | 'last30' | 'custom';
 
@@ -65,8 +83,21 @@ interface PipelineCardRecord {
   value?: number | null;
   status?: string | null;
   pipeline_id?: string | null;
+  column_id?: string | null;
   responsible_user_id?: string | null;
-  products?: { product_id: string | null }[];
+  created_at?: string | null;
+  updated_at?: string | null;
+  closed_at?: string | null;
+  won_at?: string | null;
+  qualification?: string | null;
+  products?: {
+    product_id: string | null;
+    product_name_snapshot?: string | null;
+    quantity?: number | null;
+    unit_value?: number | null;
+    total_value?: number | null;
+    product?: { id?: string | null; name?: string | null; value?: number | null } | null;
+  }[];
 }
 
 interface TagRecord {
@@ -95,6 +126,51 @@ interface TeamConversion {
   metricA: TeamMetricKey;
   metricB: TeamMetricKey;
   isEditing?: boolean;
+}
+
+function SortableCard({
+  id,
+  disabled,
+  children,
+}: {
+  id: string;
+  disabled?: boolean;
+  children: any;
+}) {
+  const { attributes, listeners, setNodeRef, setActivatorNodeRef, transform, transition, isDragging } = useSortable({
+    id,
+    disabled: !!disabled,
+  });
+
+  const style: any = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    zIndex: isDragging ? 50 : undefined,
+  };
+
+  return (
+    <div ref={setNodeRef} style={style} className="relative group">
+      <button
+        type="button"
+        ref={setActivatorNodeRef}
+        className={cn(
+          "absolute top-1 left-1 z-20 h-5 w-5 flex items-center justify-center rounded-none",
+          "cursor-grab active:cursor-grabbing",
+          "bg-white/70 dark:bg-[#1b1b1b]/70 backdrop-blur-sm",
+          "text-gray-400 hover:text-gray-700 dark:text-gray-500 dark:hover:text-gray-200",
+          "opacity-0 group-hover:opacity-100 transition-opacity",
+          disabled && "opacity-20 cursor-not-allowed"
+        )}
+        title={disabled ? "Reordenação desabilitada enquanto edita" : "Arraste para reordenar"}
+        {...attributes}
+        {...listeners}
+        disabled={!!disabled}
+      >
+        <GripVertical className="h-3 w-3" />
+      </button>
+      {children}
+    </div>
+  );
 }
 
 export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProps) {
@@ -408,6 +484,8 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
     funnels?: any[];
     customConversions?: CustomConversion[];
     teamConversions?: TeamConversion[];
+    customConversionsFilter?: any;
+    teamConversionsFilter?: any;
   }) => {
     const funnelsToSave = buildFunnelsForDb(next?.funnels ?? draftFunnels);
     const conversionsToSave = (next?.customConversions ?? customConversions).map((c) => ({ ...c, isEditing: false }));
@@ -416,6 +494,24 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
       funnels: funnelsToSave,
       customConversions: conversionsToSave,
       teamConversions: teamToSave,
+      customConversionsFilter:
+        next?.customConversionsFilter ?? {
+          preset: customConvPeriodPreset,
+          startDate: customConvStartDate ? customConvStartDate.toISOString() : null,
+          endDate: customConvEndDate ? customConvEndDate.toISOString() : null,
+          agent: customConvAgent,
+          tags: customConvTags,
+          status: customConvStatus,
+        },
+      teamConversionsFilter:
+        next?.teamConversionsFilter ?? {
+          preset: teamConvPeriodPreset,
+          startDate: teamConvStartDate ? teamConvStartDate.toISOString() : null,
+          endDate: teamConvEndDate ? teamConvEndDate.toISOString() : null,
+          agent: teamConvAgent,
+          tags: teamConvTags,
+          status: teamConvStatus,
+        },
     });
   };
 
@@ -599,6 +695,7 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
 
       // ✅ Cards (pipeline_cards) via Edge Function LITE (bypass RLS) — evita payload gigante e garante filtros
       let cardsLite: any[] = [];
+      let productsById = new Map<string, any>();
       try {
         if (selectedWorkspaceId) {
           const headers = getHeaders(selectedWorkspaceId);
@@ -639,7 +736,7 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
               chunks.map((ids) =>
                 supabase
                   .from("products")
-                  .select("id, name")
+                  .select("id, name, value")
                   .eq("workspace_id", selectedWorkspaceId)
                   .in("id", ids)
               )
@@ -650,6 +747,7 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
               .filter((p: any) => p?.id);
 
             if (fetched.length > 0) {
+              productsById = new Map<string, any>(fetched.map((p: any) => [p.id, p]));
               setAvailableProducts((prev: any[]) => {
                 const map = new Map<string, any>();
                 (prev || []).forEach((p: any) => {
@@ -744,20 +842,54 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
       const contactsFiltered = (((contactsData as unknown) as ContactRecord[]) || []);
 
       // Normaliza cards vindos da Edge Function LITE para o shape usado nos indicadores
+      const toNumberOrNull = (v: any) => {
+        if (v === null || v === undefined || v === '') return null;
+        if (typeof v === 'number') return Number.isFinite(v) ? v : null;
+        const parsed = Number(String(v).replace(',', '.'));
+        return Number.isFinite(parsed) ? parsed : null;
+      };
       let cardsFiltered = (cardsLite || []).map((c: any) => ({
         id: c.id,
         contact_id: c.contact_id || null,
-        value: null,
+        value: toNumberOrNull(c.value ?? c.total_value ?? c.amount ?? null),
         status: c.status ?? null,
         qualification: c.qualification ?? null,
         pipeline_id: c.pipeline_id ?? null,
         column_id: c.column_id ?? null,
         responsible_user_id: c.responsible_user_id ?? null,
         created_at: c.created_at ?? null,
+        updated_at: c.updated_at ?? null,
+        closed_at: c.closed_at ?? null,
+        won_at: c.won_at ?? null,
         products: Array.isArray(c.product_items) && c.product_items.length > 0
-          ? c.product_items.map((pi: any) => ({ product_id: pi.product_id ?? null, product_name_snapshot: pi.product_name_snapshot ?? null }))
+          ? c.product_items.map((pi: any) => {
+              const pid = pi.product_id ?? null;
+              const p = pid ? productsById.get(pid) : null;
+              const qty = toNumberOrNull(pi.quantity ?? 1) ?? 1;
+              const unit = toNumberOrNull(pi.unit_value ?? pi.product_value ?? p?.value ?? null);
+              const total = toNumberOrNull(pi.total_value ?? (unit !== null ? unit * qty : null));
+              return {
+                product_id: pid,
+                product_name_snapshot: pi.product_name_snapshot ?? p?.name ?? null,
+                quantity: qty,
+                unit_value: unit,
+                total_value: total,
+                product: p ? { id: p.id, name: p.name ?? null, value: toNumberOrNull(p.value) } : null,
+              };
+            })
           : Array.isArray(c.product_ids)
-            ? c.product_ids.map((pid: string) => ({ product_id: pid, product_name_snapshot: null }))
+            ? c.product_ids.map((pid: string) => {
+                const p = productsById.get(pid);
+                const unit = toNumberOrNull(p?.value ?? null);
+                return {
+                  product_id: pid,
+                  product_name_snapshot: p?.name ?? null,
+                  quantity: 1,
+                  unit_value: unit,
+                  total_value: unit,
+                  product: p ? { id: p.id, name: p.name ?? null, value: toNumberOrNull(p.value) } : null,
+                };
+              })
             : [],
       }));
 
@@ -867,11 +999,346 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
     if (Array.isArray(userSettings?.teamConversions)) {
       setTeamConversions((userSettings!.teamConversions as any[]).map((c: any) => ({ ...c, isEditing: false })));
     }
+
+    // Filtros globais (topo) para conversões
+    const cc = (userSettings as any)?.customConversionsFilter;
+    if (cc && typeof cc === 'object') {
+      const preset = (cc.preset as any) || 'all';
+      setCustomConvPeriodPreset(preset);
+      setCustomConvStartDate(cc.startDate ? new Date(cc.startDate) : null);
+      setCustomConvEndDate(cc.endDate ? new Date(cc.endDate) : null);
+      setCustomConvAgent(cc.agent || 'all');
+      setCustomConvTags(Array.isArray(cc.tags) ? cc.tags.filter(Boolean) : []);
+      setCustomConvStatus((cc.status as any) || 'all');
+    }
+    const tc = (userSettings as any)?.teamConversionsFilter;
+    if (tc && typeof tc === 'object') {
+      const preset = (tc.preset as any) || 'all';
+      setTeamConvPeriodPreset(preset);
+      setTeamConvStartDate(tc.startDate ? new Date(tc.startDate) : null);
+      setTeamConvEndDate(tc.endDate ? new Date(tc.endDate) : null);
+      setTeamConvAgent(tc.agent || 'all');
+      setTeamConvTags(Array.isArray(tc.tags) ? tc.tags.filter(Boolean) : []);
+      setTeamConvStatus((tc.status as any) || 'all');
+    }
   }, [savedFunnels, user?.id, userSettings]);
 
   useEffect(() => {
     fetchData();
   }, [periodPreset, startDate, endDate, selectedAgent, userRole, selectedFunnel, selectedTags, selectedWorkspaceId, pipelines.length]);
+
+  const dndSensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
+  );
+
+  const onDragEndCustomConversions = (event: DragEndEvent) => {
+    const { active, over } = event;
+    if (!over) return;
+    if (active.id === over.id) return;
+
+    setCustomConversions((prev) => {
+      const oldIndex = prev.findIndex((c: any) => String(c.id) === String(active.id));
+      const newIndex = prev.findIndex((c: any) => String(c.id) === String(over.id));
+      if (oldIndex < 0 || newIndex < 0) return prev;
+      const next = arrayMove(prev, oldIndex, newIndex);
+      persistUserReportSettings({ customConversions: next });
+      return next;
+    });
+  };
+
+  const onDragEndTeamConversions = (event: DragEndEvent) => {
+    const { active, over } = event;
+    if (!over) return;
+    if (active.id === over.id) return;
+
+    setTeamConversions((prev) => {
+      const oldIndex = prev.findIndex((c: any) => String(c.id) === String(active.id));
+      const newIndex = prev.findIndex((c: any) => String(c.id) === String(over.id));
+      if (oldIndex < 0 || newIndex < 0) return prev;
+      const next = arrayMove(prev, oldIndex, newIndex);
+      persistUserReportSettings({ teamConversions: next });
+      return next;
+    });
+  };
+
+  // --- Filtros globais (no topo) para as seções de conversão ---
+  type ConversionPeriodPreset = 'all' | 'today' | 'last7' | 'last30' | 'custom';
+  const [customConvPeriodPreset, setCustomConvPeriodPreset] = useState<ConversionPeriodPreset>('all');
+  const [customConvStartDate, setCustomConvStartDate] = useState<Date | null>(null);
+  const [customConvEndDate, setCustomConvEndDate] = useState<Date | null>(null);
+  const [teamConvPeriodPreset, setTeamConvPeriodPreset] = useState<ConversionPeriodPreset>('all');
+  const [teamConvStartDate, setTeamConvStartDate] = useState<Date | null>(null);
+  const [teamConvEndDate, setTeamConvEndDate] = useState<Date | null>(null);
+
+  type HumanStatusFilter = 'all' | 'open' | 'won' | 'lost';
+  const [customConvAgent, setCustomConvAgent] = useState<string>('all'); // 'all' | 'ia' | userId
+  const [customConvTags, setCustomConvTags] = useState<string[]>([]);
+  const [customConvStatus, setCustomConvStatus] = useState<HumanStatusFilter>('all');
+  const [teamConvAgent, setTeamConvAgent] = useState<string>('all');
+  const [teamConvTags, setTeamConvTags] = useState<string[]>([]);
+  const [teamConvStatus, setTeamConvStatus] = useState<HumanStatusFilter>('all');
+
+  // Ranking – Vendas/Trabalho (filtros de período locais)
+  const [salesRankingPreset, setSalesRankingPreset] = useState<ConversionPeriodPreset>('all');
+  const [salesRankingStartDate, setSalesRankingStartDate] = useState<Date | null>(null);
+  const [salesRankingEndDate, setSalesRankingEndDate] = useState<Date | null>(null);
+  const [workRankingPreset, setWorkRankingPreset] = useState<ConversionPeriodPreset>('all');
+  const [workRankingStartDate, setWorkRankingStartDate] = useState<Date | null>(null);
+  const [workRankingEndDate, setWorkRankingEndDate] = useState<Date | null>(null);
+
+  const applyPresetToRange = (preset: ConversionPeriodPreset) => {
+    const now = new Date();
+    if (preset === 'today') {
+      return { from: startOfDay(now), to: endOfDay(now) };
+    }
+    if (preset === 'last7') {
+      return { from: startOfDay(subDays(now, 6)), to: endOfDay(now) };
+    }
+    if (preset === 'last30') {
+      return { from: startOfDay(subDays(now, 29)), to: endOfDay(now) };
+    }
+    return { from: null, to: null };
+  };
+
+  const withinRange = (iso?: string, from?: Date | null, to?: Date | null) => {
+    if (!from && !to) return true;
+    if (!iso) return true;
+    const t = new Date(iso).getTime();
+    if (Number.isNaN(t)) return true;
+    if (from) {
+      const fromT = startOfDay(from).getTime();
+      if (t < fromT) return false;
+    }
+    if (to) {
+      const toT = endOfDay(to).getTime();
+      if (t > toT) return false;
+    }
+    return true;
+  };
+
+  const getEffectiveRange = (preset: ConversionPeriodPreset, from: Date | null, to: Date | null) => {
+    if (preset === 'custom') return { from, to };
+    if (preset === 'all') return { from: null, to: null };
+    return applyPresetToRange(preset);
+  };
+
+  const getTeamMetricCountForRange = (metricKey: TeamMetricKey, rangeFrom?: Date | null, rangeTo?: Date | null) => {
+    if (metricKey === 'leads') {
+      return (cardsScoped || []).filter((c: any) => withinRange(c?.created_at, rangeFrom, rangeTo)).length;
+    }
+    const rawLabel = String(metricKey).replace(/^activity:/, '');
+    const k = normalizeText(rawLabel);
+    return (activitiesScoped || []).filter((a: any) => {
+      if (!withinRange(a?.created_at, rangeFrom, rangeTo)) return false;
+      return normalizeText(a?.type) === k;
+    }).length;
+  };
+
+  const isWonStatus = (s?: string | null) => {
+    const v = (s || '').toLowerCase();
+    return v === 'won' || v === 'ganho' || v === 'venda' || v === 'success' || v === 'sucesso';
+  };
+  const isLostStatus = (s?: string | null) => {
+    const v = (s || '').toLowerCase();
+    return v.startsWith('lost') || v === 'perdido' || v === 'lost';
+  };
+
+  const buildAllowedContactIdsByTags = (tagIds: string[]) => {
+    if (!tagIds || tagIds.length === 0) return null;
+    const allowed = new Set<string>();
+    (tags || []).forEach((t: any) => {
+      if (!t?.contact_id || !t?.tag_id) return;
+      if (!tagIds.includes(t.tag_id)) return;
+      allowed.add(t.contact_id);
+    });
+    return allowed;
+  };
+
+  const filterCardsForSection = (
+    list: any[],
+    rangeFrom: Date | null,
+    rangeTo: Date | null,
+    agent: string,
+    tagIds: string[],
+    status: HumanStatusFilter
+  ) => {
+    const allowedContacts = buildAllowedContactIdsByTags(tagIds);
+    return (list || [])
+      .filter((c: any) => withinRange(c?.created_at, rangeFrom, rangeTo))
+      .filter((c: any) => {
+        if (agent === 'all') return true;
+        if (agent === 'ia') return !c?.responsible_user_id;
+        return String(c?.responsible_user_id || '') === String(agent);
+      })
+      .filter((c: any) => {
+        if (!allowedContacts) return true;
+        if (!c?.contact_id) return false;
+        return allowedContacts.has(c.contact_id);
+      })
+      .filter((c: any) => {
+        if (status === 'all') return true;
+        if (status === 'won') return isWonStatus(c?.status);
+        if (status === 'lost') return isLostStatus(c?.status);
+        // open
+        return !isWonStatus(c?.status) && !isLostStatus(c?.status);
+      });
+  };
+
+  const filterActivitiesForSection = (list: any[], rangeFrom: Date | null, rangeTo: Date | null, agent: string, tagIds: string[]) => {
+    const allowedContacts = buildAllowedContactIdsByTags(tagIds);
+    return (list || [])
+      .filter((a: any) => withinRange(a?.created_at, rangeFrom, rangeTo))
+      .filter((a: any) => {
+        if (agent === 'all') return true;
+        if (agent === 'ia') return !a?.responsible_id;
+        return String(a?.responsible_id || '') === String(agent);
+      })
+      .filter((a: any) => {
+        if (!allowedContacts) return true;
+        if (!a?.contact_id) return false;
+        return allowedContacts.has(a.contact_id);
+      });
+  };
+
+  const renderTeamConversionCard = (conv: any) => {
+    const rng = getEffectiveRange(teamConvPeriodPreset, teamConvStartDate, teamConvEndDate);
+    const cardsFiltered = filterCardsForSection(cardsScoped || [], rng.from, rng.to, teamConvAgent, teamConvTags, teamConvStatus);
+    const activitiesFiltered = filterActivitiesForSection(activitiesScoped || [], rng.from, rng.to, teamConvAgent, teamConvTags);
+
+    const getActivityCount = (metricKey: TeamMetricKey) => {
+      const rawLabel = String(metricKey).replace(/^activity:/, '');
+      const k = normalizeText(rawLabel);
+      return (activitiesFiltered || []).filter((a: any) => normalizeText(a?.type) === k).length;
+    };
+
+    const countA = conv.metricA === 'leads' ? cardsFiltered.length : getActivityCount(conv.metricA);
+    const countB = conv.metricB === 'leads' ? cardsFiltered.length : getActivityCount(conv.metricB);
+    const result = conversion(countA, countB);
+
+    const labelA = teamMetricOptions.find((o) => o.key === conv.metricA)?.label || 'A';
+    const labelB = teamMetricOptions.find((o) => o.key === conv.metricB)?.label || 'B';
+
+    if (conv.isEditing) {
+      return (
+        <SortableCard key={conv.id} id={conv.id} disabled>
+          <Card className="rounded-none border-blue-200 dark:border-blue-900 bg-blue-50/30 dark:bg-blue-900/10 h-[132px]">
+            <CardContent className="p-2 space-y-2">
+              <Input
+                placeholder="Título da conversão"
+                value={conv.name}
+                onChange={(e) =>
+                  setTeamConversions((prev) => prev.map((c) => (c.id === conv.id ? { ...c, name: e.target.value } : c)))
+                }
+                className="h-7 text-[10px] rounded-none border-[#d4d4d4] dark:border-gray-700"
+              />
+
+              <div className="flex items-center gap-1">
+                <Select
+                  value={conv.metricA}
+                  onValueChange={(v) =>
+                    setTeamConversions((prev) => prev.map((c) => (c.id === conv.id ? { ...c, metricA: v as TeamMetricKey } : c)))
+                  }
+                >
+                  <SelectTrigger className="h-7 text-[10px] min-w-[110px] rounded-none border-[#d4d4d4] dark:border-gray-700">
+                    <SelectValue placeholder="Métrica A" />
+                  </SelectTrigger>
+                  <SelectContent className="text-[10px]">
+                    {teamMetricOptions.map((o) => (
+                      <SelectItem key={o.key} value={o.key}>
+                        {o.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+
+                <span className="text-[10px] text-gray-400">/</span>
+
+                <Select
+                  value={conv.metricB}
+                  onValueChange={(v) =>
+                    setTeamConversions((prev) => prev.map((c) => (c.id === conv.id ? { ...c, metricB: v as TeamMetricKey } : c)))
+                  }
+                >
+                  <SelectTrigger className="h-7 text-[10px] min-w-[110px] rounded-none border-[#d4d4d4] dark:border-gray-700">
+                    <SelectValue placeholder="Métrica B" />
+                  </SelectTrigger>
+                  <SelectContent className="text-[10px]">
+                    {teamMetricOptions.map((o) => (
+                      <SelectItem key={o.key} value={o.key}>
+                        {o.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="flex items-center justify-end gap-1 pt-1">
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  className="h-6 w-6 text-green-600"
+                  onClick={() => {
+                    const next = teamConversions.map((c) => (c.id === conv.id ? { ...c, isEditing: false } : c));
+                    setTeamConversions(next);
+                    persistUserReportSettings({ teamConversions: next });
+                  }}
+                  title="Salvar"
+                >
+                  <Check className="h-3.5 w-3.5" />
+                </Button>
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  className="h-6 w-6 text-red-600"
+                  onClick={() => removeTeamConversion(conv.id)}
+                  title="Remover"
+                >
+                  <X className="h-3.5 w-3.5" />
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        </SortableCard>
+      );
+    }
+
+    return (
+      <SortableCard key={conv.id} id={conv.id}>
+        <Card className="rounded-none border-gray-200 dark:border-gray-700 dark:bg-[#1b1b1b] relative group h-[132px]">
+          <CardContent className="p-4 h-full flex flex-col justify-between">
+            <div className="flex flex-col gap-0.5 mb-1">
+              <div className="text-[11px] font-medium text-gray-700 dark:text-gray-200 truncate">{conv.name || 'Conversão'}</div>
+              <div className="text-[10px] text-gray-500 dark:text-gray-400 truncate">
+                {labelA} / {labelB}
+              </div>
+            </div>
+            <div className="text-2xl font-semibold text-gray-900 dark:text-gray-100">{result}%</div>
+            <div className="absolute top-1 right-1 opacity-0 group-hover:opacity-100 transition-opacity flex gap-0.5">
+              <Button
+                size="icon"
+                variant="ghost"
+                className="h-5 w-5"
+                onClick={() => setTeamConversions((prev) => prev.map((c) => (c.id === conv.id ? { ...c, isEditing: true } : c)))}
+                title="Editar"
+              >
+                <Pencil className="h-3 w-3" />
+              </Button>
+              <Button
+                size="icon"
+                variant="ghost"
+                className="h-5 w-5 text-red-400"
+                onClick={() => removeTeamConversion(conv.id)}
+                title="Remover"
+              >
+                <Trash2 className="h-3 w-3" />
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      </SortableCard>
+    );
+  };
 
   const contactsScoped = useMemo(() => {
     if (userRole === 'user' && user?.id) {
@@ -931,6 +1398,7 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
         leadsWon: 0,
         leadsByTag: new Map<string, number>(),
         leadsByProduct: new Map<string, number>(),
+        salesByProduct: new Map<string, number>(),
         series: new Map<string, { received: number; qualified: number }>(),
       };
 
@@ -1139,6 +1607,22 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
           });
         });
         byProduct.forEach((v, k) => addToMap(agg.leadsByProduct, k, v));
+
+        // Vendas por produto (somente cards ganhos)
+        const bySalesProduct = new Map<string, number>();
+        cardsF.forEach((c: any) => {
+          const s = (c?.status || '').toLowerCase();
+          const isWon = s === 'won' || s === 'ganho' || s === 'venda' || s === 'success' || s === 'sucesso';
+          if (!isWon) return;
+          (c.products || []).forEach((p: any) => {
+            const pid = p?.product_id;
+            if (!pid) return;
+            if (productFilters.length > 0 && !productFilters.includes(pid)) return;
+            const name = nameByProductId.get(pid) || p?.product_name_snapshot || pid || 'Produto';
+            bySalesProduct.set(name, (bySalesProduct.get(name) || 0) + 1);
+          });
+        });
+        bySalesProduct.forEach((v, k) => addToMap(agg.salesByProduct, k, v));
       });
 
       return {
@@ -1155,6 +1639,7 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
         }),
         leadsByTag: Array.from(agg.leadsByTag.entries()).map(([name, value]) => ({ name, value })).filter((x) => x.value > 0).sort((a, b) => b.value - a.value),
         leadsByProduct: Array.from(agg.leadsByProduct.entries()).map(([name, value]) => ({ name, value })).filter((x) => x.value > 0).sort((a, b) => b.value - a.value),
+        salesByProduct: Array.from(agg.salesByProduct.entries()).map(([name, value]) => ({ name, value })).filter((x) => x.value > 0).sort((a, b) => b.value - a.value),
         leadsSeries: Array.from(agg.series.entries())
           .map(([date, obj]) => ({ date, received: obj.received, qualified: obj.qualified }))
           .sort((a, b) => a.date.localeCompare(b.date)),
@@ -1539,15 +2024,98 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
   }, [agents, contacts, activities, proposals, cards]);
 
   const rankingVendas = useMemo<any[]>(() => {
-    const list = [...teamAggregates].sort((a, b) => (b.revenue || 0) - (a.revenue || 0));
-    return list.map((row) => ({
-      ...row,
-      pa: row.sales > 0 ? Number(((row.products || 0) / row.sales).toFixed(2)) : 0,
-      ticket: row.sales > 0 ? Number(((row.revenue || 0) / row.sales).toFixed(2)) : 0,
-    }));
-  }, [teamAggregates]);
+    const { from, to } = getEffectiveRange(salesRankingPreset, salesRankingStartDate, salesRankingEndDate);
+
+    const parseNumber = (v: any) => {
+      if (v === null || v === undefined) return 0;
+      if (typeof v === 'number') return Number.isFinite(v) ? v : 0;
+      const parsed = Number(String(v).replace(',', '.'));
+      return Number.isFinite(parsed) ? parsed : 0;
+    };
+
+    const agentIdSet = new Set((agents || []).map((a) => a.id));
+    const agg: Record<string, any> = {};
+
+    // Inicializa todos os agentes do workspace
+    (agents || []).forEach((a) => {
+      agg[a.id] = { id: a.id, name: a.name, revenue: 0, sales: 0, products: 0 };
+    });
+
+    const ensure = (id: string | null | undefined) => {
+      if (!id) {
+        const key = 'ia';
+        if (!agg[key]) agg[key] = { id: key, name: 'Agente IA', revenue: 0, sales: 0, products: 0 };
+        return agg[key];
+      }
+      if (!agentIdSet.has(id)) return null;
+      if (!agg[id]) agg[id] = { id, name: agentMap.get(id)?.name || 'Usuário', revenue: 0, sales: 0, products: 0 };
+      return agg[id];
+    };
+
+    const pickCardDateIso = (c: any) =>
+      c?.won_at || c?.closed_at || c?.updated_at || c?.created_at || c?.createdAt || c?.date;
+
+    (cards || []).forEach((c: any) => {
+      const s = (c.status || '').toLowerCase();
+      const isWon = s === 'won' || s === 'ganho' || s === 'venda' || s === 'success' || s === 'sucesso';
+      if (!isWon) return;
+
+      if (!withinRange(pickCardDateIso(c), from, to)) return;
+
+      const cardProducts = Array.isArray(c.products) ? c.products : [];
+      const hasProducts = cardProducts.length > 0;
+      if (!hasProducts) return; // considerar somente cartões ganhos com produto vinculado
+
+      const target = ensure(c.responsible_user_id);
+      if (!target) return;
+
+      const revenueFromProducts = cardProducts.reduce((sum: number, pcp: any) => {
+        const total = parseNumber(pcp.total_value ?? pcp.total ?? pcp.total_price);
+        const unit = parseNumber(
+          pcp.unit_value ??
+            pcp.price ??
+            pcp.value ??
+            pcp.amount ??
+            pcp.product_value ??
+            pcp.product?.value ??
+            pcp.unitPrice ??
+            pcp.unit_price
+        );
+        const qty = parseNumber(pcp.quantity || 1);
+        const base = total > 0 ? total : unit * (qty || 1);
+        return sum + base;
+      }, 0);
+
+      const revenue = revenueFromProducts > 0 ? revenueFromProducts : Number(c.value || 0);
+      const totalProductsQuantity = cardProducts.reduce((sum: number, pcp: any) => sum + Number(pcp.quantity || 1), 0);
+
+      target.sales += 1;
+      target.revenue += revenue;
+      target.products += totalProductsQuantity;
+    });
+
+    const list = Object.values(agg)
+      .map((row: any) => ({
+        ...row,
+        pa: row.sales > 0 ? Number(((row.products || 0) / row.sales).toFixed(2)) : 0,
+        ticket: row.sales > 0 ? Number(((row.revenue || 0) / row.sales).toFixed(2)) : 0,
+      }))
+      .sort((a: any, b: any) => (b.revenue || 0) - (a.revenue || 0));
+
+    return list;
+  }, [
+    agents,
+    agentMap,
+    cards,
+    salesRankingPreset,
+    salesRankingStartDate,
+    salesRankingEndDate,
+  ]);
 
   const rankingTrabalho = useMemo<any[]>(() => {
+    const { from, to } = getEffectiveRange(workRankingPreset, workRankingStartDate, workRankingEndDate);
+    const isAllTime = workRankingPreset === 'all';
+
     // Base: todos os agentes do workspace com contagem 0 (para aparecerem mesmo sem atividades)
     const agg: Record<string, any> = {};
     const agentIdSet = new Set((agents || []).map((a) => a.id));
@@ -1570,8 +2138,28 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
     });
 
     const ensure = (id: string | null | undefined) => {
-      if (!id) return null; // não lista dados sem responsável
-      // Só lista usuários do workspace
+      // null/undefined = Agente IA (mantém se houver dados)
+      if (!id) {
+        const key = 'ia';
+        if (!agg[key]) {
+          agg[key] = {
+            id: key,
+            name: 'Agente IA',
+            mensagem: 0,
+            ligacao_nao_atendida: 0,
+            ligacao_atendida: 0,
+            ligacao_abordada: 0,
+            ligacao_agendada: 0,
+            ligacao_follow_up: 0,
+            reuniao_agendada: 0,
+            reuniao_realizada: 0,
+            reuniao_nao_realizada: 0,
+            reuniao_reagendada: 0,
+            whatsapp_enviado: 0,
+          };
+        }
+        return agg[key];
+      }
       if (!agentIdSet.has(id)) return null;
       const key = id;
       if (!agg[key]) {
@@ -1594,21 +2182,69 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
       return agg[key];
     };
 
-    (teamWorkRankingData || []).forEach((r) => {
-      const t = ensure(r.responsible_id);
-      if (!t) return;
-      t.mensagem = Number(r.mensagem || 0);
-      t.ligacao_nao_atendida = Number(r.ligacao_nao_atendida || 0);
-      t.ligacao_atendida = Number(r.ligacao_atendida || 0);
-      t.ligacao_abordada = Number(r.ligacao_abordada || 0);
-      t.ligacao_agendada = Number(r.ligacao_agendada || 0);
-      t.ligacao_follow_up = Number(r.ligacao_follow_up || 0);
-      t.reuniao_agendada = Number(r.reuniao_agendada || 0);
-      t.reuniao_realizada = Number(r.reuniao_realizada || 0);
-      t.reuniao_nao_realizada = Number(r.reuniao_nao_realizada || 0);
-      t.reuniao_reagendada = Number(r.reuniao_reagendada || 0);
-      t.whatsapp_enviado = Number(r.whatsapp_enviado || 0);
-    });
+    if (isAllTime) {
+      (teamWorkRankingData || []).forEach((r) => {
+        const t = ensure((r as any).responsible_id);
+        if (!t) return;
+        t.mensagem = Number((r as any).mensagem || 0);
+        t.ligacao_nao_atendida = Number((r as any).ligacao_nao_atendida || 0);
+        t.ligacao_atendida = Number((r as any).ligacao_atendida || 0);
+        t.ligacao_abordada = Number((r as any).ligacao_abordada || 0);
+        t.ligacao_agendada = Number((r as any).ligacao_agendada || 0);
+        t.ligacao_follow_up = Number((r as any).ligacao_follow_up || 0);
+        t.reuniao_agendada = Number((r as any).reuniao_agendada || 0);
+        t.reuniao_realizada = Number((r as any).reuniao_realizada || 0);
+        t.reuniao_nao_realizada = Number((r as any).reuniao_nao_realizada || 0);
+        t.reuniao_reagendada = Number((r as any).reuniao_reagendada || 0);
+        t.whatsapp_enviado = Number((r as any).whatsapp_enviado || 0);
+      });
+    } else {
+      const n = (v?: string | null) => (v || '').toLowerCase().trim();
+      (activities || []).forEach((a: any) => {
+        if (!withinRange(a?.created_at, from, to)) return;
+        const t = ensure(a?.responsible_id);
+        if (!t) return;
+
+        const type = n(a?.type);
+        const status = n(a?.status);
+
+        if (type.includes('mensagem')) t.mensagem += 1;
+
+        const isCall = type.includes('ligação') || type.includes('ligacao') || type.includes('chamada');
+        if (isCall) {
+          if (
+            type.includes('não atendida') ||
+            type.includes('nao atendida') ||
+            status.includes('não atendida') ||
+            status.includes('nao atendida')
+          ) {
+            t.ligacao_nao_atendida += 1;
+          }
+          if (type.includes('atendida') || status.includes('atendida')) t.ligacao_atendida += 1;
+          if (type.includes('abordada') || status.includes('abordada')) t.ligacao_abordada += 1;
+          if (type.includes('agendada') || status.includes('agendada')) t.ligacao_agendada += 1;
+          if (type.includes('follow') || status.includes('follow')) t.ligacao_follow_up += 1;
+        }
+
+        const isMeeting = type.includes('reunião') || type.includes('reuniao');
+        if (isMeeting) {
+          if (type.includes('agendada') || status.includes('agendada')) t.reuniao_agendada += 1;
+          if (
+            type.includes('não realizada') ||
+            type.includes('nao realizada') ||
+            status.includes('não realizada') ||
+            status.includes('nao realizada')
+          ) {
+            t.reuniao_nao_realizada += 1;
+          } else if (type.includes('realizada') || status.includes('realizada')) {
+            t.reuniao_realizada += 1;
+          }
+          if (type.includes('reagendada') || type.includes('reagenda') || status.includes('reagendada')) t.reuniao_reagendada += 1;
+        }
+
+        if (type.includes('whatsapp') || status.includes('whatsapp')) t.whatsapp_enviado += 1;
+      });
+    }
 
     const list = Object.values(agg).map((row: any) => {
       const total =
@@ -1627,7 +2263,55 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
     });
 
     return list.sort((a: any, b: any) => (b.total || 0) - (a.total || 0));
-  }, [agents, teamWorkRankingData]);
+  }, [
+    activities,
+    agents,
+    agentMap,
+    teamWorkRankingData,
+    withinRange,
+    workRankingPreset,
+    workRankingStartDate,
+    workRankingEndDate,
+  ]);
+
+  const rankingVendasTotals = useMemo(() => {
+    const revenue = (rankingVendas || []).reduce((sum: number, r: any) => sum + Number(r?.revenue || 0), 0);
+    const sales = (rankingVendas || []).reduce((sum: number, r: any) => sum + Number(r?.sales || 0), 0);
+    const products = (rankingVendas || []).reduce((sum: number, r: any) => sum + Number(r?.products || 0), 0);
+    const pa = sales > 0 ? Number((products / sales).toFixed(2)) : 0;
+    const ticket = sales > 0 ? Number((revenue / sales).toFixed(2)) : 0;
+    return { revenue, sales, products, pa, ticket };
+  }, [rankingVendas]);
+
+  const rankingTrabalhoTotals = useMemo(() => {
+    const sum = (k: string) => (rankingTrabalho || []).reduce((acc: number, r: any) => acc + Number(r?.[k] || 0), 0);
+    const totals = {
+      mensagem: sum('mensagem'),
+      ligacao_nao_atendida: sum('ligacao_nao_atendida'),
+      ligacao_atendida: sum('ligacao_atendida'),
+      ligacao_abordada: sum('ligacao_abordada'),
+      ligacao_agendada: sum('ligacao_agendada'),
+      ligacao_follow_up: sum('ligacao_follow_up'),
+      reuniao_agendada: sum('reuniao_agendada'),
+      reuniao_realizada: sum('reuniao_realizada'),
+      reuniao_nao_realizada: sum('reuniao_nao_realizada'),
+      reuniao_reagendada: sum('reuniao_reagendada'),
+      whatsapp_enviado: sum('whatsapp_enviado'),
+    };
+    const total =
+      totals.mensagem +
+      totals.ligacao_nao_atendida +
+      totals.ligacao_atendida +
+      totals.ligacao_abordada +
+      totals.ligacao_agendada +
+      totals.ligacao_follow_up +
+      totals.reuniao_agendada +
+      totals.reuniao_realizada +
+      totals.reuniao_nao_realizada +
+      totals.reuniao_reagendada +
+      totals.whatsapp_enviado;
+    return { ...totals, total };
+  }, [rankingTrabalho]);
 
   const hasDateRange = !!(startDate && endDate);
   const periodLabel = !hasDateRange
@@ -1697,32 +2381,38 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
           {/* Builder: múltiplos funis */}
           <div className="space-y-3">
             {draftFunnels.map((f: any, idx: number) => (
-              <div key={f.id} className="border border-gray-200 dark:border-gray-700 bg-white dark:bg-[#0f0f0f]">
-                <QueryBuilderSidebar
-                  pipelines={pipelines || []}
-                  tags={availableTags || []}
-                  products={availableProducts || []}
-                  agents={agents || []}
-                  selectedWorkspaceId={selectedWorkspaceId || workspaces?.[0]?.workspace_id || ''}
-                  onFiltersChange={(filters) => {
-                    const cleaned = sanitizeGroupsForPersist(filters || []);
-                    const sig = serializeGroups(cleaned);
-                    setDraftFunnels((prev: any[]) => {
-                      const current = prev.find((x) => x.id === f.id);
-                      if (serializeGroups(current?.filters || []) === sig) return prev;
-                      const next = prev.map((x) => (x.id === f.id ? { ...x, filters: cleaned } : x));
-                      return next;
-                    });
-                    setFunnelsDirty(true);
-                  }}
-                  initialFilters={f.filters}
-                  rehydrateNonce={rehydrateNonce}
-                  showHeader={false}
-                  disabled={false}
-                />
+              <div
+                key={f.id}
+                className="border border-gray-200 dark:border-gray-700 bg-white dark:bg-[#0f0f0f] px-3 py-2"
+              >
+                <div className="flex items-center justify-between gap-2">
+                  <QueryBuilderSidebar
+                    layout="inline"
+                    className="w-full"
+                    pipelines={pipelines || []}
+                    tags={availableTags || []}
+                    products={availableProducts || []}
+                    agents={agents || []}
+                    selectedWorkspaceId={selectedWorkspaceId || workspaces?.[0]?.workspace_id || ''}
+                    onFiltersChange={(filters) => {
+                      const cleaned = sanitizeGroupsForPersist(filters || []);
+                      const sig = serializeGroups(cleaned);
+                      setDraftFunnels((prev: any[]) => {
+                        const current = prev.find((x) => x.id === f.id);
+                        if (serializeGroups(current?.filters || []) === sig) return prev;
+                        const next = prev.map((x) => (x.id === f.id ? { ...x, filters: cleaned } : x));
+                        return next;
+                      });
+                      setFunnelsDirty(true);
+                    }}
+                    initialFilters={f.filters}
+                    rehydrateNonce={rehydrateNonce}
+                    showHeader={false}
+                    disabled={false}
+                  />
+                </div>
               </div>
             ))}
-
           </div>
 
           {/* Gráfico global (agora acima dos cards de indicadores) */}
@@ -1785,11 +2475,11 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
           <div className="space-y-3">
             {indicatorFunnels.map((f: any) => (
               <div key={f.id} className="grid grid-cols-1 md:grid-cols-12 gap-3 items-stretch">
-                <Card className="rounded-none border-gray-200 dark:border-gray-700 md:col-span-2 h-full flex flex-col dark:bg-[#1b1b1b] group relative">
+                <Card className="rounded-none border-gray-200 dark:border-gray-700 md:col-span-4 h-full flex flex-col dark:bg-[#1b1b1b] group relative">
                   <CardHeader className="py-1.5 px-2">
                     <div className="flex items-center justify-between gap-2">
                       <CardTitle className="text-xs text-gray-700 dark:text-gray-200">
-                        Leads — {f.name}
+                        Leads
                       </CardTitle>
                       <Button
                         type="button"
@@ -1986,180 +2676,123 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
                   </CardContent>
                 </Card>
 
-                <Card className="rounded-none border-gray-200 dark:border-gray-700 md:col-span-10 dark:bg-[#1b1b1b]">
+                <Card className="rounded-none border-gray-200 dark:border-gray-700 md:col-span-4 dark:bg-[#1b1b1b] h-full">
                   <CardHeader className="py-2 px-3">
                     <CardTitle className="text-xs text-gray-700 dark:text-gray-200">
-                      Leads por Etiqueta / Produto — {f.name}
+                      Leads por Etiqueta
                     </CardTitle>
                   </CardHeader>
-                  <CardContent className="p-3 grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div className="h-64 flex gap-3">
-                      <div className="w-64 text-[11px] text-gray-700 dark:text-gray-200 flex flex-col gap-1 overflow-y-auto">
-                        <p className="font-semibold text-gray-700 dark:text-gray-200 mb-2">Etiquetas</p>
-                        {f.leadsByTag.length === 0 ? (
-                          <span className="text-gray-500 dark:text-gray-400">Sem dados</span>
-                        ) : (
-                          (() => {
-                            const total = f.leadsByTag.reduce((sum: number, it: any) => sum + Number(it?.value || 0), 0) || 0;
-                            return (
-                              <div className="border border-gray-100 dark:border-gray-800">
-                                <div className="grid grid-cols-[14px_1fr_44px_52px] gap-2 px-2 py-1 text-[10px] font-semibold text-gray-600 dark:text-gray-300 border-b border-gray-100 dark:border-gray-800">
-                                  <span />
-                                  <span>Nome</span>
-                                  <span className="text-right tabular-nums">Qtd</span>
-                                  <span className="text-right tabular-nums">%</span>
-                                </div>
-                                {f.leadsByTag.map((item: any, i: number) => {
-                                  const qty = Number(item?.value || 0);
-                                  const pct = total > 0 ? (qty / total) * 100 : 0;
-                                  return (
-                                    <div
-                                      key={item.name}
-                                      className="grid grid-cols-[14px_1fr_44px_52px] gap-2 px-2 py-1 border-b border-gray-50 dark:border-gray-800 last:border-b-0"
-                                    >
-                                      <span
-                                        className="h-2.5 w-2.5 rounded-full inline-block mt-[3px]"
-                                        style={{ backgroundColor: pieColors[i % pieColors.length] }}
-                                      />
-                                      <span className="truncate" title={item.name}>{item.name}</span>
-                                      <span className="text-right tabular-nums">{qty}</span>
-                                      <span className="text-right tabular-nums">{pct.toFixed(1)}%</span>
-                                    </div>
-                                  );
-                                })}
-                              </div>
-                            );
-                          })()
-                        )}
-                      </div>
-                      <div className="flex-1 flex flex-col justify-end">
-                        {f.leadsByTag.length === 0 ? (
-                          <div className="text-[11px] text-gray-500 dark:text-gray-400 h-full flex items-center justify-center border border-dashed border-gray-200 dark:border-gray-800">Sem dados de etiquetas</div>
-                        ) : (
-                          <div className="h-56">
-                            <ResponsiveContainer width="100%" height="100%">
-                              <PieChart>
-                                <Pie
-                                  data={f.leadsByTag}
-                                  dataKey="value"
-                                  nameKey="name"
-                                  outerRadius={82}
-                                  label={({ cx, cy, midAngle, outerRadius, percent }) => {
-                                    const radius = outerRadius * 1.1;
-                                    const x = cx + radius * Math.cos(-midAngle * (Math.PI / 180));
-                                    const y = cy + radius * Math.sin(-midAngle * (Math.PI / 180));
+                  <CardContent className="p-3">
+                    <div className="h-64 flex flex-col overflow-hidden min-w-0">
+                      <div className="border border-gray-100 dark:border-gray-800 flex flex-col overflow-hidden min-w-0 h-full">
+                        <div className="grid grid-cols-[minmax(0,1fr)_44px_52px] gap-2 px-2 py-1 text-[10px] font-semibold text-gray-600 dark:text-gray-300 border-b border-gray-100 dark:border-gray-800">
+                          <span>Nome</span>
+                          <span className="text-right tabular-nums">Qtd</span>
+                          <span className="text-right tabular-nums">%</span>
+                        </div>
+
+                        <div className="flex-1 overflow-y-auto overflow-x-hidden">
+                          {f.leadsByTag.length === 0 ? (
+                            <div className="text-[11px] text-gray-500 dark:text-gray-400 px-2 py-2">
+                              Sem dados
+                            </div>
+                          ) : (
+                            (() => {
+                              const total = f.leadsByTag.reduce((sum: number, it: any) => sum + Number(it?.value || 0), 0) || 0;
+                              return (
+                                <>
+                                  {f.leadsByTag.map((item: any) => {
+                                    const qty = Number(item?.value || 0);
+                                    const pct = total > 0 ? (qty / total) * 100 : 0;
                                     return (
-                                      <text x={x} y={y} fill={isDark ? '#ffffff' : '#4b5563'} textAnchor={x > cx ? 'start' : 'end'} dominantBaseline="central" fontSize="10">
-                                        {`${(percent * 100).toFixed(1)}%`}
-                                      </text>
+                                      <div
+                                        key={item.name}
+                                        className="grid grid-cols-[minmax(0,1fr)_44px_52px] gap-2 px-2 py-1 border-b border-gray-50 dark:border-gray-800 last:border-b-0"
+                                      >
+                                        <span className="truncate" title={item.name}>{item.name}</span>
+                                        <span className="text-right tabular-nums">{qty}</span>
+                                        <span className="text-right tabular-nums">{pct.toFixed(1)}%</span>
+                                      </div>
                                     );
-                                  }}
-                                  labelLine={{ stroke: isDark ? '#4b5563' : '#d1d5db' }}
-                                >
-                                  {f.leadsByTag.map((_: any, i: number) => (
-                                    <Cell key={i} fill={pieColors[i % pieColors.length]} />
-                                  ))}
-                                </Pie>
-                                <ReTooltip
-                                  formatter={(value: number, _: any, entry: any) => [`${value}`, entry?.name]}
-                                  contentStyle={{
-                                    backgroundColor: isDark ? '#1b1b1b' : '#fff',
-                                    borderColor: isDark ? '#374151' : '#d4d4d4',
-                                    color: isDark ? '#fff' : '#000',
-                                    fontSize: '10px',
-                                    borderRadius: '0px',
-                                  }}
-                                  itemStyle={{ color: isDark ? '#e2e8f0' : '#374151' }}
-                                />
-                              </PieChart>
-                            </ResponsiveContainer>
-                          </div>
-                        )}
+                                  })}
+                                </>
+                              );
+                            })()
+                          )}
+                        </div>
+
+                        {(() => {
+                          const total = f.leadsByTag.reduce((sum: number, it: any) => sum + Number(it?.value || 0), 0) || 0;
+                          return (
+                            <div className="grid grid-cols-[minmax(0,1fr)_44px_52px] gap-2 px-2 py-1 text-[10px] font-semibold text-gray-700 dark:text-gray-200 border-t border-gray-100 dark:border-gray-800 bg-gray-50/50 dark:bg-[#151515]">
+                              <span>Total</span>
+                              <span className="text-right tabular-nums">{total}</span>
+                              <span className="text-right tabular-nums">{total > 0 ? '100.0%' : '0.0%'}</span>
+                            </div>
+                          );
+                        })()}
                       </div>
                     </div>
+                  </CardContent>
+                </Card>
 
-                    <div className="h-64 flex gap-3 border-l border-gray-100 dark:border-gray-800 pl-4">
-                      <div className="w-64 text-[11px] text-gray-700 dark:text-gray-200 flex flex-col gap-1 overflow-y-auto">
-                        <p className="font-semibold text-gray-700 dark:text-gray-200 mb-2">Produtos</p>
-                        {f.leadsByProduct.length === 0 ? (
-                          <span className="text-gray-500 dark:text-gray-400">Sem dados</span>
-                        ) : (
-                          (() => {
-                            const total = f.leadsByProduct.reduce((sum: number, it: any) => sum + Number(it?.value || 0), 0) || 0;
-                            return (
-                              <div className="border border-gray-100 dark:border-gray-800">
-                                <div className="grid grid-cols-[14px_1fr_44px_52px] gap-2 px-2 py-1 text-[10px] font-semibold text-gray-600 dark:text-gray-300 border-b border-gray-100 dark:border-gray-800">
-                                  <span />
-                                  <span>Nome</span>
-                                  <span className="text-right tabular-nums">Qtd</span>
-                                  <span className="text-right tabular-nums">%</span>
-                                </div>
-                                {f.leadsByProduct.map((item: any, i: number) => {
-                                  const qty = Number(item?.value || 0);
-                                  const pct = total > 0 ? (qty / total) * 100 : 0;
-                                  return (
-                                    <div
-                                      key={item.name}
-                                      className="grid grid-cols-[14px_1fr_44px_52px] gap-2 px-2 py-1 border-b border-gray-50 dark:border-gray-800 last:border-b-0"
-                                    >
-                                      <span
-                                        className="h-2.5 w-2.5 rounded-full inline-block mt-[3px]"
-                                        style={{ backgroundColor: pieColors[(i + 3) % pieColors.length] }}
-                                      />
-                                      <span className="truncate" title={item.name}>{item.name}</span>
-                                      <span className="text-right tabular-nums">{qty}</span>
-                                      <span className="text-right tabular-nums">{pct.toFixed(1)}%</span>
-                                    </div>
-                                  );
-                                })}
-                              </div>
-                            );
-                          })()
-                        )}
-                      </div>
-                      <div className="flex-1 flex flex-col justify-end">
-                        {f.leadsByProduct.length === 0 ? (
-                          <div className="text-[11px] text-gray-500 dark:text-gray-400 h-full flex items-center justify-center border border-dashed border-gray-200 dark:border-gray-800">Sem dados de produtos</div>
-                        ) : (
-                          <div className="h-56">
-                            <ResponsiveContainer width="100%" height="100%">
-                              <PieChart>
-                                <Pie
-                                  data={f.leadsByProduct}
-                                  dataKey="value"
-                                  nameKey="name"
-                                  outerRadius={82}
-                                  label={({ cx, cy, midAngle, outerRadius, percent }) => {
-                                    const radius = outerRadius * 1.1;
-                                    const x = cx + radius * Math.cos(-midAngle * (Math.PI / 180));
-                                    const y = cy + radius * Math.sin(-midAngle * (Math.PI / 180));
+                <Card className="rounded-none border-gray-200 dark:border-gray-700 md:col-span-4 dark:bg-[#1b1b1b] h-full">
+                  <CardHeader className="py-2 px-3">
+                    <CardTitle className="text-xs text-gray-700 dark:text-gray-200">
+                      Vendas por Produto
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="p-3">
+                    <div className="h-64 flex flex-col overflow-hidden min-w-0">
+                      <div className="border border-gray-100 dark:border-gray-800 flex flex-col overflow-hidden min-w-0 h-full">
+                        <div className="grid grid-cols-[minmax(0,1fr)_44px_52px] gap-2 px-2 py-1 text-[10px] font-semibold text-gray-600 dark:text-gray-300 border-b border-gray-100 dark:border-gray-800">
+                          <span>Nome</span>
+                          <span className="text-right tabular-nums">Qtd</span>
+                          <span className="text-right tabular-nums">%</span>
+                        </div>
+
+                        <div className="flex-1 overflow-y-auto overflow-x-hidden">
+                          {(f.salesByProduct || []).length === 0 ? (
+                            <div className="text-[11px] text-gray-500 dark:text-gray-400 px-2 py-2">
+                              Sem dados
+                            </div>
+                          ) : (
+                            (() => {
+                              const list = (f.salesByProduct || []) as any[];
+                              const total = list.reduce((sum: number, it: any) => sum + Number(it?.value || 0), 0) || 0;
+                              return (
+                                <>
+                                  {list.map((item: any) => {
+                                    const qty = Number(item?.value || 0);
+                                    const pct = total > 0 ? (qty / total) * 100 : 0;
                                     return (
-                                      <text x={x} y={y} fill={isDark ? '#ffffff' : '#4b5563'} textAnchor={x > cx ? 'start' : 'end'} dominantBaseline="central" fontSize="10">
-                                        {`${(percent * 100).toFixed(1)}%`}
-                                      </text>
+                                      <div
+                                        key={item.name}
+                                        className="grid grid-cols-[minmax(0,1fr)_44px_52px] gap-2 px-2 py-1 border-b border-gray-50 dark:border-gray-800 last:border-b-0"
+                                      >
+                                        <span className="truncate" title={item.name}>{item.name}</span>
+                                        <span className="text-right tabular-nums">{qty}</span>
+                                        <span className="text-right tabular-nums">{pct.toFixed(1)}%</span>
+                                      </div>
                                     );
-                                  }}
-                                  labelLine={{ stroke: isDark ? '#4b5563' : '#d1d5db' }}
-                                >
-                                  {f.leadsByProduct.map((_: any, i: number) => (
-                                    <Cell key={i} fill={pieColors[(i + 3) % pieColors.length]} />
-                                  ))}
-                                </Pie>
-                                <ReTooltip
-                                  formatter={(value: number, _: any, entry: any) => [`${value}`, entry?.name]}
-                                  contentStyle={{
-                                    backgroundColor: isDark ? '#1b1b1b' : '#fff',
-                                    borderColor: isDark ? '#374151' : '#d4d4d4',
-                                    color: isDark ? '#fff' : '#000',
-                                    fontSize: '10px',
-                                    borderRadius: '0px',
-                                  }}
-                                  itemStyle={{ color: isDark ? '#e2e8f0' : '#374151' }}
-                                />
-                              </PieChart>
-                            </ResponsiveContainer>
-                          </div>
-                        )}
+                                  })}
+                                </>
+                              );
+                            })()
+                          )}
+                        </div>
+
+                        {(() => {
+                          const list = (f.salesByProduct || []) as any[];
+                          const total = list.reduce((sum: number, it: any) => sum + Number(it?.value || 0), 0) || 0;
+                          return (
+                            <div className="grid grid-cols-[minmax(0,1fr)_44px_52px] gap-2 px-2 py-1 text-[10px] font-semibold text-gray-700 dark:text-gray-200 border-t border-gray-100 dark:border-gray-800 bg-gray-50/50 dark:bg-[#151515]">
+                              <span>Total</span>
+                              <span className="text-right tabular-nums">{total}</span>
+                              <span className="text-right tabular-nums">{total > 0 ? '100.0%' : '0.0%'}</span>
+                            </div>
+                          );
+                        })()}
                       </div>
                     </div>
                   </CardContent>
@@ -2177,6 +2810,279 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
               <Filter className="h-4 w-4" />
               Funil – Conversão
             </div>
+            <div className="flex items-center gap-2 justify-end flex-wrap">
+              <Select
+                value={customConvAgent}
+                onValueChange={(v) => {
+                  setCustomConvAgent(v);
+                  persistUserReportSettings({
+                    customConversionsFilter: {
+                      preset: customConvPeriodPreset,
+                      startDate: customConvStartDate ? customConvStartDate.toISOString() : null,
+                      endDate: customConvEndDate ? customConvEndDate.toISOString() : null,
+                      agent: v,
+                      tags: customConvTags,
+                      status: customConvStatus,
+                    },
+                  });
+                }}
+              >
+                <SelectTrigger className="h-7 w-[180px] shrink-0 text-[10px] rounded-none border-dashed border-[#d4d4d4] dark:border-gray-700">
+                  <SelectValue placeholder="Agente" />
+                </SelectTrigger>
+                <SelectContent className="text-[10px] rounded-none">
+                  <SelectItem value="all">Todos os agentes</SelectItem>
+                  <SelectItem value="ia">Agente IA</SelectItem>
+                  {agents.map((a) => (
+                    <SelectItem key={a.id} value={a.id}>
+                      {a.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+
+              <Select
+                value={customConvStatus}
+                onValueChange={(v) => {
+                  const next = v as any;
+                  setCustomConvStatus(next);
+                  persistUserReportSettings({
+                    customConversionsFilter: {
+                      preset: customConvPeriodPreset,
+                      startDate: customConvStartDate ? customConvStartDate.toISOString() : null,
+                      endDate: customConvEndDate ? customConvEndDate.toISOString() : null,
+                      agent: customConvAgent,
+                      tags: customConvTags,
+                      status: next,
+                    },
+                  });
+                }}
+              >
+                <SelectTrigger className="h-7 w-[120px] shrink-0 text-[10px] rounded-none border-dashed border-[#d4d4d4] dark:border-gray-700">
+                  <SelectValue placeholder="Status" />
+                </SelectTrigger>
+                <SelectContent className="text-[10px] rounded-none">
+                  <SelectItem value="all">Todos</SelectItem>
+                  <SelectItem value="open">Aberto</SelectItem>
+                  <SelectItem value="won">Ganho</SelectItem>
+                  <SelectItem value="lost">Perdido</SelectItem>
+                </SelectContent>
+              </Select>
+
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="h-7 w-[110px] shrink-0 px-2 text-[10px] rounded-none border-dashed border-[#d4d4d4] dark:border-gray-700 whitespace-nowrap"
+                  >
+                    Etiquetas{customConvTags.length > 0 ? ` (${customConvTags.length})` : ''}
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent
+                  className="w-72 p-2 rounded-none bg-white text-gray-900 border border-[#d4d4d4] dark:bg-[#1b1b1b] dark:text-gray-100 dark:border-gray-700"
+                  align="end"
+                >
+                  <div className="max-h-64 overflow-y-auto space-y-2">
+                    {availableTags.map((t) => {
+                      const checked = customConvTags.includes(t.id);
+                      return (
+                        <label key={t.id} className="flex items-center gap-2 text-[11px]">
+                          <Checkbox
+                            checked={checked}
+                            onCheckedChange={(val) => {
+                              const isChecked = !!val;
+                              const next = isChecked
+                                ? Array.from(new Set([...customConvTags, t.id]))
+                                : customConvTags.filter((x) => x !== t.id);
+                              setCustomConvTags(next);
+                              persistUserReportSettings({
+                                customConversionsFilter: {
+                                  preset: customConvPeriodPreset,
+                                  startDate: customConvStartDate ? customConvStartDate.toISOString() : null,
+                                  endDate: customConvEndDate ? customConvEndDate.toISOString() : null,
+                                  agent: customConvAgent,
+                                  tags: next,
+                                  status: customConvStatus,
+                                },
+                              });
+                            }}
+                          />
+                          <span className="truncate">{t.name}</span>
+                        </label>
+                      );
+                    })}
+                  </div>
+                  {customConvTags.length > 0 && (
+                    <div className="pt-2">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-7 px-2 text-[10px] rounded-none"
+                        onClick={() => {
+                          setCustomConvTags([]);
+                          persistUserReportSettings({
+                            customConversionsFilter: {
+                              preset: customConvPeriodPreset,
+                              startDate: customConvStartDate ? customConvStartDate.toISOString() : null,
+                              endDate: customConvEndDate ? customConvEndDate.toISOString() : null,
+                              agent: customConvAgent,
+                              tags: [],
+                              status: customConvStatus,
+                            },
+                          });
+                        }}
+                      >
+                        Limpar etiquetas
+                      </Button>
+                    </div>
+                  )}
+                </PopoverContent>
+              </Popover>
+
+              <Select
+                value={customConvPeriodPreset}
+                onValueChange={(v) => {
+                  const next = v as any;
+                  setCustomConvPeriodPreset(next);
+                  if (next !== 'custom') {
+                    const r = getEffectiveRange(next, null, null);
+                    setCustomConvStartDate(r.from);
+                    setCustomConvEndDate(r.to);
+                    persistUserReportSettings({
+                      customConversionsFilter: {
+                        preset: next,
+                        startDate: r.from ? r.from.toISOString() : null,
+                        endDate: r.to ? r.to.toISOString() : null,
+                        agent: customConvAgent,
+                        tags: customConvTags,
+                        status: customConvStatus,
+                      },
+                    });
+                  } else {
+                    persistUserReportSettings({
+                      customConversionsFilter: {
+                        preset: next,
+                        startDate: customConvStartDate ? customConvStartDate.toISOString() : null,
+                        endDate: customConvEndDate ? customConvEndDate.toISOString() : null,
+                        agent: customConvAgent,
+                        tags: customConvTags,
+                        status: customConvStatus,
+                      },
+                    });
+                  }
+                }}
+              >
+                <SelectTrigger className="h-7 w-[140px] shrink-0 text-[10px] rounded-none border-dashed border-[#d4d4d4] dark:border-gray-700">
+                  <SelectValue placeholder="Período" />
+                </SelectTrigger>
+                <SelectContent className="text-[10px] rounded-none">
+                  <SelectItem value="all">Todo período</SelectItem>
+                  <SelectItem value="today">Hoje</SelectItem>
+                  <SelectItem value="last7">Últimos 7 dias</SelectItem>
+                  <SelectItem value="last30">Últimos 30 dias</SelectItem>
+                  <SelectItem value="custom">Personalizado</SelectItem>
+                </SelectContent>
+              </Select>
+
+              {customConvPeriodPreset === 'custom' && (
+                <>
+                  <Popover>
+                    <PopoverTrigger asChild>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="h-7 shrink-0 px-2 text-[10px] rounded-none border-dashed border-[#d4d4d4] dark:border-gray-700 whitespace-nowrap"
+                      >
+                        De: {customConvStartDate ? format(customConvStartDate, 'dd/MM/yyyy') : '—'}
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent
+                      className="w-auto p-0 rounded-none bg-white text-gray-900 border border-[#d4d4d4] dark:bg-[#1b1b1b] dark:text-gray-100 dark:border-gray-700"
+                      align="end"
+                    >
+                      <Calendar
+                        mode="single"
+                        selected={customConvStartDate || undefined}
+                        onSelect={(d) => {
+                          setCustomConvStartDate(d || null);
+                          persistUserReportSettings({
+                            customConversionsFilter: {
+                              preset: 'custom',
+                              startDate: d ? d.toISOString() : null,
+                              endDate: customConvEndDate ? customConvEndDate.toISOString() : null,
+                              agent: customConvAgent,
+                              tags: customConvTags,
+                              status: customConvStatus,
+                            },
+                          });
+                        }}
+                        initialFocus
+                      />
+                    </PopoverContent>
+                  </Popover>
+
+                  <Popover>
+                    <PopoverTrigger asChild>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="h-7 shrink-0 px-2 text-[10px] rounded-none border-dashed border-[#d4d4d4] dark:border-gray-700 whitespace-nowrap"
+                      >
+                        Até: {customConvEndDate ? format(customConvEndDate, 'dd/MM/yyyy') : '—'}
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent
+                      className="w-auto p-0 rounded-none bg-white text-gray-900 border border-[#d4d4d4] dark:bg-[#1b1b1b] dark:text-gray-100 dark:border-gray-700"
+                      align="end"
+                    >
+                      <Calendar
+                        mode="single"
+                        selected={customConvEndDate || undefined}
+                        onSelect={(d) => {
+                          setCustomConvEndDate(d || null);
+                          persistUserReportSettings({
+                            customConversionsFilter: {
+                              preset: 'custom',
+                              startDate: customConvStartDate ? customConvStartDate.toISOString() : null,
+                              endDate: d ? d.toISOString() : null,
+                              agent: customConvAgent,
+                              tags: customConvTags,
+                              status: customConvStatus,
+                            },
+                          });
+                        }}
+                        initialFocus
+                      />
+                    </PopoverContent>
+                  </Popover>
+
+                  {(customConvStartDate || customConvEndDate) && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-7 shrink-0 px-2 text-[10px] rounded-none whitespace-nowrap"
+                      onClick={() => {
+                        setCustomConvStartDate(null);
+                        setCustomConvEndDate(null);
+                        persistUserReportSettings({
+                          customConversionsFilter: {
+                            preset: 'custom',
+                            startDate: null,
+                            endDate: null,
+                            agent: customConvAgent,
+                            tags: customConvTags,
+                            status: customConvStatus,
+                          },
+                        });
+                      }}
+                    >
+                      Limpar
+                    </Button>
+                  )}
+                </>
+              )}
+            </div>
             <Button 
               variant="outline" 
               size="sm" 
@@ -2187,23 +3093,31 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
               Nova Conversão
             </Button>
           </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3">
-            {/* Conversões Customizadas */}
+          <DndContext sensors={dndSensors} collisionDetection={closestCenter} onDragEnd={onDragEndCustomConversions}>
+            <SortableContext items={customConversions.map((c: any) => c.id)} strategy={rectSortingStrategy}>
+              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3">
+                {/* Conversões Customizadas */}
             {customConversions.map((conv) => {
-              const countA = cardsScoped.filter(c => 
-                (conv.pipelineA === 'all' || c.pipeline_id === conv.pipelineA) && 
+              const rng = getEffectiveRange(customConvPeriodPreset, customConvStartDate, customConvEndDate);
+              const cardsInRange = filterCardsForSection(cardsScoped || [], rng.from, rng.to, customConvAgent, customConvTags, customConvStatus);
+
+              const countA = cardsInRange.filter((c: any) =>
+                (conv.pipelineA === 'all' || c.pipeline_id === conv.pipelineA) &&
                 (conv.columnA === 'all' || c.column_id === conv.columnA)
               ).length;
-              const countB = cardsScoped.filter(c => 
-                (conv.pipelineB === 'all' || c.pipeline_id === conv.pipelineB) && 
+
+              const countB = cardsInRange.filter((c: any) =>
+                (conv.pipelineB === 'all' || c.pipeline_id === conv.pipelineB) &&
                 (conv.columnB === 'all' || c.column_id === conv.columnB)
               ).length;
+
               const result = conversion(countA, countB);
 
               if (conv.isEditing) {
                 return (
-                  <Card key={conv.id} className="rounded-none border-blue-200 dark:border-blue-900 bg-blue-50/30 dark:bg-blue-900/10">
-                    <CardContent className="p-2 space-y-2">
+                  <SortableCard key={conv.id} id={conv.id} disabled>
+                    <Card className="rounded-none border-blue-200 dark:border-blue-900 bg-blue-50/30 dark:bg-blue-900/10">
+                      <CardContent className="p-2 space-y-2">
                       <Input
                         placeholder="Título da conversão (ex: Leads / Vendas)"
                         value={conv.name}
@@ -2289,14 +3203,16 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
                           <X className="h-3.5 w-3.5" />
                         </Button>
                       </div>
-                    </CardContent>
-                  </Card>
+                      </CardContent>
+                    </Card>
+                  </SortableCard>
                 );
               }
 
               return (
-                <Card key={conv.id} className="rounded-none border-gray-200 dark:border-gray-700 dark:bg-[#1b1b1b] relative group">
-                  <CardContent className="p-3">
+                <SortableCard key={conv.id} id={conv.id}>
+                  <Card className="rounded-none border-gray-200 dark:border-gray-700 dark:bg-[#1b1b1b] relative group">
+                    <CardContent className="p-3">
                     <div className="flex flex-col gap-0.5 mb-1">
                       <div className="text-[11px] font-medium text-gray-700 dark:text-gray-200 truncate">{conv.name || 'Conversão'}</div>
                     </div>
@@ -2316,8 +3232,9 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
                         <Trash2 className="h-3 w-3" />
                       </Button>
                     </div>
-                  </CardContent>
-                </Card>
+                    </CardContent>
+                  </Card>
+                </SortableCard>
               );
             })}
 
@@ -2330,281 +3247,697 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
                 </CardContent>
               </Card>
             )}
-          </div>
+              </div>
+            </SortableContext>
+          </DndContext>
         </section>
 
-        {/* Equipe – Indicadores */}
+        {/* Equipe – Indicadores + Equipe – Conversão */}
         <section className="space-y-3">
-          <div className="flex items-center gap-2 text-sm font-semibold text-gray-900 dark:text-gray-100">
-            <Users className="h-4 w-4" />
-            Equipe – Indicadores
-          </div>
-          <div className="overflow-auto border border-gray-200 dark:border-gray-700">
-              <table className="min-w-full text-xs table-auto">
-              <thead className="bg-gray-100 dark:bg-[#1a1a1a] text-gray-700 dark:text-gray-200">
-                <tr>
-                  <th className="px-3 py-2 text-left">Indicador</th>
-                  <th className="px-3 py-2 text-right">Total</th>
-                </tr>
-              </thead>
-              <tbody>
-                {[
-                  { k: 'Leads recebidos', v: leadsReceived },
-                  { k: 'Ligações realizadas', v: calls.length },
-                  { k: 'Ligações atendidas', v: callsAttended.length },
-                  { k: 'Ligações não atendidas', v: callsNotAttended.length },
-                  { k: 'Ligações abordadas', v: callsApproached.length },
-                  { k: 'Mensagens enviadas', v: messages.length },
-                  { k: 'Reuniões agendadas', v: meetings.length },
-                  { k: 'Reuniões realizadas', v: meetings.filter((m) => m.status === 'realizada').length },
-                  { k: 'Propostas enviadas', v: proposals.length },
-                  { k: 'Vendas realizadas', v: leadsWon },
-                ].map((row) => (
-                  <tr key={row.k} className="border-t border-gray-200 dark:border-gray-800">
-                    <td className="px-3 py-2">{row.k}</td>
-                    <td className="px-3 py-2 text-right font-semibold">{row.v}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </section>
-
-        {/* Equipe – Conversão (dinâmica) */}
-        <section className="space-y-3">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2 text-sm font-semibold text-gray-900 dark:text-gray-100">
-              <Users className="h-4 w-4" />
-              Equipe – Conversão
-            </div>
-            <Button
-              variant="outline"
-              size="sm"
-              className="h-7 px-2 text-[10px] rounded-none border-dashed border-[#d4d4d4] dark:border-gray-700"
-              onClick={addTeamConversion}
-            >
-              <Plus className="h-3 w-3 mr-1" />
-              Nova Conversão
-            </Button>
-          </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3">
-            {teamConversions.map((conv) => {
-              const countA = teamMetricCounts.get(conv.metricA) || 0;
-              const countB = teamMetricCounts.get(conv.metricB) || 0;
-              const result = conversion(countA, countB);
-
-              const labelA = teamMetricOptions.find((o) => o.key === conv.metricA)?.label || 'A';
-              const labelB = teamMetricOptions.find((o) => o.key === conv.metricB)?.label || 'B';
-
-              if (conv.isEditing) {
-                return (
-                  <Card key={conv.id} className="rounded-none border-blue-200 dark:border-blue-900 bg-blue-50/30 dark:bg-blue-900/10">
-                    <CardContent className="p-2 space-y-2">
-                      <Input
-                        placeholder="Título da conversão"
-                        value={conv.name}
-                        onChange={(e) =>
-                          setTeamConversions((prev) => prev.map((c) => (c.id === conv.id ? { ...c, name: e.target.value } : c)))
-                        }
-                        className="h-7 text-[10px] rounded-none border-[#d4d4d4] dark:border-gray-700"
-                      />
-
-                      <div className="flex items-center gap-1">
-                        <Select
-                          value={conv.metricA}
-                          onValueChange={(v) =>
-                            setTeamConversions((prev) => prev.map((c) => (c.id === conv.id ? { ...c, metricA: v as TeamMetricKey } : c)))
-                          }
-                        >
-                          <SelectTrigger className="h-7 text-[10px] min-w-[110px] rounded-none border-[#d4d4d4] dark:border-gray-700">
-                            <SelectValue placeholder="Métrica A" />
-                          </SelectTrigger>
-                          <SelectContent className="text-[10px]">
-                            {teamMetricOptions.map((o) => (
-                              <SelectItem key={o.key} value={o.key}>
-                                {o.label}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-
-                        <span className="text-[10px] text-gray-400">/</span>
-
-                        <Select
-                          value={conv.metricB}
-                          onValueChange={(v) =>
-                            setTeamConversions((prev) => prev.map((c) => (c.id === conv.id ? { ...c, metricB: v as TeamMetricKey } : c)))
-                          }
-                        >
-                          <SelectTrigger className="h-7 text-[10px] min-w-[110px] rounded-none border-[#d4d4d4] dark:border-gray-700">
-                            <SelectValue placeholder="Métrica B" />
-                          </SelectTrigger>
-                          <SelectContent className="text-[10px]">
-                            {teamMetricOptions.map((o) => (
-                              <SelectItem key={o.key} value={o.key}>
-                                {o.label}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      </div>
-
-                      <div className="flex items-center justify-end gap-1 pt-1">
-                        <Button
-                          size="icon"
-                          variant="ghost"
-                          className="h-6 w-6 text-green-600"
-                          onClick={() => {
-                            const next = teamConversions.map((c) => (c.id === conv.id ? { ...c, isEditing: false } : c));
-                            setTeamConversions(next);
-                            persistUserReportSettings({ teamConversions: next });
-                          }}
-                          title="Salvar"
-                        >
-                          <Check className="h-3.5 w-3.5" />
-                        </Button>
-                        <Button
-                          size="icon"
-                          variant="ghost"
-                          className="h-6 w-6 text-red-600"
-                          onClick={() => removeTeamConversion(conv.id)}
-                          title="Remover"
-                        >
-                          <X className="h-3.5 w-3.5" />
-                        </Button>
-                      </div>
-                    </CardContent>
-                  </Card>
-                );
-              }
-
-              return (
-                <Card key={conv.id} className="rounded-none border-gray-200 dark:border-gray-700 dark:bg-[#1b1b1b] relative group">
-                  <CardContent className="p-3">
-                    <div className="flex flex-col gap-0.5 mb-1">
-                      <div className="text-[11px] font-medium text-gray-700 dark:text-gray-200 truncate">{conv.name || 'Conversão'}</div>
-                      <div className="text-[10px] text-gray-500 dark:text-gray-400 truncate">
-                        {labelA} / {labelB}
-                      </div>
-                    </div>
-                    <div className="text-xl font-semibold text-gray-900 dark:text-gray-100">{result}%</div>
-                    <div className="absolute top-1 right-1 opacity-0 group-hover:opacity-100 transition-opacity flex gap-0.5">
-                      <Button
-                        size="icon"
-                        variant="ghost"
-                        className="h-5 w-5"
-                        onClick={() => setTeamConversions((prev) => prev.map((c) => (c.id === conv.id ? { ...c, isEditing: true } : c)))}
-                        title="Editar"
-                      >
-                        <Pencil className="h-3 w-3" />
-                      </Button>
-                      <Button
-                        size="icon"
-                        variant="ghost"
-                        className="h-5 w-5 text-red-400"
-                        onClick={() => removeTeamConversion(conv.id)}
-                        title="Remover"
-                      >
-                        <Trash2 className="h-3 w-3" />
-                      </Button>
-                    </div>
-                  </CardContent>
-                </Card>
-              );
-            })}
-
-            {teamConversions.length === 0 && (
-              <Card className="rounded-none border-gray-200 dark:border-gray-700 dark:bg-[#1b1b1b] sm:col-span-2 md:col-span-3 lg:col-span-4 xl:col-span-5">
-                <CardContent className="p-3">
-                  <div className="text-[11px] text-gray-600 dark:text-gray-300">
-                    Nenhuma conversão criada. Clique em <span className="font-medium">Nova Conversão</span>.
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 items-start lg:items-stretch">
+            <DndContext sensors={dndSensors} collisionDetection={closestCenter} onDragEnd={onDragEndTeamConversions}>
+              <SortableContext items={teamConversions.map((c: any) => c.id)} strategy={rectSortingStrategy}>
+            {/* Esquerda: Indicadores (compacto) */}
+            <div className="flex flex-col gap-2 h-full min-h-0">
+              <div className="flex items-center gap-2 text-sm font-semibold text-gray-900 dark:text-gray-100">
+                <Users className="h-4 w-4" />
+                Equipe – Indicadores
+              </div>
+               <Card className="rounded-none border-gray-200 dark:border-gray-700 dark:bg-[#1b1b1b] flex-1 min-h-0">
+                 <CardContent className="p-0 h-full overflow-auto">
+                  <div className="border-t border-gray-200 dark:border-gray-800">
+                    <table className="w-full text-[11px] table-fixed">
+                      <colgroup>
+                        <col />
+                        <col className="w-[72px]" />
+                      </colgroup>
+                      <thead className="bg-gray-100 dark:bg-[#1a1a1a] text-gray-700 dark:text-gray-200">
+                        <tr>
+                          <th className="px-2 py-1.5 text-left font-semibold">Indicador</th>
+                          <th className="px-2 py-1.5 text-right font-semibold">Total</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {[
+                          { k: 'Leads recebidos', v: leadsReceived },
+                          { k: 'Ligações realizadas', v: calls.length },
+                          { k: 'Ligações atendidas', v: callsAttended.length },
+                          { k: 'Ligações não atendidas', v: callsNotAttended.length },
+                          { k: 'Ligações abordadas', v: callsApproached.length },
+                          { k: 'Mensagens enviadas', v: messages.length },
+                          { k: 'Reuniões agendadas', v: meetings.length },
+                          { k: 'Reuniões realizadas', v: meetings.filter((m) => m.status === 'realizada').length },
+                          { k: 'Propostas enviadas', v: proposals.length },
+                          { k: 'Vendas realizadas', v: leadsWon },
+                        ].map((row) => (
+                          <tr key={row.k} className="border-t border-gray-200 dark:border-gray-800">
+                            <td className="px-2 py-1.5 truncate" title={row.k}>{row.k}</td>
+                            <td className="px-2 py-1.5 text-right font-semibold tabular-nums">{row.v}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
                   </div>
                 </CardContent>
               </Card>
-            )}
+            </div>
+
+            {/* Direita: Conversão */}
+            <div className="space-y-2">
+              <div className="flex items-center justify-between gap-2">
+                <div className="flex items-center gap-2 text-sm font-semibold text-gray-900 dark:text-gray-100">
+                  <Users className="h-4 w-4" />
+                  Equipe – Conversão
+                </div>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-7 px-2 text-[10px] rounded-none border-dashed border-[#d4d4d4] dark:border-gray-700"
+                  onClick={addTeamConversion}
+                >
+                  <Plus className="h-3 w-3 mr-1" />
+                  Nova Conversão
+                </Button>
+              </div>
+
+              {/* Filtros (abaixo do título, ocupando a largura toda) */}
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-2 w-full">
+              <Select
+                value={teamConvAgent}
+                onValueChange={(v) => {
+                  setTeamConvAgent(v);
+                  persistUserReportSettings({
+                    teamConversionsFilter: {
+                      preset: teamConvPeriodPreset,
+                      startDate: teamConvStartDate ? teamConvStartDate.toISOString() : null,
+                      endDate: teamConvEndDate ? teamConvEndDate.toISOString() : null,
+                      agent: v,
+                      tags: teamConvTags,
+                      status: teamConvStatus,
+                    },
+                  });
+                }}
+              >
+                <SelectTrigger className="h-7 w-full text-[10px] rounded-none border-dashed border-[#d4d4d4] dark:border-gray-700">
+                  <SelectValue placeholder="Agente" />
+                </SelectTrigger>
+                <SelectContent className="text-[10px] rounded-none">
+                  <SelectItem value="all">Todos os agentes</SelectItem>
+                  <SelectItem value="ia">Agente IA</SelectItem>
+                  {agents.map((a) => (
+                    <SelectItem key={a.id} value={a.id}>
+                      {a.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+
+              <Select
+                value={teamConvStatus}
+                onValueChange={(v) => {
+                  const next = v as any;
+                  setTeamConvStatus(next);
+                  persistUserReportSettings({
+                    teamConversionsFilter: {
+                      preset: teamConvPeriodPreset,
+                      startDate: teamConvStartDate ? teamConvStartDate.toISOString() : null,
+                      endDate: teamConvEndDate ? teamConvEndDate.toISOString() : null,
+                      agent: teamConvAgent,
+                      tags: teamConvTags,
+                      status: next,
+                    },
+                  });
+                }}
+              >
+                <SelectTrigger className="h-7 w-full text-[10px] rounded-none border-dashed border-[#d4d4d4] dark:border-gray-700">
+                  <SelectValue placeholder="Status" />
+                </SelectTrigger>
+                <SelectContent className="text-[10px] rounded-none">
+                  <SelectItem value="all">Todos</SelectItem>
+                  <SelectItem value="open">Aberto</SelectItem>
+                  <SelectItem value="won">Ganho</SelectItem>
+                  <SelectItem value="lost">Perdido</SelectItem>
+                </SelectContent>
+              </Select>
+
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="h-7 w-full px-2 text-[10px] rounded-none border-dashed border-[#d4d4d4] dark:border-gray-700 whitespace-nowrap"
+                  >
+                    Etiquetas{teamConvTags.length > 0 ? ` (${teamConvTags.length})` : ''}
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent
+                  className="w-72 p-2 rounded-none bg-white text-gray-900 border border-[#d4d4d4] dark:bg-[#1b1b1b] dark:text-gray-100 dark:border-gray-700"
+                  align="end"
+                >
+                  <div className="max-h-64 overflow-y-auto space-y-2">
+                    {availableTags.map((t) => {
+                      const checked = teamConvTags.includes(t.id);
+                      return (
+                        <label key={t.id} className="flex items-center gap-2 text-[11px]">
+                          <Checkbox
+                            checked={checked}
+                            onCheckedChange={(val) => {
+                              const isChecked = !!val;
+                              const next = isChecked
+                                ? Array.from(new Set([...teamConvTags, t.id]))
+                                : teamConvTags.filter((x) => x !== t.id);
+                              setTeamConvTags(next);
+                              persistUserReportSettings({
+                                teamConversionsFilter: {
+                                  preset: teamConvPeriodPreset,
+                                  startDate: teamConvStartDate ? teamConvStartDate.toISOString() : null,
+                                  endDate: teamConvEndDate ? teamConvEndDate.toISOString() : null,
+                                  agent: teamConvAgent,
+                                  tags: next,
+                                  status: teamConvStatus,
+                                },
+                              });
+                            }}
+                          />
+                          <span className="truncate">{t.name}</span>
+                        </label>
+                      );
+                    })}
+                  </div>
+                  {teamConvTags.length > 0 && (
+                    <div className="pt-2">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-7 px-2 text-[10px] rounded-none"
+                        onClick={() => {
+                          setTeamConvTags([]);
+                          persistUserReportSettings({
+                            teamConversionsFilter: {
+                              preset: teamConvPeriodPreset,
+                              startDate: teamConvStartDate ? teamConvStartDate.toISOString() : null,
+                              endDate: teamConvEndDate ? teamConvEndDate.toISOString() : null,
+                              agent: teamConvAgent,
+                              tags: [],
+                              status: teamConvStatus,
+                            },
+                          });
+                        }}
+                      >
+                        Limpar etiquetas
+                      </Button>
+                    </div>
+                  )}
+                </PopoverContent>
+              </Popover>
+
+              <Select
+                value={teamConvPeriodPreset}
+                onValueChange={(v) => {
+                  const next = v as any;
+                  setTeamConvPeriodPreset(next);
+                  if (next !== 'custom') {
+                    const r = getEffectiveRange(next, null, null);
+                    setTeamConvStartDate(r.from);
+                    setTeamConvEndDate(r.to);
+                    persistUserReportSettings({
+                      teamConversionsFilter: {
+                        preset: next,
+                        startDate: r.from ? r.from.toISOString() : null,
+                        endDate: r.to ? r.to.toISOString() : null,
+                        agent: teamConvAgent,
+                        tags: teamConvTags,
+                        status: teamConvStatus,
+                      },
+                    });
+                  } else {
+                    persistUserReportSettings({
+                      teamConversionsFilter: {
+                        preset: next,
+                        startDate: teamConvStartDate ? teamConvStartDate.toISOString() : null,
+                        endDate: teamConvEndDate ? teamConvEndDate.toISOString() : null,
+                        agent: teamConvAgent,
+                        tags: teamConvTags,
+                        status: teamConvStatus,
+                      },
+                    });
+                  }
+                }}
+              >
+                <SelectTrigger className="h-7 w-full text-[10px] rounded-none border-dashed border-[#d4d4d4] dark:border-gray-700">
+                  <SelectValue placeholder="Período" />
+                </SelectTrigger>
+                <SelectContent className="text-[10px] rounded-none">
+                  <SelectItem value="all">Todo período</SelectItem>
+                  <SelectItem value="today">Hoje</SelectItem>
+                  <SelectItem value="last7">Últimos 7 dias</SelectItem>
+                  <SelectItem value="last30">Últimos 30 dias</SelectItem>
+                  <SelectItem value="custom">Personalizado</SelectItem>
+                </SelectContent>
+              </Select>
+
+              {teamConvPeriodPreset === 'custom' && (
+                <>
+                  <Popover>
+                    <PopoverTrigger asChild>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="h-7 w-full px-2 text-[10px] rounded-none border-dashed border-[#d4d4d4] dark:border-gray-700 whitespace-nowrap"
+                      >
+                        De: {teamConvStartDate ? format(teamConvStartDate, 'dd/MM/yyyy') : '—'}
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent
+                      className="w-auto p-0 rounded-none bg-white text-gray-900 border border-[#d4d4d4] dark:bg-[#1b1b1b] dark:text-gray-100 dark:border-gray-700"
+                      align="end"
+                    >
+                      <Calendar
+                        mode="single"
+                        selected={teamConvStartDate || undefined}
+                        onSelect={(d) => {
+                          setTeamConvStartDate(d || null);
+                          persistUserReportSettings({
+                            teamConversionsFilter: {
+                              preset: 'custom',
+                              startDate: d ? d.toISOString() : null,
+                              endDate: teamConvEndDate ? teamConvEndDate.toISOString() : null,
+                              agent: teamConvAgent,
+                              tags: teamConvTags,
+                              status: teamConvStatus,
+                            },
+                          });
+                        }}
+                        initialFocus
+                      />
+                    </PopoverContent>
+                  </Popover>
+
+                  <Popover>
+                    <PopoverTrigger asChild>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="h-7 w-full px-2 text-[10px] rounded-none border-dashed border-[#d4d4d4] dark:border-gray-700 whitespace-nowrap"
+                      >
+                        Até: {teamConvEndDate ? format(teamConvEndDate, 'dd/MM/yyyy') : '—'}
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent
+                      className="w-auto p-0 rounded-none bg-white text-gray-900 border border-[#d4d4d4] dark:bg-[#1b1b1b] dark:text-gray-100 dark:border-gray-700"
+                      align="end"
+                    >
+                      <Calendar
+                        mode="single"
+                        selected={teamConvEndDate || undefined}
+                        onSelect={(d) => {
+                          setTeamConvEndDate(d || null);
+                          persistUserReportSettings({
+                            teamConversionsFilter: {
+                              preset: 'custom',
+                              startDate: teamConvStartDate ? teamConvStartDate.toISOString() : null,
+                              endDate: d ? d.toISOString() : null,
+                              agent: teamConvAgent,
+                              tags: teamConvTags,
+                              status: teamConvStatus,
+                            },
+                          });
+                        }}
+                        initialFocus
+                      />
+                    </PopoverContent>
+                  </Popover>
+
+                  {(teamConvStartDate || teamConvEndDate) && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-7 w-full px-2 text-[10px] rounded-none whitespace-nowrap"
+                      onClick={() => {
+                        setTeamConvStartDate(null);
+                        setTeamConvEndDate(null);
+                        persistUserReportSettings({
+                          teamConversionsFilter: {
+                            preset: 'custom',
+                            startDate: null,
+                            endDate: null,
+                            agent: teamConvAgent,
+                            tags: teamConvTags,
+                            status: teamConvStatus,
+                          },
+                        });
+                      }}
+                    >
+                      Limpar
+                    </Button>
+                  )}
+                </>
+              )}
+              </div>
+
+              {/* mobile/tablet: lista completa */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:hidden gap-3">
+                {teamConversions.map(renderTeamConversionCard)}
+                {teamConversions.length === 0 && (
+                  <Card className="rounded-none border-gray-200 dark:border-gray-700 dark:bg-[#1b1b1b] sm:col-span-2">
+                    <CardContent className="p-3">
+                      <div className="text-[11px] text-gray-600 dark:text-gray-300">
+                        Nenhuma conversão criada. Clique em <span className="font-medium">Nova Conversão</span>.
+                      </div>
+                    </CardContent>
+                  </Card>
+                )}
+              </div>
+
+              {/* desktop: max 9 (3x3) aqui */}
+              <div className="hidden lg:grid grid-cols-3 gap-3 h-[420px] overflow-hidden">
+                {teamConversions.slice(0, 9).map(renderTeamConversionCard)}
+              </div>
+            </div>
+            {/* A partir do 10º (desktop): vai para baixo, começando pela esquerda */}
+            <div className="hidden lg:block lg:col-span-2">
+              {teamConversions.length > 9 && (
+                <div className="grid grid-cols-6 gap-3">
+                  {teamConversions.slice(9).map(renderTeamConversionCard)}
+                </div>
+              )}
+            </div>
+              </SortableContext>
+            </DndContext>
           </div>
         </section>
 
         {/* Ranking – Vendas */}
         <section className="space-y-3">
-          <div className="flex items-center gap-2 text-sm font-semibold text-gray-900 dark:text-gray-100">
-            <Users className="h-4 w-4" />
-            Equipe – Ranking de Vendas
+          <div className="flex items-center justify-between gap-2">
+            <div className="flex items-center gap-2 text-sm font-semibold text-gray-900 dark:text-gray-100">
+              <Users className="h-4 w-4" />
+              Equipe – Ranking de Vendas
+            </div>
+            <div className="flex items-center gap-2 justify-end">
+              <Select
+                value={salesRankingPreset}
+                onValueChange={(v) => {
+                  const next = v as ConversionPeriodPreset;
+                  setSalesRankingPreset(next);
+                  if (next !== 'custom') {
+                    const r = getEffectiveRange(next, null, null);
+                    setSalesRankingStartDate(r.from);
+                    setSalesRankingEndDate(r.to);
+                  }
+                }}
+              >
+                <SelectTrigger className="h-7 w-[140px] shrink-0 text-[10px] rounded-none border-dashed border-[#d4d4d4] dark:border-gray-700">
+                  <SelectValue placeholder="Período" />
+                </SelectTrigger>
+                <SelectContent className="text-[10px] rounded-none">
+                  <SelectItem value="all">Todo período</SelectItem>
+                  <SelectItem value="today">Hoje</SelectItem>
+                  <SelectItem value="last7">Últimos 7 dias</SelectItem>
+                  <SelectItem value="last30">Últimos 30 dias</SelectItem>
+                  <SelectItem value="custom">Personalizado</SelectItem>
+                </SelectContent>
+              </Select>
+
+              {salesRankingPreset === 'custom' && (
+                <>
+                  <Popover>
+                    <PopoverTrigger asChild>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="h-7 shrink-0 px-2 text-[10px] rounded-none border-dashed border-[#d4d4d4] dark:border-gray-700 whitespace-nowrap"
+                      >
+                        De: {salesRankingStartDate ? format(salesRankingStartDate, 'dd/MM/yyyy') : '—'}
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent
+                      className="w-auto p-0 rounded-none bg-white text-gray-900 border border-[#d4d4d4] dark:bg-[#1b1b1b] dark:text-gray-100 dark:border-gray-700"
+                      align="end"
+                    >
+                      <Calendar
+                        mode="single"
+                        selected={salesRankingStartDate || undefined}
+                        onSelect={(d) => setSalesRankingStartDate(d || null)}
+                        initialFocus
+                      />
+                    </PopoverContent>
+                  </Popover>
+
+                  <Popover>
+                    <PopoverTrigger asChild>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="h-7 shrink-0 px-2 text-[10px] rounded-none border-dashed border-[#d4d4d4] dark:border-gray-700 whitespace-nowrap"
+                      >
+                        Até: {salesRankingEndDate ? format(salesRankingEndDate, 'dd/MM/yyyy') : '—'}
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent
+                      className="w-auto p-0 rounded-none bg-white text-gray-900 border border-[#d4d4d4] dark:bg-[#1b1b1b] dark:text-gray-100 dark:border-gray-700"
+                      align="end"
+                    >
+                      <Calendar
+                        mode="single"
+                        selected={salesRankingEndDate || undefined}
+                        onSelect={(d) => setSalesRankingEndDate(d || null)}
+                        initialFocus
+                      />
+                    </PopoverContent>
+                  </Popover>
+
+                  {(salesRankingStartDate || salesRankingEndDate) && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-7 shrink-0 px-2 text-[10px] rounded-none whitespace-nowrap"
+                      onClick={() => {
+                        setSalesRankingStartDate(null);
+                        setSalesRankingEndDate(null);
+                      }}
+                    >
+                      Limpar
+                    </Button>
+                  )}
+                </>
+              )}
+            </div>
           </div>
-          <div className="overflow-auto border border-gray-200 dark:border-gray-700">
-              <table className="min-w-full text-xs table-auto">
-              <thead className="bg-gray-100 dark:bg-[#1a1a1a] text-gray-700 dark:text-gray-200">
-                <tr>
-                  <th className="px-3 py-2 text-left">Usuário</th>
-                  <th className="px-3 py-2 text-right">Faturamento</th>
-                  <th className="px-3 py-2 text-right">Vendas</th>
-                  <th className="px-3 py-2 text-right">Produtos</th>
-                  <th className="px-3 py-2 text-right">PA</th>
-                  <th className="px-3 py-2 text-right">Ticket médio</th>
-                </tr>
-              </thead>
-              <tbody>
-                {rankingVendas.map((row) => (
-                  <tr key={row.id} className="border-t border-gray-200 dark:border-gray-800">
-                    <td className="px-3 py-2">{row.name}</td>
-                    <td className="px-3 py-2 text-right">{row.revenue.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</td>
-                    <td className="px-3 py-2 text-right">{row.sales}</td>
-                    <td className="px-3 py-2 text-right">{row.products}</td>
-                    <td className="px-3 py-2 text-right">{row.pa}</td>
-                    <td className="px-3 py-2 text-right">{row.ticket.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+          <div className="h-64 flex flex-col overflow-hidden min-w-0">
+            <div className="border border-gray-200 dark:border-gray-700 flex flex-col overflow-hidden min-w-0 h-full">
+              <div className="flex-1 overflow-y-auto overflow-x-auto">
+                <table className="min-w-full text-xs table-auto">
+                  <thead className="sticky top-0 z-10 bg-gray-100 dark:bg-[#1a1a1a] text-gray-700 dark:text-gray-200">
+                    <tr>
+                      <th className="px-3 py-2 text-left">Usuário</th>
+                      <th className="px-3 py-2 text-right">Faturamento</th>
+                      <th className="px-3 py-2 text-right">Vendas</th>
+                      <th className="px-3 py-2 text-right">Produtos</th>
+                      <th className="px-3 py-2 text-right">PA</th>
+                      <th className="px-3 py-2 text-right">Ticket médio</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {rankingVendas.map((row) => (
+                      <tr key={row.id} className="border-t border-gray-200 dark:border-gray-800">
+                        <td className="px-3 py-2">{row.name}</td>
+                        <td className="px-3 py-2 text-right tabular-nums">
+                          {Number(row.revenue || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+                        </td>
+                        <td className="px-3 py-2 text-right tabular-nums">{row.sales}</td>
+                        <td className="px-3 py-2 text-right tabular-nums">{row.products}</td>
+                        <td className="px-3 py-2 text-right tabular-nums">{row.pa}</td>
+                        <td className="px-3 py-2 text-right tabular-nums">
+                          {Number(row.ticket || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+
+              {/* Total fixo no bottom do card (fora do scroll) */}
+              <div className="flex-shrink-0 border-t border-gray-200 dark:border-gray-800 bg-gray-100 dark:bg-[#151515]">
+                <table className="w-full text-xs table-auto text-gray-700 dark:text-gray-200">
+                  <tbody>
+                    <tr>
+                      <td className="px-3 py-2 font-semibold">Total</td>
+                      <td className="px-3 py-2 text-right font-semibold tabular-nums">
+                        {rankingVendasTotals.revenue.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+                      </td>
+                      <td className="px-3 py-2 text-right font-semibold tabular-nums">{rankingVendasTotals.sales}</td>
+                      <td className="px-3 py-2 text-right font-semibold tabular-nums">{rankingVendasTotals.products}</td>
+                      <td className="px-3 py-2 text-right font-semibold tabular-nums">{rankingVendasTotals.pa}</td>
+                      <td className="px-3 py-2 text-right font-semibold tabular-nums">
+                        {rankingVendasTotals.ticket.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
           </div>
         </section>
 
         {/* Ranking – Trabalho */}
         <section className="space-y-3">
-          <div className="flex items-center gap-2 text-sm font-semibold text-gray-900 dark:text-gray-100">
-            <Users className="h-4 w-4" />
-            Equipe – Ranking de Trabalho
+          <div className="flex items-center justify-between gap-2">
+            <div className="flex items-center gap-2 text-sm font-semibold text-gray-900 dark:text-gray-100">
+              <Users className="h-4 w-4" />
+              Equipe – Ranking de Trabalho
+            </div>
+            <div className="flex items-center gap-2 justify-end">
+              <Select
+                value={workRankingPreset}
+                onValueChange={(v) => {
+                  const next = v as ConversionPeriodPreset;
+                  setWorkRankingPreset(next);
+                  if (next !== 'custom') {
+                    const r = getEffectiveRange(next, null, null);
+                    setWorkRankingStartDate(r.from);
+                    setWorkRankingEndDate(r.to);
+                  }
+                }}
+              >
+                <SelectTrigger className="h-7 w-[140px] shrink-0 text-[10px] rounded-none border-dashed border-[#d4d4d4] dark:border-gray-700">
+                  <SelectValue placeholder="Período" />
+                </SelectTrigger>
+                <SelectContent className="text-[10px] rounded-none">
+                  <SelectItem value="all">Todo período</SelectItem>
+                  <SelectItem value="today">Hoje</SelectItem>
+                  <SelectItem value="last7">Últimos 7 dias</SelectItem>
+                  <SelectItem value="last30">Últimos 30 dias</SelectItem>
+                  <SelectItem value="custom">Personalizado</SelectItem>
+                </SelectContent>
+              </Select>
+
+              {workRankingPreset === 'custom' && (
+                <>
+                  <Popover>
+                    <PopoverTrigger asChild>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="h-7 shrink-0 px-2 text-[10px] rounded-none border-dashed border-[#d4d4d4] dark:border-gray-700 whitespace-nowrap"
+                      >
+                        De: {workRankingStartDate ? format(workRankingStartDate, 'dd/MM/yyyy') : '—'}
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent
+                      className="w-auto p-0 rounded-none bg-white text-gray-900 border border-[#d4d4d4] dark:bg-[#1b1b1b] dark:text-gray-100 dark:border-gray-700"
+                      align="end"
+                    >
+                      <Calendar
+                        mode="single"
+                        selected={workRankingStartDate || undefined}
+                        onSelect={(d) => setWorkRankingStartDate(d || null)}
+                        initialFocus
+                      />
+                    </PopoverContent>
+                  </Popover>
+
+                  <Popover>
+                    <PopoverTrigger asChild>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="h-7 shrink-0 px-2 text-[10px] rounded-none border-dashed border-[#d4d4d4] dark:border-gray-700 whitespace-nowrap"
+                      >
+                        Até: {workRankingEndDate ? format(workRankingEndDate, 'dd/MM/yyyy') : '—'}
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent
+                      className="w-auto p-0 rounded-none bg-white text-gray-900 border border-[#d4d4d4] dark:bg-[#1b1b1b] dark:text-gray-100 dark:border-gray-700"
+                      align="end"
+                    >
+                      <Calendar
+                        mode="single"
+                        selected={workRankingEndDate || undefined}
+                        onSelect={(d) => setWorkRankingEndDate(d || null)}
+                        initialFocus
+                      />
+                    </PopoverContent>
+                  </Popover>
+
+                  {(workRankingStartDate || workRankingEndDate) && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-7 shrink-0 px-2 text-[10px] rounded-none whitespace-nowrap"
+                      onClick={() => {
+                        setWorkRankingStartDate(null);
+                        setWorkRankingEndDate(null);
+                      }}
+                    >
+                      Limpar
+                    </Button>
+                  )}
+                </>
+              )}
+            </div>
           </div>
-          <div className="overflow-auto border border-gray-200 dark:border-gray-700">
-            <table className="min-w-full text-xs">
-              <thead className="bg-gray-100 dark:bg-[#1a1a1a] text-gray-700 dark:text-gray-200">
-                <tr>
-                  <th className="px-3 py-2 text-left">Usuário</th>
-                  <th className="px-3 py-2 text-right">Mensagem</th>
-                  <th className="px-3 py-2 text-right">Ligação não atendida</th>
-                  <th className="px-3 py-2 text-right">Ligação atendida</th>
-                  <th className="px-3 py-2 text-right">Ligação abordada</th>
-                  <th className="px-3 py-2 text-right">Ligação agendada</th>
-                  <th className="px-3 py-2 text-right">Ligação de follow up</th>
-                  <th className="px-3 py-2 text-right">Reunião agendada</th>
-                  <th className="px-3 py-2 text-right">Reunião realizada</th>
-                  <th className="px-3 py-2 text-right">Reunião não realizada</th>
-                  <th className="px-3 py-2 text-right">Reunião reagendada</th>
-                  <th className="px-3 py-2 text-right">WhatsApp enviado</th>
-                  <th className="px-3 py-2 text-right">Total</th>
-                </tr>
-              </thead>
-              <tbody>
-                {rankingTrabalho.map((row) => (
-                  <tr key={row.id} className="border-t border-gray-200 dark:border-gray-800">
-                    <td className="px-3 py-2">{row.name}</td>
-                    <td className="px-3 py-2 text-right">{row.mensagem}</td>
-                    <td className="px-3 py-2 text-right">{row.ligacao_nao_atendida}</td>
-                    <td className="px-3 py-2 text-right">{row.ligacao_atendida}</td>
-                    <td className="px-3 py-2 text-right">{row.ligacao_abordada}</td>
-                    <td className="px-3 py-2 text-right">{row.ligacao_agendada}</td>
-                    <td className="px-3 py-2 text-right">{row.ligacao_follow_up}</td>
-                    <td className="px-3 py-2 text-right">{row.reuniao_agendada}</td>
-                    <td className="px-3 py-2 text-right">{row.reuniao_realizada}</td>
-                    <td className="px-3 py-2 text-right">{row.reuniao_nao_realizada}</td>
-                    <td className="px-3 py-2 text-right">{row.reuniao_reagendada}</td>
-                    <td className="px-3 py-2 text-right">{row.whatsapp_enviado}</td>
-                    <td className="px-3 py-2 text-right font-semibold">{row.total}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+          <div className="h-64 flex flex-col overflow-hidden min-w-0">
+            <div className="border border-gray-200 dark:border-gray-700 flex flex-col overflow-hidden min-w-0 h-full">
+              {/* Mantém o comportamento de largura/colunas como estava; apenas fixa header/total e usa scroll Y */}
+              <div className="flex-1 overflow-y-auto overflow-x-hidden">
+                <table className="w-full text-xs table-auto">
+                  <thead className="sticky top-0 z-10 bg-gray-100 dark:bg-[#1a1a1a] text-gray-700 dark:text-gray-200">
+                    <tr>
+                      <th className="px-3 py-2 text-left">Usuário</th>
+                      <th className="px-3 py-2 text-right">Mensagem</th>
+                      <th className="px-3 py-2 text-right">Ligação não atendida</th>
+                      <th className="px-3 py-2 text-right">Ligação atendida</th>
+                      <th className="px-3 py-2 text-right">Ligação abordada</th>
+                      <th className="px-3 py-2 text-right">Ligação agendada</th>
+                      <th className="px-3 py-2 text-right">Ligação de follow up</th>
+                      <th className="px-3 py-2 text-right">Reunião agendada</th>
+                      <th className="px-3 py-2 text-right">Reunião realizada</th>
+                      <th className="px-3 py-2 text-right">Reunião não realizada</th>
+                      <th className="px-3 py-2 text-right">Reunião reagendada</th>
+                      <th className="px-3 py-2 text-right">WhatsApp enviado</th>
+                      <th className="px-3 py-2 text-right">Total</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {rankingTrabalho.map((row) => (
+                      <tr key={row.id} className="border-t border-gray-200 dark:border-gray-800">
+                        <td className="px-3 py-2">{row.name}</td>
+                        <td className="px-3 py-2 text-right tabular-nums">{row.mensagem}</td>
+                        <td className="px-3 py-2 text-right tabular-nums">{row.ligacao_nao_atendida}</td>
+                        <td className="px-3 py-2 text-right tabular-nums">{row.ligacao_atendida}</td>
+                        <td className="px-3 py-2 text-right tabular-nums">{row.ligacao_abordada}</td>
+                        <td className="px-3 py-2 text-right tabular-nums">{row.ligacao_agendada}</td>
+                        <td className="px-3 py-2 text-right tabular-nums">{row.ligacao_follow_up}</td>
+                        <td className="px-3 py-2 text-right tabular-nums">{row.reuniao_agendada}</td>
+                        <td className="px-3 py-2 text-right tabular-nums">{row.reuniao_realizada}</td>
+                        <td className="px-3 py-2 text-right tabular-nums">{row.reuniao_nao_realizada}</td>
+                        <td className="px-3 py-2 text-right tabular-nums">{row.reuniao_reagendada}</td>
+                        <td className="px-3 py-2 text-right tabular-nums">{row.whatsapp_enviado}</td>
+                        <td className="px-3 py-2 text-right font-semibold tabular-nums">{row.total}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                  <tfoot className="sticky bottom-0 z-10 bg-gray-100 dark:bg-[#151515] text-gray-700 dark:text-gray-200 border-t border-gray-200 dark:border-gray-800">
+                    <tr>
+                      <td className="px-3 py-2 font-semibold">Total</td>
+                      <td className="px-3 py-2 text-right font-semibold tabular-nums">{rankingTrabalhoTotals.mensagem}</td>
+                      <td className="px-3 py-2 text-right font-semibold tabular-nums">{rankingTrabalhoTotals.ligacao_nao_atendida}</td>
+                      <td className="px-3 py-2 text-right font-semibold tabular-nums">{rankingTrabalhoTotals.ligacao_atendida}</td>
+                      <td className="px-3 py-2 text-right font-semibold tabular-nums">{rankingTrabalhoTotals.ligacao_abordada}</td>
+                      <td className="px-3 py-2 text-right font-semibold tabular-nums">{rankingTrabalhoTotals.ligacao_agendada}</td>
+                      <td className="px-3 py-2 text-right font-semibold tabular-nums">{rankingTrabalhoTotals.ligacao_follow_up}</td>
+                      <td className="px-3 py-2 text-right font-semibold tabular-nums">{rankingTrabalhoTotals.reuniao_agendada}</td>
+                      <td className="px-3 py-2 text-right font-semibold tabular-nums">{rankingTrabalhoTotals.reuniao_realizada}</td>
+                      <td className="px-3 py-2 text-right font-semibold tabular-nums">{rankingTrabalhoTotals.reuniao_nao_realizada}</td>
+                      <td className="px-3 py-2 text-right font-semibold tabular-nums">{rankingTrabalhoTotals.reuniao_reagendada}</td>
+                      <td className="px-3 py-2 text-right font-semibold tabular-nums">{rankingTrabalhoTotals.whatsapp_enviado}</td>
+                      <td className="px-3 py-2 text-right font-semibold tabular-nums">{rankingTrabalhoTotals.total}</td>
+                    </tr>
+                  </tfoot>
+                </table>
+              </div>
+            </div>
           </div>
         </section>
               </div>

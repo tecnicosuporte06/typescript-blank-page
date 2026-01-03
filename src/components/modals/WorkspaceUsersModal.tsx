@@ -1,38 +1,15 @@
-import React, { useState, useEffect } from "react";
-import { User, UserPlus, Edit, Trash, Eye, EyeOff, Plus, X } from "lucide-react";
-import { Button } from "@/components/ui/button";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+import React, { useEffect, useMemo, useState } from "react";
+import { Edit, Trash, User, UserPlus } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { useWorkspaceMembers, WorkspaceMember } from "@/hooks/useWorkspaceMembers";
-import { useWorkspaceConnections } from "@/hooks/useWorkspaceConnections";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/components/ui/use-toast";
-import { supabase } from "@/integrations/supabase/client";
-import { useCargos } from "@/hooks/useCargos";
+import { useSystemUsers, type SystemUser } from "@/hooks/useSystemUsers";
+import { useWorkspaceMembers, type WorkspaceMember } from "@/hooks/useWorkspaceMembers";
 import { AdicionarEditarUsuarioModal } from "./AdicionarEditarUsuarioModal";
 import { DeletarUsuarioModal } from "./DeletarUsuarioModal";
-import { useSystemUsers } from "@/hooks/useSystemUsers";
 
 interface WorkspaceUsersModalProps {
   open: boolean;
@@ -42,200 +19,118 @@ interface WorkspaceUsersModalProps {
 }
 
 const roleLabels = {
-  user: 'Usuário',
-  admin: 'Administrador',
-  master: 'Master'
-};
+  user: "Usuário",
+  admin: "Administrador",
+  master: "Master",
+} as const;
 
-const roleVariants = {
-  user: 'secondary' as const,
-  admin: 'default' as const,
-  master: 'destructive' as const
-};
+const DEFAULT_PAGE_SIZE = 100;
+const MIN_PAGE_SIZE = 10;
 
 export function WorkspaceUsersModal({ open, onOpenChange, workspaceId, workspaceName }: WorkspaceUsersModalProps) {
-  const [showAddUser, setShowAddUser] = useState(false);
-  const [selectedRole, setSelectedRole] = useState<'user' | 'admin' | 'master'>('user');
-  const [editingMember, setEditingMember] = useState<WorkspaceMember | null>(null);
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const [showPassword, setShowPassword] = useState(false);
-  const [defaultInstance, setDefaultInstance] = useState<string | null>(null);
-  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
-  const [userToEdit, setUserToEdit] = useState<any>(null);
-  const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
-  const [userToDelete, setUserToDelete] = useState<{ id: string; name: string; memberId: string } | null>(null);
-  
-  // Form data for new user
-  const [formData, setFormData] = useState({
-    name: '',
-    email: '',
-    senha: '',
-    default_channel: '',
-    phone: ''
-  });
-
-  const { members, isLoading, createUserAndAddToWorkspace, updateMember, removeMember } = useWorkspaceMembers(workspaceId);
-  const { connections, isLoading: connectionsLoading } = useWorkspaceConnections(workspaceId);
   const { toast } = useToast();
   const { deleteUser } = useSystemUsers();
+  const { members, isLoading, removeMember, refreshMembers } = useWorkspaceMembers(workspaceId);
 
-  // Fetch default instance when showing add user form
-  useEffect(() => {
-    if (showAddUser && workspaceId && !defaultInstance) {
-      const fetchDefaultInstance = async () => {
-        try {
-          const { data, error } = await supabase.functions.invoke('get-default-instance', {
-            body: { workspaceId }
-          });
-          
-          if (!error && data?.defaultInstance) {
-            setDefaultInstance(data.defaultInstance);
-            // Pre-fill the select if default instance exists and is in connections list
-            if (connections.some(conn => conn.id === data.defaultInstance)) {
-              setFormData(prev => ({ ...prev, default_channel: data.defaultInstance }));
-            }
-          }
-        } catch (error) {
-          console.error('Error fetching default instance:', error);
-        }
-      };
-      
-      fetchDefaultInstance();
-    }
-  }, [showAddUser, workspaceId, connections, defaultInstance]);
+  const [searchTerm, setSearchTerm] = useState("");
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
 
-  // Update form when connections load and default instance is available
-  useEffect(() => {
-    if (defaultInstance && connections.length > 0 && !formData.default_channel) {
-      const defaultConnection = connections.find(conn => conn.id === defaultInstance);
-      if (defaultConnection) {
-        setFormData(prev => ({ ...prev, default_channel: defaultInstance }));
-      }
-    }
-  }, [defaultInstance, connections, formData.default_channel]);
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  const [userToEdit, setUserToEdit] = useState<SystemUser | null>(null);
 
-  const handleCreateUser = async () => {
-    if (!formData.name || !formData.email || !formData.senha) {
-      toast({
-        title: "Erro",
-        description: "Preencha todos os campos obrigatórios",
-        variant: "destructive"
-      });
-      return;
-    }
+  const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
+  const [userToDelete, setUserToDelete] = useState<{ id: string; name: string; memberId: string } | null>(null);
 
-    // Set default_channel if not selected
-    let finalFormData = { ...formData, profile: selectedRole };
-    if (!finalFormData.default_channel) {
-      // Try to use default instance
-      if (defaultInstance && connections.some(conn => conn.id === defaultInstance)) {
-        finalFormData.default_channel = defaultInstance;
-      } else {
-        // Fallback to first connected connection, then first available
-        const connectedConnection = connections.find(conn => conn.status === 'connected');
-        const fallbackConnection = connectedConnection || connections[0];
-        
-        if (fallbackConnection) {
-          finalFormData.default_channel = fallbackConnection.id;
-        }
-      }
-    }
-    
-    setIsSubmitting(true);
-    try {
-      await createUserAndAddToWorkspace(finalFormData, selectedRole);
-      
-      // Reset form
-      setFormData({
-        name: '',
-        email: '',
-        senha: '',
-        default_channel: '',
-        phone: ''
-      });
-      setSelectedRole('user');
-      setShowAddUser(false);
-      setDefaultInstance(null);
-      
-      toast({
-        title: "Sucesso",
-        description: "Usuário criado e adicionado ao workspace com sucesso"
-      });
-    } catch (error) {
-      // Error handled in hook
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
-
-  const handleCancel = () => {
-    setFormData({
-      name: '',
-      email: '',
-      senha: '',
-      default_channel: '',
-      phone: ''
+  const filteredMembers = useMemo(() => {
+    const q = searchTerm.trim().toLowerCase();
+    const base = (members || []).filter((m) => m.user?.profile !== "master");
+    if (!q) return base;
+    return base.filter((m) => {
+      const name = (m.user?.name || "").toLowerCase();
+      const email = (m.user?.email || "").toLowerCase();
+      return name.includes(q) || email.includes(q);
     });
-    setSelectedRole('user');
-    setShowAddUser(false);
-    setDefaultInstance(null);
+  }, [members, searchTerm]);
+
+  const totalCount = filteredMembers.length;
+  const totalPages = Math.max(1, Math.ceil((totalCount || 0) / pageSize));
+  const startIndex = totalCount > 0 ? (page - 1) * pageSize + 1 : 0;
+  const endIndex = totalCount > 0 ? Math.min(page * pageSize, totalCount) : 0;
+
+  const pagedMembers = useMemo(() => {
+    const start = (page - 1) * pageSize;
+    const end = page * pageSize;
+    return filteredMembers.slice(start, end);
+  }, [filteredMembers, page, pageSize]);
+
+  useEffect(() => {
+    setPage((p) => Math.min(Math.max(1, p), totalPages));
+  }, [totalPages]);
+
+  const handlePageSizeChange = (value: string) => {
+    const parsed = Number(value);
+    const normalized = Math.max(MIN_PAGE_SIZE, Number.isFinite(parsed) ? parsed : DEFAULT_PAGE_SIZE);
+    setPageSize(normalized);
+    setPage(1);
   };
 
-  const handleUpdateRole = async (memberId: string, newRole: 'user' | 'admin' | 'master') => {
-    try {
-      await updateMember(memberId, { role: newRole });
-      setEditingMember(null);
-    } catch (error) {
-      // Error handled in hook
-    }
+  const openCreate = () => {
+    setUserToEdit(null);
+    setIsEditModalOpen(true);
   };
 
-  const handleRemoveMember = async (member: WorkspaceMember) => {
+  const openEdit = (member: WorkspaceMember) => {
+    if (!member.user) return;
+
+    const systemUser: SystemUser = {
+      id: member.user_id,
+      name: member.user.name || "",
+      email: member.user.email || "",
+      profile: member.user.profile || "user",
+      status: (member.user as any)?.status || "active",
+      avatar: member.user.avatar || undefined,
+      cargo_id: (member.user as any)?.cargo_id,
+      cargo_ids: (member.user as any)?.cargo_ids,
+      cargo_names: (member.user as any)?.cargo_names,
+      default_channel: (member.user as any)?.default_channel,
+      created_at: (member.user as any)?.created_at || member.created_at,
+      updated_at: (member.user as any)?.updated_at || member.created_at,
+      workspaces: [{ id: workspaceId, name: workspaceName, role: member.role }],
+      empresa: workspaceName,
+    };
+
+    setUserToEdit(systemUser);
+    setIsEditModalOpen(true);
+  };
+
+  const onEditSuccess = () => {
+    setIsEditModalOpen(false);
+    setUserToEdit(null);
+    refreshMembers();
+  };
+
+  const requestDelete = (member: WorkspaceMember) => {
     setUserToDelete({
       id: member.user_id,
-      name: member.user?.name || 'N/A',
-      memberId: member.id
+      name: member.user?.name || "N/A",
+      memberId: member.id,
     });
     setIsDeleteModalOpen(true);
   };
 
-  const handleConfirmDelete = async () => {
+  const confirmDelete = async () => {
     if (!userToDelete) return;
-    
     try {
       await deleteUser(userToDelete.id);
       await removeMember(userToDelete.memberId);
       setIsDeleteModalOpen(false);
       setUserToDelete(null);
-      toast({
-        title: "Sucesso",
-        description: "Usuário excluído com sucesso"
-      });
-    } catch (error) {
-      // Error handled in hook
+      refreshMembers();
+      toast({ title: "Sucesso", description: "Usuário excluído com sucesso" });
+    } catch (e) {
+      // erros já tratados nos hooks
     }
-  };
-
-  const handleEditUser = (member: WorkspaceMember) => {
-    if (member.user) {
-      setUserToEdit({
-        id: member.user_id,
-        name: member.user.name,
-        email: member.user.email,
-        profile: member.user.profile,
-        phone: member.user.phone || '',
-        default_channel: (member.user as any).default_channel || '',
-        cargo_ids: (member.user as any).cargo_ids || []
-      });
-      setIsEditModalOpen(true);
-    }
-  };
-
-  const handleEditSuccess = () => {
-    setIsEditModalOpen(false);
-    setUserToEdit(null);
-    // Refresh members list
-    window.location.reload();
   };
 
   return (
@@ -248,266 +143,195 @@ export function WorkspaceUsersModal({ open, onOpenChange, workspaceId, workspace
           </DialogTitle>
         </DialogHeader>
 
+        <AdicionarEditarUsuarioModal
+          open={isEditModalOpen}
+          onOpenChange={setIsEditModalOpen}
+          editingUser={userToEdit}
+          workspaceId={workspaceId}
+          lockWorkspace
+          onSuccess={onEditSuccess}
+        />
+
+        <DeletarUsuarioModal
+          open={isDeleteModalOpen}
+          onOpenChange={setIsDeleteModalOpen}
+          userToDelete={userToDelete}
+          onConfirm={confirmDelete}
+        />
+
         <div className="space-y-4">
-          {/* Add User Section */}
-          <div className="flex items-center justify-between">
-            <h3 className="text-lg font-medium">Membros ({members.length})</h3>
-            <Button
-              onClick={() => setShowAddUser(!showAddUser)}
-              className="gap-2"
-            >
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="flex items-center gap-3 min-w-0">
+              <h3 className="text-lg font-medium whitespace-nowrap">Membros ({members.length})</h3>
+              <Input
+                value={searchTerm}
+                onChange={(e) => {
+                  setSearchTerm(e.target.value);
+                  setPage(1);
+                }}
+                placeholder="Buscar por nome ou email..."
+                className="h-8 w-[320px] max-w-full rounded-none text-xs dark:bg-[#161616] dark:border-gray-700 dark:text-gray-100"
+              />
+            </div>
+
+            <Button onClick={openCreate} className="gap-2 rounded-none h-8 text-xs">
               <UserPlus className="w-4 h-4" />
               Adicionar Usuário
             </Button>
           </div>
 
-          {showAddUser && (
-            <div className="border rounded-lg p-6 space-y-6">
-              <h4 className="font-medium text-lg">Criar Novo Usuário</h4>
-              
-              {/* Dados Básicos */}
-              <div className="space-y-4">
-                <h5 className="font-medium text-sm text-muted-foreground">Dados Básicos</h5>
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="name">Nome *</Label>
-                    <Input
-                      id="name"
-                      placeholder="Nome completo"
-                      value={formData.name}
-                      onChange={(e) => setFormData(prev => ({ ...prev, name: e.target.value }))}
-                    />
-                  </div>
-                  
-                  <div className="space-y-2">
-                    <Label htmlFor="email">E-mail *</Label>
-                    <Input
-                      id="email"
-                      type="email"
-                      placeholder="usuario@exemplo.com"
-                      value={formData.email}
-                      onChange={(e) => setFormData(prev => ({ ...prev, email: e.target.value }))}
-                    />
-                  </div>
-                  
-                  <div className="space-y-2">
-                    <Label htmlFor="senha">Senha *</Label>
-                    <div className="relative">
-                      <Input
-                        id="senha"
-                        type={showPassword ? "text" : "password"}
-                        placeholder="Digite a senha"
-                        value={formData.senha}
-                        onChange={(e) => setFormData(prev => ({ ...prev, senha: e.target.value }))}
-                      />
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="icon"
-                        className="absolute right-2 top-1/2 -translate-y-1/2 h-4 w-4"
-                        onClick={() => setShowPassword(!showPassword)}
+          <div className="border border-gray-300 dark:border-gray-700 overflow-hidden">
+            <div className="overflow-auto">
+              <table className="min-w-full text-xs">
+                <thead className="sticky top-0 z-10 bg-[#f3f3f3] dark:bg-[#111111] text-gray-700 dark:text-gray-200">
+                  <tr>
+                    <th className="border border-[#e0e0e0] dark:border-gray-700 px-2 py-1 text-left">Nome</th>
+                    <th className="border border-[#e0e0e0] dark:border-gray-700 px-2 py-1 text-left">Email</th>
+                    <th className="border border-[#e0e0e0] dark:border-gray-700 px-2 py-1 text-left w-[120px]">Perfil</th>
+                    <th className="border border-[#e0e0e0] dark:border-gray-700 px-2 py-1 text-left">Cargo</th>
+                    <th className="border border-[#e0e0e0] dark:border-gray-700 px-2 py-1 text-left w-[110px]">Status</th>
+                    <th className="border border-[#e0e0e0] dark:border-gray-700 px-2 py-1 text-left w-[140px]">Adicionado em</th>
+                    <th className="border border-[#e0e0e0] dark:border-gray-700 px-1 py-1 text-center w-[72px]">Ações</th>
+                  </tr>
+                </thead>
+
+                <tbody>
+                  {isLoading ? (
+                    <tr>
+                      <td
+                        className="border border-[#e0e0e0] dark:border-gray-700 px-3 py-8 text-center text-gray-600 dark:text-gray-300"
+                        colSpan={7}
                       >
-                        {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                      </Button>
-                    </div>
-                  </div>
-                  
-                  <div className="space-y-2">
-                    <Label htmlFor="phone">Telefone</Label>
-                    <Input
-                      id="phone"
-                      placeholder="(11) 99999-9999"
-                      value={formData.phone}
-                      onChange={(e) => setFormData(prev => ({ ...prev, phone: e.target.value }))}
-                    />
-                  </div>
-                  
-                  <div className="space-y-2">
-                    <Label htmlFor="default_channel">Canal Padrão</Label>
-                    <Select 
-                      value={formData.default_channel} 
-                      onValueChange={(value) => setFormData(prev => ({ ...prev, default_channel: value }))}
-                    >
-                      <SelectTrigger>
-                        <SelectValue placeholder={connectionsLoading ? "Carregando..." : "Selecione uma conexão (opcional)"} />
+                        Carregando...
+                      </td>
+                    </tr>
+                  ) : totalCount === 0 ? (
+                    <tr>
+                      <td
+                        className="border border-[#e0e0e0] dark:border-gray-700 px-3 py-8 text-center text-gray-500 dark:text-gray-400"
+                        colSpan={7}
+                      >
+                        Nenhum membro encontrado
+                      </td>
+                    </tr>
+                  ) : (
+                    pagedMembers.map((member) => {
+                      const status = (member.user as any)?.status;
+                      const cargoNames = ((member.user as any)?.cargo_names || []) as string[];
+
+                      return (
+                        <tr key={member.id} className="hover:bg-gray-50 dark:hover:bg-[#1a1a1a]">
+                          <td className="border border-[#e0e0e0] dark:border-gray-700 px-2 py-1 bg-white dark:bg-[#111111] font-medium">
+                            {member.user?.name || "N/A"}
+                          </td>
+                          <td className="border border-[#e0e0e0] dark:border-gray-700 px-2 py-1 bg-white dark:bg-[#111111] text-gray-600 dark:text-gray-300">
+                            {member.user?.email || "N/A"}
+                          </td>
+                          <td className="border border-[#e0e0e0] dark:border-gray-700 px-2 py-1 bg-white dark:bg-[#111111]">
+                            <Badge variant="outline" className="rounded-none">
+                              {roleLabels[(member.user?.profile as any) || "user"] || (member.user?.profile || "user")}
+                            </Badge>
+                          </td>
+                          <td className="border border-[#e0e0e0] dark:border-gray-700 px-2 py-1 bg-white dark:bg-[#111111]">
+                            {cargoNames.length > 0 ? cargoNames.join(", ") : "—"}
+                          </td>
+                          <td className="border border-[#e0e0e0] dark:border-gray-700 px-2 py-1 bg-white dark:bg-[#111111]">
+                            <Badge
+                              variant={status === "active" ? "secondary" : "outline"}
+                              className={
+                                status === "active"
+                                  ? "bg-brand-yellow text-black hover:bg-brand-yellow-hover rounded-full px-3 py-1"
+                                  : "border-destructive text-destructive rounded-full px-3 py-1"
+                              }
+                            >
+                              {status === "active" ? "Ativo" : "Inativo"}
+                            </Badge>
+                          </td>
+                          <td className="border border-[#e0e0e0] dark:border-gray-700 px-2 py-1 bg-white dark:bg-[#111111] text-gray-600 dark:text-gray-300">
+                            {new Date(member.created_at).toLocaleDateString("pt-BR")}
+                          </td>
+                          <td className="border border-[#e0e0e0] dark:border-gray-700 px-1 py-0 text-center bg-white dark:bg-[#111111]">
+                            <div className="flex items-center justify-center gap-0.5 h-full">
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-6 w-6 rounded-sm hover:bg-blue-100 text-gray-600 dark:text-gray-200 dark:hover:bg-[#243447]"
+                                onClick={() => openEdit(member)}
+                                title="Editar usuário"
+                              >
+                                <Edit className="h-3.5 w-3.5" />
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-6 w-6 rounded-sm hover:bg-red-100 text-red-600 dark:hover:bg-[#2a1f1f]"
+                                onClick={() => requestDelete(member)}
+                                title="Excluir usuário"
+                              >
+                                <Trash className="h-3.5 w-3.5" />
+                              </Button>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })
+                  )}
+                </tbody>
+              </table>
+            </div>
+
+            <div className="sticky bottom-0 left-0 right-0 bg-[#f8f9fa] dark:bg-[#141414] border-t border-gray-300 dark:border-gray-700 px-4 py-2 z-20">
+              <div className="flex flex-wrap items-center justify-between gap-3 text-[11px] text-gray-600 dark:text-gray-400">
+                <div className="flex flex-wrap items-center gap-3">
+                  <span>
+                    Linhas {startIndex}-{endIndex} de {totalCount || 0}
+                  </span>
+                  <div className="flex items-center gap-1">
+                    <span>Linhas/página:</span>
+                    <Select value={String(pageSize)} onValueChange={handlePageSizeChange}>
+                      <SelectTrigger className="h-7 w-24 rounded-none">
+                        <SelectValue />
                       </SelectTrigger>
-                      <SelectContent className="z-50 bg-background border border-border">
-                        {connections.length === 0 ? (
-                          <SelectItem value="no-connections" disabled>
-                            Nenhuma conexão disponível
+                      <SelectContent>
+                        {["10", "25", "50", "100", "200"].map((opt) => (
+                          <SelectItem key={opt} value={opt}>
+                            {opt}
                           </SelectItem>
-                        ) : (
-                          connections.map((connection) => (
-                            <SelectItem key={connection.id} value={connection.id}>
-                              {connection.instance_name} {connection.phone_number ? `— ${connection.phone_number}` : ''} 
-                              {connection.status === 'connected' && ' ✓'}
-                            </SelectItem>
-                          ))
-                        )}
+                        ))}
                       </SelectContent>
                     </Select>
                   </div>
                 </div>
-              </div>
-
-              {/* Função no Workspace */}
-              <div className="space-y-4">
-                <h5 className="font-medium text-sm text-muted-foreground">Função no Workspace</h5>
-                <div className="space-y-2">
-                  <Label>Função</Label>
-                  <Select value={selectedRole} onValueChange={(value: 'user' | 'admin' | 'master') => setSelectedRole(value)}>
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="user">Usuário</SelectItem>
-                    <SelectItem value="admin">Administrador</SelectItem>
-                  </SelectContent>
-                  </Select>
+                <div className="flex items-center gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="h-7 px-2 rounded-none"
+                    onClick={() => setPage((p) => Math.max(1, p - 1))}
+                    disabled={page === 1 || isLoading}
+                  >
+                    Anterior
+                  </Button>
+                  <span>
+                    Página {page} / {totalPages}
+                  </span>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="h-7 px-2 rounded-none"
+                    onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                    disabled={isLoading || page >= totalPages}
+                  >
+                    Próxima
+                  </Button>
                 </div>
               </div>
-              
-              <div className="flex gap-2 pt-4">
-                <Button 
-                  onClick={handleCreateUser}
-                  disabled={isSubmitting || !formData.name || !formData.email || !formData.senha}
-                >
-                  {isSubmitting ? "Criando..." : "Criar Usuário"}
-                </Button>
-                <Button 
-                  variant="outline" 
-                  onClick={handleCancel}
-                  disabled={isSubmitting}
-                >
-                  Cancelar
-                </Button>
-              </div>
             </div>
-          )}
-
-          {/* Members Table */}
-          <div className="border rounded-lg">
-            <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>Nome</TableHead>
-                        <TableHead>Email</TableHead>
-                        <TableHead>Perfil</TableHead>
-                        <TableHead>Cargo</TableHead>
-                        <TableHead>Status</TableHead>
-                        <TableHead>Adicionado em</TableHead>
-                        <TableHead className="w-[100px]">Ações</TableHead>
-                      </TableRow>
-                    </TableHeader>
-              <TableBody>
-                {isLoading ? (
-                  <TableRow>
-                    <TableCell colSpan={7} className="text-center py-8">
-                      Carregando...
-                    </TableCell>
-                  </TableRow>
-                ) : members.length === 0 ? (
-                  <TableRow>
-                    <TableCell colSpan={7} className="text-center py-8 text-muted-foreground">
-                      Nenhum membro encontrado
-                    </TableCell>
-                  </TableRow>
-                ) : (
-                  members
-                    .filter(member => member.user?.profile !== 'master')
-                    .map((member) => (
-                    <TableRow key={member.id}>
-                      <TableCell className="font-medium">
-                        {member.user?.name || 'N/A'}
-                      </TableCell>
-                      
-                      <TableCell className="text-muted-foreground">
-                        {member.user?.email || 'N/A'}
-                      </TableCell>
-                      
-                      <TableCell>
-                        <span className="capitalize">{member.user?.profile || 'N/A'}</span>
-                      </TableCell>
-
-                      <TableCell>
-                        <div className="flex flex-wrap gap-1">
-                          {member.user?.cargo_names && member.user.cargo_names.length > 0 ? (
-                            member.user.cargo_names.map((cargoName, index) => (
-                              <Badge 
-                                key={index} 
-                                variant="outline"
-                                className="text-xs"
-                              >
-                                {cargoName}
-                              </Badge>
-                            ))
-                          ) : (
-                            <span className="text-muted-foreground text-sm">-</span>
-                          )}
-                        </div>
-                      </TableCell>
-
-                      <TableCell>
-                        <Badge 
-                          variant={member.user?.status === 'active' ? 'secondary' : 'outline'} 
-                          className={member.user?.status === 'active' 
-                            ? "bg-brand-yellow text-black hover:bg-brand-yellow-hover rounded-full px-3 py-1" 
-                            : "border-destructive text-destructive rounded-full px-3 py-1"
-                          }
-                        >
-                          {member.user?.status === 'active' ? 'Ativo' : 'Inativo'}
-                        </Badge>
-                      </TableCell>
-                      
-                      <TableCell className="text-muted-foreground text-sm">
-                        {new Date(member.created_at).toLocaleDateString('pt-BR')}
-                      </TableCell>
-                      
-                      <TableCell>
-                        <div className="flex gap-1">
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            onClick={() => handleEditUser(member)}
-                          >
-                            <Edit className="w-4 h-4" />
-                          </Button>
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            onClick={() => handleRemoveMember(member)}
-                          >
-                            <Trash className="w-4 h-4" />
-                          </Button>
-                        </div>
-                      </TableCell>
-                    </TableRow>
-                  ))
-                )}
-              </TableBody>
-            </Table>
           </div>
         </div>
       </DialogContent>
-
-      {/* Modal de Editar Usuário */}
-      <AdicionarEditarUsuarioModal
-        open={isEditModalOpen}
-        onOpenChange={setIsEditModalOpen}
-        editingUser={userToEdit}
-        onSuccess={handleEditSuccess}
-      />
-
-      {/* Modal de Deletar Usuário */}
-      <DeletarUsuarioModal
-        isOpen={isDeleteModalOpen}
-        onClose={() => {
-          setIsDeleteModalOpen(false);
-          setUserToDelete(null);
-        }}
-        onConfirm={handleConfirmDelete}
-        userName={userToDelete?.name || ''}
-      />
     </Dialog>
   );
 }
+
+

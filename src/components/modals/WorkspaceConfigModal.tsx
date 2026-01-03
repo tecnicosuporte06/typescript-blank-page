@@ -107,8 +107,8 @@ export function WorkspaceConfigModal({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-6xl max-h-[90vh] overflow-y-auto bg-white text-gray-900 dark:bg-[#0b0b0b] dark:text-gray-100 dark:border-gray-700">
-        <DialogHeader className="px-4 py-2 bg-primary text-primary-foreground border-b border-[#d4d4d4] rounded-t-none dark:border-gray-700">
-          <DialogTitle className="flex items-center gap-2 text-primary-foreground">
+        <DialogHeader className="px-4 py-2 bg-primary text-primary-foreground dark:text-white border-b border-[#d4d4d4] rounded-t-none dark:border-gray-700">
+          <DialogTitle className="flex items-center gap-2 text-primary-foreground dark:text-white">
             <Settings className="w-5 h-5" />
             Configurações da Empresa: {workspaceName}
           </DialogTitle>
