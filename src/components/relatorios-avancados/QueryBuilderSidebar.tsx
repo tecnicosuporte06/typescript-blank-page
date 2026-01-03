@@ -225,11 +225,11 @@ export function QueryBuilderSidebar({
   };
 
   const isInline = layout === 'inline';
-  const inlineTrigger = "h-7 text-[10px] rounded-none border-dashed border-[#d4d4d4] dark:border-gray-700 bg-transparent px-2 w-auto min-w-0 flex-1 basis-0 [&_*]:min-w-0";
-  const panelTrigger = "h-8 text-[11px] rounded-none border-[#d4d4d4] dark:border-gray-700 bg-white dark:bg-[#2d2d2d] px-2";
+  const inlineTrigger = "h-7 text-[10px] rounded-none bg-gray-200/50 dark:bg-[#2a2a2a] border-gray-300 dark:border-gray-600 px-2 w-auto min-w-0 flex-1 basis-0 [&_*]:min-w-0";
+  const panelTrigger = "h-8 text-[11px] rounded-none border-gray-300 dark:border-gray-600 bg-gray-200/50 dark:bg-[#2a2a2a] px-2";
   const triggerClass = (extra?: string) => cn(isInline ? inlineTrigger : panelTrigger, extra);
-  const inlineBtn = "h-7 px-2 text-[10px] rounded-none border-dashed border-[#d4d4d4] dark:border-gray-700 bg-transparent w-auto min-w-0 flex-[0_1_auto] [&_*]:min-w-0";
-  const panelBtn = "h-8 px-2 text-[11px] rounded-none border-[#d4d4d4] dark:border-gray-700 bg-white dark:bg-[#2d2d2d]";
+  const inlineBtn = "h-7 px-2 text-[10px] rounded-none bg-gray-200/50 dark:bg-[#2a2a2a] border-gray-300 dark:border-gray-600 w-auto min-w-0 flex-[0_1_auto] [&_*]:min-w-0";
+  const panelBtn = "h-8 px-2 text-[11px] rounded-none border-gray-300 dark:border-gray-600 bg-gray-200/50 dark:bg-[#2a2a2a]";
   const btnClass = (extra?: string) => cn(isInline ? inlineBtn : panelBtn, extra);
 
   return (
@@ -401,7 +401,7 @@ export function QueryBuilderSidebar({
                 <Button
                   variant="outline"
                   className={cn(
-                    isInline ? "h-7 px-2 text-[10px] rounded-none border-dashed border-[#d4d4d4] dark:border-gray-700 bg-transparent min-w-[90px] w-auto flex-[0_1_auto] justify-start overflow-hidden" : "h-8 px-2 text-[11px] rounded-none border-[#d4d4d4] dark:border-gray-700 bg-white dark:bg-[#2d2d2d] min-w-[90px] justify-start",
+                    isInline ? "h-7 px-2 text-[10px] rounded-none bg-gray-200/50 dark:bg-[#2a2a2a] border-gray-300 dark:border-gray-600 min-w-[90px] w-auto flex-[0_1_auto] justify-start overflow-hidden" : "h-8 px-2 text-[11px] rounded-none border-gray-300 dark:border-gray-600 bg-gray-200/50 dark:bg-[#2a2a2a] min-w-[90px] justify-start",
                     !g.dateRange.from && 'text-gray-500 dark:text-gray-400'
                   )}
                 >
@@ -441,7 +441,7 @@ export function QueryBuilderSidebar({
                 <Button
                   variant="outline"
                   className={cn(
-                    isInline ? "h-7 px-2 text-[10px] rounded-none border-dashed border-[#d4d4d4] dark:border-gray-700 bg-transparent min-w-[90px] w-auto flex-[0_1_auto] justify-start overflow-hidden" : "h-8 px-2 text-[11px] rounded-none border-[#d4d4d4] dark:border-gray-700 bg-white dark:bg-[#2d2d2d] min-w-[90px] justify-start",
+                    isInline ? "h-7 px-2 text-[10px] rounded-none bg-gray-200/50 dark:bg-[#2a2a2a] border-gray-300 dark:border-gray-600 min-w-[90px] w-auto flex-[0_1_auto] justify-start overflow-hidden" : "h-8 px-2 text-[11px] rounded-none border-gray-300 dark:border-gray-600 bg-gray-200/50 dark:bg-[#2a2a2a] min-w-[90px] justify-start",
                     !g.dateRange.to && 'text-gray-500 dark:text-gray-400'
                   )}
                 >

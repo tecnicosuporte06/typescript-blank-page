@@ -2827,7 +2827,7 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
                   });
                 }}
               >
-                <SelectTrigger className="h-7 w-[180px] shrink-0 text-[10px] rounded-none border-dashed border-[#d4d4d4] dark:border-gray-700">
+                <SelectTrigger className="h-7 w-[180px] shrink-0 text-[10px] rounded-none bg-gray-200/50 dark:bg-[#2a2a2a] border-gray-300 dark:border-gray-600">
                   <SelectValue placeholder="Agente" />
                 </SelectTrigger>
                 <SelectContent className="text-[10px] rounded-none">
@@ -2858,7 +2858,7 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
                   });
                 }}
               >
-                <SelectTrigger className="h-7 w-[120px] shrink-0 text-[10px] rounded-none border-dashed border-[#d4d4d4] dark:border-gray-700">
+                <SelectTrigger className="h-7 w-[120px] shrink-0 text-[10px] rounded-none bg-gray-200/50 dark:bg-[#2a2a2a] border-gray-300 dark:border-gray-600">
                   <SelectValue placeholder="Status" />
                 </SelectTrigger>
                 <SelectContent className="text-[10px] rounded-none">
@@ -2874,7 +2874,7 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
                   <Button
                     variant="outline"
                     size="sm"
-                    className="h-7 w-[110px] shrink-0 px-2 text-[10px] rounded-none border-dashed border-[#d4d4d4] dark:border-gray-700 whitespace-nowrap"
+                    className="h-7 w-[110px] shrink-0 px-2 text-[10px] rounded-none bg-gray-200/50 dark:bg-[#2a2a2a] border-gray-300 dark:border-gray-600 whitespace-nowrap"
                   >
                     Etiquetas{customConvTags.length > 0 ? ` (${customConvTags.length})` : ''}
                   </Button>
@@ -2973,7 +2973,7 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
                   }
                 }}
               >
-                <SelectTrigger className="h-7 w-[140px] shrink-0 text-[10px] rounded-none border-dashed border-[#d4d4d4] dark:border-gray-700">
+                <SelectTrigger className="h-7 w-[140px] shrink-0 text-[10px] rounded-none bg-gray-200/50 dark:bg-[#2a2a2a] border-gray-300 dark:border-gray-600">
                   <SelectValue placeholder="Período" />
                 </SelectTrigger>
                 <SelectContent className="text-[10px] rounded-none">
@@ -2992,7 +2992,7 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
                       <Button
                         variant="outline"
                         size="sm"
-                        className="h-7 shrink-0 px-2 text-[10px] rounded-none border-dashed border-[#d4d4d4] dark:border-gray-700 whitespace-nowrap"
+                        className="h-7 shrink-0 px-2 text-[10px] rounded-none bg-gray-200/50 dark:bg-[#2a2a2a] border-gray-300 dark:border-gray-600 whitespace-nowrap"
                       >
                         De: {customConvStartDate ? format(customConvStartDate, 'dd/MM/yyyy') : '—'}
                       </Button>
@@ -3027,7 +3027,7 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
                       <Button
                         variant="outline"
                         size="sm"
-                        className="h-7 shrink-0 px-2 text-[10px] rounded-none border-dashed border-[#d4d4d4] dark:border-gray-700 whitespace-nowrap"
+                        className="h-7 shrink-0 px-2 text-[10px] rounded-none bg-gray-200/50 dark:bg-[#2a2a2a] border-gray-300 dark:border-gray-600 whitespace-nowrap"
                       >
                         Até: {customConvEndDate ? format(customConvEndDate, 'dd/MM/yyyy') : '—'}
                       </Button>
@@ -3086,7 +3086,7 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
             <Button 
               variant="outline" 
               size="sm" 
-              className="h-7 px-2 text-[10px] rounded-none border-dashed border-[#d4d4d4] dark:border-gray-700"
+              className="h-7 px-2 text-[10px] rounded-none bg-gray-200/50 dark:bg-[#2a2a2a] border-gray-300 dark:border-gray-600"
               onClick={addCustomConversion}
             >
               <Plus className="h-3 w-3 mr-1" />
@@ -3257,10 +3257,10 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
           <DndContext sensors={dndSensors} collisionDetection={closestCenter} onDragEnd={onDragEndTeamConversions}>
             <SortableContext items={teamConversions.map((c: any) => c.id)} strategy={rectSortingStrategy}>
               
-              {/* BLOCO SUPERIOR: Indicadores vs (Filtros + 6 Cards) */}
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 items-stretch">
-                {/* Esquerda: Indicadores */}
-                <div className="flex flex-col gap-2">
+              {/* BLOCO SUPERIOR: Indicadores vs (Filtros + Cards) */}
+              <div className="flex flex-col lg:flex-row gap-3 items-stretch">
+                {/* Esquerda: Indicadores (1/6 da largura aproximada) */}
+                <div className="flex flex-col gap-2 lg:w-[16.66%]">
                   <div className="flex items-center gap-2 text-sm font-semibold text-gray-900 dark:text-gray-100 h-7">
                     <Users className="h-4 w-4" />
                     Equipe – Indicadores
@@ -3271,7 +3271,7 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
                         <table className="w-full text-[11px] table-fixed">
                           <colgroup>
                             <col />
-                            <col className="w-[72px]" />
+                            <col className="w-[45px]" />
                           </colgroup>
                           <tbody>
                             {[
@@ -3298,8 +3298,8 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
                   </Card>
                 </div>
 
-                {/* Direita: Conversão (Título + Filtros + 6 Cards) */}
-                <div className="flex flex-col gap-2">
+                {/* Direita: Conversão (5/6 da largura) */}
+                <div className="flex flex-col gap-2 flex-1 min-w-0">
                   <div className="flex items-center justify-between gap-2 h-7">
                     <div className="flex items-center gap-2 text-sm font-semibold text-gray-900 dark:text-gray-100">
                       <Users className="h-4 w-4" />
@@ -3308,7 +3308,7 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
                     <Button
                       variant="outline"
                       size="sm"
-                      className="h-7 px-2 text-[10px] rounded-none border-dashed border-[#d4d4d4] dark:border-gray-700"
+                      className="h-7 px-2 text-[10px] rounded-none bg-gray-200/50 dark:bg-[#2a2a2a] border-gray-300 dark:border-gray-600"
                       onClick={addTeamConversion}
                     >
                       <Plus className="h-3 w-3 mr-1" />
@@ -3318,317 +3318,202 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
 
                   {/* Filtros */}
                   <div className="grid grid-cols-2 md:grid-cols-4 gap-2 w-full">
-              <Select
-                value={teamConvAgent}
-                onValueChange={(v) => {
-                  setTeamConvAgent(v);
-                  persistUserReportSettings({
-                    teamConversionsFilter: {
-                      preset: teamConvPeriodPreset,
-                      startDate: teamConvStartDate ? teamConvStartDate.toISOString() : null,
-                      endDate: teamConvEndDate ? teamConvEndDate.toISOString() : null,
-                      agent: v,
-                      tags: teamConvTags,
-                      status: teamConvStatus,
-                    },
-                  });
-                }}
-              >
-                <SelectTrigger className="h-7 w-full text-[10px] rounded-none border-dashed border-[#d4d4d4] dark:border-gray-700">
-                  <SelectValue placeholder="Agente" />
-                </SelectTrigger>
-                <SelectContent className="text-[10px] rounded-none">
-                  <SelectItem value="all">Todos os agentes</SelectItem>
-                  <SelectItem value="ia">Agente IA</SelectItem>
-                  {agents.map((a) => (
-                    <SelectItem key={a.id} value={a.id}>
-                      {a.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-
-              <Select
-                value={teamConvStatus}
-                onValueChange={(v) => {
-                  const next = v as any;
-                  setTeamConvStatus(next);
-                  persistUserReportSettings({
-                    teamConversionsFilter: {
-                      preset: teamConvPeriodPreset,
-                      startDate: teamConvStartDate ? teamConvStartDate.toISOString() : null,
-                      endDate: teamConvEndDate ? teamConvEndDate.toISOString() : null,
-                      agent: teamConvAgent,
-                      tags: teamConvTags,
-                      status: next,
-                    },
-                  });
-                }}
-              >
-                <SelectTrigger className="h-7 w-full text-[10px] rounded-none border-dashed border-[#d4d4d4] dark:border-gray-700">
-                  <SelectValue placeholder="Status" />
-                </SelectTrigger>
-                <SelectContent className="text-[10px] rounded-none">
-                  <SelectItem value="all">Todos</SelectItem>
-                  <SelectItem value="open">Aberto</SelectItem>
-                  <SelectItem value="won">Ganho</SelectItem>
-                  <SelectItem value="lost">Perdido</SelectItem>
-                </SelectContent>
-              </Select>
-
-              <Popover>
-                <PopoverTrigger asChild>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="h-7 w-full px-2 text-[10px] rounded-none border-dashed border-[#d4d4d4] dark:border-gray-700 whitespace-nowrap"
-                  >
-                    Etiquetas{teamConvTags.length > 0 ? ` (${teamConvTags.length})` : ''}
-                  </Button>
-                </PopoverTrigger>
-                <PopoverContent
-                  className="w-72 p-2 rounded-none bg-white text-gray-900 border border-[#d4d4d4] dark:bg-[#1b1b1b] dark:text-gray-100 dark:border-gray-700"
-                  align="end"
-                >
-                  <div className="max-h-64 overflow-y-auto space-y-2">
-                    {availableTags.map((t) => {
-                      const checked = teamConvTags.includes(t.id);
-                      return (
-                        <label key={t.id} className="flex items-center gap-2 text-[11px]">
-                          <Checkbox
-                            checked={checked}
-                            onCheckedChange={(val) => {
-                              const isChecked = !!val;
-                              const next = isChecked
-                                ? Array.from(new Set([...teamConvTags, t.id]))
-                                : teamConvTags.filter((x) => x !== t.id);
-                              setTeamConvTags(next);
-                              persistUserReportSettings({
-                                teamConversionsFilter: {
-                                  preset: teamConvPeriodPreset,
-                                  startDate: teamConvStartDate ? teamConvStartDate.toISOString() : null,
-                                  endDate: teamConvEndDate ? teamConvEndDate.toISOString() : null,
-                                  agent: teamConvAgent,
-                                  tags: next,
-                                  status: teamConvStatus,
-                                },
-                              });
-                            }}
-                          />
-                          <span className="truncate">{t.name}</span>
-                        </label>
-                      );
-                    })}
-                  </div>
-                  {teamConvTags.length > 0 && (
-                    <div className="pt-2">
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="h-7 px-2 text-[10px] rounded-none"
-                        onClick={() => {
-                          setTeamConvTags([]);
-                          persistUserReportSettings({
-                            teamConversionsFilter: {
-                              preset: teamConvPeriodPreset,
-                              startDate: teamConvStartDate ? teamConvStartDate.toISOString() : null,
-                              endDate: teamConvEndDate ? teamConvEndDate.toISOString() : null,
-                              agent: teamConvAgent,
-                              tags: [],
-                              status: teamConvStatus,
-                            },
-                          });
-                        }}
-                      >
-                        Limpar etiquetas
-                      </Button>
-                    </div>
-                  )}
-                </PopoverContent>
-              </Popover>
-
-              <Select
-                value={teamConvPeriodPreset}
-                onValueChange={(v) => {
-                  const next = v as any;
-                  setTeamConvPeriodPreset(next);
-                  if (next !== 'custom') {
-                    const r = getEffectiveRange(next, null, null);
-                    setTeamConvStartDate(r.from);
-                    setTeamConvEndDate(r.to);
-                    persistUserReportSettings({
-                      teamConversionsFilter: {
-                        preset: next,
-                        startDate: r.from ? r.from.toISOString() : null,
-                        endDate: r.to ? r.to.toISOString() : null,
-                        agent: teamConvAgent,
-                        tags: teamConvTags,
-                        status: teamConvStatus,
-                      },
-                    });
-                  } else {
-                    persistUserReportSettings({
-                      teamConversionsFilter: {
-                        preset: next,
-                        startDate: teamConvStartDate ? teamConvStartDate.toISOString() : null,
-                        endDate: teamConvEndDate ? teamConvEndDate.toISOString() : null,
-                        agent: teamConvAgent,
-                        tags: teamConvTags,
-                        status: teamConvStatus,
-                      },
-                    });
-                  }
-                }}
-              >
-                <SelectTrigger className="h-7 w-full text-[10px] rounded-none border-dashed border-[#d4d4d4] dark:border-gray-700">
-                  <SelectValue placeholder="Período" />
-                </SelectTrigger>
-                <SelectContent className="text-[10px] rounded-none">
-                  <SelectItem value="all">Todo período</SelectItem>
-                  <SelectItem value="today">Hoje</SelectItem>
-                  <SelectItem value="last7">Últimos 7 dias</SelectItem>
-                  <SelectItem value="last30">Últimos 30 dias</SelectItem>
-                  <SelectItem value="custom">Personalizado</SelectItem>
-                </SelectContent>
-              </Select>
-
-              {teamConvPeriodPreset === 'custom' && (
-                <>
-                  <Popover>
-                    <PopoverTrigger asChild>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        className="h-7 w-full px-2 text-[10px] rounded-none border-dashed border-[#d4d4d4] dark:border-gray-700 whitespace-nowrap"
-                      >
-                        De: {teamConvStartDate ? format(teamConvStartDate, 'dd/MM/yyyy') : '—'}
-                      </Button>
-                    </PopoverTrigger>
-                    <PopoverContent
-                      className="w-auto p-0 rounded-none bg-white text-gray-900 border border-[#d4d4d4] dark:bg-[#1b1b1b] dark:text-gray-100 dark:border-gray-700"
-                      align="end"
-                    >
-                      <Calendar
-                        mode="single"
-                        selected={teamConvStartDate || undefined}
-                        onSelect={(d) => {
-                          setTeamConvStartDate(d || null);
-                          persistUserReportSettings({
-                            teamConversionsFilter: {
-                              preset: 'custom',
-                              startDate: d ? d.toISOString() : null,
-                              endDate: teamConvEndDate ? teamConvEndDate.toISOString() : null,
-                              agent: teamConvAgent,
-                              tags: teamConvTags,
-                              status: teamConvStatus,
-                            },
-                          });
-                        }}
-                        initialFocus
-                      />
-                    </PopoverContent>
-                  </Popover>
-
-                  <Popover>
-                    <PopoverTrigger asChild>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        className="h-7 w-full px-2 text-[10px] rounded-none border-dashed border-[#d4d4d4] dark:border-gray-700 whitespace-nowrap"
-                      >
-                        Até: {teamConvEndDate ? format(teamConvEndDate, 'dd/MM/yyyy') : '—'}
-                      </Button>
-                    </PopoverTrigger>
-                    <PopoverContent
-                      className="w-auto p-0 rounded-none bg-white text-gray-900 border border-[#d4d4d4] dark:bg-[#1b1b1b] dark:text-gray-100 dark:border-gray-700"
-                      align="end"
-                    >
-                      <Calendar
-                        mode="single"
-                        selected={teamConvEndDate || undefined}
-                        onSelect={(d) => {
-                          setTeamConvEndDate(d || null);
-                          persistUserReportSettings({
-                            teamConversionsFilter: {
-                              preset: 'custom',
-                              startDate: teamConvStartDate ? teamConvStartDate.toISOString() : null,
-                              endDate: d ? d.toISOString() : null,
-                              agent: teamConvAgent,
-                              tags: teamConvTags,
-                              status: teamConvStatus,
-                            },
-                          });
-                        }}
-                        initialFocus
-                      />
-                    </PopoverContent>
-                  </Popover>
-
-                  {(teamConvStartDate || teamConvEndDate) && (
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="h-7 w-full px-2 text-[10px] rounded-none whitespace-nowrap"
-                      onClick={() => {
-                        setTeamConvStartDate(null);
-                        setTeamConvEndDate(null);
+                    <Select
+                      value={teamConvAgent}
+                      onValueChange={(v) => {
+                        setTeamConvAgent(v);
                         persistUserReportSettings({
                           teamConversionsFilter: {
-                            preset: 'custom',
-                            startDate: null,
-                            endDate: null,
-                            agent: teamConvAgent,
+                            preset: teamConvPeriodPreset,
+                            startDate: teamConvStartDate ? teamConvStartDate.toISOString() : null,
+                            endDate: teamConvEndDate ? teamConvEndDate.toISOString() : null,
+                            agent: v,
                             tags: teamConvTags,
                             status: teamConvStatus,
                           },
                         });
                       }}
                     >
-                      Limpar
-                    </Button>
-                  )}
-                </>
-              )}
+                      <SelectTrigger className="h-7 w-full text-[10px] rounded-none bg-gray-200/50 dark:bg-[#2a2a2a] border-gray-300 dark:border-gray-600">
+                        <SelectValue placeholder="Agente" />
+                      </SelectTrigger>
+                      <SelectContent className="text-[10px] rounded-none">
+                        <SelectItem value="all">Todos os agentes</SelectItem>
+                        <SelectItem value="ia">Agente IA</SelectItem>
+                        {agents.map((a) => (
+                          <SelectItem key={a.id} value={a.id}>
+                            {a.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+
+                    <Select
+                      value={teamConvStatus}
+                      onValueChange={(v) => {
+                        const next = v as any;
+                        setTeamConvStatus(next);
+                        persistUserReportSettings({
+                          teamConversionsFilter: {
+                            preset: teamConvPeriodPreset,
+                            startDate: teamConvStartDate ? teamConvStartDate.toISOString() : null,
+                            endDate: teamConvEndDate ? teamConvEndDate.toISOString() : null,
+                            agent: teamConvAgent,
+                            tags: teamConvTags,
+                            status: next,
+                          },
+                        });
+                      }}
+                    >
+                      <SelectTrigger className="h-7 w-full text-[10px] rounded-none bg-gray-200/50 dark:bg-[#2a2a2a] border-gray-300 dark:border-gray-600">
+                        <SelectValue placeholder="Status" />
+                      </SelectTrigger>
+                      <SelectContent className="text-[10px] rounded-none">
+                        <SelectItem value="all">Todos</SelectItem>
+                        <SelectItem value="open">Aberto</SelectItem>
+                        <SelectItem value="won">Ganho</SelectItem>
+                        <SelectItem value="lost">Perdido</SelectItem>
+                      </SelectContent>
+                    </Select>
+
+                    <Popover>
+                      <PopoverTrigger asChild>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="h-7 w-full px-2 text-[10px] rounded-none bg-gray-200/50 dark:bg-[#2a2a2a] border-gray-300 dark:border-gray-600 whitespace-nowrap"
+                        >
+                          Etiquetas{teamConvTags.length > 0 ? ` (${teamConvTags.length})` : ''}
+                        </Button>
+                      </PopoverTrigger>
+                      <PopoverContent
+                        className="w-72 p-2 rounded-none bg-white text-gray-900 border border-[#d4d4d4] dark:bg-[#1b1b1b] dark:text-gray-100 dark:border-gray-700"
+                        align="end"
+                      >
+                        <div className="max-h-64 overflow-y-auto space-y-2">
+                          {availableTags.map((t) => {
+                            const checked = teamConvTags.includes(t.id);
+                            return (
+                              <label key={t.id} className="flex items-center gap-2 text-[11px]">
+                                <Checkbox
+                                  checked={checked}
+                                  onCheckedChange={(val) => {
+                                    const isChecked = !!val;
+                                    const next = isChecked
+                                      ? Array.from(new Set([...teamConvTags, t.id]))
+                                      : teamConvTags.filter((x) => x !== t.id);
+                                    setTeamConvTags(next);
+                                    persistUserReportSettings({
+                                      teamConversionsFilter: {
+                                        preset: teamConvPeriodPreset,
+                                        startDate: teamConvStartDate ? teamConvStartDate.toISOString() : null,
+                                        endDate: teamConvEndDate ? teamConvEndDate.toISOString() : null,
+                                        agent: teamConvAgent,
+                                        tags: next,
+                                        status: teamConvStatus,
+                                      },
+                                    });
+                                  }}
+                                />
+                                <span className="truncate">{t.name}</span>
+                              </label>
+                            );
+                          })}
+                        </div>
+                        {teamConvTags.length > 0 && (
+                          <div className="pt-2">
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="h-7 px-2 text-[10px] rounded-none"
+                              onClick={() => {
+                                setTeamConvTags([]);
+                                persistUserReportSettings({
+                                  teamConversionsFilter: {
+                                    preset: teamConvPeriodPreset,
+                                    startDate: teamConvStartDate ? teamConvStartDate.toISOString() : null,
+                                    endDate: teamConvEndDate ? teamConvEndDate.toISOString() : null,
+                                    agent: teamConvAgent,
+                                    tags: [],
+                                    status: teamConvStatus,
+                                  },
+                                });
+                              }}
+                            >
+                              Limpar etiquetas
+                            </Button>
+                          </div>
+                        )}
+                      </PopoverContent>
+                    </Popover>
+
+                    <Select
+                      value={teamConvPeriodPreset}
+                      onValueChange={(v) => {
+                        const next = v as any;
+                        setTeamConvPeriodPreset(next);
+                        if (next !== 'custom') {
+                          const r = getEffectiveRange(next, null, null);
+                          setTeamConvStartDate(r.from);
+                          setTeamConvEndDate(r.to);
+                          persistUserReportSettings({
+                            teamConversionsFilter: {
+                              preset: next,
+                              startDate: r.from ? r.from.toISOString() : null,
+                              endDate: r.to ? r.to.toISOString() : null,
+                              agent: teamConvAgent,
+                              tags: teamConvTags,
+                              status: teamConvStatus,
+                            },
+                          });
+                        } else {
+                          persistUserReportSettings({
+                            teamConversionsFilter: {
+                              preset: next,
+                              startDate: teamConvStartDate ? teamConvStartDate.toISOString() : null,
+                              endDate: teamConvEndDate ? teamConvEndDate.toISOString() : null,
+                              agent: teamConvAgent,
+                              tags: teamConvTags,
+                              status: teamConvStatus,
+                            },
+                          });
+                        }
+                      }}
+                    >
+                      <SelectTrigger className="h-7 w-full text-[10px] rounded-none bg-gray-200/50 dark:bg-[#2a2a2a] border-gray-300 dark:border-gray-600">
+                        <SelectValue placeholder="Período" />
+                      </SelectTrigger>
+                      <SelectContent className="text-[10px] rounded-none">
+                        <SelectItem value="all">Todo período</SelectItem>
+                        <SelectItem value="today">Hoje</SelectItem>
+                        <SelectItem value="last7">Últimos 7 dias</SelectItem>
+                        <SelectItem value="last30">Últimos 30 dias</SelectItem>
+                        <SelectItem value="custom">Personalizado</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  {/* Primeiros 10 Cards (2 linhas de 5) */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3 flex-1 mt-2">
+                    {teamConversions.slice(0, 10).map(renderTeamConversionCard)}
+                  </div>
+                </div>
               </div>
 
-              {/* mobile/tablet: lista completa */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:hidden gap-3">
-                {teamConversions.map(renderTeamConversionCard)}
-                {teamConversions.length === 0 && (
-                  <Card className="rounded-none border-gray-200 dark:border-gray-700 dark:bg-[#1b1b1b] sm:col-span-2">
-                    <CardContent className="p-3">
-                      <div className="text-[11px] text-gray-600 dark:text-gray-300">
-                        Nenhuma conversão criada. Clique em <span className="font-medium">Nova Conversão</span>.
+              {/* BLOCO INFERIOR: Primeiro card com mesma largura do card de Indicadores */}
+              <div className="hidden lg:block mt-3">
+                {teamConversions.length > 10 && (
+                  <div className="flex flex-row gap-3">
+                    {/* Primeiro card: mesma largura do card de Indicadores */}
+                    <div className="w-[16.66%]">
+                      {renderTeamConversionCard(teamConversions[10])}
+                    </div>
+                    {/* Demais cards: ocupam o espaço restante em grid de 5 colunas */}
+                    {teamConversions.length > 11 && (
+                      <div className="flex-1 grid grid-cols-5 gap-3">
+                        {teamConversions.slice(11).map(renderTeamConversionCard)}
                       </div>
-                    </CardContent>
-                  </Card>
-                )}
-              </div>
-
-                  {/* Cards 1-6 (desktop) */}
-                  <div className="grid grid-cols-3 gap-3 flex-1">
-                    {teamConversions.slice(0, 6).map(renderTeamConversionCard)}
-                  </div>
-                </div>
-              </div>
-
-              {/* BLOCO MÉDIO: Cards 7-12 (desktop) - Alinhados em uma nova linha do grid */}
-              {teamConversions.length > 6 && (
-                <div className="hidden lg:grid grid-cols-2 gap-3 mt-3">
-                  <div className="grid grid-cols-3 gap-3">
-                    {teamConversions.slice(6, 9).map(renderTeamConversionCard)}
-                  </div>
-                  <div className="grid grid-cols-3 gap-3">
-                    {teamConversions.slice(9, 12).map(renderTeamConversionCard)}
-                  </div>
-                </div>
-              )}
-
-              {/* BLOCO INFERIOR: Cards 13+ (desktop) - 6 por linha */}
-              <div className="hidden lg:block">
-                {teamConversions.length > 12 && (
-                  <div className="grid grid-cols-6 gap-3 mt-3">
-                    {teamConversions.slice(12).map(renderTeamConversionCard)}
+                    )}
                   </div>
                 )}
               </div>
@@ -3671,7 +3556,7 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
                   }
                 }}
               >
-                <SelectTrigger className="h-7 w-[140px] shrink-0 text-[10px] rounded-none border-dashed border-[#d4d4d4] dark:border-gray-700">
+                <SelectTrigger className="h-7 w-[140px] shrink-0 text-[10px] rounded-none bg-gray-200/50 dark:bg-[#2a2a2a] border-gray-300 dark:border-gray-600">
                   <SelectValue placeholder="Período" />
                 </SelectTrigger>
                 <SelectContent className="text-[10px] rounded-none">
@@ -3690,7 +3575,7 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
                       <Button
                         variant="outline"
                         size="sm"
-                        className="h-7 shrink-0 px-2 text-[10px] rounded-none border-dashed border-[#d4d4d4] dark:border-gray-700 whitespace-nowrap"
+                        className="h-7 shrink-0 px-2 text-[10px] rounded-none bg-gray-200/50 dark:bg-[#2a2a2a] border-gray-300 dark:border-gray-600 whitespace-nowrap"
                       >
                         De: {salesRankingStartDate ? format(salesRankingStartDate, 'dd/MM/yyyy') : '—'}
                       </Button>
@@ -3713,7 +3598,7 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
                       <Button
                         variant="outline"
                         size="sm"
-                        className="h-7 shrink-0 px-2 text-[10px] rounded-none border-dashed border-[#d4d4d4] dark:border-gray-700 whitespace-nowrap"
+                        className="h-7 shrink-0 px-2 text-[10px] rounded-none bg-gray-200/50 dark:bg-[#2a2a2a] border-gray-300 dark:border-gray-600 whitespace-nowrap"
                       >
                         Até: {salesRankingEndDate ? format(salesRankingEndDate, 'dd/MM/yyyy') : '—'}
                       </Button>
@@ -3752,7 +3637,7 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
             <div className="border border-gray-200 dark:border-gray-700 flex flex-col overflow-hidden min-w-0 h-full">
               <div className="flex-1 overflow-y-auto overflow-x-auto">
                 <table className="min-w-full text-xs table-auto">
-                  <thead className="sticky top-0 z-10 bg-gray-100 dark:bg-[#1a1a1a] text-gray-700 dark:text-gray-200">
+                  <thead className="sticky top-0 z-10 bg-gray-200 dark:bg-[#2a2a2a] text-gray-900 dark:text-gray-100 shadow-sm font-bold">
                     <tr>
                       <th className="px-3 py-2 text-left">Usuário</th>
                       <th className="px-3 py-2 text-right">Faturamento</th>
@@ -3778,16 +3663,16 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
                       </tr>
                     ))}
                   </tbody>
-                  <tfoot className="sticky bottom-0 z-10 bg-gray-100 dark:bg-[#151515] text-gray-700 dark:text-gray-200 border-t border-gray-200 dark:border-gray-800 shadow-[0_-1px_2px_rgba(0,0,0,0.05)]">
+                  <tfoot className="sticky bottom-0 z-10 bg-gray-200 dark:bg-[#2a2a2a] text-gray-900 dark:text-gray-100 border-t border-gray-300 dark:border-gray-700 shadow-[0_-1px_3px_rgba(0,0,0,0.1)]">
                     <tr>
-                      <td className="px-3 py-2 font-semibold">Total</td>
-                      <td className="px-3 py-2 text-right font-semibold tabular-nums">
+                      <td className="px-3 py-2 font-bold">Total</td>
+                      <td className="px-3 py-2 text-right font-bold tabular-nums">
                         {rankingVendasTotals.revenue.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
                       </td>
-                      <td className="px-3 py-2 text-right font-semibold tabular-nums">{rankingVendasTotals.sales}</td>
-                      <td className="px-3 py-2 text-right font-semibold tabular-nums">{rankingVendasTotals.products}</td>
-                      <td className="px-3 py-2 text-right font-semibold tabular-nums">{rankingVendasTotals.pa}</td>
-                      <td className="px-3 py-2 text-right font-semibold tabular-nums">
+                      <td className="px-3 py-2 text-right font-bold tabular-nums">{rankingVendasTotals.sales}</td>
+                      <td className="px-3 py-2 text-right font-bold tabular-nums">{rankingVendasTotals.products}</td>
+                      <td className="px-3 py-2 text-right font-bold tabular-nums">{rankingVendasTotals.pa}</td>
+                      <td className="px-3 py-2 text-right font-bold tabular-nums">
                         {rankingVendasTotals.ticket.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
                       </td>
                     </tr>
@@ -3818,7 +3703,7 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
                   }
                 }}
               >
-                <SelectTrigger className="h-7 w-[140px] shrink-0 text-[10px] rounded-none border-dashed border-[#d4d4d4] dark:border-gray-700">
+                <SelectTrigger className="h-7 w-[140px] shrink-0 text-[10px] rounded-none bg-gray-200/50 dark:bg-[#2a2a2a] border-gray-300 dark:border-gray-600">
                   <SelectValue placeholder="Período" />
                 </SelectTrigger>
                 <SelectContent className="text-[10px] rounded-none">
@@ -3837,7 +3722,7 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
                       <Button
                         variant="outline"
                         size="sm"
-                        className="h-7 shrink-0 px-2 text-[10px] rounded-none border-dashed border-[#d4d4d4] dark:border-gray-700 whitespace-nowrap"
+                        className="h-7 shrink-0 px-2 text-[10px] rounded-none bg-gray-200/50 dark:bg-[#2a2a2a] border-gray-300 dark:border-gray-600 whitespace-nowrap"
                       >
                         De: {workRankingStartDate ? format(workRankingStartDate, 'dd/MM/yyyy') : '—'}
                       </Button>
@@ -3860,7 +3745,7 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
                       <Button
                         variant="outline"
                         size="sm"
-                        className="h-7 shrink-0 px-2 text-[10px] rounded-none border-dashed border-[#d4d4d4] dark:border-gray-700 whitespace-nowrap"
+                        className="h-7 shrink-0 px-2 text-[10px] rounded-none bg-gray-200/50 dark:bg-[#2a2a2a] border-gray-300 dark:border-gray-600 whitespace-nowrap"
                       >
                         Até: {workRankingEndDate ? format(workRankingEndDate, 'dd/MM/yyyy') : '—'}
                       </Button>
@@ -3900,7 +3785,7 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
               {/* Mantém o comportamento de largura/colunas como estava; apenas fixa header/total e usa scroll Y */}
               <div className="flex-1 overflow-y-auto overflow-x-hidden">
                 <table className="w-full text-xs table-auto">
-                  <thead className="sticky top-0 z-10 bg-gray-100 dark:bg-[#1a1a1a] text-gray-700 dark:text-gray-200">
+                  <thead className="sticky top-0 z-10 bg-gray-200 dark:bg-[#2a2a2a] text-gray-900 dark:text-gray-100 shadow-sm font-bold">
                     <tr>
                       <th className="px-3 py-2 text-left">Usuário</th>
                       <th className="px-3 py-2 text-right">Mensagem</th>
@@ -3936,21 +3821,21 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
                       </tr>
                     ))}
                   </tbody>
-                  <tfoot className="sticky bottom-0 z-10 bg-gray-100 dark:bg-[#151515] text-gray-700 dark:text-gray-200 border-t border-gray-200 dark:border-gray-800">
+                  <tfoot className="sticky bottom-0 z-10 bg-gray-200 dark:bg-[#2a2a2a] text-gray-900 dark:text-gray-100 border-t border-gray-300 dark:border-gray-700 shadow-[0_-1px_3px_rgba(0,0,0,0.1)]">
                     <tr>
-                      <td className="px-3 py-2 font-semibold">Total</td>
-                      <td className="px-3 py-2 text-right font-semibold tabular-nums">{rankingTrabalhoTotals.mensagem}</td>
-                      <td className="px-3 py-2 text-right font-semibold tabular-nums">{rankingTrabalhoTotals.ligacao_nao_atendida}</td>
-                      <td className="px-3 py-2 text-right font-semibold tabular-nums">{rankingTrabalhoTotals.ligacao_atendida}</td>
-                      <td className="px-3 py-2 text-right font-semibold tabular-nums">{rankingTrabalhoTotals.ligacao_abordada}</td>
-                      <td className="px-3 py-2 text-right font-semibold tabular-nums">{rankingTrabalhoTotals.ligacao_agendada}</td>
-                      <td className="px-3 py-2 text-right font-semibold tabular-nums">{rankingTrabalhoTotals.ligacao_follow_up}</td>
-                      <td className="px-3 py-2 text-right font-semibold tabular-nums">{rankingTrabalhoTotals.reuniao_agendada}</td>
-                      <td className="px-3 py-2 text-right font-semibold tabular-nums">{rankingTrabalhoTotals.reuniao_realizada}</td>
-                      <td className="px-3 py-2 text-right font-semibold tabular-nums">{rankingTrabalhoTotals.reuniao_nao_realizada}</td>
-                      <td className="px-3 py-2 text-right font-semibold tabular-nums">{rankingTrabalhoTotals.reuniao_reagendada}</td>
-                      <td className="px-3 py-2 text-right font-semibold tabular-nums">{rankingTrabalhoTotals.whatsapp_enviado}</td>
-                      <td className="px-3 py-2 text-right font-semibold tabular-nums">{rankingTrabalhoTotals.total}</td>
+                      <td className="px-3 py-2 font-bold">Total</td>
+                      <td className="px-3 py-2 text-right font-bold tabular-nums">{rankingTrabalhoTotals.mensagem}</td>
+                      <td className="px-3 py-2 text-right font-bold tabular-nums">{rankingTrabalhoTotals.ligacao_nao_atendida}</td>
+                      <td className="px-3 py-2 text-right font-bold tabular-nums">{rankingTrabalhoTotals.ligacao_atendida}</td>
+                      <td className="px-3 py-2 text-right font-bold tabular-nums">{rankingTrabalhoTotals.ligacao_abordada}</td>
+                      <td className="px-3 py-2 text-right font-bold tabular-nums">{rankingTrabalhoTotals.ligacao_agendada}</td>
+                      <td className="px-3 py-2 text-right font-bold tabular-nums">{rankingTrabalhoTotals.ligacao_follow_up}</td>
+                      <td className="px-3 py-2 text-right font-bold tabular-nums">{rankingTrabalhoTotals.reuniao_agendada}</td>
+                      <td className="px-3 py-2 text-right font-bold tabular-nums">{rankingTrabalhoTotals.reuniao_realizada}</td>
+                      <td className="px-3 py-2 text-right font-bold tabular-nums">{rankingTrabalhoTotals.reuniao_nao_realizada}</td>
+                      <td className="px-3 py-2 text-right font-bold tabular-nums">{rankingTrabalhoTotals.reuniao_reagendada}</td>
+                      <td className="px-3 py-2 text-right font-bold tabular-nums">{rankingTrabalhoTotals.whatsapp_enviado}</td>
+                      <td className="px-3 py-2 text-right font-bold tabular-nums">{rankingTrabalhoTotals.total}</td>
                     </tr>
                   </tfoot>
                 </table>
