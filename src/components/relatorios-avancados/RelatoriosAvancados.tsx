@@ -3254,74 +3254,70 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
 
         {/* Equipe – Indicadores + Equipe – Conversão */}
         <section className="space-y-3">
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 items-start lg:items-stretch">
-            <DndContext sensors={dndSensors} collisionDetection={closestCenter} onDragEnd={onDragEndTeamConversions}>
-              <SortableContext items={teamConversions.map((c: any) => c.id)} strategy={rectSortingStrategy}>
-            {/* Esquerda: Indicadores (compacto) */}
-            <div className="flex flex-col gap-2 h-full min-h-0">
-              <div className="flex items-center gap-2 text-sm font-semibold text-gray-900 dark:text-gray-100">
-                <Users className="h-4 w-4" />
-                Equipe – Indicadores
-              </div>
-               <Card className="rounded-none border-gray-200 dark:border-gray-700 dark:bg-[#1b1b1b] flex-1 min-h-0">
-                 <CardContent className="p-0 h-full overflow-auto">
-                  <div className="border-t border-gray-200 dark:border-gray-800">
-                    <table className="w-full text-[11px] table-fixed">
-                      <colgroup>
-                        <col />
-                        <col className="w-[72px]" />
-                      </colgroup>
-                      <thead className="bg-gray-100 dark:bg-[#1a1a1a] text-gray-700 dark:text-gray-200">
-                        <tr>
-                          <th className="px-2 py-1.5 text-left font-semibold">Indicador</th>
-                          <th className="px-2 py-1.5 text-right font-semibold">Total</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {[
-                          { k: 'Leads recebidos', v: leadsReceived },
-                          { k: 'Ligações realizadas', v: calls.length },
-                          { k: 'Ligações atendidas', v: callsAttended.length },
-                          { k: 'Ligações não atendidas', v: callsNotAttended.length },
-                          { k: 'Ligações abordadas', v: callsApproached.length },
-                          { k: 'Mensagens enviadas', v: messages.length },
-                          { k: 'Reuniões agendadas', v: meetings.length },
-                          { k: 'Reuniões realizadas', v: meetings.filter((m) => m.status === 'realizada').length },
-                          { k: 'Propostas enviadas', v: proposals.length },
-                          { k: 'Vendas realizadas', v: leadsWon },
-                        ].map((row) => (
-                          <tr key={row.k} className="border-t border-gray-200 dark:border-gray-800">
-                            <td className="px-2 py-1.5 truncate" title={row.k}>{row.k}</td>
-                            <td className="px-2 py-1.5 text-right font-semibold tabular-nums">{row.v}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
+          <DndContext sensors={dndSensors} collisionDetection={closestCenter} onDragEnd={onDragEndTeamConversions}>
+            <SortableContext items={teamConversions.map((c: any) => c.id)} strategy={rectSortingStrategy}>
+              
+              {/* BLOCO SUPERIOR: Indicadores vs (Filtros + 6 Cards) */}
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 items-stretch">
+                {/* Esquerda: Indicadores */}
+                <div className="flex flex-col gap-2">
+                  <div className="flex items-center gap-2 text-sm font-semibold text-gray-900 dark:text-gray-100 h-7">
+                    <Users className="h-4 w-4" />
+                    Equipe – Indicadores
                   </div>
-                </CardContent>
-              </Card>
-            </div>
-
-            {/* Direita: Conversão */}
-            <div className="space-y-2">
-              <div className="flex items-center justify-between gap-2">
-                <div className="flex items-center gap-2 text-sm font-semibold text-gray-900 dark:text-gray-100">
-                  <Users className="h-4 w-4" />
-                  Equipe – Conversão
+                  <Card className="rounded-none border-gray-200 dark:border-gray-700 dark:bg-[#1b1b1b] flex-1 min-h-0">
+                    <CardContent className="p-0 h-full overflow-auto">
+                      <div className="border-t border-gray-200 dark:border-gray-800">
+                        <table className="w-full text-[11px] table-fixed">
+                          <colgroup>
+                            <col />
+                            <col className="w-[72px]" />
+                          </colgroup>
+                          <tbody>
+                            {[
+                              { k: 'Leads recebidos', v: leadsReceived },
+                              { k: 'Ligações realizadas', v: calls.length },
+                              { k: 'Ligações atendidas', v: callsAttended.length },
+                              { k: 'Ligações não atendidas', v: callsNotAttended.length },
+                              { k: 'Ligações abordadas', v: callsApproached.length },
+                              { k: 'Mensagens enviadas', v: messages.length },
+                              { k: 'Reuniões agendadas', v: meetings.length },
+                              { k: 'Reuniões realizadas', v: meetings.filter((m) => m.status === 'realizada').length },
+                              { k: 'Propostas enviadas', v: proposals.length },
+                              { k: 'Vendas realizadas', v: leadsWon },
+                            ].map((row) => (
+                              <tr key={row.k} className="border-t border-gray-200 dark:border-gray-800">
+                                <td className="px-2 py-1.5 truncate" title={row.k}>{row.k}</td>
+                                <td className="px-2 py-1.5 text-right font-semibold tabular-nums">{row.v}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </CardContent>
+                  </Card>
                 </div>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="h-7 px-2 text-[10px] rounded-none border-dashed border-[#d4d4d4] dark:border-gray-700"
-                  onClick={addTeamConversion}
-                >
-                  <Plus className="h-3 w-3 mr-1" />
-                  Nova Conversão
-                </Button>
-              </div>
 
-              {/* Filtros (abaixo do título, ocupando a largura toda) */}
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-2 w-full">
+                {/* Direita: Conversão (Título + Filtros + 6 Cards) */}
+                <div className="flex flex-col gap-2">
+                  <div className="flex items-center justify-between gap-2 h-7">
+                    <div className="flex items-center gap-2 text-sm font-semibold text-gray-900 dark:text-gray-100">
+                      <Users className="h-4 w-4" />
+                      Equipe – Conversão
+                    </div>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="h-7 px-2 text-[10px] rounded-none border-dashed border-[#d4d4d4] dark:border-gray-700"
+                      onClick={addTeamConversion}
+                    >
+                      <Plus className="h-3 w-3 mr-1" />
+                      Nova Conversão
+                    </Button>
+                  </div>
+
+                  {/* Filtros */}
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-2 w-full">
               <Select
                 value={teamConvAgent}
                 onValueChange={(v) => {
@@ -3609,22 +3605,50 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
                 )}
               </div>
 
-              {/* desktop: max 9 (3x3) aqui */}
-              <div className="hidden lg:grid grid-cols-3 gap-3 h-[420px] overflow-hidden">
-                {teamConversions.slice(0, 9).map(renderTeamConversionCard)}
+                  {/* Cards 1-6 (desktop) */}
+                  <div className="grid grid-cols-3 gap-3 flex-1">
+                    {teamConversions.slice(0, 6).map(renderTeamConversionCard)}
+                  </div>
+                </div>
               </div>
-            </div>
-            {/* A partir do 10º (desktop): vai para baixo, começando pela esquerda */}
-            <div className="hidden lg:block lg:col-span-2">
-              {teamConversions.length > 9 && (
-                <div className="grid grid-cols-6 gap-3">
-                  {teamConversions.slice(9).map(renderTeamConversionCard)}
+
+              {/* BLOCO MÉDIO: Cards 7-12 (desktop) - Alinhados em uma nova linha do grid */}
+              {teamConversions.length > 6 && (
+                <div className="hidden lg:grid grid-cols-2 gap-3 mt-3">
+                  <div className="grid grid-cols-3 gap-3">
+                    {teamConversions.slice(6, 9).map(renderTeamConversionCard)}
+                  </div>
+                  <div className="grid grid-cols-3 gap-3">
+                    {teamConversions.slice(9, 12).map(renderTeamConversionCard)}
+                  </div>
                 </div>
               )}
-            </div>
-              </SortableContext>
-            </DndContext>
-          </div>
+
+              {/* BLOCO INFERIOR: Cards 13+ (desktop) - 6 por linha */}
+              <div className="hidden lg:block">
+                {teamConversions.length > 12 && (
+                  <div className="grid grid-cols-6 gap-3 mt-3">
+                    {teamConversions.slice(12).map(renderTeamConversionCard)}
+                  </div>
+                )}
+              </div>
+
+              {/* Mobile/Tablet: Lista completa */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:hidden gap-3">
+                {teamConversions.map(renderTeamConversionCard)}
+                {teamConversions.length === 0 && (
+                  <Card className="rounded-none border-gray-200 dark:border-gray-700 dark:bg-[#1b1b1b] sm:col-span-2">
+                    <CardContent className="p-3">
+                      <div className="text-[11px] text-gray-600 dark:text-gray-300">
+                        Nenhuma conversão criada. Clique em <span className="font-medium">Nova Conversão</span>.
+                      </div>
+                    </CardContent>
+                  </Card>
+                )}
+              </div>
+
+            </SortableContext>
+          </DndContext>
         </section>
 
         {/* Ranking – Vendas */}
