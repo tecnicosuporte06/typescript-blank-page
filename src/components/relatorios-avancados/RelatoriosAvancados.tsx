@@ -1308,7 +1308,7 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
         <Card className="rounded-none border-gray-200 dark:border-gray-700 dark:bg-[#1b1b1b] relative group h-[132px]">
           <CardContent className="p-4 h-full flex flex-col justify-between">
             <div className="flex flex-col gap-0.5 mb-1">
-              <div className="text-[11px] font-medium text-gray-700 dark:text-gray-200 truncate">{conv.name || 'Conversão'}</div>
+              <div className="text-[11px] font-medium text-gray-700 dark:text-gray-100 truncate">{conv.name || 'Conversão'}</div>
               <div className="text-[10px] text-gray-500 dark:text-gray-400 truncate">
                 {labelA} / {labelB}
               </div>
@@ -2336,7 +2336,7 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
             </div>
           </div>
           <div className="flex items-center gap-2 px-4 pb-3">
-            <span className="text-[11px] font-semibold text-gray-700 dark:text-gray-200">Filtros avançados</span>
+            <span className="text-[11px] font-semibold text-gray-700 dark:text-gray-100">Filtros avançados</span>
           </div>
         </div>
 
@@ -2419,7 +2419,7 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
           {leadsSeriesGlobal.length > 0 && (
             <Card className="rounded-none border-gray-200 dark:border-gray-700 dark:bg-[#1b1b1b]">
               <CardHeader className="py-2 px-3">
-                <CardTitle className="text-xs text-gray-700 dark:text-gray-200">
+                <CardTitle className="text-xs text-gray-700 dark:text-gray-100">
                   Evolução de Leads — Geral
                 </CardTitle>
               </CardHeader>
@@ -2478,7 +2478,7 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
                 <Card className="rounded-none border-gray-200 dark:border-gray-700 md:col-span-4 h-full flex flex-col dark:bg-[#1b1b1b] group relative">
                   <CardHeader className="py-1.5 px-2">
                     <div className="flex items-center justify-between gap-2">
-                      <CardTitle className="text-xs text-gray-700 dark:text-gray-200">
+                      <CardTitle className="text-xs text-gray-700 dark:text-gray-100">
                         Leads
                       </CardTitle>
                       <Button
@@ -2678,7 +2678,7 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
 
                 <Card className="rounded-none border-gray-200 dark:border-gray-700 md:col-span-4 dark:bg-[#1b1b1b] h-full">
                   <CardHeader className="py-2 px-3">
-                    <CardTitle className="text-xs text-gray-700 dark:text-gray-200">
+                    <CardTitle className="text-xs text-gray-700 dark:text-gray-100">
                       Leads por Etiqueta
                     </CardTitle>
                   </CardHeader>
@@ -2724,7 +2724,7 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
                         {(() => {
                           const total = f.leadsByTag.reduce((sum: number, it: any) => sum + Number(it?.value || 0), 0) || 0;
                           return (
-                            <div className="grid grid-cols-[minmax(0,1fr)_44px_52px] gap-2 px-2 py-1 text-[10px] font-semibold text-gray-700 dark:text-gray-200 border-t border-gray-100 dark:border-gray-800 bg-gray-50/50 dark:bg-[#151515]">
+                            <div className="grid grid-cols-[minmax(0,1fr)_44px_52px] gap-2 px-2 py-1 text-[10px] font-semibold text-gray-700 dark:text-gray-100 border-t border-gray-100 dark:border-gray-800 bg-gray-50/50 dark:bg-[#151515]">
                               <span>Total</span>
                               <span className="text-right tabular-nums">{total}</span>
                               <span className="text-right tabular-nums">{total > 0 ? '100.0%' : '0.0%'}</span>
@@ -2738,7 +2738,7 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
 
                 <Card className="rounded-none border-gray-200 dark:border-gray-700 md:col-span-4 dark:bg-[#1b1b1b] h-full">
                   <CardHeader className="py-2 px-3">
-                    <CardTitle className="text-xs text-gray-700 dark:text-gray-200">
+                    <CardTitle className="text-xs text-gray-700 dark:text-gray-100">
                       Vendas por Produto
                     </CardTitle>
                   </CardHeader>
@@ -2786,7 +2786,7 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
                           const list = (f.salesByProduct || []) as any[];
                           const total = list.reduce((sum: number, it: any) => sum + Number(it?.value || 0), 0) || 0;
                           return (
-                            <div className="grid grid-cols-[minmax(0,1fr)_44px_52px] gap-2 px-2 py-1 text-[10px] font-semibold text-gray-700 dark:text-gray-200 border-t border-gray-100 dark:border-gray-800 bg-gray-50/50 dark:bg-[#151515]">
+                            <div className="grid grid-cols-[minmax(0,1fr)_44px_52px] gap-2 px-2 py-1 text-[10px] font-semibold text-gray-700 dark:text-gray-100 border-t border-gray-100 dark:border-gray-800 bg-gray-50/50 dark:bg-[#151515]">
                               <span>Total</span>
                               <span className="text-right tabular-nums">{total}</span>
                               <span className="text-right tabular-nums">{total > 0 ? '100.0%' : '0.0%'}</span>
@@ -2827,7 +2827,7 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
                   });
                 }}
               >
-                <SelectTrigger className="h-7 w-[180px] shrink-0 text-[10px] rounded-none bg-gray-200/50 dark:bg-[#2a2a2a] border-gray-300 dark:border-gray-600">
+                <SelectTrigger className="h-7 w-[180px] shrink-0 text-[10px] rounded-none bg-gray-400 dark:bg-[#606060] border-gray-300 dark:border-gray-600">
                   <SelectValue placeholder="Agente" />
                 </SelectTrigger>
                 <SelectContent className="text-[10px] rounded-none">
@@ -2858,7 +2858,7 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
                   });
                 }}
               >
-                <SelectTrigger className="h-7 w-[120px] shrink-0 text-[10px] rounded-none bg-gray-200/50 dark:bg-[#2a2a2a] border-gray-300 dark:border-gray-600">
+                <SelectTrigger className="h-7 w-[120px] shrink-0 text-[10px] rounded-none bg-gray-400 dark:bg-[#606060] border-gray-300 dark:border-gray-600">
                   <SelectValue placeholder="Status" />
                 </SelectTrigger>
                 <SelectContent className="text-[10px] rounded-none">
@@ -2874,7 +2874,7 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
                   <Button
                     variant="outline"
                     size="sm"
-                    className="h-7 w-[110px] shrink-0 px-2 text-[10px] rounded-none bg-gray-200/50 dark:bg-[#2a2a2a] border-gray-300 dark:border-gray-600 whitespace-nowrap"
+                    className="h-7 w-[110px] shrink-0 px-2 text-[10px] rounded-none bg-gray-400 dark:bg-[#606060] border-gray-300 dark:border-gray-600 whitespace-nowrap"
                   >
                     Etiquetas{customConvTags.length > 0 ? ` (${customConvTags.length})` : ''}
                   </Button>
@@ -2973,7 +2973,7 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
                   }
                 }}
               >
-                <SelectTrigger className="h-7 w-[140px] shrink-0 text-[10px] rounded-none bg-gray-200/50 dark:bg-[#2a2a2a] border-gray-300 dark:border-gray-600">
+                <SelectTrigger className="h-7 w-[140px] shrink-0 text-[10px] rounded-none bg-gray-400 dark:bg-[#606060] border-gray-300 dark:border-gray-600">
                   <SelectValue placeholder="Período" />
                 </SelectTrigger>
                 <SelectContent className="text-[10px] rounded-none">
@@ -2992,7 +2992,7 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
                       <Button
                         variant="outline"
                         size="sm"
-                        className="h-7 shrink-0 px-2 text-[10px] rounded-none bg-gray-200/50 dark:bg-[#2a2a2a] border-gray-300 dark:border-gray-600 whitespace-nowrap"
+                        className="h-7 shrink-0 px-2 text-[10px] rounded-none bg-gray-400 dark:bg-[#606060] border-gray-300 dark:border-gray-600 whitespace-nowrap"
                       >
                         De: {customConvStartDate ? format(customConvStartDate, 'dd/MM/yyyy') : '—'}
                       </Button>
@@ -3027,7 +3027,7 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
                       <Button
                         variant="outline"
                         size="sm"
-                        className="h-7 shrink-0 px-2 text-[10px] rounded-none bg-gray-200/50 dark:bg-[#2a2a2a] border-gray-300 dark:border-gray-600 whitespace-nowrap"
+                        className="h-7 shrink-0 px-2 text-[10px] rounded-none bg-gray-400 dark:bg-[#606060] border-gray-300 dark:border-gray-600 whitespace-nowrap"
                       >
                         Até: {customConvEndDate ? format(customConvEndDate, 'dd/MM/yyyy') : '—'}
                       </Button>
@@ -3086,7 +3086,7 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
             <Button 
               variant="outline" 
               size="sm" 
-              className="h-7 px-2 text-[10px] rounded-none bg-gray-200/50 dark:bg-[#2a2a2a] border-gray-300 dark:border-gray-600"
+              className="h-7 px-2 text-[10px] rounded-none bg-gray-400 dark:bg-[#606060] border-gray-300 dark:border-gray-600"
               onClick={addCustomConversion}
             >
               <Plus className="h-3 w-3 mr-1" />
@@ -3214,7 +3214,7 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
                   <Card className="rounded-none border-gray-200 dark:border-gray-700 dark:bg-[#1b1b1b] relative group">
                     <CardContent className="p-3">
                     <div className="flex flex-col gap-0.5 mb-1">
-                      <div className="text-[11px] font-medium text-gray-700 dark:text-gray-200 truncate">{conv.name || 'Conversão'}</div>
+                      <div className="text-[11px] font-medium text-gray-700 dark:text-gray-100 truncate">{conv.name || 'Conversão'}</div>
                     </div>
                     <div className="text-xl font-semibold text-gray-900 dark:text-gray-100">{result}%</div>
                     <div className="absolute top-1 right-1 opacity-0 group-hover:opacity-100 transition-opacity flex gap-0.5">
@@ -3308,7 +3308,7 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
                     <Button
                       variant="outline"
                       size="sm"
-                      className="h-7 px-2 text-[10px] rounded-none bg-gray-200/50 dark:bg-[#2a2a2a] border-gray-300 dark:border-gray-600"
+                      className="h-7 px-2 text-[10px] rounded-none bg-gray-400 dark:bg-[#606060] border-gray-300 dark:border-gray-600"
                       onClick={addTeamConversion}
                     >
                       <Plus className="h-3 w-3 mr-1" />
@@ -3334,7 +3334,7 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
                         });
                       }}
                     >
-                      <SelectTrigger className="h-7 w-full text-[10px] rounded-none bg-gray-200/50 dark:bg-[#2a2a2a] border-gray-300 dark:border-gray-600">
+                      <SelectTrigger className="h-7 w-full text-[10px] rounded-none bg-gray-400 dark:bg-[#606060] border-gray-300 dark:border-gray-600">
                         <SelectValue placeholder="Agente" />
                       </SelectTrigger>
                       <SelectContent className="text-[10px] rounded-none">
@@ -3365,7 +3365,7 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
                         });
                       }}
                     >
-                      <SelectTrigger className="h-7 w-full text-[10px] rounded-none bg-gray-200/50 dark:bg-[#2a2a2a] border-gray-300 dark:border-gray-600">
+                      <SelectTrigger className="h-7 w-full text-[10px] rounded-none bg-gray-400 dark:bg-[#606060] border-gray-300 dark:border-gray-600">
                         <SelectValue placeholder="Status" />
                       </SelectTrigger>
                       <SelectContent className="text-[10px] rounded-none">
@@ -3381,7 +3381,7 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
                         <Button
                           variant="outline"
                           size="sm"
-                          className="h-7 w-full px-2 text-[10px] rounded-none bg-gray-200/50 dark:bg-[#2a2a2a] border-gray-300 dark:border-gray-600 whitespace-nowrap"
+                          className="h-7 w-full px-2 text-[10px] rounded-none bg-gray-400 dark:bg-[#606060] border-gray-300 dark:border-gray-600 whitespace-nowrap"
                         >
                           Etiquetas{teamConvTags.length > 0 ? ` (${teamConvTags.length})` : ''}
                         </Button>
@@ -3480,7 +3480,7 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
                         }
                       }}
                     >
-                      <SelectTrigger className="h-7 w-full text-[10px] rounded-none bg-gray-200/50 dark:bg-[#2a2a2a] border-gray-300 dark:border-gray-600">
+                      <SelectTrigger className="h-7 w-full text-[10px] rounded-none bg-gray-400 dark:bg-[#606060] border-gray-300 dark:border-gray-600">
                         <SelectValue placeholder="Período" />
                       </SelectTrigger>
                       <SelectContent className="text-[10px] rounded-none">
@@ -3539,7 +3539,7 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
         {/* Ranking – Vendas */}
         <section className="space-y-3">
           <div className="flex items-center justify-between gap-2">
-            <div className="flex items-center gap-2 text-sm font-semibold text-gray-900 dark:text-gray-100">
+            <div className="flex items-center gap-2 text-sm font-semibold text-gray-700 dark:text-gray-100">
               <Users className="h-4 w-4" />
               Equipe – Ranking de Vendas
             </div>
@@ -3556,7 +3556,7 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
                   }
                 }}
               >
-                <SelectTrigger className="h-7 w-[140px] shrink-0 text-[10px] rounded-none bg-gray-200/50 dark:bg-[#2a2a2a] border-gray-300 dark:border-gray-600">
+                <SelectTrigger className="h-7 w-[140px] shrink-0 text-[10px] rounded-none bg-gray-400 dark:bg-[#606060] border-gray-300 dark:border-gray-600">
                   <SelectValue placeholder="Período" />
                 </SelectTrigger>
                 <SelectContent className="text-[10px] rounded-none">
@@ -3575,7 +3575,7 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
                       <Button
                         variant="outline"
                         size="sm"
-                        className="h-7 shrink-0 px-2 text-[10px] rounded-none bg-gray-200/50 dark:bg-[#2a2a2a] border-gray-300 dark:border-gray-600 whitespace-nowrap"
+                        className="h-7 shrink-0 px-2 text-[10px] rounded-none bg-gray-400 dark:bg-[#606060] border-gray-300 dark:border-gray-600 whitespace-nowrap"
                       >
                         De: {salesRankingStartDate ? format(salesRankingStartDate, 'dd/MM/yyyy') : '—'}
                       </Button>
@@ -3598,7 +3598,7 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
                       <Button
                         variant="outline"
                         size="sm"
-                        className="h-7 shrink-0 px-2 text-[10px] rounded-none bg-gray-200/50 dark:bg-[#2a2a2a] border-gray-300 dark:border-gray-600 whitespace-nowrap"
+                        className="h-7 shrink-0 px-2 text-[10px] rounded-none bg-gray-400 dark:bg-[#606060] border-gray-300 dark:border-gray-600 whitespace-nowrap"
                       >
                         Até: {salesRankingEndDate ? format(salesRankingEndDate, 'dd/MM/yyyy') : '—'}
                       </Button>
@@ -3637,7 +3637,7 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
             <div className="border border-gray-200 dark:border-gray-700 flex flex-col overflow-hidden min-w-0 h-full">
               <div className="flex-1 overflow-y-auto overflow-x-auto">
                 <table className="min-w-full text-xs table-auto">
-                  <thead className="sticky top-0 z-10 bg-gray-200 dark:bg-[#2a2a2a] text-gray-900 dark:text-gray-100 shadow-sm font-bold">
+                  <thead className="sticky top-0 z-10 bg-gray-400 dark:bg-[#606060] text-gray-700 dark:text-gray-100 shadow-sm font-bold">
                     <tr>
                       <th className="px-3 py-2 text-left">Usuário</th>
                       <th className="px-3 py-2 text-right">Faturamento</th>
@@ -3663,7 +3663,7 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
                       </tr>
                     ))}
                   </tbody>
-                  <tfoot className="sticky bottom-0 z-10 bg-gray-200 dark:bg-[#2a2a2a] text-gray-900 dark:text-gray-100 border-t border-gray-300 dark:border-gray-700 shadow-[0_-1px_3px_rgba(0,0,0,0.1)]">
+                  <tfoot className="sticky bottom-0 z-10 bg-gray-400 dark:bg-[#606060] text-gray-700 dark:text-gray-100 border-t border-gray-500 dark:border-gray-600 shadow-[0_-1px_3px_rgba(0,0,0,0.1)]">
                     <tr>
                       <td className="px-3 py-2 font-bold">Total</td>
                       <td className="px-3 py-2 text-right font-bold tabular-nums">
@@ -3686,7 +3686,7 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
         {/* Ranking – Trabalho */}
         <section className="space-y-3">
           <div className="flex items-center justify-between gap-2">
-            <div className="flex items-center gap-2 text-sm font-semibold text-gray-900 dark:text-gray-100">
+            <div className="flex items-center gap-2 text-sm font-semibold text-gray-700 dark:text-gray-100">
               <Users className="h-4 w-4" />
               Equipe – Ranking de Trabalho
             </div>
@@ -3703,7 +3703,7 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
                   }
                 }}
               >
-                <SelectTrigger className="h-7 w-[140px] shrink-0 text-[10px] rounded-none bg-gray-200/50 dark:bg-[#2a2a2a] border-gray-300 dark:border-gray-600">
+                <SelectTrigger className="h-7 w-[140px] shrink-0 text-[10px] rounded-none bg-gray-400 dark:bg-[#606060] border-gray-300 dark:border-gray-600">
                   <SelectValue placeholder="Período" />
                 </SelectTrigger>
                 <SelectContent className="text-[10px] rounded-none">
@@ -3722,7 +3722,7 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
                       <Button
                         variant="outline"
                         size="sm"
-                        className="h-7 shrink-0 px-2 text-[10px] rounded-none bg-gray-200/50 dark:bg-[#2a2a2a] border-gray-300 dark:border-gray-600 whitespace-nowrap"
+                        className="h-7 shrink-0 px-2 text-[10px] rounded-none bg-gray-400 dark:bg-[#606060] border-gray-300 dark:border-gray-600 whitespace-nowrap"
                       >
                         De: {workRankingStartDate ? format(workRankingStartDate, 'dd/MM/yyyy') : '—'}
                       </Button>
@@ -3745,7 +3745,7 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
                       <Button
                         variant="outline"
                         size="sm"
-                        className="h-7 shrink-0 px-2 text-[10px] rounded-none bg-gray-200/50 dark:bg-[#2a2a2a] border-gray-300 dark:border-gray-600 whitespace-nowrap"
+                        className="h-7 shrink-0 px-2 text-[10px] rounded-none bg-gray-400 dark:bg-[#606060] border-gray-300 dark:border-gray-600 whitespace-nowrap"
                       >
                         Até: {workRankingEndDate ? format(workRankingEndDate, 'dd/MM/yyyy') : '—'}
                       </Button>
@@ -3785,7 +3785,7 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
               {/* Mantém o comportamento de largura/colunas como estava; apenas fixa header/total e usa scroll Y */}
               <div className="flex-1 overflow-y-auto overflow-x-hidden">
                 <table className="w-full text-xs table-auto">
-                  <thead className="sticky top-0 z-10 bg-gray-200 dark:bg-[#2a2a2a] text-gray-900 dark:text-gray-100 shadow-sm font-bold">
+                  <thead className="sticky top-0 z-10 bg-gray-400 dark:bg-[#606060] text-gray-700 dark:text-gray-100 shadow-sm font-bold">
                     <tr>
                       <th className="px-3 py-2 text-left">Usuário</th>
                       <th className="px-3 py-2 text-right">Mensagem</th>
@@ -3821,7 +3821,7 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
                       </tr>
                     ))}
                   </tbody>
-                  <tfoot className="sticky bottom-0 z-10 bg-gray-200 dark:bg-[#2a2a2a] text-gray-900 dark:text-gray-100 border-t border-gray-300 dark:border-gray-700 shadow-[0_-1px_3px_rgba(0,0,0,0.1)]">
+                  <tfoot className="sticky bottom-0 z-10 bg-gray-400 dark:bg-[#606060] text-gray-700 dark:text-gray-100 border-t border-gray-500 dark:border-gray-600 shadow-[0_-1px_3px_rgba(0,0,0,0.1)]">
                     <tr>
                       <td className="px-3 py-2 font-bold">Total</td>
                       <td className="px-3 py-2 text-right font-bold tabular-nums">{rankingTrabalhoTotals.mensagem}</td>

@@ -131,13 +131,7 @@ export function PipelineColumnSelectorModal({
                 <SelectContent>
                   {columns.map((column) => (
                     <SelectItem key={column.id} value={column.id}>
-                      <div className="flex items-center gap-2">
-                        <div
-                          className="w-3 h-3 rounded-full"
-                          style={{ backgroundColor: column.color }}
-                        />
-                        <span>{column.name}</span>
-                      </div>
+                      {column.name}
                     </SelectItem>
                   ))}
                 </SelectContent>
