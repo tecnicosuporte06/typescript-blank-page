@@ -3778,13 +3778,7 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
                       </tr>
                     ))}
                   </tbody>
-                </table>
-              </div>
-
-              {/* Total fixo no bottom do card (fora do scroll) */}
-              <div className="flex-shrink-0 border-t border-gray-200 dark:border-gray-800 bg-gray-100 dark:bg-[#151515]">
-                <table className="w-full text-xs table-auto text-gray-700 dark:text-gray-200">
-                  <tbody>
+                  <tfoot className="sticky bottom-0 z-10 bg-gray-100 dark:bg-[#151515] text-gray-700 dark:text-gray-200 border-t border-gray-200 dark:border-gray-800 shadow-[0_-1px_2px_rgba(0,0,0,0.05)]">
                     <tr>
                       <td className="px-3 py-2 font-semibold">Total</td>
                       <td className="px-3 py-2 text-right font-semibold tabular-nums">
@@ -3797,7 +3791,7 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
                         {rankingVendasTotals.ticket.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
                       </td>
                     </tr>
-                  </tbody>
+                  </tfoot>
                 </table>
               </div>
             </div>
