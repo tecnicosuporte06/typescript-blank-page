@@ -7,6 +7,7 @@ import {
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { PromptEditor, ActionBadge, PromptEditorRef } from "@/components/ui/prompt-editor";
+import { removeDuplicateActions } from "@/lib/action-parser";
 import { 
   Tag, 
   ArrowRightLeft, 
@@ -305,7 +306,9 @@ export function PromptEditorModal({
   };
 
   const handleSave = () => {
-    onChange(localValue);
+    // Remover ações duplicadas antes de salvar
+    const cleanedValue = removeDuplicateActions(localValue);
+    onChange(cleanedValue);
     onOpenChange(false);
   };
 

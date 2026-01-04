@@ -196,14 +196,22 @@ export function getActionDisplayInfo(actionText: string): ActionDisplayInfo | nu
  */
 export function parseActionText(text: string): Array<{ match: string; position: number; info: ActionDisplayInfo }> {
   const actions: Array<{ match: string; position: number; info: ActionDisplayInfo }> = [];
+  const seenActions = new Set<string>(); // Para evitar duplicatas
   const actionRegex = /\[ADD_ACTION\]:[^\n]*/g;
   let match;
 
   while ((match = actionRegex.exec(text)) !== null) {
     const actionText = match[0].trim();
+    
+    // Verificar se já vimos esta ação antes (evitar duplicatas)
+    if (seenActions.has(actionText)) {
+      continue;
+    }
+    
     const info = getActionDisplayInfo(actionText);
     
     if (info) {
+      seenActions.add(actionText);
       actions.push({
         match: actionText,
         position: match.index,
@@ -213,6 +221,81 @@ export function parseActionText(text: string): Array<{ match: string; position: 
   }
 
   return actions;
+}
+
+/**
+ * Remove ações duplicadas do texto, mantendo apenas a primeira ocorrência de cada ação única
+ * Compara ações normalizadas (sem espaços extras) para detectar duplicatas
+ */
+export function removeDuplicateActions(text: string): string {
+  if (!text || !text.includes('[ADD_ACTION]')) {
+    return text;
+  }
+
+  const actionRegex = /\[ADD_ACTION\]:[^\n]*/g;
+  const seenActions = new Map<string, number>(); // Map<normalizedAction, firstIndex>
+  const actionPositions: Array<{ text: string; normalized: string; start: number; end: number }> = [];
+  let match;
+
+  // Encontrar todas as ações e suas posições
+  while ((match = actionRegex.exec(text)) !== null) {
+    const actionText = match[0].trim();
+    // Normalizar a ação removendo espaços extras entre parâmetros para comparação
+    const normalized = actionText.replace(/\s+/g, ' ').trim();
+    actionPositions.push({
+      text: actionText,
+      normalized: normalized,
+      start: match.index,
+      end: match.index + match[0].length
+    });
+  }
+
+  // Se não há ações ou apenas uma, retornar o texto original
+  if (actionPositions.length <= 1) {
+    return text;
+  }
+
+  // Identificar ações duplicadas (mesmo texto normalizado)
+  const duplicatesToRemove: number[] = [];
+  for (let i = 0; i < actionPositions.length; i++) {
+    const normalized = actionPositions[i].normalized;
+    if (seenActions.has(normalized)) {
+      // Esta é uma duplicata, marcar para remoção
+      duplicatesToRemove.push(i);
+    } else {
+      // Primeira ocorrência desta ação, adicionar ao mapa
+      seenActions.set(normalized, i);
+    }
+  }
+
+  // Se não há duplicatas, retornar o texto original
+  if (duplicatesToRemove.length === 0) {
+    return text;
+  }
+
+  // Remover duplicatas do texto (de trás para frente para manter os índices corretos)
+  let result = text;
+  for (let i = duplicatesToRemove.length - 1; i >= 0; i--) {
+    const index = duplicatesToRemove[i];
+    const pos = actionPositions[index];
+    
+    // Extrair partes antes e depois da ação
+    const before = result.substring(0, pos.start);
+    const after = result.substring(pos.end);
+    
+    // Remover quebras de linha extras antes e depois, mantendo pelo menos uma se necessário
+    const beforeTrimmed = before.replace(/\n+$/, '');
+    const afterTrimmed = after.replace(/^\n+/, '');
+    
+    // Combinar partes, adicionando uma quebra de linha apenas se ambas as partes têm conteúdo
+    if (beforeTrimmed && afterTrimmed) {
+      result = beforeTrimmed + '\n' + afterTrimmed;
+    } else {
+      result = beforeTrimmed + afterTrimmed;
+    }
+  }
+
+  return result;
 }
 
 
