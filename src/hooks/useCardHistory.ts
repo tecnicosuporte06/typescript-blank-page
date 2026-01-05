@@ -472,8 +472,16 @@ export const useCardHistory = (cardId: string, contactId?: string) => {
           });
 
           // Evento de conclusão (se foi concluída)
-          if (activity.is_completed && activity.completed_at) {
-            const completedTimestamp = activity.completed_at || new Date().toISOString();
+          // IMPORTANT: algumas atividades antigas (ou fluxos específicos) podem marcar is_completed=true
+          // sem preencher completed_at. Para não quebrar os filtros ("Realizadas" vs "Futuras"),
+          // geramos o evento de conclusão mesmo assim usando um fallback de timestamp.
+          if (activity.is_completed) {
+            const completedTimestamp =
+              activity.completed_at ||
+              activity.scheduled_for ||
+              activity.created_at ||
+              new Date().toISOString();
+
             allEvents.push({
               id: `${activity.id}_completed`,
               type: eventType,

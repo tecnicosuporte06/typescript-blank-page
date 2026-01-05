@@ -108,6 +108,9 @@ const [manualValue, setManualValue] = useState<string>("");
   // Estados para transferência rápida (aba Visão Geral)
   const [transferPipelineId, setTransferPipelineId] = useState<string>("");
   const [transferColumnId, setTransferColumnId] = useState<string>("");
+  const transferTouchedRef = useRef(false);
+  const transferInFlightRef = useRef(false);
+  const lastTransferKeyRef = useRef<string | null>(null);
   
   // Estado para popover de ações do card
   const [isCardActionsPopoverOpen, setIsCardActionsPopoverOpen] = useState(false);
@@ -1408,9 +1411,39 @@ const normalizeFieldKey = (label: string) => {
 
   // ✅ Transferência rápida: ao selecionar Pipeline + Coluna, transferir imediatamente o card
   useEffect(() => {
+    // IMPORTANT: esse efeito só deve disparar quando o usuário realmente interagir
+    // com os selects de "Transferir Oportunidade" na aba Visão Geral.
+    // Sem esse guard, updates/realtime/refetch podem alterar estados e causar loop de salvamento/toasts.
+    if (!transferTouchedRef.current) return;
     if (!transferPipelineId || !transferColumnId) return;
-    void handleMoveCardToColumn(transferPipelineId, transferColumnId);
-  }, [transferPipelineId, transferColumnId, handleMoveCardToColumn]);
+    if (!cardId) return;
+
+    const key = `${cardId}:${transferPipelineId}:${transferColumnId}`;
+    if (lastTransferKeyRef.current === key) return;
+    if (transferInFlightRef.current) return;
+
+    // Se já está na mesma etapa/pipeline, não transferir (e limpa o "touched")
+    if (transferPipelineId === cardData?.pipeline_id && transferColumnId === cardData?.column_id) {
+      transferTouchedRef.current = false;
+      lastTransferKeyRef.current = key;
+      return;
+    }
+
+    transferInFlightRef.current = true;
+    transferTouchedRef.current = false;
+    lastTransferKeyRef.current = key;
+
+    void handleMoveCardToColumn(transferPipelineId, transferColumnId).finally(() => {
+      transferInFlightRef.current = false;
+    });
+  }, [
+    transferPipelineId,
+    transferColumnId,
+    handleMoveCardToColumn,
+    cardId,
+    cardData?.pipeline_id,
+    cardData?.column_id,
+  ]);
 
   // Preselecionar pipeline/coluna quando abrir o popover
   useEffect(() => {
@@ -2120,18 +2153,30 @@ const normalizeFieldKey = (label: string) => {
 
       const durationMinutes = Math.round((endDateTime.getTime() - startDateTime.getTime()) / (1000 * 60));
 
+      // Preparar dados de atualização
+      const updateData: any = {
+        type: activityEditForm.type,
+        responsible_id: activityEditForm.responsibleId,
+        subject: activityEditForm.subject.trim() || activityEditForm.type,
+        description: activityEditForm.description || null,
+        availability: activityEditForm.availability,
+        scheduled_for: startDateTime.toISOString(),
+        duration_minutes: durationMinutes > 0 ? durationMinutes : 30,
+        is_completed: activityEditForm.markAsDone,
+      };
+
+      // Se está marcando como realizada, preencher completed_at (preservando valor existente se já tiver)
+      if (activityEditForm.markAsDone) {
+        updateData.completed_at =
+          (selectedActivityForEdit as any)?.completed_at || new Date().toISOString();
+      } else {
+        // Se está desmarcando como realizada, limpar completed_at
+        updateData.completed_at = null;
+      }
+
       const { error } = await supabase
         .from("activities")
-        .update({
-          type: activityEditForm.type,
-          responsible_id: activityEditForm.responsibleId,
-          subject: activityEditForm.subject.trim() || activityEditForm.type,
-          description: activityEditForm.description || null,
-          availability: activityEditForm.availability,
-          scheduled_for: startDateTime.toISOString(),
-          duration_minutes: durationMinutes > 0 ? durationMinutes : 30,
-          is_completed: activityEditForm.markAsDone,
-        })
+        .update(updateData)
         .eq("id", selectedActivityForEdit.id);
 
       if (error) throw error;
@@ -2144,8 +2189,10 @@ const normalizeFieldKey = (label: string) => {
       setIsActivityEditModalOpen(false);
       setSelectedActivityForEdit(null);
       await fetchActivities();
-      // Invalidar histórico para que a atividade atualizada apareça corretamente
-      queryClient.invalidateQueries({ queryKey: ['card-history', cardId] });
+      // Invalidar e refetch histórico para que a atividade atualizada apareça corretamente
+      const historyKey = ['card-history', cardId, contact?.id || 'no-contact'];
+      await queryClient.invalidateQueries({ queryKey: historyKey });
+      await queryClient.refetchQueries({ queryKey: historyKey });
     } catch (error: any) {
       console.error("Erro ao atualizar atividade:", error);
 
@@ -2702,8 +2749,36 @@ const normalizeFieldKey = (label: string) => {
   const getFilteredHistoryEvents = (events: any[], filter: string) => {
     if (filter === "all") return events;
     if (filter === "activities") return events.filter(e => e.type?.startsWith("activity_"));
-    if (filter === "activities_done") return events.filter(e => e.type?.startsWith("activity_") && e.metadata?.status === 'completed');
-    if (filter === "activities_future") return events.filter(e => e.type?.startsWith("activity_") && e.metadata?.status !== 'completed');
+    if (filter === "activities_done") {
+      return events.filter(e => {
+        if (!e.type?.startsWith("activity_")) return false;
+        // Mostrar apenas eventos de conclusão
+        return e.metadata?.status === 'completed';
+      });
+    }
+    if (filter === "activities_future") {
+      // Criar um Set com IDs de atividades que foram concluídas
+      const completedActivityIds = new Set<string>();
+      events.forEach(e => {
+        if (e.type?.startsWith("activity_") && e.metadata?.status === 'completed') {
+          // Extrair o ID da atividade do ID do evento (formato: activityId_completed)
+          const activityId = e.id.replace('_completed', '');
+          completedActivityIds.add(activityId);
+        }
+      });
+      
+      return events.filter(e => {
+        if (!e.type?.startsWith("activity_")) return false;
+        // Excluir eventos de conclusão
+        if (e.metadata?.status === 'completed') return false;
+        // Excluir eventos de criação de atividades que já foram concluídas
+        if (e.metadata?.status === 'created') {
+          const activityId = e.id.replace('_created', '');
+          return !completedActivityIds.has(activityId);
+        }
+        return true;
+      });
+    }
     if (filter === "notes") return events.filter(e => e.type === "notes");
     if (filter === "email") return events.filter(e => e.type === "email");
     if (filter === "files") return events.filter(e => e.type === "files");
@@ -3465,6 +3540,7 @@ const normalizeFieldKey = (label: string) => {
                           <Select
                             value={transferPipelineId || ""}
                             onValueChange={(value) => {
+                              transferTouchedRef.current = true;
                               setTransferPipelineId(value);
                               setTransferColumnId("");
                             }}
@@ -3494,7 +3570,10 @@ const normalizeFieldKey = (label: string) => {
 
                           <Select
                             value={transferColumnId || ""}
-                            onValueChange={(value) => setTransferColumnId(value)}
+                            onValueChange={(value) => {
+                              transferTouchedRef.current = true;
+                              setTransferColumnId(value);
+                            }}
                             disabled={
                               !transferPipelineId ||
                               isLoadingTransferColumns ||
@@ -4058,7 +4137,7 @@ const normalizeFieldKey = (label: string) => {
                             historyFilter === "activities_done" && "bg-yellow-50 dark:bg-yellow-900/30 border border-yellow-200 dark:border-yellow-800 text-black dark:text-white font-semibold hover:bg-yellow-100 dark:hover:bg-yellow-900/50"
                           )}
                         >
-                          Atividades Realizadas ({historyEvents.filter(e => e.type?.startsWith("activity_") && e.metadata?.status === 'completed').length})
+                          Atividades Realizadas ({getFilteredHistoryEvents(historyEvents, "activities_done").length})
                         </Button>
                         <Button
                           variant="ghost"
@@ -4069,7 +4148,7 @@ const normalizeFieldKey = (label: string) => {
                             historyFilter === "activities_future" && "bg-yellow-50 dark:bg-yellow-900/30 border border-yellow-200 dark:border-yellow-800 text-black dark:text-white font-semibold hover:bg-yellow-100 dark:hover:bg-yellow-900/50"
                           )}
                         >
-                          Atividades Futuras ({historyEvents.filter(e => e.type?.startsWith("activity_") && e.metadata?.status !== 'completed').length})
+                          Atividades Futuras ({getFilteredHistoryEvents(historyEvents, "activities_future").length})
                         </Button>
                         <Button
                           variant="ghost"
@@ -4532,10 +4611,16 @@ const normalizeFieldKey = (label: string) => {
                     {/* Timeline do Calendário */}
                     <div className="flex-1 overflow-y-auto relative" style={{ minHeight: '600px', maxHeight: '800px' }}>
                       <div className="relative" style={{ minHeight: '2400px' }}>
-                        {/* Horas e linhas - de 00:00 a 23:00 */}
+                        {/*
+                          Horas e linhas - de 00:00 a 23:00
+                          IMPORTANT: a timeline de atividades usa percent baseado em minutos do dia (24*60).
+                          Para alinhar perfeitamente, as linhas de hora também precisam usar a mesma base
+                          (e não hour/23, que desloca as linhas e faz blocos aparecerem "antes" da hora correta).
+                        */}
                         {Array.from({ length: 24 }, (_, i) => {
                           const hour = i;
-                          const hourPosition = (hour / 23) * 100;
+                          const totalMinutesInDay = 24 * 60;
+                          const hourPosition = ((hour * 60) / totalMinutesInDay) * 100;
                           
                           return (
                             <div
@@ -4701,7 +4786,7 @@ const normalizeFieldKey = (label: string) => {
                               historyFilter === "activities_done" && "bg-yellow-50 dark:bg-yellow-900/30 text-yellow-700 dark:text-yellow-400 font-semibold hover:bg-yellow-100 dark:hover:bg-yellow-900/50"
                             )}
                           >
-                            Atividades Realizadas ({historyEvents.filter(e => e.type?.startsWith("activity_") && e.metadata?.status === 'completed').length})
+                            Atividades Realizadas ({getFilteredHistoryEvents(historyEvents, "activities_done").length})
                           </Button>
                           <Button
                             variant={historyFilter === "activities_future" ? "default" : "ghost"}
@@ -4712,7 +4797,7 @@ const normalizeFieldKey = (label: string) => {
                               historyFilter === "activities_future" && "bg-yellow-50 dark:bg-yellow-900/30 text-yellow-700 dark:text-yellow-400 font-semibold hover:bg-yellow-100 dark:hover:bg-yellow-900/50"
                             )}
                           >
-                            Atividades Futuras ({historyEvents.filter(e => e.type?.startsWith("activity_") && e.metadata?.status !== 'completed').length})
+                            Atividades Futuras ({getFilteredHistoryEvents(historyEvents, "activities_future").length})
                           </Button>
                           <Button
                             variant={historyFilter === "changelog" ? "default" : "ghost"}

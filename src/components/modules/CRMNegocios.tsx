@@ -686,30 +686,75 @@ function DraggableDeal({
               </TooltipContent>
             </Tooltip>
 
-            {/* Ícone de Alerta de Tarefa Pendente */}
-            {pendingTask && (() => {
-              const taskDate = startOfDay(new Date(pendingTask.scheduled_for));
-              const today = startOfDay(new Date());
+            {/* Ícone de Alerta de Tarefa Pendente (sempre visível) */}
+            {(() => {
+              if (!pendingTask) {
+                return (
+                  <Tooltip delayDuration={500}>
+                    <TooltipTrigger asChild>
+                      <Button
+                        size="icon"
+                        variant="ghost"
+                        className={cn("h-5 w-5 p-0 text-gray-400 dark:text-gray-500")}
+                        onPointerDown={(e) => e.stopPropagation()}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          e.preventDefault();
+                        }}
+                        title="Não há tarefa criada"
+                        type="button"
+                        disabled
+                      >
+                        <AlertCircle className="w-3.5 h-3.5" />
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent
+                      className="z-[99999] bg-white dark:bg-[#1b1b1b] text-gray-900 dark:text-gray-100 px-2 py-1 text-[10px] font-medium border border-gray-200 dark:border-gray-700 shadow-lg rounded-none"
+                      side="top"
+                    >
+                      <p>Não há tarefa criada</p>
+                    </TooltipContent>
+                  </Tooltip>
+                );
+              }
+
+              const scheduledAt = new Date(pendingTask.scheduled_for);
+              const now = new Date();
+
+              // Diferença em dias (apenas para texto "Hoje/Amanhã/Em Xd")
+              const taskDate = startOfDay(scheduledAt);
+              const today = startOfDay(now);
               const daysDiff = differenceInDays(taskDate, today);
 
-              const isOverdue = daysDiff < 0;
-              const isTodayOrTomorrow = daysDiff <= 1;
+              // ✅ Regra solicitada (por tempo real):
+              // - Amarelo: a partir de 1 dia (24h) antes do horário agendado
+              // - Vermelho: atraso a partir de 1 minuto após o horário agendado
+              // - Verde: ainda longe (> 24h)
+              const ONE_MINUTE_MS = 60_000;
+              const ONE_DAY_MS = 24 * 60 * 60 * 1000;
 
-              // ✅ Regra solicitada:
-              // - Verde: atividade em aberto e ainda "longe" do atraso (> 1 dia)
-              // - Amarelo: perto de atrasar (1 dia antes ou no dia)
-              // - Vermelho: atrasado
+              const isOverdue = now.getTime() > scheduledAt.getTime() + ONE_MINUTE_MS;
+              const isWithinOneDay = !isOverdue && (scheduledAt.getTime() - now.getTime()) <= ONE_DAY_MS;
+
               let iconColor = "text-green-500";
               if (isOverdue) iconColor = "text-red-500";
-              else if (isTodayOrTomorrow) iconColor = "text-yellow-500";
+              else if (isWithinOneDay) iconColor = "text-yellow-500";
 
-              const badgeText = isOverdue
-                ? `${Math.abs(daysDiff)}d atrasado`
-                : daysDiff === 0
-                ? "Hoje"
-                : daysDiff === 1
-                ? "Amanhã"
-                : `Em ${daysDiff}d`;
+              const badgeText = (() => {
+                if (isOverdue) {
+                  const overdueMs = now.getTime() - scheduledAt.getTime();
+                  const overdueMinutes = Math.floor(overdueMs / ONE_MINUTE_MS);
+                  if (overdueMinutes < 60) return `${Math.max(1, overdueMinutes)}m atrasado`;
+                  const overdueHours = Math.floor(overdueMs / (60 * ONE_MINUTE_MS));
+                  if (overdueHours < 24) return `${overdueHours}h atrasado`;
+                  const overdueDays = Math.floor(overdueMs / ONE_DAY_MS);
+                  return `${overdueDays}d atrasado`;
+                }
+
+                if (daysDiff === 0) return "Hoje";
+                if (daysDiff === 1) return "Amanhã";
+                return `Em ${daysDiff}d`;
+              })();
 
               return (
                 <Popover>
