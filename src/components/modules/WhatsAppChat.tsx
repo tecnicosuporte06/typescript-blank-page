@@ -157,6 +157,8 @@ export function WhatsAppChat({
     conversations,
     conversationCounts,
     loadMoreConversations,
+    hasMoreConversations,
+    isLoadingMoreConversations,
     markAsRead,
     assumirAtendimento,
     reativarIA,
@@ -515,6 +517,44 @@ export function WhatsAppChat({
 
   // Estados para as abas baseadas no papel
   const [activeTab, setActiveTab] = useState<string>('all');
+
+  // ✅ Garantir que a aba "Minhas conversas" liste tudo sem depender do botão "Atualizar conversas"
+  // O backend retorna counts (ex.: mine), mas a lista é paginada. Ao entrar na aba, vamos carregar mais páginas
+  // até atingir o total esperado (ou acabar a paginação).
+  useEffect(() => {
+    if (onlyMessages) return;
+    if (activeTab !== "mine") return;
+    if (!conversationCounts?.mine) return;
+    if (loading) return;
+    if (isLoadingMoreConversations) return;
+    if (!hasMoreConversations) return;
+
+    // Evitar auto-load agressivo quando há filtros adicionais (counts não refletem filtros locais)
+    if ((searchTerm || "").trim().length > 0) return;
+    if (selectedConnection && selectedConnection !== "all") return;
+    if (selectedTags.length > 0) return;
+
+    const mineLoaded = conversations.filter(
+      (c) => c.assigned_user_id === user?.id && c.status !== "closed"
+    ).length;
+
+    if (mineLoaded >= conversationCounts.mine) return;
+
+    loadMoreConversations();
+  }, [
+    onlyMessages,
+    activeTab,
+    conversationCounts?.mine,
+    loading,
+    isLoadingMoreConversations,
+    hasMoreConversations,
+    searchTerm,
+    selectedConnection,
+    selectedTags,
+    conversations,
+    user?.id,
+    loadMoreConversations,
+  ]);
 
   const isMasterUser = hasRole(['master']);
 
@@ -2816,7 +2856,9 @@ export function WhatsAppChat({
                     <RefreshCw className={cn("h-3.5 w-3.5 text-gray-600", loading && "animate-spin")} />
                   </Button>
                 </TooltipTrigger>
-                <TooltipContent className="rounded-none border-[#d4d4d4]">Atualizar conversas</TooltipContent>
+                <TooltipContent className="rounded-none border-[#d4d4d4] bg-white text-gray-900 shadow-md dark:bg-[#0f0f0f] dark:text-gray-100 dark:border-gray-700">
+                  Atualizar conversas
+                </TooltipContent>
               </Tooltip>
             </TooltipProvider>
           </div>
