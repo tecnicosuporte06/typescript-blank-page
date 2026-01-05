@@ -54,3 +54,6 @@ verify_jwt = false
 
 [functions.check-time-based-automations]
 verify_jwt = false
+
+[functions.edit-zapi-message]
+verify_jwt = false

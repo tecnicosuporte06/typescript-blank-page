@@ -66,6 +66,43 @@ export function ChangeAgentModal({
     fetchCurrentAgent();
   }, [open, conversationId, selectedWorkspace?.workspace_id, queryClient]);
 
+  // 🔄 Realtime subscription para atualizar agente ativo quando a conversa mudar
+  useEffect(() => {
+    if (!open || !conversationId) return;
+
+    console.log('👂 Configurando realtime para agente ativo na conversa:', conversationId);
+
+    const channel = supabase
+      .channel(`change-agent-modal-${conversationId}`)
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'conversations',
+          filter: `id=eq.${conversationId}`
+        },
+        (payload) => {
+          console.log('🔔 [Realtime ChangeAgentModal] Conversa atualizada:', payload);
+          
+          const newAgentId = payload.new.agent_active_id || null;
+          console.log('🔄 [Realtime ChangeAgentModal] Novo agente ativo:', newAgentId);
+          
+          setActualCurrentAgentId(newAgentId);
+          setSelectedAgentId(newAgentId);
+          
+          // Invalidar queries relacionadas
+          queryClient.invalidateQueries({ queryKey: ['conversation-agent', conversationId] });
+        }
+      )
+      .subscribe();
+
+    return () => {
+      console.log('🔌 Desconectando realtime do ChangeAgentModal');
+      supabase.removeChannel(channel);
+    };
+  }, [open, conversationId, queryClient]);
+
   // Buscar agentes ativos do workspace
   const { data: agents, isLoading } = useQuery({
     queryKey: ['workspace-agents', selectedWorkspace?.workspace_id],

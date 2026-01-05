@@ -67,6 +67,12 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Search, Send, Bot, Phone, MoreVertical, Circle, MessageCircle, ArrowRight, Settings, Users, Trash2, ChevronDown, Filter, Eye, RefreshCw, Mic, Square, X, Check, PanelLeft, UserCircle, UserX, UsersRound, Tag, Plus, Loader2, Workflow, Clock, Music, Briefcase } from "lucide-react";
 import { WhatsAppChatSkeleton } from "@/components/chat/WhatsAppChatSkeleton";
 import { Switch } from "@/components/ui/switch";
@@ -614,6 +620,8 @@ export function WhatsAppChat({
   // Estados para modo de seleção e encaminhamento
   const [selectionMode, setSelectionMode] = useState(false);
   const [selectedMessages, setSelectedMessages] = useState<Set<string>>(new Set());
+  const [editingMessage, setEditingMessage] = useState<ConversationMessage | null>(null);
+  const [editingMessageContent, setEditingMessageContent] = useState<string>('');
   const [forwardModalOpen, setForwardModalOpen] = useState(false);
   const [replyingTo, setReplyingTo] = useState<any>(null);
 
@@ -2177,6 +2185,69 @@ export function WhatsAppChat({
     }, 100);
   };
 
+  const handleEditMessage = (message: ConversationMessage) => {
+    // Só permite editar mensagens de texto enviadas pelo agente que já têm external_id
+    if (message.message_type !== 'text' || 
+        (message.sender_type !== 'agent' && message.sender_type !== 'user') ||
+        !message.external_id) {
+      return;
+    }
+    setEditingMessage(message);
+    setEditingMessageContent(message.content || '');
+  };
+
+  const handleSaveEditMessage = async () => {
+    if (!editingMessage || !editingMessageContent.trim() || !selectedConversation) return;
+
+    try {
+      const userData = localStorage.getItem('currentUser');
+      const currentUserData = userData ? JSON.parse(userData) : null;
+      
+      const headers: Record<string, string> = {};
+      if (currentUserData?.id) {
+        headers['x-system-user-id'] = currentUserData.id;
+        headers['x-system-user-email'] = currentUserData.email || '';
+      }
+      if (selectedWorkspace?.workspace_id) {
+        headers['x-workspace-id'] = selectedWorkspace.workspace_id;
+      }
+
+      const { data, error } = await supabase.functions.invoke('edit-zapi-message', {
+        body: {
+          messageId: editingMessage.id,
+          externalId: editingMessage.external_id,
+          content: editingMessageContent.trim(),
+          conversationId: selectedConversation.id,
+          workspaceId: selectedWorkspace?.workspace_id
+        },
+        headers
+      });
+
+      if (error) throw error;
+
+      // Atualizar mensagem localmente
+      updateMessage(editingMessage.id, {
+        content: editingMessageContent.trim()
+      });
+
+      setEditingMessage(null);
+      setEditingMessageContent('');
+      
+      toast({
+        title: "Sucesso",
+        description: "Mensagem editada com sucesso",
+      });
+    } catch (error: any) {
+      console.error('Erro ao editar mensagem:', error);
+      const errorMessage = error.message || error.error || "Erro ao editar mensagem";
+      toast({
+        title: "Erro",
+        description: errorMessage,
+        variant: "destructive",
+      });
+    }
+  };
+
   // Ref para prevenir múltiplos carregamentos simultâneos no scroll infinito
   const isLoadingMoreScrollRef = useRef(false);
 
@@ -3331,15 +3402,20 @@ export function WhatsAppChat({
                      )}>
                       {/* Menu de contexto */}
                       {!selectionMode && <div className="opacity-0 group-hover/message:opacity-100 transition-opacity absolute top-0 right-0 z-10">
-                        <MessageContextMenu onForward={() => handleMessageForward(message.id)} onReply={() => handleReply(message)} onDownload={message.file_url ? () => {
-                  const link = document.createElement('a');
-                  link.href = message.file_url!;
-                  link.download = message.file_name || 'download';
-                  link.target = '_blank';
-                  document.body.appendChild(link);
-                  link.click();
-                  document.body.removeChild(link);
-                } : undefined} hasDownload={!!message.file_url} />
+                        <MessageContextMenu 
+                          onForward={() => handleMessageForward(message.id)} 
+                          onReply={() => handleReply(message)} 
+                          onDownload={message.file_url ? () => {
+                            const link = document.createElement('a');
+                            link.href = message.file_url!;
+                            link.download = message.file_name || 'download';
+                            link.target = '_blank';
+                            document.body.appendChild(link);
+                            link.click();
+                            document.body.removeChild(link);
+                          } : undefined} 
+                          hasDownload={!!message.file_url}
+                        />
                       </div>}
                       
                       {/* Mostrar mensagem quotada se existir */}
@@ -3901,5 +3977,42 @@ export function WhatsAppChat({
 
         return null;
       })()}
+
+      {/* Modal de edição de mensagem */}
+      <Dialog open={!!editingMessage} onOpenChange={(open) => !open && setEditingMessage(null)}>
+        <DialogContent className="max-w-md border border-[#d4d4d4] shadow-lg sm:rounded-none bg-white dark:bg-[#0b0b0b] dark:border-gray-700 dark:text-gray-100">
+          <DialogHeader>
+            <DialogTitle>Editar Mensagem</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <Textarea
+              value={editingMessageContent}
+              onChange={(e) => setEditingMessageContent(e.target.value)}
+              placeholder="Digite a mensagem editada..."
+              className="min-h-[100px] rounded-none border-[#d4d4d4] dark:border-gray-700 bg-white dark:bg-[#2d2d2d] text-gray-900 dark:text-gray-200"
+              autoFocus
+            />
+          </div>
+          <div className="flex justify-end gap-2 pt-2">
+            <Button
+              variant="outline"
+              onClick={() => {
+                setEditingMessage(null);
+                setEditingMessageContent('');
+              }}
+              className="rounded-none"
+            >
+              Cancelar
+            </Button>
+            <Button
+              onClick={handleSaveEditMessage}
+              disabled={!editingMessageContent.trim()}
+              className="rounded-none"
+            >
+              Salvar
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>;
 }

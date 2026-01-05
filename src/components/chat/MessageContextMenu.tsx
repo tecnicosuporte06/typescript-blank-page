@@ -13,7 +13,7 @@ export function MessageContextMenu({
   onForward, 
   onReply, 
   onDownload,
-  hasDownload = false 
+  hasDownload = false
 }: MessageContextMenuProps) {
   return (
     <DropdownMenu>
