@@ -81,6 +81,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
+import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
 import { generateRandomId } from "@/lib/generate-random-id";
 import { useQuickMessages } from "@/hooks/useQuickMessages";
@@ -259,6 +260,7 @@ export function WhatsAppChat({
   const { messages: quickTextMessages } = useQuickMessages();
   
   const [selectedConversation, setSelectedConversation] = useState<WhatsAppConversation | null>(null);
+  const [isHeaderContactResolved, setIsHeaderContactResolved] = useState(false);
   const [messageDrafts, setMessageDrafts] = useState<Record<string, string>>({});
   const [searchTerm, setSearchTerm] = useState("");
   const conversationListRootRef = useRef<HTMLDivElement | null>(null);
@@ -1439,7 +1441,7 @@ export function WhatsAppChat({
         id: convData.id,
         contact: {
           id: convData.contact.id,
-          name: convData.contact.name || 'Contato',
+          name: convData.contact.name || convData.contact.phone || 'Sem nome',
           phone: convData.contact.phone,
           email: convData.contact.email,
           profile_image_url: convData.contact.profile_image_url,
@@ -1485,10 +1487,11 @@ export function WhatsAppChat({
 
     isAutoOpeningRef.current = true;
     setIsOpeningConversation(true);
+    setIsHeaderContactResolved(false);
 
     (async () => {
       try {
-        const initialName = headerContact?.name && headerContact.name !== '-' ? headerContact.name : null;
+        // Não preencher o header com texto. Skeleton até resolver.
         // Garantir que a UI não caia no estado "Selecione uma conversa"
         // (no modo onlyMessages não temos a lista de conversas para montar o objeto completo)
         setSelectedConversation((prev) => {
@@ -1497,7 +1500,7 @@ export function WhatsAppChat({
             id: selectedConversationId,
             contact: {
               id: headerContact?.id || '',
-              name: initialName || headerContact?.phone || 'Contato',
+              name: '',
               phone: headerContact?.phone ?? undefined,
               email: headerContact?.email ?? undefined,
               profile_image_url: headerContact?.profile_image_url ?? undefined,
@@ -1550,7 +1553,7 @@ export function WhatsAppChat({
                     ...prev,
                     contact: {
                       id: contact.id,
-                      name: contact.name || prev.contact?.name || 'Sem nome',
+                      name: (contact.name && contact.name !== '-' ? contact.name : '') || '',
                       phone: contact.phone ?? prev.contact?.phone,
                       email: contact.email ?? prev.contact?.email,
                       profile_image_url: contact.profile_image_url ?? prev.contact?.profile_image_url,
@@ -1565,6 +1568,8 @@ export function WhatsAppChat({
           }
         } catch (e) {
           console.warn('⚠️ [WhatsAppChat] Falha ao carregar dados do contato (onlyMessages):', e);
+        } finally {
+          setIsHeaderContactResolved(true);
         }
 
         lastAutoOpenedIdRef.current = selectedConversationId;
@@ -1611,6 +1616,35 @@ export function WhatsAppChat({
       }
     })();
   }, [onlyMessages, selectedConversationId, conversations, fetchAndOpenConversationById]);
+
+  // Se o pai já possui o contato (DealDetailsPage), resolver header sem depender de get-chat-data.
+  useEffect(() => {
+    if (!onlyMessages) return;
+    if (!selectedConversationId) return;
+    if (!headerContact) return;
+
+    const nextName = headerContact.name && headerContact.name !== '-' ? headerContact.name : '';
+
+    setSelectedConversation((prev) => {
+      if (!prev || prev.id !== selectedConversationId) return prev;
+      // Se já temos nome, não sobrescrever.
+      if (prev.contact?.name && prev.contact.name.trim()) return prev;
+      return {
+        ...prev,
+        contact: {
+          ...prev.contact,
+          id: headerContact.id || prev.contact?.id || '',
+          name: nextName || '',
+          phone: (headerContact.phone ?? prev.contact?.phone) as any,
+          email: (headerContact.email ?? prev.contact?.email) as any,
+          profile_image_url: (headerContact.profile_image_url ?? prev.contact?.profile_image_url) as any,
+        },
+        _updated_at: Date.now(),
+      };
+    });
+
+    setIsHeaderContactResolved(true);
+  }, [onlyMessages, selectedConversationId, headerContact?.id, headerContact?.name, headerContact?.phone, headerContact?.email, headerContact?.profile_image_url]);
 
   // Funções de seleção e encaminhamento
   const handleMessageForward = (messageId: string) => {
@@ -1766,7 +1800,7 @@ export function WhatsAppChat({
   ) => {
     switch (senderType) {
       case 'contact':
-        return contactName || 'Contato';
+        return contactName || 'Sem nome';
       case 'system':
         return 'Sistema';
       case 'ia':
@@ -3144,7 +3178,15 @@ export function WhatsAppChat({
                   
                   <div className="flex items-center gap-2">
                     <h3 className="font-bold text-gray-900 text-sm tracking-tight dark:text-gray-100">
-                      {selectedConversation.contact?.name && selectedConversation.contact.name !== '-' ? selectedConversation.contact.name : (selectedConversation.contact?.phone || 'Sem nome')}
+                      {onlyMessages ? (
+                        isHeaderContactResolved ? (
+                          (selectedConversation.contact?.name && selectedConversation.contact.name !== '-' ? selectedConversation.contact.name : '')
+                        ) : (
+                          <Skeleton className="h-4 w-24 rounded-none inline-block align-middle bg-gray-200 dark:bg-gray-700" />
+                        )
+                      ) : (
+                        (selectedConversation.contact?.name && selectedConversation.contact.name !== '-' ? selectedConversation.contact.name : (selectedConversation.contact?.phone || ''))
+                      )}
                     </h3>
                     {selectedConversation.contact?.id && (
                       <div className="flex items-center gap-2">
