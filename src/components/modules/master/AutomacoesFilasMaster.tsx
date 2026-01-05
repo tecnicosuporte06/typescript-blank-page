@@ -167,10 +167,6 @@ export const AutomacoesFilasMaster = forwardRef<AutomacoesFilasMasterRef>((props
 
                 {/* Nome */}
                 <div className="px-3 py-2.5 text-xs border-r border-[#d4d4d4] flex items-center gap-2 dark:border-gray-700 dark:text-gray-100">
-                  <div 
-                    className="w-3 h-3 rounded-full flex-shrink-0" 
-                    style={{ backgroundColor: fila.color || '#8B5CF6' }}
-                  />
                   <span className="font-medium">{fila.name}</span>
                 </div>
 

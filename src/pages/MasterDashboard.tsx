@@ -343,12 +343,12 @@ export default function MasterDashboard() {
               {/* Adicionar Agente Button */}
               <Button
                 variant="ghost"
-                size="icon"
                 onClick={() => agentesRef.current?.handleAddAgent()}
-                className="h-7 w-7 rounded-none hover:bg-gray-200 text-gray-700 border border-transparent hover:border-gray-300"
+                className="h-7 px-2 rounded-none hover:bg-gray-200 text-gray-700 border border-transparent hover:border-gray-300 flex items-center gap-1.5"
                 title="Adicionar agente"
               >
                 <Plus className="h-3.5 w-3.5" />
+                <span className="text-xs font-medium">Criar Agente</span>
               </Button>
 
               <div className="flex-1" />

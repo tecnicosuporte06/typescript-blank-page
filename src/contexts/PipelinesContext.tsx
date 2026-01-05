@@ -107,7 +107,7 @@ interface PipelinesContextType {
   updateConversationAgentStatus: (conversationId: string, agente_ativo: boolean, agent_active_id?: string | null) => void;
 }
 
-const PipelinesContext = createContext<PipelinesContextType | undefined>(undefined);
+export const PipelinesContext = createContext<PipelinesContextType | undefined>(undefined);
 
 export function PipelinesProvider({ children }: { children: React.ReactNode }) {
   const [pipelines, setPipelines] = useState<Pipeline[]>([]);

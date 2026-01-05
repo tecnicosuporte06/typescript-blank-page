@@ -321,7 +321,7 @@ export function PromptEditorModal({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-5xl h-[90vh] flex flex-col p-0 gap-0 overflow-hidden border border-[#d4d4d4] shadow-lg sm:rounded-none bg-white dark:bg-[#0b0b0b] dark:border-gray-700 dark:text-gray-100">
         <DialogHeader className="mx-0 mt-0 px-6 py-4 bg-primary text-primary-foreground border-b border-[#d4d4d4] rounded-t-none flex-shrink-0 dark:border-gray-700">
-          <DialogTitle>Editor de Prompt com Ações</DialogTitle>
+          <DialogTitle className="text-white">Editor de Prompt com Ações</DialogTitle>
         </DialogHeader>
 
         <div className="flex-1 flex flex-col overflow-hidden bg-white dark:bg-[#0f0f0f]">

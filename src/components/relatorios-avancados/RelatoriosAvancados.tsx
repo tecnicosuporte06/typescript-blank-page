@@ -1,8 +1,8 @@
 // @ts-nocheck
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, useContext } from 'react';
 import { useTheme } from 'next-themes';
 import { Workspace, useWorkspace } from '@/contexts/WorkspaceContext';
-import { usePipelinesContext } from '@/contexts/PipelinesContext';
+import { usePipelinesContext, PipelinesContext } from '@/contexts/PipelinesContext';
 import { useAuth } from '@/hooks/useAuth';
 import { supabase } from '@/integrations/supabase/client';
 import { format, subDays, startOfDay, endOfDay } from 'date-fns';
@@ -182,7 +182,12 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
     (resolvedTheme ?? theme) === 'dark';
   const { selectedWorkspace, workspaces: ctxWorkspaces } = useWorkspace();
   const { user, userRole } = useAuth();
-  const { pipelines: ctxPipelines, fetchPipelines: fetchCtxPipelines } = usePipelinesContext();
+  
+  // Tentar usar o contexto de pipelines, mas não falhar se não estiver disponível (master-dashboard)
+  const pipelinesContext = useContext(PipelinesContext);
+  const ctxPipelines = pipelinesContext?.pipelines || [];
+  const fetchCtxPipelines = pipelinesContext?.fetchPipelines;
+  
   const { getHeaders } = useWorkspaceHeaders();
 
   const [customConversions, setCustomConversions] = useState<CustomConversion[]>([]);
@@ -194,12 +199,16 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
   const [periodPreset, setPeriodPreset] = useState<PeriodPreset>('all');
   const [startDate, setStartDate] = useState<Date | null>(null);
   const [endDate, setEndDate] = useState<Date | null>(null);
+  // Se workspaces for fornecido (master-dashboard), por padrão mostra todos os workspaces (vazio)
+  // Caso contrário, usa o workspace selecionado ou o primeiro disponível
   const [selectedWorkspaceId, setSelectedWorkspaceId] = useState<string>(
-    selectedWorkspace?.workspace_id ||
-      workspaces?.[0]?.workspace_id ||
-      ctxWorkspaces?.[0]?.workspace_id ||
-      ''
-  ); // mantido para compatibilidade mas sem seletor
+    workspaces && workspaces.length > 0
+      ? '' // Master-dashboard: por padrão mostra todos os workspaces
+      : selectedWorkspace?.workspace_id ||
+        workspaces?.[0]?.workspace_id ||
+        ctxWorkspaces?.[0]?.workspace_id ||
+        ''
+  );
   const [selectedFunnel, setSelectedFunnel] = useState<string>('all');
   const [selectedAgent, setSelectedAgent] = useState<string>('all');
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
@@ -926,6 +935,13 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
   };
 
   useEffect(() => {
+    // Se workspaces for fornecido (master-dashboard), não sobrescrever selectedWorkspaceId vazio
+    // Caso contrário, sincronizar com o workspace selecionado
+    if (workspaces && workspaces.length > 0) {
+      // Master-dashboard: manter selectedWorkspaceId como está (pode ser vazio para todos os workspaces)
+      return;
+    }
+    
     // Prioriza o workspace do contexto; se faltar, usa o primeiro disponível das props ou contexto.
     const fallbackWs =
       selectedWorkspace?.workspace_id ||
@@ -2334,6 +2350,33 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
             <div className="flex items-center gap-2">
               <span className="font-semibold text-gray-900 dark:text-gray-100" style={{ fontSize: '1.5rem' }}>Relatórios</span>
             </div>
+            {/* Seletor de empresa para master-dashboard */}
+            {workspaces && workspaces.length > 0 && (
+              <div className="flex items-center gap-2">
+                <Select
+                  value={selectedWorkspaceId || 'all'}
+                  onValueChange={(value) => setSelectedWorkspaceId(value === 'all' ? '' : value)}
+                >
+                  <SelectTrigger className="w-[250px] h-8 text-xs rounded-none border-[#d4d4d4] dark:border-gray-700 !bg-white dark:!bg-[#2d2d2d] !text-gray-900 dark:!text-gray-200">
+                    <SelectValue placeholder="Selecione a empresa" />
+                  </SelectTrigger>
+                  <SelectContent className="rounded-none border-[#d4d4d4] dark:border-gray-700 bg-white dark:bg-[#2d2d2d]">
+                    <SelectItem value="all" className="text-gray-900 dark:text-gray-200 dark:hover:bg-gray-700">
+                      Todas as empresas
+                    </SelectItem>
+                    {workspaces.map((workspace) => (
+                      <SelectItem
+                        key={workspace.workspace_id}
+                        value={workspace.workspace_id}
+                        className="text-gray-900 dark:text-gray-200 dark:hover:bg-gray-700"
+                      >
+                        {workspace.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
           </div>
           <div className="flex items-center gap-2 px-4 pb-3">
             <span className="text-[11px] font-semibold text-gray-700 dark:text-gray-100">Filtros avançados</span>
