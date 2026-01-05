@@ -1,4 +1,5 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useCallback, useRef } from "react";
+import { createPortal } from "react-dom";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -10,9 +11,10 @@ import {
   Briefcase,
   Map as MapIcon,
   Columns,
-  Tag
+  Tag,
+  Calendar as CalendarIcon
 } from "lucide-react";
-import { format } from "date-fns";
+import { format, startOfDay, endOfDay, isWithinInterval } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { useWorkspace } from "@/contexts/WorkspaceContext";
 import { supabase } from "@/integrations/supabase/client";
@@ -22,12 +24,28 @@ import { DealDetailsPage } from "@/pages/DealDetailsPage";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { cn } from "@/lib/utils";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { CreateActivityModal } from "@/components/modals/CreateActivityModal";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Calendar } from "@/components/ui/calendar";
+import {
+  DndContext,
+  DragEndEvent,
+  DragOverlay,
+  PointerSensor,
+  closestCenter,
+  useDraggable,
+  useDroppable,
+  useSensor,
+  useSensors,
+} from "@dnd-kit/core";
 
 interface ActivityData {
   id: string;
   subject: string;
   scheduled_for: string;
   is_completed: boolean;
+  completed_at?: string | null;
+  availability?: string | null;
   responsible_id: string | null;
   responsible_name?: string;
   pipeline_name?: string;
@@ -64,8 +82,14 @@ export function CRMAtividades() {
   const [searchTerm, setSearchTerm] = useState("");
   const [viewMode, setViewMode] = useState<"list" | "kanban">("list");
   const [selectedCategory, setSelectedCategory] = useState<string>("all");
-  const [selectedStatus, setSelectedStatus] = useState<"open" | "completed" | "all">("open");
+  const [kanbanQuickFilter, setKanbanQuickFilter] = useState<"scheduled" | "overdue" | "completed" | "all">("all");
+  const [dateFrom, setDateFrom] = useState<Date | undefined>(undefined);
+  const [dateTo, setDateTo] = useState<Date | undefined>(undefined);
   const [selectedDealDetails, setSelectedDealDetails] = useState<SelectedDealDetails | null>(null);
+  const [forceRescheduleModalOpen, setForceRescheduleModalOpen] = useState(false);
+  const [forceRescheduleContext, setForceRescheduleContext] = useState<{ contactId: string; pipelineCardId?: string | null } | null>(null);
+  const isDraggingRef = useRef(false);
+  const [activeDragId, setActiveDragId] = useState<string | null>(null);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
   const [totalCount, setTotalCount] = useState(0);
@@ -73,6 +97,15 @@ export function CRMAtividades() {
   const totalPages = Math.max(1, Math.ceil((totalCount || 0) / pageSize));
   const startIndex = totalCount > 0 ? (page - 1) * pageSize + 1 : 0;
   const endIndex = totalCount > 0 ? Math.min(page * pageSize, totalCount) : 0;
+
+  // Evitar travamento no Kanban com muitos registros: por padrão, filtrar pela data de hoje
+  useEffect(() => {
+    if (viewMode !== "kanban") return;
+    if (dateFrom || dateTo) return;
+    const today = new Date();
+    setDateFrom(today);
+    setDateTo(today);
+  }, [viewMode, dateFrom, dateTo]);
 
   const handleOpenDealDetails = (activity: ActivityData) => {
     console.log("🎯 Abrindo detalhes do negócio para a atividade:", activity.id, "Card ID:", activity.pipeline_card_id);
@@ -93,13 +126,66 @@ export function CRMAtividades() {
 
   const handleCloseDealDetails = () => setSelectedDealDetails(null);
 
-  const fetchActivities = async () => {
+  // Regra: não pode fechar os detalhes da oportunidade se não existir atividade em aberto.
+  const attemptCloseDealDetails = useCallback(async () => {
+    if (!selectedWorkspace?.workspace_id) return;
+    if (!selectedDealDetails?.cardId) {
+      handleCloseDealDetails();
+      return;
+    }
+
+    try {
+      const { data, error } = await supabase
+        .from("activities")
+        .select("id, is_completed, type", { count: "exact" })
+        .eq("workspace_id", selectedWorkspace.workspace_id)
+        .eq("pipeline_card_id", selectedDealDetails.cardId)
+        .eq("is_completed", false);
+
+      if (error) throw error;
+
+      const openActivities = (data || []).filter((a: any) => String(a.type || "").toLowerCase().trim() !== "arquivo");
+      if (openActivities.length > 0) {
+        handleCloseDealDetails();
+        return;
+      }
+
+      // Sem atividade em aberto -> forçar criação de uma nova, mantendo o Sheet aberto
+      toast({
+        title: "Atenção",
+        description: "Não é possível fechar a oportunidade sem uma atividade em aberto. Crie uma nova atividade para continuar.",
+        variant: "destructive",
+      });
+
+      setForceRescheduleContext({
+        contactId: selectedDealDetails.contactId || "",
+        pipelineCardId: selectedDealDetails.cardId,
+      });
+      setForceRescheduleModalOpen(true);
+    } catch (e: any) {
+      console.error("Erro ao validar atividades abertas antes de fechar:", e);
+      toast({
+        title: "Erro",
+        description: e?.message || "Não foi possível validar as atividades em aberto.",
+        variant: "destructive",
+      });
+    }
+  }, [handleCloseDealDetails, selectedDealDetails?.cardId, selectedDealDetails?.contactId, selectedWorkspace?.workspace_id, toast]);
+
+  const fetchActivities = useCallback(async () => {
     if (!selectedWorkspace?.workspace_id) return;
 
     try {
       setIsLoading(true);
       setIsDataReady(false);
       console.log("🔄 Buscando atividades...");
+
+      const hasAnyFilter =
+        !!searchTerm.trim() ||
+        selectedCategory !== "all" ||
+        !!dateFrom ||
+        !!dateTo ||
+        viewMode === "kanban";
 
       const start = (page - 1) * pageSize;
       const end = start + pageSize - 1;
@@ -108,8 +194,14 @@ export function CRMAtividades() {
         .from("activities")
         .select("*", { count: "exact" })
         .eq("workspace_id", selectedWorkspace.workspace_id)
-        .order("scheduled_for", { ascending: true })
-        .range(start, end);
+        .order("scheduled_for", { ascending: true });
+
+      // Sem filtros -> paginação normal. Com filtros (inclui Kanban) -> buscar tudo.
+      if (!hasAnyFilter) {
+        query = query.range(start, end);
+      } else if (page !== 1) {
+        setPage(1);
+      }
 
       if (userRole === "user" && user?.id) {
         query = query.eq("responsible_id", user.id);
@@ -272,6 +364,8 @@ export function CRMAtividades() {
             subject: item.subject,
             scheduled_for: item.scheduled_for,
             is_completed: item.is_completed,
+            completed_at: item.completed_at ?? null,
+            availability: item.availability ?? null,
             responsible_id: item.responsible_id,
             responsible_name: item.responsible_id ? usersMap.get(item.responsible_id) || "Desconhecido" : "Sem responsável",
             pipeline_name: pipelineName,
@@ -301,11 +395,62 @@ export function CRMAtividades() {
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [page, pageSize, searchTerm, selectedCategory, dateFrom, dateTo, viewMode, selectedWorkspace?.workspace_id, toast, user?.id, userRole]);
 
   useEffect(() => {
     fetchActivities();
-  }, [selectedWorkspace?.workspace_id, page, pageSize]);
+  }, [fetchActivities]);
+
+  // Realtime: manter o Kanban atualizado quando atividades são concluídas/alteradas nos detalhes da oportunidade
+  useEffect(() => {
+    if (!selectedWorkspace?.workspace_id) return;
+
+    const timeoutRef: { current: any } = { current: null };
+    const scheduleRefetch = () => {
+      if (timeoutRef.current) clearTimeout(timeoutRef.current);
+      timeoutRef.current = setTimeout(() => {
+        fetchActivities();
+      }, 400);
+    };
+
+    const channel = supabase
+      .channel(`crm-atividades-${selectedWorkspace.workspace_id}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "activities",
+          filter: `workspace_id=eq.${selectedWorkspace.workspace_id}`,
+        },
+        () => scheduleRefetch()
+      )
+      .subscribe();
+
+    return () => {
+      if (timeoutRef.current) clearTimeout(timeoutRef.current);
+      supabase.removeChannel(channel);
+    };
+  }, [fetchActivities, selectedWorkspace?.workspace_id]);
+
+  // Se a oportunidade estiver aberta e não houver mais atividade em aberto, forçar criação de nova atividade
+  useEffect(() => {
+    if (!selectedDealDetails?.cardId) return;
+    const hasOpenForCard = activities.some(
+      (a) =>
+        a.pipeline_card_id === selectedDealDetails.cardId &&
+        !a.is_completed &&
+        String(a.type || "").toLowerCase().trim() !== "arquivo"
+    );
+    if (hasOpenForCard) return;
+
+    // manter detalhes abertos e forçar agendamento
+    setForceRescheduleContext({
+      contactId: selectedDealDetails.contactId || "",
+      pipelineCardId: selectedDealDetails.cardId,
+    });
+    setForceRescheduleModalOpen(true);
+  }, [activities, selectedDealDetails?.cardId, selectedDealDetails?.contactId]);
 
   const isArquivoActivityType = (raw?: string | null) => {
     const t = (raw || "").toLowerCase().trim();
@@ -322,9 +467,28 @@ export function CRMAtividades() {
         selectedCategory === "all" ||
         (activity.type || "").toLowerCase().trim() === selectedCategory.toLowerCase().trim();
 
-      const statusOk =
-        selectedStatus === "all" ||
-        (selectedStatus === "completed" ? activity.is_completed : !activity.is_completed);
+      // No Kanban, o status é controlado pelos cards de filtro acima das colunas.
+      const statusOk = true;
+
+      const dateOk = (() => {
+        if (!dateFrom && !dateTo) return true;
+        const start = dateFrom ? startOfDay(dateFrom) : undefined;
+        const end = dateTo ? endOfDay(dateTo) : undefined;
+        const ts = activity.is_completed
+          ? (activity.completed_at || activity.scheduled_for)
+          : activity.scheduled_for;
+        if (!ts) return false;
+        const d = new Date(ts);
+        if (start && end) {
+          // se o usuário inverter as datas, normalizar
+          const s = start.getTime() <= end.getTime() ? start : end;
+          const e = start.getTime() <= end.getTime() ? end : start;
+          return isWithinInterval(d, { start: s, end: e });
+        }
+        if (start) return d.getTime() >= start.getTime();
+        if (end) return d.getTime() <= end.getTime();
+        return true;
+      })();
 
       const matchesSubject = activity.subject.toLowerCase().includes(term);
       const matchesDeal = activity.deal_name?.toLowerCase().includes(term);
@@ -332,9 +496,43 @@ export function CRMAtividades() {
       const matchesPipeline = activity.pipeline_name?.toLowerCase().includes(term);
       const matchesContact = activity.contact_name?.toLowerCase().includes(term);
       const searchOk = matchesSubject || matchesDeal || matchesResponsible || matchesPipeline || matchesContact;
-      return categoryOk && statusOk && searchOk;
+      return categoryOk && statusOk && dateOk && searchOk;
     });
-  }, [activities, searchTerm, selectedCategory, selectedStatus]);
+  }, [activities, searchTerm, selectedCategory, dateFrom, dateTo, viewMode]);
+
+  const ONE_MINUTE_MS = 60 * 1000;
+  const nowMs = Date.now();
+
+  const classifyIsOverdue = (a: ActivityData) => {
+    if (a.is_completed) return false;
+    const ts = a.scheduled_for ? new Date(a.scheduled_for).getTime() : 0;
+    return nowMs > ts + ONE_MINUTE_MS;
+  };
+
+  const kanbanFilteredActivities = useMemo(() => {
+    if (viewMode !== "kanban") return filteredActivities;
+    switch (kanbanQuickFilter) {
+      case "completed":
+        return filteredActivities.filter((a) => a.is_completed);
+      case "overdue":
+        return filteredActivities.filter((a) => !a.is_completed && classifyIsOverdue(a));
+      case "scheduled":
+        // Regra: atrasadas também são agendadas (são "em aberto").
+        return filteredActivities.filter((a) => !a.is_completed);
+      case "all":
+      default:
+        return filteredActivities;
+    }
+  }, [filteredActivities, kanbanQuickFilter, viewMode, nowMs]);
+
+  const kanbanCounts = useMemo(() => {
+    const all = filteredActivities;
+    const completed = all.filter((a) => a.is_completed).length;
+    const overdue = all.filter((a) => !a.is_completed && classifyIsOverdue(a)).length;
+    // Regra: "Agendadas" = todas as não concluídas (inclui atrasadas)
+    const scheduled = all.filter((a) => !a.is_completed).length;
+    return { all: all.length, scheduled, overdue, completed };
+  }, [filteredActivities, nowMs]);
 
   const availableCategories = useMemo(() => {
     const set = new Set<string>();
@@ -353,53 +551,272 @@ export function CRMAtividades() {
     return t;
   };
 
+  type KanbanStatusKey = "open" | "in_progress" | "completed";
+  const getKanbanStatus = (a: ActivityData): KanbanStatusKey => {
+    if (a.is_completed) return "completed";
+    // Persistência: usamos availability (livre/ocupado) para controlar "Em andamento"
+    const av = (a.availability || "").toLowerCase().trim();
+    if (av === "ocupado") return "in_progress";
+    return "open";
+  };
+
   const kanbanColumns = useMemo(() => {
-    const groups = new Map<string, ActivityData[]>();
-    for (const a of filteredActivities) {
-      const key = normalizeActivityType(a.type);
-      if (!groups.has(key)) groups.set(key, []);
-      groups.get(key)!.push(a);
-    }
+    const cols: Array<{ key: KanbanStatusKey; name: string; items: ActivityData[] }> = [
+      { key: "open", name: "Abertos", items: [] },
+      { key: "in_progress", name: "Em andamento", items: [] },
+      { key: "completed", name: "Concluídos", items: [] },
+    ];
 
-    // Garantir coluna “Ligação Agendada” no Kanban, mesmo vazia, quando estiver em “Todas categorias”
-    // (e também quando o usuário selecionar essa categoria manualmente).
-    const forcedType = "Ligação Agendada";
-    const selected = (selectedCategory || "").toLowerCase().trim();
-    if (
-      selectedCategory === "all" ||
-      selected === forcedType.toLowerCase().trim()
-    ) {
-      if (!groups.has(forcedType)) groups.set(forcedType, []);
-    }
+    const map = new Map<KanbanStatusKey, ActivityData[]>();
+    cols.forEach((c) => map.set(c.key, []));
+    kanbanFilteredActivities.forEach((a) => {
+      map.get(getKanbanStatus(a))!.push(a);
+    });
 
-    const sortKey = (name: string) => {
-      const n = name.toLowerCase();
-      if (n.includes("ligação") || n.includes("ligacao") || n.includes("call")) return 10;
-      if (n.includes("mensagem") || n.includes("message") || n.includes("whats")) return 20;
-      if (n.includes("reuni") || n.includes("meet")) return 30;
-      if (n.includes("agenda") || n.includes("agend")) return 40;
-      if (n.includes("lemb")) return 50;
-      return 90;
-    };
+    const sortTs = (a: ActivityData) =>
+      new Date(a.is_completed ? (a.completed_at || a.scheduled_for) : a.scheduled_for).getTime();
 
-    const sorted = Array.from(groups.entries())
-      .sort((a, b) => {
-        const ka = sortKey(a[0]);
-        const kb = sortKey(b[0]);
-        if (ka !== kb) return ka - kb;
-        return a[0].localeCompare(b[0], "pt-BR");
-      })
-      .map(([name, items]) => ({
-        name,
-        items: items.slice().sort((x, y) => {
-          const dx = new Date(x.scheduled_for).getTime();
-          const dy = new Date(y.scheduled_for).getTime();
-          return dx - dy;
-        }),
-      }));
+    return cols.map((c) => ({
+      ...c,
+      items: (map.get(c.key) || []).slice().sort((x, y) => sortTs(x) - sortTs(y)),
+    }));
+  }, [kanbanFilteredActivities]);
 
-    return sorted;
-  }, [filteredActivities, selectedCategory]);
+  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 4 } }));
+
+  const updateActivityKanbanStatus = useCallback(
+    async (activityId: string, to: KanbanStatusKey) => {
+      const nowIso = new Date().toISOString();
+
+      const patch: Partial<ActivityData> =
+        to === "completed"
+          ? { is_completed: true, completed_at: nowIso }
+          : to === "in_progress"
+          ? { is_completed: false, completed_at: null, availability: "ocupado" }
+          : { is_completed: false, completed_at: null, availability: "livre" };
+
+      setActivities((prev) => prev.map((a) => (a.id === activityId ? { ...a, ...patch } : a)));
+
+      const updatePayload: any =
+        to === "completed"
+          ? { is_completed: true, completed_at: nowIso }
+          : to === "in_progress"
+          ? { is_completed: false, completed_at: null, availability: "ocupado" }
+          : { is_completed: false, completed_at: null, availability: "livre" };
+
+      const { error } = await supabase.from("activities").update(updatePayload).eq("id", activityId);
+      if (error) {
+        console.error("Erro ao atualizar atividade (drag):", error);
+        toast({
+          title: "Erro",
+          description: error.message || "Não foi possível atualizar a atividade.",
+          variant: "destructive",
+        });
+        fetchActivities();
+      }
+    },
+    [fetchActivities, toast]
+  );
+
+  const handleDragEnd = useCallback(
+    (event: DragEndEvent) => {
+      const { active, over } = event;
+      if (!over) return;
+
+      const to = String(over.id) as KanbanStatusKey;
+      if (to !== "open" && to !== "in_progress" && to !== "completed") return;
+
+      const from = (active.data.current as any)?.fromStatus as KanbanStatusKey | undefined;
+      if (from === to) return;
+
+      // Regras do usuário:
+      // - Não pode arrastar para Concluídos (só vai para lá ao concluir no modal de detalhes da oportunidade)
+      // - Card concluído não sai de Concluídos (drag desabilitado, mas garantimos aqui também)
+      if (to === "completed") {
+        toast({
+          title: "Ação não permitida",
+          description: "Para concluir, finalize a atividade dentro dos detalhes da oportunidade.",
+          variant: "destructive",
+        });
+        return;
+      }
+      if (from === "completed") return;
+
+      const activityId = String(active.id);
+      updateActivityKanbanStatus(activityId, to);
+
+      // Ao mover para "Em andamento", abrir automaticamente os detalhes da oportunidade
+      if (to === "in_progress") {
+        const act = activities.find((a) => a.id === activityId);
+        if (act?.pipeline_card_id) {
+          // pequena defasagem para garantir state otimista aplicado
+          setTimeout(() => handleOpenDealDetails(act), 0);
+        }
+      }
+    },
+    [activities, handleOpenDealDetails, toast, updateActivityKanbanStatus]
+  );
+
+  function ActivityCardKanban({ activity }: { activity: ActivityData }) {
+    const status = getKanbanStatus(activity);
+    const isLockedCompleted = status === "completed";
+    const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
+      id: activity.id,
+      data: { fromStatus: status },
+      disabled: isLockedCompleted,
+    });
+    const style = {
+      transform: transform ? `translate3d(${transform.x}px, ${transform.y}px, 0)` : undefined,
+      zIndex: isDragging ? 50 : undefined,
+    } as any;
+
+    return (
+      <div
+        ref={setNodeRef}
+        style={style}
+        className={cn(
+          "border border-[#e0e0e0] bg-white dark:bg-[#0f0f0f] dark:border-gray-700 rounded-none p-2",
+          "hover:bg-blue-50 dark:hover:bg-[#1f2937] transition-colors",
+          isLockedCompleted
+            ? "cursor-default select-none"
+            : "cursor-grab active:cursor-grabbing touch-none select-none",
+          // Quando estamos usando DragOverlay, esconder o card original evita o “duplicado/erro atrás”
+          isDragging && "opacity-0"
+        )}
+        {...attributes}
+        {...(!isLockedCompleted ? listeners : {})}
+        onClick={() => {
+          if (isDraggingRef.current) return;
+          // Sempre abrir detalhes da oportunidade (não abrir modal de editar/criar atividade por aqui)
+          if (activity.pipeline_card_id) {
+            handleOpenDealDetails(activity);
+            return;
+          }
+          toast({
+            title: "Sem oportunidade vinculada",
+            description: "Esta atividade não está vinculada a uma oportunidade.",
+            variant: "destructive",
+          });
+        }}
+      >
+        {/* Linha 1: Título + Data (usa o espaço horizontal e reduz "vazio") */}
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0 flex-1">
+            <div className="font-semibold text-gray-900 dark:text-gray-100 text-xs leading-tight line-clamp-1">
+              {activity.subject}
+            </div>
+          </div>
+          <div className="shrink-0 text-[10px] text-gray-600 dark:text-gray-400 whitespace-nowrap">
+            {activity.is_completed && activity.completed_at
+              ? format(new Date(activity.completed_at), "dd/MM/yyyy HH:mm", { locale: ptBR })
+              : format(new Date(activity.scheduled_for), "dd/MM/yyyy HH:mm", { locale: ptBR })}
+          </div>
+        </div>
+
+        {/* Linha 2: informações em 2 colunas */}
+        <div className="mt-1 grid grid-cols-2 gap-x-3 gap-y-1 text-[10px] text-gray-700 dark:text-gray-300">
+          <div className="min-w-0 truncate">
+            <span className="text-gray-500 dark:text-gray-500">Pipeline:</span>{" "}
+            <span className="font-medium">{activity.pipeline_name}</span>
+          </div>
+          <div className="min-w-0 truncate">
+            <span className="text-gray-500 dark:text-gray-500">Etapa:</span>{" "}
+            <span className="font-medium">{activity.stage_name}</span>
+          </div>
+          <div className="min-w-0 truncate">
+            <span className="text-gray-500 dark:text-gray-500">Resp.:</span>{" "}
+            <span className="font-medium">{activity.responsible_name}</span>
+          </div>
+          <div className="min-w-0 truncate">
+            <span className="text-gray-500 dark:text-gray-500">Contato:</span>{" "}
+            {activity.pipeline_card_id ? (
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handleOpenDealDetails(activity);
+                }}
+                className="font-medium text-black dark:text-white underline hover:opacity-80"
+                title="Ver detalhes do negócio"
+              >
+                {activity.contact_name && activity.contact_name !== "-" ? activity.contact_name : activity.contact_phone || ""}
+              </button>
+            ) : (
+              <span className="font-medium">
+                {activity.contact_name && activity.contact_name !== "-" ? activity.contact_name : activity.contact_phone || ""}
+              </span>
+            )}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  function ActivityCardOverlay({ activity }: { activity: ActivityData }) {
+    return (
+      <div className="pointer-events-none w-[320px] border border-[#e0e0e0] bg-white dark:bg-[#0f0f0f] dark:border-gray-700 rounded-none p-2 shadow-xl">
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0 flex-1">
+            <div className="font-semibold text-gray-900 dark:text-gray-100 text-xs leading-tight line-clamp-1">
+              {activity.subject}
+            </div>
+          </div>
+          <div className="shrink-0 text-[10px] text-gray-600 dark:text-gray-400 whitespace-nowrap">
+            {activity.is_completed && activity.completed_at
+              ? format(new Date(activity.completed_at), "dd/MM/yyyy HH:mm", { locale: ptBR })
+              : format(new Date(activity.scheduled_for), "dd/MM/yyyy HH:mm", { locale: ptBR })}
+          </div>
+        </div>
+
+        <div className="mt-1 grid grid-cols-2 gap-x-3 gap-y-1 text-[10px] text-gray-700 dark:text-gray-300">
+          <div className="min-w-0 truncate">
+            <span className="text-gray-500 dark:text-gray-500">Pipeline:</span>{" "}
+            <span className="font-medium">{activity.pipeline_name}</span>
+          </div>
+          <div className="min-w-0 truncate">
+            <span className="text-gray-500 dark:text-gray-500">Etapa:</span>{" "}
+            <span className="font-medium">{activity.stage_name}</span>
+          </div>
+          <div className="min-w-0 truncate">
+            <span className="text-gray-500 dark:text-gray-500">Resp.:</span>{" "}
+            <span className="font-medium">{activity.responsible_name}</span>
+          </div>
+          <div className="min-w-0 truncate">
+            <span className="text-gray-500 dark:text-gray-500">Contato:</span>{" "}
+            <span className="font-medium">
+              {activity.contact_name && activity.contact_name !== "-" ? activity.contact_name : activity.contact_phone || ""}
+            </span>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  const activeDragActivity = useMemo(() => {
+    if (!activeDragId) return null;
+    return activities.find((a) => a.id === activeDragId) || null;
+  }, [activeDragId, activities]);
+
+  function KanbanDropZone({
+    columnKey,
+    children,
+  }: {
+    columnKey: KanbanStatusKey;
+    children: React.ReactNode;
+  }) {
+    const { setNodeRef, isOver } = useDroppable({ id: columnKey });
+    return (
+      <div
+        ref={setNodeRef}
+        className={cn(
+          "flex-1 min-h-0 overflow-y-auto p-2",
+          isOver && "ring-2 ring-primary/40"
+        )}
+      >
+        {children}
+      </div>
+    );
+  }
 
   return (
     <div className="flex flex-col h-full bg-white border border-gray-300 m-2 shadow-sm font-sans text-xs dark:bg-[#0e0e0e] dark:border-gray-700 dark:text-gray-100">
@@ -448,16 +865,96 @@ export function CRMAtividades() {
               </SelectContent>
             </Select>
 
-            <Select value={selectedStatus} onValueChange={(v) => setSelectedStatus(v as any)}>
-              <SelectTrigger className="h-7 w-36 rounded-none text-xs border-gray-300 dark:bg-[#1b1b1b] dark:border-gray-700 dark:text-gray-100">
-                <SelectValue placeholder="Status" />
-              </SelectTrigger>
-              <SelectContent className="rounded-none">
-                <SelectItem value="open">Em aberto</SelectItem>
-                <SelectItem value="completed">Concluída</SelectItem>
-                <SelectItem value="all">Todas</SelectItem>
-              </SelectContent>
-            </Select>
+            {/* Filtro de data (inicial e final) */}
+            <Popover>
+              <PopoverTrigger asChild>
+                <button
+                  type="button"
+                  className={cn(
+                    "h-7 px-2 rounded-none border text-xs inline-flex items-center gap-2",
+                    "border-gray-300 bg-white text-gray-800 hover:bg-gray-50",
+                    "dark:border-gray-700 dark:bg-[#1b1b1b] dark:text-gray-100 dark:hover:bg-[#222]"
+                  )}
+                  title="Filtrar por data inicial"
+                >
+                  <CalendarIcon className="h-3.5 w-3.5" />
+                  <span className="hidden md:inline">
+                    {dateFrom ? format(dateFrom, "dd/MM/yyyy", { locale: ptBR }) : "Data inicial"}
+                  </span>
+                  {dateFrom && (
+                    <span
+                      className="ml-1 text-[10px] px-1 border border-gray-300 dark:border-gray-700"
+                      onClick={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        setDateFrom(undefined);
+                      }}
+                      title="Limpar"
+                    >
+                      ×
+                    </span>
+                  )}
+                </button>
+              </PopoverTrigger>
+              <PopoverContent
+                className="p-2 rounded-none border border-[#d4d4d4] bg-white dark:bg-[#1b1b1b] dark:border-gray-700"
+                align="start"
+              >
+                <Calendar
+                  mode="single"
+                  selected={dateFrom}
+                  onSelect={(d) => setDateFrom(d)}
+                  locale={ptBR}
+                  initialFocus
+                  className="bg-white dark:bg-[#1b1b1b] text-gray-900 dark:text-gray-100"
+                />
+              </PopoverContent>
+            </Popover>
+
+            <Popover>
+              <PopoverTrigger asChild>
+                <button
+                  type="button"
+                  className={cn(
+                    "h-7 px-2 rounded-none border text-xs inline-flex items-center gap-2",
+                    "border-gray-300 bg-white text-gray-800 hover:bg-gray-50",
+                    "dark:border-gray-700 dark:bg-[#1b1b1b] dark:text-gray-100 dark:hover:bg-[#222]"
+                  )}
+                  title="Filtrar por data final"
+                >
+                  <CalendarIcon className="h-3.5 w-3.5" />
+                  <span className="hidden md:inline">
+                    {dateTo ? format(dateTo, "dd/MM/yyyy", { locale: ptBR }) : "Data final"}
+                  </span>
+                  {dateTo && (
+                    <span
+                      className="ml-1 text-[10px] px-1 border border-gray-300 dark:border-gray-700"
+                      onClick={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        setDateTo(undefined);
+                      }}
+                      title="Limpar"
+                    >
+                      ×
+                    </span>
+                  )}
+                </button>
+              </PopoverTrigger>
+              <PopoverContent
+                className="p-2 rounded-none border border-[#d4d4d4] bg-white dark:bg-[#1b1b1b] dark:border-gray-700"
+                align="start"
+              >
+                <Calendar
+                  mode="single"
+                  selected={dateTo}
+                  onSelect={(d) => setDateTo(d)}
+                  locale={ptBR}
+                  initialFocus
+                  className="bg-white dark:bg-[#1b1b1b] text-gray-900 dark:text-gray-100"
+                />
+              </PopoverContent>
+            </Popover>
 
             <div className="relative w-64 max-w-sm">
               <Search className="absolute left-2 top-1/2 transform -translate-y-1/2 text-gray-500 h-3 w-3 dark:text-gray-400" />
@@ -656,86 +1153,94 @@ export function CRMAtividades() {
               <div className="text-gray-500 dark:text-gray-400 text-sm">Nenhuma atividade encontrada.</div>
             ) : (
               <div className="h-full overflow-x-hidden">
-                <div className="flex gap-3 h-full items-stretch w-full min-w-0">
-                {kanbanColumns.map((col) => (
-                  <div
-                    key={col.name}
-                    className="flex-1 min-w-0 bg-white border border-[#d4d4d4] dark:bg-[#111111] dark:border-gray-700 rounded-none flex flex-col h-full"
-                  >
-                    <div className="shrink-0 bg-[#f3f3f3] dark:bg-[#3a3a3a] border-b border-[#d4d4d4] dark:border-gray-700 px-2 py-2">
-                      <div className="flex items-center justify-between gap-2">
-                        <div className="font-semibold text-gray-800 dark:text-gray-100 truncate">
-                          {col.name}
+                {/* Cards de filtro (contadores grandes) */}
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-2 mb-3">
+                  {[
+                    { key: "scheduled", label: "Atividades agendadas", count: kanbanCounts.scheduled },
+                    { key: "overdue", label: "Atividades em atraso", count: kanbanCounts.overdue },
+                    { key: "completed", label: "Atividades concluídas", count: kanbanCounts.completed },
+                    { key: "all", label: "Todas", count: kanbanCounts.all },
+                  ].map((card: any) => {
+                    const active = kanbanQuickFilter === card.key;
+                    return (
+                      <button
+                        key={card.key}
+                        type="button"
+                        onClick={() => setKanbanQuickFilter(card.key)}
+                        className={cn(
+                          "rounded-none border px-3 py-2 text-left transition-colors",
+                          active
+                            ? "border-primary bg-primary/10"
+                            : "border-[#d4d4d4] bg-white hover:bg-gray-50 dark:border-gray-700 dark:bg-[#111111] dark:hover:bg-[#1a1a1a]"
+                        )}
+                      >
+                        <div className="text-2xl font-bold leading-none text-gray-900 dark:text-gray-100">
+                          {card.count}
                         </div>
-                        <Badge
-                          variant="outline"
-                          className="rounded-none text-[10px] h-5 px-1.5 border-gray-300 dark:border-gray-600"
-                        >
-                          {col.items.length}
-                        </Badge>
-                      </div>
-                    </div>
-
-                    <div className="flex-1 min-h-0 overflow-y-auto p-2 space-y-2">
-                      {col.items.map((activity) => (
-                        <div
-                          key={activity.id}
-                          className={cn(
-                            "border border-[#e0e0e0] bg-white dark:bg-[#0f0f0f] dark:border-gray-700 rounded-none p-2",
-                            "hover:bg-blue-50 dark:hover:bg-[#1f2937] transition-colors"
-                          )}
-                        >
-                          <div className="flex items-start justify-between gap-2">
-                            <div className="font-medium text-gray-900 dark:text-gray-100 text-xs leading-tight line-clamp-2">
-                              {activity.subject}
-                            </div>
-                          </div>
-
-                          <div className="mt-1 text-[10px] text-gray-600 dark:text-gray-400">
-                            {format(new Date(activity.scheduled_for), "dd/MM/yyyy HH:mm", { locale: ptBR })}
-                          </div>
-
-                          <div className="mt-2 space-y-1 text-[10px] text-gray-700 dark:text-gray-300">
-                            <div className="truncate">
-                              <span className="text-gray-500 dark:text-gray-500">Pipeline:</span>{" "}
-                              {activity.pipeline_name}
-                            </div>
-                            <div className="truncate">
-                              <span className="text-gray-500 dark:text-gray-500">Etapa:</span>{" "}
-                              {activity.stage_name}
-                            </div>
-                            <div className="truncate">
-                              <span className="text-gray-500 dark:text-gray-500">Resp.:</span>{" "}
-                              {activity.responsible_name}
-                            </div>
-                          </div>
-
-                          <div className="mt-2">
-                            {activity.pipeline_card_id ? (
-                              <button
-                                type="button"
-                                onClick={() => handleOpenDealDetails(activity)}
-                                className="text-[10px] text-black dark:text-white underline hover:opacity-80"
-                                title="Ver detalhes do negócio"
-                              >
-                                {activity.contact_name && activity.contact_name !== "-"
-                                  ? activity.contact_name
-                                  : activity.contact_phone || "Sem nome"}
-                              </button>
-                            ) : (
-                              <div className="text-[10px] text-gray-700 dark:text-gray-300 truncate">
-                                {activity.contact_name && activity.contact_name !== "-"
-                                  ? activity.contact_name
-                                  : activity.contact_phone || "Sem nome"}
-                              </div>
-                            )}
-                          </div>
+                        <div className="mt-1 text-[11px] font-semibold text-gray-700 dark:text-gray-300">
+                          {card.label}
                         </div>
-                      ))}
-                    </div>
-                  </div>
-                ))}
+                      </button>
+                    );
+                  })}
                 </div>
+
+                <DndContext
+                  sensors={sensors}
+                  collisionDetection={closestCenter}
+                  onDragStart={(e) => {
+                    isDraggingRef.current = true;
+                    setActiveDragId(String(e.active.id));
+                  }}
+                  onDragCancel={() => {
+                    isDraggingRef.current = false;
+                    setActiveDragId(null);
+                  }}
+                  onDragEnd={(e) => {
+                    isDraggingRef.current = false;
+                    handleDragEnd(e);
+                    setActiveDragId(null);
+                  }}
+                >
+                  <div className="flex gap-3 h-full items-stretch w-full min-w-0">
+                    {kanbanColumns.map((col) => (
+                      <div
+                        key={col.key}
+                        className="flex-1 min-w-0 bg-white border border-[#d4d4d4] dark:bg-[#111111] dark:border-gray-700 rounded-none flex flex-col h-full"
+                      >
+                        <div className="shrink-0 bg-[#f3f3f3] dark:bg-[#3a3a3a] border-b border-[#d4d4d4] dark:border-gray-700 px-2 py-2">
+                          <div className="flex items-center justify-between gap-2">
+                            <div className="font-semibold text-gray-800 dark:text-gray-100 truncate">
+                              {col.name}
+                            </div>
+                            <Badge
+                              variant="outline"
+                              className="rounded-none text-[10px] h-5 px-1.5 border-gray-300 dark:border-gray-600"
+                            >
+                              {col.items.length}
+                            </Badge>
+                          </div>
+                        </div>
+
+                        <KanbanDropZone columnKey={col.key}>
+                          <div className="space-y-2">
+                            {col.items.map((activity) => (
+                              <ActivityCardKanban key={activity.id} activity={activity} />
+                            ))}
+                          </div>
+                        </KanbanDropZone>
+                      </div>
+                    ))}
+                  </div>
+
+                  {typeof document !== "undefined" &&
+                    createPortal(
+                      <DragOverlay>
+                        {activeDragActivity ? <ActivityCardOverlay activity={activeDragActivity} /> : null}
+                      </DragOverlay>,
+                      document.body
+                    )}
+                </DndContext>
               </div>
             )}
           </div>
@@ -792,7 +1297,12 @@ export function CRMAtividades() {
           </>
         )}
       </div>
-      <Sheet open={Boolean(selectedDealDetails)} onOpenChange={(open) => !open && handleCloseDealDetails()}>
+      <Sheet
+        open={Boolean(selectedDealDetails)}
+        onOpenChange={(open) => {
+          if (!open) attemptCloseDealDetails();
+        }}
+      >
         <SheetContent 
           side="right" 
           className="p-0 sm:max-w-[90vw] w-[90vw] border-l border-gray-200 dark:border-gray-800 shadow-2xl transition-all duration-500 ease-in-out [&>button.absolute]:hidden"
@@ -804,11 +1314,28 @@ export function CRMAtividades() {
             <DealDetailsPage 
               cardId={selectedDealDetails.cardId} 
               workspaceId={selectedWorkspace?.workspace_id || undefined}
-              onClose={handleCloseDealDetails}
+              onClose={attemptCloseDealDetails}
             />
           )}
         </SheetContent>
       </Sheet>
+
+      {/* Ao clicar em uma atividade Concluída, forçar agendamento de uma nova (não pode fechar até criar) */}
+      <CreateActivityModal
+        isOpen={forceRescheduleModalOpen}
+        onClose={() => {
+          // Bloquear fechamento: só fecha após criar uma nova atividade
+          if (forceRescheduleModalOpen) return;
+        }}
+        contactId={forceRescheduleContext?.contactId || ""}
+        pipelineCardId={forceRescheduleContext?.pipelineCardId || undefined}
+        onActivityCreated={() => {
+          setForceRescheduleModalOpen(false);
+          setForceRescheduleContext(null);
+          fetchActivities();
+        }}
+        isDarkMode={document.documentElement.classList.contains("dark")}
+      />
     </div>
   );
 }
