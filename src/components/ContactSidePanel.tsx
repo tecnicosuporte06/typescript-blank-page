@@ -1243,7 +1243,26 @@ export function ContactSidePanel({
               }
             });
 
-            if (cardError) throw cardError;
+            if (cardError) {
+              // Melhorar mensagem de erro: extrair body retornado pela Edge Function
+              const ctx: any = (cardError as any)?.context;
+              let detailedMessage: string | null =
+                ctx?.body?.message ||
+                ctx?.body?.error ||
+                ctx?.body?.details ||
+                null;
+
+              if (!detailedMessage && typeof ctx?.body === 'string') {
+                try {
+                  const parsed = JSON.parse(ctx.body);
+                  detailedMessage = parsed?.message || parsed?.error || parsed?.details || null;
+                } catch {
+                  detailedMessage = ctx.body;
+                }
+              }
+
+              throw new Error(detailedMessage || (cardError as any)?.message || 'Erro ao criar negócio');
+            }
 
             toast({
               title: "Sucesso",
@@ -1269,13 +1288,19 @@ export function ContactSidePanel({
             if (isDuplicateError) {
               toast({
                 title: "Negócio já existe",
-                description: "Já existe um negócio aberto para este contato neste pipeline. Finalize o anterior antes de criar um novo.",
+                description:
+                  error?.message ||
+                  error?.context?.body?.message ||
+                  "Já existe um negócio aberto para este contato neste pipeline. Finalize o anterior antes de criar um novo.",
                 variant: "destructive"
               });
             } else {
               toast({
                 title: "Erro",
-                description: error instanceof Error ? error.message : "Erro ao criar negócio",
+                description:
+                  error?.message ||
+                  error?.context?.body?.message ||
+                  (error instanceof Error ? error.message : "Erro ao criar negócio"),
                 variant: "destructive"
               });
             }

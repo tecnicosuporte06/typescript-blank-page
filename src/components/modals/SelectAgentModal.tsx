@@ -37,11 +37,55 @@ export const SelectAgentModal = ({ open, onOpenChange, conversationId }: SelectA
       return data;
     },
     enabled: !!conversationId && open,
+    staleTime: 0,
+    refetchOnMount: 'always',
   });
+
+  // 🔄 Pre-carregar sempre o estado REAL quando o modal abrir
+  useEffect(() => {
+    if (!open || !conversationId) return;
+    queryClient.invalidateQueries({ queryKey: ['conversation', conversationId] });
+    queryClient.refetchQueries({ queryKey: ['conversation', conversationId] });
+  }, [open, conversationId, queryClient]);
+
+  // 🔄 Realtime: se o N8N ativar/desativar no banco, refletir no modal imediatamente
+  useEffect(() => {
+    if (!open || !conversationId) return;
+
+    const channel = supabase
+      .channel(`select-agent-modal-${conversationId}`)
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'conversations',
+          filter: `id=eq.${conversationId}`
+        },
+        (payload) => {
+          const isActive = !!(payload.new as any).agente_ativo;
+          const agentId = isActive ? ((payload.new as any).agent_active_id || null) : null;
+
+          // Atualizar query cache + estado local
+          queryClient.setQueryData(['conversation', conversationId], (old: any) => ({
+            ...(old || {}),
+            agente_ativo: isActive,
+            agent_active_id: agentId,
+          }));
+
+          setSelectedAgentId(agentId || 'none');
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [open, conversationId, queryClient]);
 
   // Atualizar selectedAgentId quando carregar a conversa
   useEffect(() => {
-    if (conversation?.agent_active_id) {
+    if (conversation?.agente_ativo && conversation?.agent_active_id) {
       // Usar o ID do agente ativo
       setSelectedAgentId(conversation.agent_active_id);
     } else if (conversation?.agente_ativo) {

@@ -21,11 +21,62 @@ const parseFunctionErrorBody = (error: any) => {
   }
 
   if (typeof body === 'object') {
+    // Em alguns casos o supabase-js coloca um ReadableStream aqui
+    // (não dá para ler de forma síncrona). Tratamos como "sem body".
+    try {
+      if (typeof ReadableStream !== 'undefined' && body instanceof ReadableStream) {
+        return null;
+      }
+    } catch {
+      // ignore
+    }
     return body;
   }
 
   return null;
 };
+
+// Alguns erros do supabase-js chegam com body como ReadableStream (não parseável de forma síncrona).
+// Este helper lê a response/body e tenta extrair { error, message, details } para exibir no toast.
+async function readFunctionErrorBodyAsync(error: any): Promise<any | null> {
+  try {
+    const ctx: any = error?.context;
+
+    // 1) Tentar body direto (string/object)
+    const direct = parseFunctionErrorBody(error);
+    if (direct) return direct;
+
+    // 2) Se body vier como ReadableStream
+    const body = ctx?.body;
+    try {
+      if (typeof ReadableStream !== 'undefined' && body instanceof ReadableStream) {
+        const text = await new Response(body).text();
+        try {
+          return JSON.parse(text);
+        } catch {
+          return { message: text };
+        }
+      }
+    } catch {
+      // ignore
+    }
+
+    // 3) Tentar response (clonando para não consumir)
+    const res: Response | undefined = ctx?.response;
+    if (res) {
+      const text = await (res.clone ? res.clone().text() : res.text());
+      try {
+        return JSON.parse(text);
+      } catch {
+        return { message: text };
+      }
+    }
+  } catch {
+    // ignore
+  }
+
+  return null;
+}
 
 export interface Pipeline {
   id: string;
@@ -497,13 +548,21 @@ export function PipelinesProvider({ children }: { children: React.ReactNode }) {
       });
 
       if (error) {
-        const parsedError = parseFunctionErrorBody(error);
+        const parsedError: any = await readFunctionErrorBodyAsync(error);
         console.error('❌ Erro ao criar card no backend:', {
           error,
           parsedError
         });
         // Remover card otimista em caso de erro
         setCards(prev => prev.filter(c => c.id !== tempCardId));
+
+        // Marcar como já tratado para evitar toasts duplicados em camadas acima/abaixo
+        try {
+          (error as any).__pipeline_create_handled = true;
+          (error as any).__pipeline_create_parsed = parsedError || null;
+        } catch {
+          // ignore
+        }
         
         // Verificar se é erro de card duplicado
         if (error.message?.includes('Já existe um card aberto') || 
@@ -511,13 +570,15 @@ export function PipelinesProvider({ children }: { children: React.ReactNode }) {
             parsedError?.error === 'duplicate_open_card') {
           toast({
             title: "Negócio já existe",
-            description: "Este contato já possui um negócio aberto neste pipeline. Finalize o anterior antes de criar um novo.",
+            description:
+              parsedError?.message ||
+              "Este contato já possui um negócio aberto neste pipeline. Finalize o anterior antes de criar um novo.",
             variant: "destructive",
           });
         } else {
           toast({
             title: "Erro",
-            description: parsedError?.message || "Erro ao criar card",
+            description: parsedError?.message || parsedError?.error || "Erro ao criar card",
             variant: "destructive",
           });
         }
@@ -535,29 +596,41 @@ export function PipelinesProvider({ children }: { children: React.ReactNode }) {
 
       return data;
     } catch (error: any) {
-      const parsedError = parseFunctionErrorBody(error);
-      console.error('❌ Error creating card:', {
-        error,
-        parsedError
-      });
-      
-      // Verificar se é erro de card duplicado (do trigger do banco)
-      if (error.message?.includes('Já existe um card aberto') || 
-          error.message?.includes('duplicate_open_card') ||
-          parsedError?.error === 'duplicate_open_card') {
-        toast({
-          title: "Negócio já existe",
-          description: "Este contato já possui um negócio aberto neste pipeline. Finalize o anterior antes de criar um novo.",
-          variant: "destructive",
-        });
-      } else {
-        toast({
-          title: "Erro",
-          description: parsedError?.message || "Erro ao criar card",
-          variant: "destructive",
-        });
+      // Se já tratamos o erro acima (branch do supabase.functions.invoke), não repetir toast aqui
+      if ((error as any)?.__pipeline_create_handled) {
+        throw error;
       }
-      
+
+      // Garantir remoção do card otimista em qualquer erro inesperado
+      setCards(prev => prev.filter(c => c.id !== tempCardId));
+
+      const parsedError = await readFunctionErrorBodyAsync(error);
+      console.error('❌ Error creating card:', { error, parsedError });
+
+      // Verificar se é erro de card duplicado (do trigger do banco)
+      const isDuplicate =
+        error?.message?.includes('Já existe um card aberto') ||
+        error?.message?.includes('duplicate_open_card') ||
+        parsedError?.error === 'duplicate_open_card';
+
+      toast({
+        title: isDuplicate ? "Negócio já existe" : "Erro",
+        description:
+          parsedError?.message ||
+          parsedError?.error ||
+          (isDuplicate
+            ? "Este contato já possui um negócio aberto neste pipeline. Finalize o anterior antes de criar um novo."
+            : "Erro ao criar card"),
+        variant: "destructive",
+      });
+
+      try {
+        (error as any).__pipeline_create_handled = true;
+        (error as any).__pipeline_create_parsed = parsedError || null;
+      } catch {
+        // ignore
+      }
+
       throw error;
     }
   }, [getHeaders, selectedPipeline, toast]);

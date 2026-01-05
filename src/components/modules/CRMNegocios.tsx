@@ -1195,6 +1195,14 @@ const [selectedCardForProduct, setSelectedCardForProduct] = useState<{
     }
 
     if (typeof body === 'object') {
+      // Em alguns casos o supabase-js coloca um ReadableStream aqui
+      try {
+        if (typeof ReadableStream !== 'undefined' && body instanceof ReadableStream) {
+          return null;
+        }
+      } catch {
+        // ignore
+      }
       return body;
     }
 
@@ -1671,11 +1679,17 @@ const [selectedCardForProduct, setSelectedCardForProduct] = useState<{
       });
       setIsCriarNegocioModalOpen(false);
     } catch (error: any) {
+      // Se o createCard já tratou o erro (toast + parse), não duplicar toast aqui
+      if ((error as any)?.__pipeline_create_handled) {
+        console.error('Erro ao criar negócio (já tratado no createCard):', {
+          error,
+          parsed: (error as any)?.__pipeline_create_parsed || null
+        });
+        return;
+      }
+
       const parsedErrorBody = parseFunctionErrorBody(error);
-      console.error('Erro ao criar negócio:', {
-        error,
-        parsedErrorBody
-      });
+      console.error('Erro ao criar negócio:', { error, parsedErrorBody });
       
       const errorMessage = error?.message || parsedErrorBody?.message || '';
       const errorCode = parsedErrorBody?.error || '';
@@ -1694,7 +1708,9 @@ const [selectedCardForProduct, setSelectedCardForProduct] = useState<{
       if (isDuplicateError) {
         toast({
           title: "Negócio já existe",
-          description: "Já existe um negócio aberto para este contato neste pipeline. Finalize o anterior antes de criar um novo.",
+          description:
+            parsedErrorBody?.message ||
+            "Já existe um negócio aberto para este contato neste pipeline. Finalize o anterior antes de criar um novo.",
           variant: "destructive"
         });
       } else {

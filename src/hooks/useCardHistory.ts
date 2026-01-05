@@ -142,6 +142,67 @@ export const useCardHistory = (cardId: string, contactId?: string) => {
         .order('changed_at', { ascending: false });
 
       if (cardHistory) {
+        // Pré-carregar nomes de usuários (para evitar "Sistema" quando o evento vem de trigger/edge-function)
+        const historyUserIds = new Set<string>();
+        let needsLossDetailsFallback = false;
+
+        for (const ev of cardHistory as any[]) {
+          const md = (ev?.metadata as any) || {};
+          const changedById = md.executed_by || md.changed_by_id || ev.changed_by || null;
+          if (changedById) historyUserIds.add(String(changedById));
+
+          if (ev.action === 'status_changed') {
+            const newStatus = String(md.new_status || '').toLowerCase();
+            const isLoss = newStatus === 'perda' || newStatus === 'perdido' || newStatus.includes('perd');
+            const hasReason = !!md.loss_reason_name || !!md.loss_reason_id;
+            const hasComments = !!md.loss_comments || !!md.loss_comment;
+            if (isLoss && (!hasReason || !hasComments)) {
+              needsLossDetailsFallback = true;
+            }
+          }
+        }
+
+        const historyUsersMap = new Map<string, string>();
+        if (historyUserIds.size > 0) {
+          const { data: users } = await supabase
+            .from('system_users')
+            .select('id, name')
+            .in('id', Array.from(historyUserIds));
+
+          users?.forEach((u: any) => {
+            if (u?.id) historyUsersMap.set(String(u.id), String(u.name || ''));
+          });
+        }
+
+        // Fallback: quando o status_changed veio de trigger (sem motivo/obs), buscar do card atual
+        let lossFallback: { reasonName: string | null; comments: string | null } | null = null;
+        if (needsLossDetailsFallback) {
+          try {
+            const { data: cardRow } = await supabase
+              .from('pipeline_cards')
+              .select('loss_reason_id, loss_comments')
+              .eq('id', cardId)
+              .maybeSingle();
+
+            const lossReasonId = (cardRow as any)?.loss_reason_id || null;
+            const lossComments = (cardRow as any)?.loss_comments || null;
+
+            let lossReasonName: string | null = null;
+            if (lossReasonId) {
+              const { data: reasonRow } = await supabase
+                .from('loss_reasons')
+                .select('name')
+                .eq('id', lossReasonId)
+                .maybeSingle();
+              lossReasonName = (reasonRow as any)?.name ?? null;
+            }
+
+            lossFallback = { reasonName: lossReasonName, comments: lossComments };
+          } catch (e) {
+            console.warn('⚠️ [useCardHistory] Falha ao buscar fallback de motivo/obs de perda:', e);
+          }
+        }
+
         for (const event of cardHistory) {
           const metadata = (event.metadata as any) || {};
           let description = '';
@@ -152,27 +213,81 @@ export const useCardHistory = (cardId: string, contactId?: string) => {
           if (event.action === 'column_changed') {
             const fromColumn = metadata.old_column_name || 'Etapa desconhecida';
             const toColumn = metadata.new_column_name || 'Etapa desconhecida';
-            const changedBy = metadata.changed_by_name || 'Sistema';
+            const changedById = metadata.executed_by || metadata.changed_by_id || (event as any).changed_by || null;
+            const changedBy =
+              metadata.executed_by_name ||
+              metadata.changed_by_name ||
+              (changedById ? historyUsersMap.get(String(changedById)) : null) ||
+              'Sistema';
             description = `${fromColumn} → ${toColumn} - ${changedBy}`;
             eventTitle = 'Transferência de Etapa';
           } else if (event.action === 'pipeline_changed') {
             const fromPipeline = metadata.old_pipeline_name || 'Pipeline desconhecido';
             const toPipeline = metadata.new_pipeline_name || 'Pipeline desconhecido';
-            const changedBy = metadata.changed_by_name || 'Sistema';
+            const changedById = metadata.executed_by || metadata.changed_by_id || (event as any).changed_by || null;
+            const changedBy =
+              metadata.executed_by_name ||
+              metadata.changed_by_name ||
+              (changedById ? historyUsersMap.get(String(changedById)) : null) ||
+              'Sistema';
             description = `${fromPipeline} → ${toPipeline} - ${changedBy}`;
             eventType = 'pipeline_transfer';
             eventTitle = 'Transferência de Pipeline';
           } else if (event.action === 'created') {
-            const changedBy = metadata.changed_by_name || 'Sistema';
+            const changedById = metadata.executed_by || metadata.changed_by_id || (event as any).changed_by || null;
+            const changedBy =
+              metadata.executed_by_name ||
+              metadata.changed_by_name ||
+              (changedById ? historyUsersMap.get(String(changedById)) : null) ||
+              'Sistema';
             description = `Negócio criado - ${changedBy}`;
             eventTitle = 'Criação do Negócio';
           } else if (event.action === 'status_changed') {
+            const oldStatus = metadata.old_status || null;
             const newStatus = metadata.new_status || 'Status desconhecido';
-            const changedBy = metadata.changed_by_name || 'Sistema';
-            description = `Status alterado para: ${newStatus} - ${changedBy}`;
+            const changedById = metadata.executed_by || metadata.changed_by_id || (event as any).changed_by || null;
+            const changedBy =
+              metadata.executed_by_name ||
+              metadata.changed_by_name ||
+              (changedById ? historyUsersMap.get(String(changedById)) : null) ||
+              'Sistema';
+
+            const parts: string[] = [];
+            if (oldStatus) {
+              parts.push(`Status: ${oldStatus} → ${newStatus}`);
+            } else {
+              parts.push(`Status alterado para: ${newStatus}`);
+            }
+
+            // Se for perda, incluir motivo e observações quando disponíveis
+            const ns = String(newStatus || '').toLowerCase();
+            const isLoss = ns === 'perda' || ns === 'perdido' || ns.includes('perd');
+            if (isLoss) {
+              const reasonName =
+                metadata.loss_reason_name ||
+                (lossFallback?.reasonName ?? null);
+              const comments =
+                metadata.loss_comments ||
+                metadata.loss_comment ||
+                (lossFallback?.comments ?? null);
+              if (reasonName) parts.push(`Motivo: ${reasonName}`);
+
+              // IMPORTANTE: observações devem ficar no "bloco amarelo/marrom" (mesma estrutura da atividade)
+              // então salvamos em metadata.description para o componente renderizar na faixa inferior.
+              if (comments) {
+                metadata.description = String(comments);
+              }
+            }
+
+            description = `${parts.join(' • ')} - ${changedBy}`;
             eventTitle = 'Status Atualizado';
           } else if (event.action === 'qualification_changed') {
-            const changedBy = metadata.changed_by_name || 'Sistema';
+            const changedById = metadata.executed_by || metadata.changed_by_id || (event as any).changed_by || null;
+            const changedBy =
+              metadata.executed_by_name ||
+              metadata.changed_by_name ||
+              (changedById ? historyUsersMap.get(String(changedById)) : null) ||
+              'Sistema';
             const oldQ = metadata.old_qualification || 'unqualified';
             const newQ = metadata.new_qualification || 'unqualified';
             const label = (value: string) => {
@@ -233,11 +348,18 @@ export const useCardHistory = (cardId: string, contactId?: string) => {
             action: event.action,
             description,
             timestamp,
-            user_name: metadata?.changed_by_name,
+            user_name:
+              metadata?.executed_by_name ||
+              metadata?.changed_by_name ||
+              undefined,
             metadata: {
               ...metadata,
               event_title: eventTitle || 'Registro de Alteração',
-              description: description // Garantir que a descrição esteja no metadata também
+              // IMPORTANT:
+              // - `metadata.description` é usado pelo UI para renderizar o "bloco inferior" (faixa marrom/âmbar),
+              //   então NÃO devemos sobrescrevê-lo com o resumo do evento.
+              // - Guardamos o resumo em `event_description` para uso futuro/debug se necessário.
+              event_description: description,
             },
           });
         }

@@ -2167,7 +2167,7 @@ serve(async (req) => {
                 return new Response(
                   JSON.stringify({
                     error: 'duplicate_open_card',
-                    message: 'Já existe um card aberto para este contato neste pipeline.'
+                    message: 'Não foi possível criar o negócio: já existe um negócio (card) com status ABERTO para este contato dentro deste pipeline. Finalize (ganho/perda) ou feche o negócio existente antes de criar um novo.'
                   }),
                   { status: 409, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
                 );
@@ -2720,17 +2720,18 @@ serve(async (req) => {
                           console.log(`🎬 Config:`, JSON.stringify(action.action_config, null, 2));
                           console.log(`🎬 Card ID: ${card.id}, Conversation ID: ${card.conversation_id || card.conversation?.id || 'NÃO ENCONTRADO'}`);
                           
-                          // ✅ CRÍTICO: Para remove_agent, garantir que temos conversation_id
+                          // ✅ Para remove_agent, se não houver conversation_id, apenas pular (não pode quebrar o move do card)
                           if (action.action_type === 'remove_agent') {
                             const finalConversationId = card.conversation_id || card.conversation?.id;
                             if (!finalConversationId) {
-                              console.error(`❌ ERRO: Ação remove_agent requer conversation_id mas card não tem!`);
-                              console.error(`❌ Card:`, JSON.stringify({
+                              console.warn(`⚠️ [remove_agent] Pulando ação: card ${card.id} não tem conversation_id`);
+                              console.warn(`⚠️ [remove_agent] Card:`, JSON.stringify({
                                 id: card.id,
                                 conversation_id: card.conversation_id,
                                 conversation: card.conversation
                               }, null, 2));
-                              throw new Error(`Card ${card.id} não tem conversation_id. Ação remove_agent não pode ser executada.`);
+                              failed++;
+                              continue;
                             }
                             console.log(`✅ [remove_agent] conversation_id confirmado: ${finalConversationId}`);
                           }
@@ -2773,17 +2774,17 @@ serve(async (req) => {
                           console.log(`🎬 Config:`, JSON.stringify(action.action_config, null, 2));
                           console.log(`🎬 Card ID: ${card.id}, Conversation ID: ${card.conversation_id || card.conversation?.id || 'NÃO ENCONTRADO'}`);
                           
-                          // ✅ CRÍTICO: Para remove_agent, garantir que temos conversation_id
+                          // ✅ Para remove_agent, se não houver conversation_id, apenas pular (não pode quebrar o move do card)
                           if (action.action_type === 'remove_agent') {
                             const finalConversationId = card.conversation_id || card.conversation?.id;
                             if (!finalConversationId) {
-                              console.error(`❌ ERRO: Ação remove_agent requer conversation_id mas card não tem!`);
-                              console.error(`❌ Card:`, JSON.stringify({
+                              console.warn(`⚠️ [remove_agent] Pulando ação: card ${card.id} não tem conversation_id`);
+                              console.warn(`⚠️ [remove_agent] Card:`, JSON.stringify({
                                 id: card.id,
                                 conversation_id: card.conversation_id,
                                 conversation: card.conversation
                               }, null, 2));
-                              throw new Error(`Card ${card.id} não tem conversation_id. Ação remove_agent não pode ser executada.`);
+                              return { success: false, action: action.action_type, skipped: true, reason: 'missing_conversation_id' };
                             }
                             console.log(`✅ [remove_agent] conversation_id confirmado: ${finalConversationId}`);
                           }
@@ -2960,7 +2961,7 @@ serve(async (req) => {
             console.error('❌ Error in PUT /cards:', error);
             const errorMessage = error instanceof Error ? error.message : String(error);
             return new Response(
-              JSON.stringify({ error: errorMessage }),
+              JSON.stringify({ error: 'put_cards_error', message: errorMessage }),
               { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
             );
           }

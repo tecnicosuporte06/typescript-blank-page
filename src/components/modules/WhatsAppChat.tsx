@@ -96,6 +96,13 @@ interface WhatsAppChatProps {
   isDarkMode?: boolean;
   selectedConversationId?: string | null;
   onlyMessages?: boolean;
+  headerContact?: {
+    id?: string | null;
+    name?: string | null;
+    phone?: string | null;
+    email?: string | null;
+    profile_image_url?: string | null;
+  } | null;
 }
 type LameJsModule = {
   Mp3Encoder: new (channels: number, sampleRate: number, kbps: number) => {
@@ -137,7 +144,8 @@ const loadLameJs = async (): Promise<LameJsModule> => {
 export function WhatsAppChat({
   isDarkMode = false,
   selectedConversationId,
-  onlyMessages = false
+  onlyMessages = false,
+  headerContact = null
 }: WhatsAppChatProps) {
   // Usar notificações para saber quais conversas têm mensagens não lidas  
   const { notifications } = useRealtimeNotifications();
@@ -496,6 +504,7 @@ export function WhatsAppChat({
   const [quickFunnelsModalOpen, setQuickFunnelsModalOpen] = useState(false);
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [selectedAgent, setSelectedAgent] = useState<string>("");
+  const NO_TAG_FILTER_ID = "__NO_TAG__";
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
   const [selectedConnection, setSelectedConnection] = useState<string>("");
   const [isUpdatingProfileImages, setIsUpdatingProfileImages] = useState(false);
@@ -577,20 +586,25 @@ export function WhatsAppChat({
 
     // Filtrar por tags se selecionadas
     if (selectedTags.length > 0) {
+      const wantsNoTag = selectedTags.includes(NO_TAG_FILTER_ID);
+      const requiredTagIds = selectedTags.filter((id) => id !== NO_TAG_FILTER_ID);
+
       filtered = filtered.filter(conv => {
         // Buscar tags do CONTATO (não da conversa)
         const contactId = conv.contact?.id;
         if (!contactId) return false;
-        
-        // Verificar se o contato tem pelo menos uma das tags selecionadas
-        const contactHasAnyTag = selectedTags.some(selectedTagId => 
-          tags.some(tag => 
-            tag.id === selectedTagId && 
-            tag.contact_tags?.some(ct => ct.contact_id === contactId)
-          )
-        );
-        
-        return contactHasAnyTag;
+
+        // IDs de tags atribuídas ao contato (derivadas do useTags + contact_tags)
+        const contactTagIds = tags
+          .filter((tag) => tag.contact_tags?.some((ct: any) => ct.contact_id === contactId))
+          .map((tag) => tag.id)
+          .filter(Boolean);
+
+        // "Sem etiqueta" => contato sem nenhuma tag
+        if (wantsNoTag) return contactTagIds.length === 0;
+
+        // AND => contato deve ter TODAS as etiquetas selecionadas
+        return requiredTagIds.every((tagId) => contactTagIds.includes(tagId));
       });
     }
 
@@ -1474,6 +1488,7 @@ export function WhatsAppChat({
 
     (async () => {
       try {
+        const initialName = headerContact?.name && headerContact.name !== '-' ? headerContact.name : null;
         // Garantir que a UI não caia no estado "Selecione uma conversa"
         // (no modo onlyMessages não temos a lista de conversas para montar o objeto completo)
         setSelectedConversation((prev) => {
@@ -1481,11 +1496,11 @@ export function WhatsAppChat({
           return {
             id: selectedConversationId,
             contact: {
-              id: '',
-              name: 'Contato',
-              phone: undefined,
-              email: undefined,
-              profile_image_url: undefined,
+              id: headerContact?.id || '',
+              name: initialName || headerContact?.phone || 'Contato',
+              phone: headerContact?.phone ?? undefined,
+              email: headerContact?.email ?? undefined,
+              profile_image_url: headerContact?.profile_image_url ?? undefined,
             },
             agente_ativo: false,
             agent_active_id: null,
@@ -1509,13 +1524,56 @@ export function WhatsAppChat({
         });
         clearMessages();
         await loadMessages(selectedConversationId, false);
+
+        // ✅ Buscar dados reais do contato para mostrar no header (sem recarregar mensagens)
+        try {
+          if (user?.id && selectedWorkspace?.workspace_id) {
+            const { data, error } = await supabase.functions.invoke(
+              `get-chat-data?conversation_id=${encodeURIComponent(selectedConversationId)}`,
+              {
+                headers: {
+                  'x-system-user-id': user.id,
+                  'x-system-user-email': user.email || '',
+                  'x-workspace-id': selectedWorkspace.workspace_id,
+                },
+              }
+            );
+            if (error) {
+              console.warn('⚠️ [WhatsAppChat] get-chat-data retornou erro (onlyMessages):', error);
+            } else {
+              const convData = data?.conversation;
+              const contact = convData?.contact;
+              if (contact?.id) {
+                setSelectedConversation((prev) => {
+                  if (!prev || prev.id !== selectedConversationId) return prev;
+                  return {
+                    ...prev,
+                    contact: {
+                      id: contact.id,
+                      name: contact.name || prev.contact?.name || 'Sem nome',
+                      phone: contact.phone ?? prev.contact?.phone,
+                      email: contact.email ?? prev.contact?.email,
+                      profile_image_url: contact.profile_image_url ?? prev.contact?.profile_image_url,
+                    },
+                    _updated_at: Date.now(),
+                  };
+                });
+              } else {
+                console.warn('⚠️ [WhatsAppChat] get-chat-data não trouxe contact.id (onlyMessages):', data);
+              }
+            }
+          }
+        } catch (e) {
+          console.warn('⚠️ [WhatsAppChat] Falha ao carregar dados do contato (onlyMessages):', e);
+        }
+
         lastAutoOpenedIdRef.current = selectedConversationId;
       } finally {
         setIsOpeningConversation(false);
         isAutoOpeningRef.current = false;
       }
     })();
-  }, [onlyMessages, selectedConversationId, clearMessages, loadMessages, selectedWorkspace?.workspace_id]);
+  }, [onlyMessages, selectedConversationId, clearMessages, loadMessages, selectedWorkspace?.workspace_id, user?.id, user?.email, headerContact?.id, headerContact?.name, headerContact?.phone, headerContact?.email, headerContact?.profile_image_url]);
 
   useEffect(() => {
     if (onlyMessages) return;
@@ -2606,6 +2664,8 @@ export function WhatsAppChat({
                         <span>
                           {selectedTags.length === 0 
                             ? "Todas as etiquetas" 
+                            : selectedTags.includes(NO_TAG_FILTER_ID)
+                            ? "Sem etiqueta"
                             : selectedTags.length === 1
                             ? tags.find(t => t.id === selectedTags[0])?.name || "1 etiqueta selecionada"
                             : `${selectedTags.length} etiquetas selecionadas`}
@@ -2620,32 +2680,54 @@ export function WhatsAppChat({
                             Nenhuma etiqueta encontrada
                           </div>
                         ) : (
-                          tags.map((tag) => (
+                          <>
+                            {/* Opção: Sem etiqueta (mutuamente exclusiva) */}
                             <div
-                              key={tag.id}
                               className={cn(
                                 "flex items-center space-x-2 p-2 rounded-none cursor-pointer",
-                                selectedTags.includes(tag.id)
+                                selectedTags.includes(NO_TAG_FILTER_ID)
                                   ? "bg-[#d4d4d4] dark:bg-[#3a3a3a]"
                                   : "hover:bg-[#e6f2ff] dark:hover:bg-[#2a2a2a]"
                               )}
                               onClick={() => {
-                                setSelectedTags(prev => 
-                                  prev.includes(tag.id) 
-                                    ? prev.filter(id => id !== tag.id)
-                                    : [...prev, tag.id]
-                                );
+                                setSelectedTags((prev) => (prev.includes(NO_TAG_FILTER_ID) ? [] : [NO_TAG_FILTER_ID]));
                               }}
                             >
                               <div className="flex items-center space-x-2 flex-1">
-                                <div
-                                  className="w-2 h-2 rounded-full"
-                                  style={{ backgroundColor: tag.color ? `${tag.color}99` : 'rgba(0,0,0,0.06)' }}
-                                />
-                                <span className="text-xs text-gray-900 dark:text-gray-100">{tag.name}</span>
+                                <span className="text-xs text-gray-900 dark:text-gray-100">Sem etiqueta</span>
                               </div>
                             </div>
-                          ))
+
+                            <div className="my-1 border-t border-[#d4d4d4] dark:border-gray-700" />
+
+                            {tags.map((tag) => (
+                              <div
+                                key={tag.id}
+                                className={cn(
+                                  "flex items-center space-x-2 p-2 rounded-none cursor-pointer",
+                                  selectedTags.includes(tag.id)
+                                    ? "bg-[#d4d4d4] dark:bg-[#3a3a3a]"
+                                    : "hover:bg-[#e6f2ff] dark:hover:bg-[#2a2a2a]"
+                                )}
+                                onClick={() => {
+                                  setSelectedTags((prev) => {
+                                    const withoutNoTag = prev.filter((id) => id !== NO_TAG_FILTER_ID);
+                                    return withoutNoTag.includes(tag.id)
+                                      ? withoutNoTag.filter((id) => id !== tag.id)
+                                      : [...withoutNoTag, tag.id];
+                                  });
+                                }}
+                              >
+                                <div className="flex items-center space-x-2 flex-1">
+                                  <div
+                                    className="w-2 h-2 rounded-full"
+                                    style={{ backgroundColor: tag.color ? `${tag.color}99` : 'rgba(0,0,0,0.06)' }}
+                                  />
+                                  <span className="text-xs text-gray-900 dark:text-gray-100">{tag.name}</span>
+                                </div>
+                              </div>
+                            ))}
+                          </>
                         )}
                       </div>
                     </PopoverContent>

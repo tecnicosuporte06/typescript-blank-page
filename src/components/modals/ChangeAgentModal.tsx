@@ -43,14 +43,18 @@ export function ChangeAgentModal({
       try {
         const { data, error } = await supabase
           .from('conversations')
-          .select('agent_active_id')
+          .select('agente_ativo, agent_active_id')
           .eq('id', conversationId)
           .single();
         
         if (error) throw error;
         
-        const agentId = data?.agent_active_id || null;
-        console.log('✅ Agente atual do banco:', agentId);
+        // IMPORTANTE:
+        // Se o N8N desativar `agente_ativo=false` mas deixar `agent_active_id` preenchido,
+        // o modal precisa refletir o estado REAL (agente inativo).
+        const isActive = !!data?.agente_ativo;
+        const agentId = isActive ? (data?.agent_active_id || null) : null;
+        console.log('✅ Agente atual do banco:', { isActive, agentId });
         setActualCurrentAgentId(agentId);
         setSelectedAgentId(agentId);
       } catch (error) {
@@ -85,8 +89,9 @@ export function ChangeAgentModal({
         (payload) => {
           console.log('🔔 [Realtime ChangeAgentModal] Conversa atualizada:', payload);
           
-          const newAgentId = payload.new.agent_active_id || null;
-          console.log('🔄 [Realtime ChangeAgentModal] Novo agente ativo:', newAgentId);
+          const isActive = !!(payload.new as any).agente_ativo;
+          const newAgentId = isActive ? ((payload.new as any).agent_active_id || null) : null;
+          console.log('🔄 [Realtime ChangeAgentModal] Novo agente ativo:', { isActive, newAgentId });
           
           setActualCurrentAgentId(newAgentId);
           setSelectedAgentId(newAgentId);

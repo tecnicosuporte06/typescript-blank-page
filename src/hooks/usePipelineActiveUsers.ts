@@ -67,7 +67,7 @@ export function usePipelineActiveUsers(pipelineId?: string, workspaceId?: string
         .from('pipeline_cards')
         .select(`
           id,
-          title,
+          description,
           responsible_user_id,
           conversation_id,
           conversations(

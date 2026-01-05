@@ -190,7 +190,17 @@ const [isSavingCompany, setIsSavingCompany] = useState(false);
     }
   }, [contact?.phone, toast]);
 
-  const logStatusHistory = async (newStatus: string, valueAtStatus?: number | null) => {
+  const logStatusHistory = async (
+    newStatus: string,
+    valueAtStatus?: number | null,
+    extra?: {
+      oldStatus?: string | null;
+      actionName?: string | null;
+      lossReasonId?: string | null;
+      lossReasonName?: string | null;
+      lossComments?: string | null;
+    }
+  ) => {
     if (!cardId) return;
     try {
       await supabase.from('pipeline_card_history').insert({
@@ -198,7 +208,12 @@ const [isSavingCompany, setIsSavingCompany] = useState(false);
         action: 'status_changed',
         changed_at: new Date().toISOString(),
         metadata: {
+          old_status: extra?.oldStatus ?? (cardData as any)?.status ?? null,
           new_status: newStatus,
+          action_name: extra?.actionName ?? null,
+          loss_reason_id: extra?.lossReasonId ?? null,
+          loss_reason_name: extra?.lossReasonName ?? null,
+          loss_comments: extra?.lossComments ?? null,
           changed_by_id: authUser?.id || null,
           changed_by_name: getUserDisplayName(),
           status_value: valueAtStatus ?? null,
@@ -1155,7 +1170,44 @@ const normalizeFieldKey = (label: string) => {
         }
       );
 
-      if (error) throw error;
+      if (error) {
+        // Melhorar diagnóstico: tentar extrair o body real da response da Edge Function
+        const ctx: any = (error as any)?.context;
+        let detailedMessage: string | null = null;
+
+        try {
+          const res: Response | undefined = ctx?.response;
+          if (res) {
+            const text = await res.text();
+            try {
+              const json = JSON.parse(text);
+              detailedMessage =
+                json?.message ||
+                json?.error ||
+                json?.details ||
+                (typeof json === 'string' ? json : null);
+            } catch {
+              detailedMessage = text || null;
+            }
+          }
+        } catch (e) {
+          console.warn('⚠️ Não foi possível ler body do erro da Edge Function:', e);
+        }
+
+        // fallback para context.body (quando existir) ou mensagem padrão do supabase-js
+        const body = ctx?.body;
+        if (!detailedMessage) {
+          detailedMessage =
+            body?.message ||
+            body?.error ||
+            body?.details ||
+            (typeof body === 'string' ? body : null) ||
+            (error as any)?.message ||
+            'Erro ao mover card';
+        }
+
+        throw new Error(String(detailedMessage));
+      }
 
       // Marcar oferta se a coluna de destino for etapa de oferta
       const resolveColumn = () => {
@@ -1397,17 +1449,11 @@ const normalizeFieldKey = (label: string) => {
   // Preselecionar pipeline/coluna para transferência rápida quando o card carregar/mudar
   useEffect(() => {
     if (!cardData?.pipeline_id || !cardData?.column_id) return;
+    // Resetar flag de interação do usuário (evita disparos automáticos)
+    transferTouchedRef.current = false;
     setTransferPipelineId(cardData.pipeline_id);
     setTransferColumnId(cardData.column_id);
   }, [cardData?.pipeline_id, cardData?.column_id]);
-
-  // UX: ao trocar o pipeline na transferência rápida, selecionar automaticamente a primeira coluna disponível
-  useEffect(() => {
-    if (!transferPipelineId) return;
-    if (transferColumnId) return;
-    if (!transferColumns || transferColumns.length === 0) return;
-    setTransferColumnId(transferColumns[0].id);
-  }, [transferPipelineId, transferColumnId, transferColumns]);
 
   // ✅ Transferência rápida: ao selecionar Pipeline + Coluna, transferir imediatamente o card
   useEffect(() => {
@@ -1653,6 +1699,12 @@ const normalizeFieldKey = (label: string) => {
 
       if (error) throw error;
 
+      // Registrar histórico de ganho (status + valor)
+      await logStatusHistory('ganho', cardData?.value ?? null, {
+        oldStatus: (cardData as any)?.status ?? null,
+        actionName: 'Ganho',
+      });
+
       toast({
         title: "Sucesso",
         description: "Negócio marcado como ganho.",
@@ -1833,7 +1885,10 @@ const normalizeFieldKey = (label: string) => {
 
       if (error) throw error;
 
-      await logStatusHistory(newStatus, cardData?.value ?? null);
+      await logStatusHistory(newStatus, cardData?.value ?? null, {
+        oldStatus: (cardData as any)?.status ?? null,
+        actionName: action?.action_name || action?.deal_state || null,
+      });
 
       toast({
         title: "Sucesso",
@@ -1892,8 +1947,6 @@ const normalizeFieldKey = (label: string) => {
 
       if (actionError) throw actionError;
 
-      await logStatusHistory('perda', cardData?.value ?? null);
-
       // Depois salvar motivo e observação
       const { error: updateError } = await supabase
         .from('pipeline_cards')
@@ -1905,6 +1958,26 @@ const normalizeFieldKey = (label: string) => {
         .eq('id', cardId);
 
       if (updateError) throw updateError;
+
+      // Buscar nome do motivo (para histórico)
+      let lossReasonName: string | null = null;
+      if (lossReasonId) {
+        const { data: reasonRow } = await supabase
+          .from('loss_reasons')
+          .select('name')
+          .eq('id', lossReasonId)
+          .maybeSingle();
+        lossReasonName = (reasonRow as any)?.name ?? null;
+      }
+
+      // Registrar histórico completo da perda (status + motivo + observações)
+      await logStatusHistory('perda', cardData?.value ?? null, {
+        oldStatus: (cardData as any)?.status ?? null,
+        actionName: confirmLossAction?.action_name || 'Perdido',
+        lossReasonId,
+        lossReasonName,
+        lossComments: comments || null,
+      });
 
       toast({
         title: "Sucesso",
@@ -3159,25 +3232,6 @@ const normalizeFieldKey = (label: string) => {
                 <ChevronDown className="h-4 w-4" />
               </CollapsibleTrigger>
               <CollapsibleContent className="pt-2 space-y-3">
-                {/* Responsável (Usuário) */}
-                {owner && (
-                  <div className="flex items-center gap-2 text-sm">
-                    <User className="h-4 w-4 text-gray-400" />
-                    <div className="flex-1">
-                      <span className="text-gray-900 dark:text-gray-100">
-                        {owner.name}
-                      </span>
-                    </div>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-6 w-6"
-                    >
-                      <Pencil className="h-3 w-3" />
-                    </Button>
-                  </div>
-                )}
-
                 {/* Pessoa/Contato */}
                 {contact && (
                   <>
@@ -3540,7 +3594,8 @@ const normalizeFieldKey = (label: string) => {
                           <Select
                             value={transferPipelineId || ""}
                             onValueChange={(value) => {
-                              transferTouchedRef.current = true;
+                              // Trocar pipeline NÃO deve disparar transferência.
+                              transferTouchedRef.current = false;
                               setTransferPipelineId(value);
                               setTransferColumnId("");
                             }}
@@ -4916,6 +4971,12 @@ const normalizeFieldKey = (label: string) => {
                         isDarkMode={false}
                         selectedConversationId={conversationId}
                         onlyMessages={true}
+                        headerContact={{
+                          id: contact?.id || null,
+                          name: contact?.name || null,
+                          phone: contact?.phone || null,
+                          profile_image_url: (contact as any)?.profile_image_url || null,
+                        }}
                       />
                     ) : (
                       <div className="flex h-full items-center justify-center text-sm text-gray-500 dark:text-gray-400 px-4 text-center">
@@ -5832,14 +5893,47 @@ function HistoryTimelineItem({
                   <div className="font-semibold text-sm text-gray-900 dark:text-gray-100">
                       {event.metadata?.event_title || 'Registro de Alteração'}
                   </div>
-                    <div className="space-y-1">
-                      <pre className="text-xs text-gray-600 dark:text-gray-400 whitespace-pre-wrap font-sans">
-                        {event.metadata?.description || event.description}
-                      </pre>
-                      <div className="text-[10px] text-gray-400 dark:text-gray-500">
-                        {format(eventDate, "d 'de' MMMM 'às' HH:mm", { locale: ptBR })}
+                  <div className="space-y-1">
+                    {/* Resumo (sempre) */}
+                    <pre className="text-xs text-gray-600 dark:text-gray-400 whitespace-pre-wrap font-sans">
+                      {event.description || event.metadata?.description || ''}
+                    </pre>
+                    <div className="text-[10px] text-gray-400 dark:text-gray-500">
+                      {format(eventDate, "d 'de' MMMM 'às' HH:mm", { locale: ptBR })}
                     </div>
+                  </div>
+
+                  {/* Observações/descrição no mesmo bloco inferior usado pelas atividades */}
+                  {hasDescription && (
+                    <div className="relative -mx-4 -mb-4 border-t border-amber-100 dark:border-amber-900/30 mt-3">
+                      <div
+                        className={cn(
+                          "text-xs text-gray-900 dark:text-white font-sans p-3 bg-[#fffde7] dark:bg-amber-950/20 transition-all duration-200 prose dark:prose-invert prose-sm max-w-none note-editor cursor-pointer",
+                          !isDescExpanded && "max-h-[40px] overflow-hidden pr-10"
+                        )}
+                      >
+                        {looksLikeHtml ? (
+                          <div dangerouslySetInnerHTML={{ __html: cleanNoteText(descriptionHtml as string) }} />
+                        ) : (
+                          <pre className="whitespace-pre-wrap font-sans">
+                            {cleanNoteText(descriptionHtml as string)}
+                          </pre>
+                        )}
+                      </div>
+                      
+                      <button
+                        type="button"
+                        className="absolute right-2 top-2 p-1 rounded-md border border-gray-200 dark:border-gray-700 bg-white/50 dark:bg-[#1b1b1b]/50 hover:bg-white dark:hover:bg-[#1b1b1b] text-gray-500 transition-colors"
+                        onClick={() => setIsDescExpanded((v) => !v)}
+                      >
+                        {isDescExpanded ? (
+                          <X className="h-3 w-3" />
+                        ) : (
+                          <ChevronsUpDown className="h-3 w-3" />
+                        )}
+                      </button>
                     </div>
+                  )}
                 </div>
               )}
             </div>

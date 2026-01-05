@@ -11,6 +11,9 @@ import { useWorkspaceUsers } from "@/hooks/useWorkspaceUsers";
 import { useProducts } from "@/hooks/useProducts";
 import { usePipelines } from "@/hooks/usePipelines";
 import { usePipelineColumns } from "@/hooks/usePipelineColumns";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Command, CommandEmpty, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
+import { Check, ChevronDown } from "lucide-react";
 
 interface CriarNegocioModalProps {
   isOpen?: boolean;
@@ -48,6 +51,10 @@ export function CriarNegocioModal({
   const [selectedColumn, setSelectedColumn] = useState("");
   const [value, setValue] = useState("");
   const [contacts, setContacts] = useState<any[]>([]);
+  const [leadPopoverOpen, setLeadPopoverOpen] = useState(false);
+  const [responsiblePopoverOpen, setResponsiblePopoverOpen] = useState(false);
+  const [leadSearch, setLeadSearch] = useState("");
+  const [responsibleSearch, setResponsibleSearch] = useState("");
   
   const { selectedWorkspace } = useWorkspace();
   const { pipelines } = usePipelines();
@@ -80,6 +87,37 @@ export function CriarNegocioModal({
     
     fetchContacts();
   }, [selectedWorkspace]);
+
+  const selectedLeadLabel = useMemo(() => {
+    if (preSelectedContactId && preSelectedContactName) return preSelectedContactName;
+    const c = contacts.find((x) => x.id === selectedLead);
+    if (!c) return "";
+    return `${c.name || "Sem nome"}${c.phone ? ` - ${c.phone}` : c.email ? ` - ${c.email}` : ""}`;
+  }, [contacts, preSelectedContactId, preSelectedContactName, selectedLead]);
+
+  const filteredContacts = useMemo(() => {
+    const q = (leadSearch || "").toLowerCase().trim();
+    if (!q) return contacts.slice(0, 50);
+    const results = contacts.filter((c) => {
+      const name = String(c?.name || "").toLowerCase();
+      const phone = String(c?.phone || "").toLowerCase();
+      const email = String(c?.email || "").toLowerCase();
+      return name.includes(q) || phone.includes(q) || email.includes(q);
+    });
+    return results.slice(0, 50);
+  }, [contacts, leadSearch]);
+
+  const selectedResponsibleLabel = useMemo(() => {
+    const u = users.find((x) => x.id === selectedResponsible);
+    return u?.name || "";
+  }, [users, selectedResponsible]);
+
+  const filteredUsers = useMemo(() => {
+    const q = (responsibleSearch || "").toLowerCase().trim();
+    if (!q) return users.slice(0, 50);
+    const results = users.filter((u) => String(u?.name || "").toLowerCase().includes(q));
+    return results.slice(0, 50);
+  }, [users, responsibleSearch]);
 
 
   // Pré-selecionar contato quando fornecido
@@ -161,7 +199,7 @@ export function CriarNegocioModal({
           "p-4 m-0 rounded-none border-b bg-primary border-[#d4d4d4] dark:border-gray-700"
         )}>
           <DialogTitle className={cn(
-            "text-base font-bold text-primary-foreground"
+            "text-base font-bold text-white dark:text-gray-100"
           )}>
             Criar Negócio
           </DialogTitle>
@@ -171,43 +209,138 @@ export function CriarNegocioModal({
           {/* Seleção de Lead */}
           <div>
             <Label className="text-xs font-bold mb-1.5 block text-gray-700 dark:text-gray-200">Lead</Label>
-            <Select value={selectedLead} onValueChange={setSelectedLead} disabled={!!preSelectedContactId}>
-              <SelectTrigger className="h-8 text-xs rounded-none focus:ring-0 bg-white border-gray-300 text-gray-900 dark:bg-[#2d2d2d] dark:border-gray-600 dark:text-gray-200">
-                <SelectValue placeholder={preSelectedContactName || "Selecione o Lead"} />
-              </SelectTrigger>
-              <SelectContent className="max-h-48 overflow-auto z-50 rounded-none bg-white border-gray-300 dark:bg-[#2d2d2d] dark:border-gray-600">
-                {contacts.map((contact) => (
-                  <SelectItem key={contact.id} value={contact.id} className="text-xs rounded-none cursor-pointer text-gray-700 dark:text-gray-200 dark:focus:bg-gray-700">
-                    {contact.name} - {contact.phone || contact.email || 'Sem contato'}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <Popover
+              open={leadPopoverOpen && !preSelectedContactId}
+              onOpenChange={(v) => {
+                if (preSelectedContactId) return;
+                setLeadPopoverOpen(v);
+                if (!v) setLeadSearch("");
+              }}
+            >
+              <PopoverTrigger asChild>
+                <Button
+                  variant="outline"
+                  type="button"
+                  disabled={!!preSelectedContactId}
+                  className={cn(
+                    "h-8 w-full justify-between rounded-none px-3 text-xs focus:ring-0",
+                    "bg-white border-gray-300 text-gray-900",
+                    "dark:bg-[#2d2d2d] dark:border-gray-600 dark:text-gray-200"
+                  )}
+                >
+                  <span className="line-clamp-1 text-left">
+                    {selectedLeadLabel || preSelectedContactName || "Selecione o Lead"}
+                  </span>
+                  <ChevronDown className="h-3.5 w-3.5 opacity-70" />
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent
+                className="w-[398px] p-2 rounded-none border-[#d4d4d4] bg-white dark:bg-[#2d2d2d] dark:border-gray-600"
+                align="start"
+                onOpenAutoFocus={(e) => e.preventDefault()}
+              >
+                <Command>
+                  <CommandInput
+                    placeholder="Digite o nome, número ou email..."
+                    value={leadSearch}
+                    onValueChange={setLeadSearch}
+                  />
+                  <CommandList className="max-h-56 overflow-y-auto">
+                    <CommandEmpty>
+                      {contacts.length === 0 ? "Carregando leads..." : "Nenhum lead encontrado"}
+                    </CommandEmpty>
+                    {filteredContacts.map((contact) => {
+                      const label = `${contact.name || "Sem nome"} - ${contact.phone || contact.email || "Sem contato"}`;
+                      const isSelected = selectedLead === contact.id;
+                      return (
+                        <CommandItem
+                          key={contact.id}
+                          value={label}
+                          onSelect={() => {
+                            setSelectedLead(contact.id);
+                            setLeadPopoverOpen(false);
+                            setLeadSearch("");
+                          }}
+                        >
+                          <Check className={cn("mr-2 h-4 w-4", isSelected ? "opacity-100" : "opacity-0")} />
+                          <span className="text-xs">{label}</span>
+                        </CommandItem>
+                      );
+                    })}
+                  </CommandList>
+                </Command>
+              </PopoverContent>
+            </Popover>
           </div>
 
           {/* Seleção de responsável */}
           <div>
             <Label className="text-xs font-bold mb-1.5 block text-gray-700 dark:text-gray-200">Responsável</Label>
-            <Select value={selectedResponsible} onValueChange={setSelectedResponsible} disabled={isLoadingUsers}>
-              <SelectTrigger className="h-8 text-xs rounded-none focus:ring-0 bg-white border-gray-300 text-gray-900 dark:bg-[#2d2d2d] dark:border-gray-600 dark:text-gray-200">
-                <SelectValue placeholder={
-                  isLoadingUsers 
-                    ? "Carregando usuários..." 
-                    : users.length === 0 
-                      ? "Nenhum usuário disponível" 
-                      : "Selecione o responsável"
-                } />
-              </SelectTrigger>
-              {users.length > 0 && (
-                <SelectContent className="max-h-48 overflow-auto z-50 rounded-none bg-white border-gray-300 dark:bg-[#2d2d2d] dark:border-gray-600">
-                  {users.map((user) => (
-                    <SelectItem key={user.id} value={user.id} className="text-xs rounded-none cursor-pointer text-gray-700 dark:text-gray-200 dark:focus:bg-gray-700">
-                      {user.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              )}
-            </Select>
+            <Popover
+              open={responsiblePopoverOpen}
+              onOpenChange={(v) => {
+                setResponsiblePopoverOpen(v);
+                if (!v) setResponsibleSearch("");
+              }}
+            >
+              <PopoverTrigger asChild>
+                <Button
+                  variant="outline"
+                  type="button"
+                  disabled={isLoadingUsers || users.length === 0}
+                  className={cn(
+                    "h-8 w-full justify-between rounded-none px-3 text-xs focus:ring-0",
+                    "bg-white border-gray-300 text-gray-900",
+                    "dark:bg-[#2d2d2d] dark:border-gray-600 dark:text-gray-200"
+                  )}
+                >
+                  <span className="line-clamp-1 text-left">
+                    {selectedResponsibleLabel ||
+                      (isLoadingUsers
+                        ? "Carregando usuários..."
+                        : users.length === 0
+                          ? "Nenhum usuário disponível"
+                          : "Selecione o responsável")}
+                  </span>
+                  <ChevronDown className="h-3.5 w-3.5 opacity-70" />
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent
+                className="w-[398px] p-2 rounded-none border-[#d4d4d4] bg-white dark:bg-[#2d2d2d] dark:border-gray-600"
+                align="start"
+                onOpenAutoFocus={(e) => e.preventDefault()}
+              >
+                <Command>
+                  <CommandInput
+                    placeholder="Digite o nome do responsável..."
+                    value={responsibleSearch}
+                    onValueChange={setResponsibleSearch}
+                  />
+                  <CommandList className="max-h-56 overflow-y-auto">
+                    <CommandEmpty>
+                      {isLoadingUsers ? "Carregando usuários..." : "Nenhum usuário encontrado"}
+                    </CommandEmpty>
+                    {filteredUsers.map((user) => {
+                      const isSelected = selectedResponsible === user.id;
+                      return (
+                        <CommandItem
+                          key={user.id}
+                          value={user.name}
+                          onSelect={() => {
+                            setSelectedResponsible(user.id);
+                            setResponsiblePopoverOpen(false);
+                            setResponsibleSearch("");
+                          }}
+                        >
+                          <Check className={cn("mr-2 h-4 w-4", isSelected ? "opacity-100" : "opacity-0")} />
+                          <span className="text-xs">{user.name}</span>
+                        </CommandItem>
+                      );
+                    })}
+                  </CommandList>
+                </Command>
+              </PopoverContent>
+            </Popover>
           </div>
 
           {/* Seleção de pipeline */}

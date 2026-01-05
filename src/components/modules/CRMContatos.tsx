@@ -68,6 +68,7 @@ export function CRMContatos() {
   const { selectedWorkspace } = useWorkspace();
   const [editingContact, setEditingContact] = useState<Contact | null>(null);
   const [searchTerm, setSearchTerm] = useState("");
+  const NO_TAG_FILTER_ID = "__NO_TAG__";
   const [selectedTagIds, setSelectedTagIds] = useState<string[]>([]);
   const [showDuplicates, setShowDuplicates] = useState(false);
   const [contacts, setContacts] = useState<Contact[]>([]);
@@ -342,16 +343,18 @@ export function CRMContatos() {
         const end = start + pageSize - 1;
 
         const search = searchTerm.trim();
+        const wantsNoTag = selectedTagIds.includes(NO_TAG_FILTER_ID);
+        const realTagIds = selectedTagIds.filter((id) => id !== NO_TAG_FILTER_ID);
         const hasTagFilter = selectedTagIds.length > 0;
         const hasAnyFilter = !!search || hasTagFilter;
 
         let tagFilteredContactIds: string[] | null = null;
-        if (hasTagFilter) {
-          // Buscar IDs de contatos que tenham pelo menos uma das tags selecionadas
+        if (realTagIds.length > 0) {
+          // AND: contato deve ter TODAS as tags selecionadas
           const { data: tagLinks, error: tagLinksError } = await supabase
             .from("contact_tags")
-            .select("contact_id")
-            .in("tag_id", selectedTagIds);
+            .select("contact_id, tag_id")
+            .in("tag_id", realTagIds);
 
           if (tagLinksError) {
             console.error("❌ [CRMContatos] Error fetching contact_tags:", tagLinksError);
@@ -365,7 +368,76 @@ export function CRMContatos() {
             return;
           }
 
-          tagFilteredContactIds = Array.from(new Set((tagLinks || []).map((x: any) => String(x.contact_id)).filter(Boolean)));
+          const map = new Map<string, Set<string>>();
+          (tagLinks || []).forEach((row: any) => {
+            const contactId = String(row.contact_id || "");
+            const tagId = String(row.tag_id || "");
+            if (!contactId || !tagId) return;
+            const set = map.get(contactId) || new Set<string>();
+            set.add(tagId);
+            map.set(contactId, set);
+          });
+
+          tagFilteredContactIds = Array.from(map.entries())
+            .filter(([, set]) => set.size >= realTagIds.length)
+            .map(([contactId]) => contactId);
+
+          if (tagFilteredContactIds.length === 0) {
+            setContacts([]);
+            setTotalCount(0);
+            return;
+          }
+        } else if (wantsNoTag) {
+          // Sem etiqueta: contatos que NÃO possuem nenhuma tag
+          let idsQuery = supabase
+            .from("contacts")
+            .select("id")
+            .eq("workspace_id", selectedWorkspace.workspace_id);
+
+          if (search) {
+            idsQuery = idsQuery.or(`name.ilike.%${search}%,phone.ilike.%${search}%`);
+          }
+
+          const { data: idRows, error: idsError } = await idsQuery;
+          if (idsError) {
+            console.error("❌ [CRMContatos] Error fetching contact ids for no-tag filter:", idsError);
+            toast({
+              title: "Erro ao filtrar por etiqueta",
+              description: idsError.message || "Não foi possível aplicar o filtro de 'Sem etiqueta'.",
+              variant: "destructive",
+            });
+            setContacts([]);
+            setTotalCount(0);
+            return;
+          }
+
+          const allIds = Array.from(new Set((idRows || []).map((r: any) => String(r.id)).filter(Boolean)));
+          if (allIds.length === 0) {
+            setContacts([]);
+            setTotalCount(0);
+            return;
+          }
+
+          const { data: taggedRows, error: taggedError } = await supabase
+            .from("contact_tags")
+            .select("contact_id")
+            .in("contact_id", allIds);
+
+          if (taggedError) {
+            console.error("❌ [CRMContatos] Error fetching tagged contacts for no-tag filter:", taggedError);
+            toast({
+              title: "Erro ao filtrar por etiqueta",
+              description: taggedError.message || "Não foi possível aplicar o filtro de 'Sem etiqueta'.",
+              variant: "destructive",
+            });
+            setContacts([]);
+            setTotalCount(0);
+            return;
+          }
+
+          const taggedSet = new Set<string>((taggedRows || []).map((r: any) => String(r.contact_id)).filter(Boolean));
+          tagFilteredContactIds = allIds.filter((id) => !taggedSet.has(id));
+
           if (tagFilteredContactIds.length === 0) {
             setContacts([]);
             setTotalCount(0);
@@ -614,10 +686,18 @@ export function CRMContatos() {
       return matchesSearch;
     }
 
-    // Se tags estão selecionadas, o contato deve ter pelo menos uma das tags selecionadas
+    const wantsNoTag = selectedTagIds.includes(NO_TAG_FILTER_ID);
+    const realTagIds = selectedTagIds.filter((id) => id !== NO_TAG_FILTER_ID);
+
+    // "Sem etiqueta" => contato sem nenhuma tag
+    if (wantsNoTag) {
+      return matchesSearch && (!contact.tags || contact.tags.length === 0);
+    }
+
+    // AND => contato deve ter todas as tags selecionadas
     const contactTagIds = contact.tags.map((t) => t.id).filter(Boolean);
 
-    const matchesTag = selectedTagIds.some((selectedId) => contactTagIds.includes(selectedId));
+    const matchesTag = realTagIds.every((selectedId) => contactTagIds.includes(selectedId));
 
     return matchesSearch && matchesTag;
   });
@@ -1755,6 +1835,8 @@ export function CRMContatos() {
                    <Filter className="h-3 w-3" />
                   {selectedTagIds.length === 0 ? (
                     <span>Filtro</span>
+                  ) : selectedTagIds.includes(NO_TAG_FILTER_ID) ? (
+                    <span>Sem etiqueta</span>
                   ) : (
                     <span>{selectedTagIds.length}</span>
                   )}
@@ -1766,22 +1848,42 @@ export function CRMContatos() {
                     <div className="p-4 text-center text-muted-foreground text-xs dark:text-gray-400">Nenhuma etiqueta encontrada</div>
                   ) : (
                     <>
+                      {/* Opção: Sem etiqueta (mutuamente exclusiva) */}
+                      <div
+                        className="flex items-center space-x-2 p-2 hover:bg-accent rounded cursor-pointer dark:hover:bg-[#2a2a2a]"
+                        onClick={() => setSelectedTagIds((prev) => (prev.includes(NO_TAG_FILTER_ID) ? [] : [NO_TAG_FILTER_ID]))}
+                      >
+                        <Checkbox
+                          checked={selectedTagIds.includes(NO_TAG_FILTER_ID)}
+                          onCheckedChange={() => setSelectedTagIds((prev) => (prev.includes(NO_TAG_FILTER_ID) ? [] : [NO_TAG_FILTER_ID]))}
+                        />
+                        <span className="text-xs">Sem etiqueta</span>
+                      </div>
+
+                      <div className="my-1 border-t border-gray-200 dark:border-gray-700" />
+
                       {tags.map((tag) => (
                         <div
                           key={tag.id}
                           className="flex items-center space-x-2 p-2 hover:bg-accent rounded cursor-pointer dark:hover:bg-[#2a2a2a]"
                           onClick={() => {
-                            setSelectedTagIds((prev) =>
-                              prev.includes(tag.id) ? prev.filter((id) => id !== tag.id) : [...prev, tag.id],
-                            );
+                            setSelectedTagIds((prev) => {
+                              const withoutNoTag = prev.filter((id) => id !== NO_TAG_FILTER_ID);
+                              return withoutNoTag.includes(tag.id)
+                                ? withoutNoTag.filter((id) => id !== tag.id)
+                                : [...withoutNoTag, tag.id];
+                            });
                           }}
                         >
                           <Checkbox
                             checked={selectedTagIds.includes(tag.id)}
                             onCheckedChange={() => {
-                              setSelectedTagIds((prev) =>
-                                prev.includes(tag.id) ? prev.filter((id) => id !== tag.id) : [...prev, tag.id],
-                              );
+                              setSelectedTagIds((prev) => {
+                                const withoutNoTag = prev.filter((id) => id !== NO_TAG_FILTER_ID);
+                                return withoutNoTag.includes(tag.id)
+                                  ? withoutNoTag.filter((id) => id !== tag.id)
+                                  : [...withoutNoTag, tag.id];
+                              });
                             }}
                           />
                           <div className="flex items-center space-x-2">
