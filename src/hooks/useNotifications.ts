@@ -23,6 +23,7 @@ export function useNotifications() {
   const { selectedWorkspace } = useWorkspace();
   const { user, hasRole } = useAuth();
   const { playNotificationSound } = useNotificationSound();
+  const canViewAllNotifications = hasRole(['master', 'admin']);
   const isMaster = hasRole(['master']);
 
   // Buscar notificações
@@ -43,7 +44,7 @@ export function useNotifications() {
         .eq('workspace_id', selectedWorkspace.workspace_id)
         .eq('status', 'unread');
 
-      if (!isMaster && user?.id) {
+      if (!canViewAllNotifications && user?.id) {
         // Usuários comuns enxergam apenas notificações destinadas a eles
         query = query.or([
           `user_id.eq.${user.id}`,
@@ -56,7 +57,7 @@ export function useNotifications() {
       if (error) throw error;
 
       const filteredData = (data || []).filter((notif: any) => {
-        if (isMaster) {
+        if (canViewAllNotifications) {
           return true;
         }
 
@@ -77,6 +78,7 @@ export function useNotifications() {
       });
 
       const staleNotificationIds: string[] = [];
+      // Limite simples por conversa para evitar explosão de itens, sem depender de unread_count
       const conversationUsage = new Map<string, { allowed: number; used: number }>();
       const messageUsage = new Set<string>();
 
@@ -89,19 +91,15 @@ export function useNotifications() {
 
         const conversationId = notif.conversation_id;
         const status = (conv.status || '').toLowerCase();
-        const allowed = Math.max(conv.unread_count ?? 0, 0);
         const isConversationClosed = ['closed', 'archived'].includes(status);
 
-        if (allowed <= 0 || isConversationClosed) {
+        // ✅ Não usar unread_count para invalidar notificação (IA/N8n pode alterar esse campo)
+        if (isConversationClosed) {
           staleNotificationIds.push(notif.id);
           return false;
         }
 
-        const usage = conversationUsage.get(conversationId) || { allowed, used: 0 };
-
-        // Atualiza allowed caso unread_count tenha mudado desde o primeiro registro
-        usage.allowed = Math.max(allowed, 0);
-
+        const usage = conversationUsage.get(conversationId) || { allowed: 20, used: 0 };
         if (usage.used >= usage.allowed) {
           staleNotificationIds.push(notif.id);
           return false;
@@ -192,11 +190,19 @@ export function useNotifications() {
           filter: `workspace_id=eq.${workspaceId}` // ✅ Filtro nativo
         },
         (payload: any) => {
-          // ✅ Segundo filtro no cliente para garantir
-          if (payload.new.user_id === userId) {
+          // ✅ Para admin/master: qualquer notificação do workspace
+          // ✅ Para user: notificações dele OU sem user_id (sem responsável)
+          const newUserId = payload?.new?.user_id ?? null;
+          const shouldFetch =
+            canViewAllNotifications ||
+            newUserId === userId ||
+            newUserId === null;
+
+          if (shouldFetch) {
             console.log('🔔✅ Nova notificação recebida via Realtime:', {
               id: payload.new.id,
-              contactName: payload.new.title
+              contactName: payload.new.title,
+              user_id: payload.new.user_id
             });
             playNotificationSound();
             fetchNotifications();
@@ -212,11 +218,20 @@ export function useNotifications() {
           filter: `workspace_id=eq.${workspaceId}` // ✅ Filtro nativo
         },
         (payload: any) => {
-          // ✅ Segundo filtro no cliente para garantir
-          if (payload.new.user_id === userId || payload.old?.user_id === userId) {
+          const newUserId = payload?.new?.user_id ?? null;
+          const oldUserId = payload?.old?.user_id ?? null;
+          const shouldFetch =
+            canViewAllNotifications ||
+            newUserId === userId ||
+            oldUserId === userId ||
+            newUserId === null ||
+            oldUserId === null;
+
+          if (shouldFetch) {
             console.log('🔔✅ Notificação atualizada via Realtime:', {
               id: payload.new.id,
-              status: payload.new.status
+              status: payload.new.status,
+              user_id: payload.new.user_id
             });
             fetchNotifications();
           }
@@ -239,7 +254,7 @@ export function useNotifications() {
       });
       supabase.removeChannel(channel);
     };
-  }, [selectedWorkspace?.workspace_id, user?.id]);
+  }, [selectedWorkspace?.workspace_id, user?.id, canViewAllNotifications]);
 
   // Marcar conversa como lida
   const markContactAsRead = async (conversationId: string) => {
