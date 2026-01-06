@@ -39,7 +39,6 @@ export default function PipelineConfiguracao({
   isDarkMode,
   onColumnsReorder
 }: PipelineConfigProps) {
-  const [activeTab, setActiveTab] = useState('geral');
   const [actions, setActions] = useState<Action[]>([]);
   const [actionColumns, setActionColumns] = useState<{[key: string]: any[]}>({});
   const { getHeaders } = useWorkspaceHeaders();
@@ -440,8 +439,8 @@ export default function PipelineConfiguracao({
 
   return (
     <Tabs
-      value={activeTab}
-      onValueChange={setActiveTab}
+      value="geral"
+      onValueChange={() => {}}
       className="flex flex-col h-full bg-white border border-gray-300 m-2 shadow-sm font-sans text-sm dark:bg-[#0f0f0f] dark:border-gray-700 dark:text-gray-100"
     >
       <div className="flex flex-col border-b border-gray-300 bg-[#f8f9fa] dark:border-gray-700 dark:bg-[#141414]">
@@ -453,12 +452,9 @@ export default function PipelineConfiguracao({
             {selectedPipeline ? selectedPipeline.name : "Selecione um pipeline"}
           </span>
         </div>
-        <TabsList className="grid w-full grid-cols-2 rounded-none bg-gray-100 dark:bg-[#1a1a1a]">
+        <TabsList className="grid w-full grid-cols-1 rounded-none bg-gray-100 dark:bg-[#1a1a1a]">
           <TabsTrigger value="geral" className="rounded-none data-[state=active]:bg-white data-[state=active]:text-primary dark:data-[state=active]:bg-[#111111] dark:data-[state=active]:text-gray-100">
             Configurações Gerais
-          </TabsTrigger>
-          <TabsTrigger value="acoes" className="rounded-none data-[state=active]:bg-white data-[state=active]:text-primary dark:data-[state=active]:bg-[#111111] dark:data-[state=active]:text-gray-100">
-            Ações
           </TabsTrigger>
         </TabsList>
       </div>
@@ -585,104 +581,7 @@ export default function PipelineConfiguracao({
             </div>
           </TabsContent>
 
-          <TabsContent value="acoes" className="space-y-4">
-            <div className="bg-white border border-gray-200 shadow-sm dark:bg-[#111111] dark:border-gray-700">
-              <div className="px-4 py-3 border-b border-gray-200 flex items-center justify-between dark:border-gray-700">
-                <div>
-                  <p className="text-xs font-semibold text-gray-700 dark:text-gray-200">Ações do pipeline</p>
-                  <span className="text-[11px] text-gray-500 dark:text-gray-400">Configure o destino dos botões padrões (Ganho, Perdido, Reabrir)</span>
-                </div>
-              </div>
-              {actions.length === 0 ? (
-                <div className="p-8 text-center text-gray-500 dark:text-gray-400">
-                  <p className="text-sm">Nenhuma ação configurada</p>
-                  <p className="text-xs mt-1">Clique em "Nova ação" para começar</p>
-                </div>
-              ) : (
-                <div className="divide-y divide-gray-200 dark:divide-gray-800">
-                  {actions.map((action) => (
-                  <div key={action.id} className="p-4 grid gap-4 lg:grid-cols-[2.5fr,1.5fr,1.5fr,1fr,auto] items-start">
-                    <div className="space-y-1">
-                      <span className="text-[11px] font-semibold text-gray-500 uppercase tracking-wide">Nome da ação</span>
-                      <div className="flex items-center h-9">
-                        <span className="text-sm font-medium text-gray-900 dark:text-gray-100 bg-gray-50 dark:bg-[#161616] px-3 py-2 border border-[#d4d4d4] dark:border-gray-700 w-full cursor-not-allowed">
-                          {action.actionName}
-                        </span>
-                      </div>
-                    </div>
-
-                    <div className="space-y-1">
-                      <span className="text-[11px] font-semibold text-gray-500 uppercase tracking-wide">Próximo pipeline</span>
-                      <Select value={action.nextPipeline} onValueChange={(value) => handlePipelineChange(action.id, value)}>
-                        <SelectTrigger className="rounded-none text-sm dark:bg-[#161616] dark:border-gray-700 h-9">
-                          <SelectValue placeholder="Selecione um pipeline" />
-                        </SelectTrigger>
-                        <SelectContent className="max-h-60 rounded-none border border-gray-200 dark:border-gray-700 bg-white dark:bg-[#1b1b1b]">
-                          {pipelines?.map((pipeline) => (
-                            <SelectItem
-                              key={pipeline.id}
-                              value={pipeline.id}
-                              className="text-sm text-gray-900 dark:text-gray-100 focus:bg-gray-100 dark:focus:bg-[#2a2a2a]"
-                            >
-                              {pipeline.name}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-
-                    <div className="space-y-1">
-                      <span className="text-[11px] font-semibold text-gray-500 uppercase tracking-wide">Coluna destino</span>
-                      <Select
-                        value={action.targetColumn}
-                        onValueChange={(value) => updateAction(action.id, 'targetColumn', value)}
-                        disabled={!action.nextPipeline}
-                      >
-                        <SelectTrigger className="rounded-none text-sm dark:bg-[#161616] dark:border-gray-700 disabled:opacity-60 h-9">
-                          <SelectValue placeholder="Escolha a coluna" />
-                        </SelectTrigger>
-                        <SelectContent className="max-h-60 rounded-none border border-gray-200 dark:border-gray-700 bg-white dark:bg-[#1b1b1b]">
-                          {(actionColumns[action.id] || []).map((column: any) => (
-                            <SelectItem
-                              key={column.id}
-                              value={column.id}
-                              className="text-sm text-gray-900 dark:text-gray-100 focus:bg-gray-100 dark:focus:bg-[#2a2a2a]"
-                            >
-                              {column.name}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-
-                    <div className="space-y-1">
-                      <span className="text-[11px] font-semibold text-gray-500 uppercase tracking-wide">Status do negócio</span>
-                      <div className="flex items-center h-9">
-                        <span className="text-sm font-medium text-gray-900 dark:text-gray-100 bg-gray-50 dark:bg-[#161616] px-3 py-2 border border-[#d4d4d4] dark:border-gray-700 w-full cursor-not-allowed">
-                          {action.dealState}
-                        </span>
-                      </div>
-                    </div>
-
-                    <div className="space-y-1">
-                      <span className="text-[11px] font-semibold text-gray-500 uppercase tracking-wide">Ações</span>
-                      <div className="flex flex-wrap gap-2 items-center">
-                        <Button
-                          size="sm"
-                          className="rounded-none bg-primary text-primary-foreground hover:bg-primary/90"
-                          disabled={!action.actionName || !action.nextPipeline || !action.targetColumn || !action.dealState}
-                          onClick={() => saveAction(action)}
-                        >
-                          Salvar
-                        </Button>
-                      </div>
-                    </div>
-                  </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          </TabsContent>
+          {/* Aba "Ações" removida: botões (Ganho/Perdido/Reabrir) são fixos no detalhe da oportunidade */}
 
         </div>
       </div>

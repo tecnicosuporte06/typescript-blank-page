@@ -340,6 +340,12 @@ export function PipelinesProvider({ children }: { children: React.ReactNode }) {
       }
       
       const sanitizedCards = (cardsData || []).filter(card => {
+        // Regra de produto: no pipeline, mostrar apenas negócios em ABERTO ou PERDIDO.
+        // (Ganho continua existindo no banco e aparece apenas em histórico/relatórios.)
+        const status = String((card as any)?.status || '').toLowerCase().trim();
+        const isVisibleStatus = status === 'aberto' || status === 'perda' || status === 'perdido';
+        if (!isVisibleStatus) return false;
+
         if (userRole !== 'user') return true;
 
         const userData = localStorage.getItem('currentUser');
@@ -647,9 +653,19 @@ export function PipelinesProvider({ children }: { children: React.ReactNode }) {
 
       if (error) throw error;
 
-      setCards(prev => prev.map(card => 
-        card.id === cardId ? { ...card, ...data } : card
-      ));
+      setCards(prev => {
+        const next = prev.map(card => (card.id === cardId ? { ...card, ...data } : card));
+
+        // Regra de produto: no pipeline só aparecem status ABERTO ou PERDIDO.
+        // Se o status virou ganho, remover imediatamente do estado para sumir do pipeline sem precisar refetch.
+        const nextStatus = String((data as any)?.status ?? (updates as any)?.status ?? '').toLowerCase().trim();
+        const isVisibleStatus = nextStatus === 'aberto' || nextStatus === 'perda' || nextStatus === 'perdido';
+        if (nextStatus && !isVisibleStatus) {
+          return next.filter(c => c.id !== cardId);
+        }
+
+        return next;
+      });
 
       // Se a atualização mudou a coluna, emitir broadcast como fallback
       if (updates.column_id && selectedPipeline?.id) {

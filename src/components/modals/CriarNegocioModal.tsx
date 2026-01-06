@@ -297,9 +297,9 @@ export function CriarNegocioModal({
                   <span className="line-clamp-1 text-left">
                     {selectedResponsibleLabel ||
                       (isLoadingUsers
-                        ? "Carregando usuários..."
-                        : users.length === 0
-                          ? "Nenhum usuário disponível"
+                    ? "Carregando usuários..." 
+                    : users.length === 0 
+                      ? "Nenhum usuário disponível" 
                           : "Selecione o responsável")}
                   </span>
                   <ChevronDown className="h-3.5 w-3.5 opacity-70" />

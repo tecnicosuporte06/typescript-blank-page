@@ -177,6 +177,11 @@ export function Sidebar({
     icon: <DollarSign className="w-5 h-5" />,
     group: "crm"
   }, {
+    id: "panorama" as ModuleType,
+    label: "Panorama",
+    icon: <BarChart3 className="w-5 h-5" />,
+    group: "crm"
+  }, {
     id: "conversas" as ModuleType,
     label: "Conversas",
     icon: <MessageCircle className="w-5 h-5" />

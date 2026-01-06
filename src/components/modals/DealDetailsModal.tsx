@@ -24,6 +24,7 @@ import { TimePickerModal } from "./TimePickerModal";
 import { MinutePickerModal } from "./MinutePickerModal";
 import { AttachmentPreviewModal } from "./AttachmentPreviewModal";
 import { MarkAsLostModal } from "./MarkAsLostModal";
+import { DealStatusMoveModal } from "@/components/modals/DealStatusMoveModal";
 import { PipelineTimeline } from "@/components/crm/PipelineTimeline";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
@@ -579,6 +580,12 @@ export function DealDetailsModal({
   const [availableCards, setAvailableCards] = useState<any[]>([]);
   const [cardTimeline, setCardTimeline] = useState<any[]>([]);
   const [pipelineActions, setPipelineActions] = useState<any[]>([]);
+  const [availablePipelines, setAvailablePipelines] = useState<Array<{ id: string; name: string; is_active?: boolean }>>(
+    []
+  );
+  const [dealStatusMoveOpen, setDealStatusMoveOpen] = useState(false);
+  const [dealStatusMoveMode, setDealStatusMoveMode] = useState<"lost" | "reopen">("lost");
+  const [isDealStatusMoveLoading, setIsDealStatusMoveLoading] = useState(false);
   const [contactData, setContactData] = useState<{
     name: string;
     email: string | null;
@@ -605,6 +612,25 @@ export function DealDetailsModal({
   
   // Hook para histórico completo do card - usar cardId direto pois selectedCardId pode estar vazio no início
   const { data: fullHistory = [], isLoading: isLoadingHistory, refetch: refetchHistory } = useCardHistory(cardId, contactId);
+
+  // Carregar pipelines do workspace (para escolher destino em Perdido/Reabrir)
+  useEffect(() => {
+    const load = async () => {
+      if (!workspaceId) return;
+      try {
+        const { data, error } = await supabase
+          .from("pipelines")
+          .select("id, name, is_active")
+          .eq("workspace_id", workspaceId)
+          .order("name", { ascending: true });
+        if (error) throw error;
+        setAvailablePipelines((data || []).filter((p: any) => p.is_active));
+      } catch (e) {
+        console.error("Erro ao buscar pipelines (DealDetailsModal):", e);
+      }
+    };
+    load();
+  }, [workspaceId]);
   
   // Estado para filtro de histórico
   const [historyFilter, setHistoryFilter] = useState<string>("todos");
@@ -778,49 +804,11 @@ export function DealDetailsModal({
     }
   }, [columns, selectedColumnId]);
 
-  // Carregar ações do pipeline quando mudar
-  useEffect(() => {
-    if (selectedPipelineId && isOpen) {
-      console.log('🎬 Carregando ações do pipeline:', selectedPipelineId);
-      fetchPipelineActions(selectedPipelineId);
-    }
-  }, [selectedPipelineId, isOpen]);
+  // Configuração de ações do pipeline removida: botões são fixos (Ganho/Perdido/Reabrir)
 
-  const fetchPipelineActions = async (pipelineId: string) => {
-    try {
-      console.log('📥 Buscando ações para pipeline:', pipelineId);
-      
-      const headers = getHeaders();
-      const { data, error } = await supabase.functions.invoke(
-        `pipeline-management/actions?pipeline_id=${pipelineId}`,
-        {
-          method: 'GET',
-          headers
-        }
-      );
-
-      if (error) {
-        console.error('❌ Erro ao buscar ações:', error);
-        throw error;
-      }
-      
-      console.log('✅ Ações recebidas do banco:', data);
-      setPipelineActions(data || []);
-      
-      if (data && data.length > 0) {
-        console.log('✅ Ações configuradas:', data.map(a => ({
-          nome: a.action_name,
-          tipo: a.deal_state,
-          pipelineDestino: a.target_pipeline_id,
-          colunaDestino: a.target_column_id
-        })));
-      } else {
-        console.log('⚠️ Nenhuma ação encontrada para este pipeline');
-      }
-    } catch (error) {
-      console.error('❌ Error fetching pipeline actions:', error);
-      setPipelineActions([]);
-    }
+  const fetchPipelineActions = async (_pipelineId: string) => {
+    // noop - mantido apenas para compatibilidade com código legado no arquivo
+    return;
   };
 
   const handleMoveToColumn = async (targetColumnId: string, targetStepIndex: number) => {
@@ -920,6 +908,71 @@ export function DealDetailsModal({
       setConfirmLossAction(null);
     }
   };
+
+  const handleDealStatusMoveConfirm = useCallback(
+    async (payload: { pipelineId: string; columnId: string; lossReasonId: string | null; lossComments: string }) => {
+      if (!selectedCardId) return;
+      setIsDealStatusMoveLoading(true);
+      try {
+        // Regras:
+        // - Ganho: só muda status (card some do pipeline)
+        // - Perdido: exige motivo e escolhe destino (pipeline + coluna)
+        // - Reabrir: escolhe destino (pipeline + coluna)
+
+        if (dealStatusMoveMode === "reopen") {
+          await updateCard(selectedCardId, {
+            pipeline_id: payload.pipelineId,
+            column_id: payload.columnId,
+            status: "aberto",
+          });
+          setCardStatus("aberto");
+          setSelectedPipelineId(payload.pipelineId);
+          setSelectedColumnId(payload.columnId);
+          toast({ title: "Sucesso", description: "Oportunidade reaberta." });
+          setDealStatusMoveOpen(false);
+          return;
+        }
+
+        // lost
+        await updateCard(selectedCardId, {
+          pipeline_id: payload.pipelineId,
+          column_id: payload.columnId,
+          status: "perda",
+        });
+        setCardStatus("perda");
+        setSelectedPipelineId(payload.pipelineId);
+        setSelectedColumnId(payload.columnId);
+
+        const { error } = await supabase
+          .from("pipeline_cards")
+          .update({
+            loss_reason_id: payload.lossReasonId,
+            loss_comments: payload.lossComments,
+            updated_at: new Date().toISOString(),
+          })
+          .eq("id", selectedCardId);
+        if (error) throw error;
+
+        if (contactId) {
+          await logLossReasonObservation(payload.lossReasonId, payload.lossComments);
+          await fetchActivities(contactId);
+        }
+
+        toast({ title: "Sucesso", description: "Negócio marcado como perdido." });
+        setDealStatusMoveOpen(false);
+      } catch (e: any) {
+        console.error("Erro ao alterar status/mover (DealDetailsModal):", e);
+        toast({
+          title: "Erro",
+          description: e?.message || "Não foi possível realizar a ação.",
+          variant: "destructive",
+        });
+      } finally {
+        setIsDealStatusMoveLoading(false);
+      }
+    },
+    [contactId, dealStatusMoveMode, fetchActivities, logLossReasonObservation, selectedCardId, toast, updateCard]
+  );
 
   const processActionExecution = async (action: any) => {
     try {
@@ -1981,52 +2034,99 @@ export function DealDetailsModal({
               </div>
             </div>
             
-            {/* Botões Ganho e Perda no canto direito */}
+            {/* Botões fixos: Ganho / Perdido / Reabrir */}
             <div className="ml-auto flex gap-2 items-center">
-              {(() => {
-                const filteredActions = pipelineActions.filter((action: any) => {
-                  const actionName = (action.action_name || '').toLowerCase();
-                  const isMasterOrAdmin = userRole === 'master' || userRole === 'admin';
-                  const isWonOrLost = cardStatus === 'ganho' || cardStatus === 'perda';
-
-                  // Regra: Reabrir só aparece para Master/Admin e quando o card é Ganho ou Perdido
-                  if (actionName.includes('reabrir')) {
-                    return isMasterOrAdmin && isWonOrLost;
-                  }
-                  
-                  // Regra: Ganho e Perdido só aparecem quando o card está Aberto
-                  if (actionName.includes('ganho') || actionName.includes('perdido') || actionName.includes('perda')) {
-                    return cardStatus === 'aberto';
-                  }
-
-                  return action.deal_state === 'Ganho' || action.deal_state === 'Perda' || action.deal_state === 'Aberto';
-                });
-                
-                return filteredActions.map((action: any) => {
-                  const isWin = action.deal_state === 'Ganho';
-                  const isLoss = action.deal_state === 'Perda';
-                  const isClosedStatus = cardStatus !== 'aberto';
-                  const shouldDisable = isExecutingAction || (isClosedStatus && (isWin || isLoss));
-                  
-                  const styleClass = isWin
-                      ? 'bg-green-600 hover:bg-green-700 text-white border-transparent shadow-sm rounded-none h-8 px-4 text-xs font-medium disabled:opacity-60'
-                      : isLoss
-                        ? 'bg-red-600 hover:bg-red-700 text-white border-transparent shadow-sm rounded-none h-8 px-4 text-xs font-medium disabled:opacity-60'
-                        : 'bg-white text-gray-900 hover:bg-gray-100 border-gray-300 shadow-sm rounded-none h-8 px-4 text-xs font-medium disabled:opacity-60 dark:bg-[#1b1b1b] dark:text-gray-100 dark:border-gray-700';
-                  
-                  return (
+              {cardStatus === "aberto" ? (
+                <>
                   <Button
-                    key={action.id}
                     size="sm"
-                    onClick={() => executeAction(action)}
-                    disabled={shouldDisable}
-                    className={styleClass}
+                    onClick={() => {
+                      const run = async () => {
+                        // Regra: não pode marcar como ganho se existir atividade em aberto
+                        try {
+                          const { data: openActs, error: openActsError } = await supabase
+                            .from("activities")
+                            .select("id, type, is_completed")
+                            .eq("pipeline_card_id", selectedCardId)
+                            .eq("is_completed", false);
+
+                          if (openActsError) throw openActsError;
+
+                          const hasOpenNonFile = (openActs || []).some(
+                            (a: any) => String(a?.type || "").toLowerCase().trim() !== "arquivo"
+                          );
+
+                          if (hasOpenNonFile) {
+                            toast({
+                              title: "Finalize a atividade",
+                              description: "Para marcar como ganho, finalize a atividade em aberto primeiro.",
+                              variant: "destructive",
+                            });
+                            return;
+                          }
+                        } catch (e) {
+                          console.warn("Falha ao validar atividades em aberto (ganho/modal):", e);
+                          // não bloqueia por erro momentâneo
+                        }
+
+                        if (cardQualification !== "qualified") {
+                          toast({
+                            title: "Não foi possível marcar como ganho",
+                            description: "Você precisa qualificar o negócio antes de marcar como ganho.",
+                            variant: "destructive",
+                          });
+                          return;
+                        }
+
+                        try {
+                          setIsExecutingAction(true);
+                          await updateCard(selectedCardId, { status: "ganho" });
+                          setCardStatus("ganho");
+                          toast({ title: "Sucesso", description: "Negócio marcado como ganho." });
+                          onClose();
+                        } catch (e: any) {
+                          console.error("Erro ao marcar como ganho (modal):", e);
+                          toast({
+                            title: "Erro",
+                            description: e?.message || "Não foi possível marcar como ganho.",
+                            variant: "destructive",
+                          });
+                        } finally {
+                          setIsExecutingAction(false);
+                        }
+                      };
+                      void run();
+                    }}
+                    disabled={isExecutingAction || isDealStatusMoveLoading}
+                    className="bg-green-600 hover:bg-green-700 text-white border-transparent shadow-sm rounded-none h-8 px-4 text-xs font-medium disabled:opacity-60"
                   >
-                    {isExecutingAction ? 'Processando...' : action.action_name}
+                    Ganho
                   </Button>
-                  );
-                });
-              })()}
+                  <Button
+                    size="sm"
+                    onClick={() => {
+                      setDealStatusMoveMode("lost");
+                      setDealStatusMoveOpen(true);
+                    }}
+                    disabled={isExecutingAction || isDealStatusMoveLoading}
+                    className="bg-red-600 hover:bg-red-700 text-white border-transparent shadow-sm rounded-none h-8 px-4 text-xs font-medium disabled:opacity-60"
+                  >
+                    Perdido
+                  </Button>
+                </>
+              ) : (
+                <Button
+                  size="sm"
+                  onClick={() => {
+                    setDealStatusMoveMode("reopen");
+                    setDealStatusMoveOpen(true);
+                  }}
+                  disabled={isExecutingAction || isDealStatusMoveLoading}
+                  className="bg-blue-600 hover:bg-blue-700 text-white border-transparent shadow-sm rounded-none h-8 px-4 text-xs font-medium disabled:opacity-60"
+                >
+                  Reabrir
+                </Button>
+              )}
             </div>
           </div>
         </DialogHeader>
@@ -2057,9 +2157,6 @@ export function DealDetailsModal({
 
                 if (tab.id === 'negocios') {
                   fetchCardData();
-                  if (selectedPipelineId) {
-                    fetchPipelineActions(selectedPipelineId);
-                  }
                 }
 
                 setActiveTab(tab.id);
@@ -3173,6 +3270,18 @@ export function DealDetailsModal({
       onConfirm={handleMarkAsLost}
       workspaceId={workspaceId}
       isLoading={isMarkingAsLost}
+    />
+
+    <DealStatusMoveModal
+      open={dealStatusMoveOpen}
+      onOpenChange={setDealStatusMoveOpen}
+      mode={dealStatusMoveMode}
+      workspaceId={workspaceId}
+      pipelines={(availablePipelines || []).map((p) => ({ id: p.id, name: p.name }))}
+      defaultPipelineId={selectedPipelineId || ""}
+      defaultColumnId={selectedColumnId || ""}
+      isLoading={isDealStatusMoveLoading}
+      onConfirm={handleDealStatusMoveConfirm}
     />
     </>
   );

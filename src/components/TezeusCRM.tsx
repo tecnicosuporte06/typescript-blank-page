@@ -14,6 +14,7 @@ import { DSVoice } from "./modules/DSVoice";
 import { CRMNegocios } from "./modules/CRMNegocios";
 import { CRMAtividades } from "./modules/CRMAtividades";
 import { CRMAgenda } from "./modules/CRMAgenda";
+import { CRMPanorama } from "./modules/CRMPanorama";
 
 import { CRMContatos } from "./modules/CRMContatos";
 import { CRMTags } from "./modules/CRMTags";
@@ -44,6 +45,7 @@ export type ModuleType =
   | "conversas"
   | "mensagens-rapidas"
   | "pipeline"
+  | "panorama"
   | "pipeline-detail"
   | "atividades"
   | "agendas"
@@ -128,6 +130,7 @@ export function TezeusCRM() {
     
     // Mapeamento direto
     if (cleanPath === "crm-negocios" || cleanPath === "pipeline") return "pipeline";
+    if (cleanPath === "panorama") return "panorama";
     if (cleanPath === "crm-atividades" || cleanPath === "atividades") return "atividades";
     if (cleanPath === "crm-agenda" || cleanPath === "agendas") return "agendas";
     if (cleanPath === "crm-contatos" || cleanPath === "contatos") return "contatos";
@@ -185,6 +188,8 @@ export function TezeusCRM() {
         return <DSVoice />;
       case "pipeline":
         return <CRMNegocios onCollapseSidebar={() => setIsCollapsed(true)} />;
+      case "panorama":
+        return <CRMPanorama />;
       case "pipeline-detail":
         return <DealDetailsPage />;
       case "atividades":

@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { useWorkspace } from '@/contexts/WorkspaceContext';
 import { useLossReasons } from '@/hooks/useLossReasons';
+import { useAuth } from '@/hooks/useAuth';
 import { Plus, Trash2, Edit2, X, Check, FileText, Search, Layers } from 'lucide-react';
 import {
   AlertDialog,
@@ -35,9 +36,11 @@ export const ConfiguracaoAcoes: React.FC<ConfiguracaoAcoesProps> = ({ hideTitle 
   const MIN_PAGE_SIZE = 10;
   const { selectedWorkspace } = useWorkspace();
   const { workspaceId: urlWorkspaceId } = useParams<{ workspaceId: string }>();
+  const { hasRole } = useAuth();
 
   // Priorizar workspaceId da URL, depois selectedWorkspace
-  const effectiveWorkspaceId = urlWorkspaceId || selectedWorkspace?.workspace_id || null;
+  const isMaster = hasRole(['master']);
+  const effectiveWorkspaceId = (isMaster && urlWorkspaceId) ? urlWorkspaceId : (selectedWorkspace?.workspace_id || null);
 
   const {
     lossReasons,

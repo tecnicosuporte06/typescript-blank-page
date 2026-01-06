@@ -39,6 +39,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { AddContactTagButton } from "@/components/chat/AddContactTagButton";
 import { AttachmentPreviewModal } from "@/components/modals/AttachmentPreviewModal";
 import { MarkAsLostModal } from "@/components/modals/MarkAsLostModal";
+import { DealStatusMoveModal } from "@/components/modals/DealStatusMoveModal";
 import { WhatsAppChat } from "@/components/modules/WhatsAppChat";
 import { useWorkspaceContactFields } from "@/hooks/useWorkspaceContactFields";
 
@@ -46,9 +47,12 @@ interface DealDetailsPageProps {
   cardId?: string;
   workspaceId?: string;
   onClose?: () => void;
+  // Quando informado, ao abrir o detalhe do negócio, abre automaticamente o modal de edição
+  // da atividade específica (usado pelo Kanban de Atividades para acelerar o fluxo).
+  openActivityEditId?: string;
 }
 
-export function DealDetailsPage({ cardId: propCardId, workspaceId: propWorkspaceId, onClose }: DealDetailsPageProps = {}) {
+export function DealDetailsPage({ cardId: propCardId, workspaceId: propWorkspaceId, onClose, openActivityEditId }: DealDetailsPageProps = {}) {
   const { cardId: paramCardId, workspaceId: paramWorkspaceId } = useParams<{ cardId: string; workspaceId: string }>();
   
   const cardId = propCardId || paramCardId;
@@ -97,6 +101,7 @@ const [manualValue, setManualValue] = useState<string>("");
   // Estados para histórico
   const [historyFilter, setHistoryFilter] = useState<string>("all");
   const didInitActivityTimeRef = useRef(false);
+  const lastAutoOpenedActivityEditIdRef = useRef<string | null>(null);
   
   // Estados para modal de seleção de coluna
   const [isColumnSelectModalOpen, setIsColumnSelectModalOpen] = useState(false);
@@ -431,6 +436,9 @@ const [isSavingCompany, setIsSavingCompany] = useState(false);
   const [isExecutingAction, setIsExecutingAction] = useState(false);
 const [confirmLossAction, setConfirmLossAction] = useState<any | null>(null);
 const [isMarkAsLostModalOpen, setIsMarkAsLostModalOpen] = useState(false);
+  const [dealStatusMoveOpen, setDealStatusMoveOpen] = useState(false);
+  const [dealStatusMoveMode, setDealStatusMoveMode] = useState<"lost" | "reopen">("lost");
+  const [isDealStatusMoveLoading, setIsDealStatusMoveLoading] = useState(false);
 const [isMarkingAsLost, setIsMarkingAsLost] = useState(false);
 
   // Estados para visão geral
@@ -964,7 +972,7 @@ const normalizeFieldKey = (label: string) => {
       if (card.pipeline_id) {
         // ✅ Sempre tentar carregar ações do pipeline (Ganho/Perda/Reabrir),
         // mesmo que o select do pipeline falhe por RLS/estado.
-        fetchPipelineActions(card.pipeline_id);
+        // Ações são fixas (Ganho/Perdido/Reabrir) - não dependem mais de configuração por pipeline.
 
         const { data: pipeline, error: pipelineError } = await supabase
           .from('pipelines')
@@ -1672,6 +1680,33 @@ const normalizeFieldKey = (label: string) => {
     // Manter por compatibilidade se necessário, mas vamos preferir executeAction
     if (!cardId) return;
 
+    // Regra: não pode marcar como ganho se existir atividade em aberto
+    try {
+      const { data: openActs, error: openActsError } = await supabase
+        .from("activities")
+        .select("id, type, is_completed")
+        .eq("pipeline_card_id", cardId)
+        .eq("is_completed", false);
+
+      if (openActsError) throw openActsError;
+
+      const hasOpenNonFile = (openActs || []).some(
+        (a: any) => String(a?.type || "").toLowerCase().trim() !== "arquivo"
+      );
+
+      if (hasOpenNonFile) {
+        toast({
+          title: "Finalize a atividade",
+          description: "Para marcar como ganho, finalize a atividade em aberto primeiro.",
+          variant: "destructive",
+        });
+        return;
+      }
+    } catch (e) {
+      console.warn("Falha ao validar atividades em aberto (ganho):", e);
+      // se não conseguir validar, não bloqueia (evita travar fluxo por erro momentâneo)
+    }
+
     // Regra: só pode marcar como ganho se estiver qualificado
     const q = normalizeDealQualification(cardData?.qualification);
     if (q !== 'qualified') {
@@ -1684,20 +1719,57 @@ const normalizeFieldKey = (label: string) => {
     }
     
     try {
+      setIsExecutingAction(true);
       const headers = getHeaders();
       const { error } = await supabase.functions.invoke(
-        'pipeline-management/cards',
+        `pipeline-management/cards?id=${cardId}`,
         {
           method: 'PUT',
           headers,
           body: {
-            id: cardId,
             status: 'ganho'
           }
         }
       );
 
-      if (error) throw error;
+      if (error) {
+        // Melhorar diagnóstico: tentar extrair o body real da response da Edge Function
+        const ctx: any = (error as any)?.context;
+        let detailedMessage: string | null = null;
+
+        try {
+          const res: Response | undefined = ctx?.response;
+          if (res) {
+            const text = await res.text();
+            try {
+              const json = JSON.parse(text);
+              detailedMessage =
+                json?.message ||
+                json?.error ||
+                json?.details ||
+                (typeof json === 'string' ? json : null);
+            } catch {
+              detailedMessage = text || null;
+            }
+          }
+        } catch (e) {
+          console.warn('⚠️ Não foi possível ler body do erro da Edge Function:', e);
+        }
+
+        // fallback para context.body (quando existir) ou mensagem padrão do supabase-js
+        const body = ctx?.body;
+        if (!detailedMessage) {
+          detailedMessage =
+            body?.message ||
+            body?.error ||
+            body?.details ||
+            (typeof body === 'string' ? body : null) ||
+            (error as any)?.message ||
+            'Erro ao marcar como ganho';
+        }
+
+        throw new Error(String(detailedMessage));
+      }
 
       // Registrar histórico de ganho (status + valor)
       await logStatusHistory('ganho', cardData?.value ?? null, {
@@ -1709,15 +1781,23 @@ const normalizeFieldKey = (label: string) => {
         title: "Sucesso",
         description: "Negócio marcado como ganho.",
       });
-      
+
+      // Fechar modal/sheet (quando aplicável)
+      if (onClose) {
+        onClose();
+        return;
+      }
+
       fetchCardData();
-    } catch (error) {
+    } catch (error: any) {
       console.error('Erro ao marcar como ganho:', error);
       toast({
         title: "Erro",
-        description: "Não foi possível marcar o negócio como ganho.",
+        description: error?.message || "Não foi possível marcar o negócio como ganho.",
         variant: "destructive",
       });
+    } finally {
+      setIsExecutingAction(false);
     }
   };
 
@@ -2003,6 +2083,119 @@ const normalizeFieldKey = (label: string) => {
     }
   };
 
+  const handleDealStatusMoveConfirm = useCallback(
+    async (payload: { pipelineId: string; columnId: string; lossReasonId: string | null; lossComments: string }) => {
+      if (!cardId) return;
+      if (!effectiveWorkspaceId) return;
+
+      setIsDealStatusMoveLoading(true);
+      try {
+        const headers = getHeaders();
+        if (!headers) throw new Error("Não foi possível obter headers do workspace");
+
+        const executedBy = authUser?.id || null;
+        const executedByName =
+          authUser?.user_metadata?.full_name || authUser?.email || authUser?.id || "Sistema";
+
+        if (dealStatusMoveMode === "reopen") {
+          const body: any = {
+            id: cardId,
+            status: "aberto",
+            pipeline_id: payload.pipelineId,
+            column_id: payload.columnId,
+            executed_by: executedBy,
+            executed_by_name: executedByName,
+          };
+
+          const { error } = await supabase.functions.invoke(`pipeline-management/cards?id=${cardId}`, {
+            method: "PUT",
+            headers,
+            body,
+          });
+          if (error) throw error;
+
+          await logStatusHistory("aberto", cardData?.value ?? null, {
+            oldStatus: (cardData as any)?.status ?? null,
+            actionName: "Reabrir",
+          });
+
+          toast({
+            title: "Sucesso",
+            description: "Oportunidade reaberta.",
+          });
+
+          setDealStatusMoveOpen(false);
+          await fetchCardData();
+          return;
+        }
+
+        // lost
+        const body: any = {
+          id: cardId,
+          status: "perda",
+          pipeline_id: payload.pipelineId,
+          column_id: payload.columnId,
+          executed_by: executedBy,
+          executed_by_name: executedByName,
+        };
+
+        const { error: actionError } = await supabase.functions.invoke(`pipeline-management/cards?id=${cardId}`, {
+          method: "PUT",
+          headers,
+          body,
+        });
+        if (actionError) throw actionError;
+
+        const { error: updateError } = await supabase
+          .from("pipeline_cards")
+          .update({
+            loss_reason_id: payload.lossReasonId,
+            loss_comments: payload.lossComments,
+            updated_at: new Date().toISOString(),
+          })
+          .eq("id", cardId);
+
+        if (updateError) throw updateError;
+
+        let lossReasonName: string | null = null;
+        if (payload.lossReasonId) {
+          const { data: reasonRow } = await supabase
+            .from("loss_reasons")
+            .select("name")
+            .eq("id", payload.lossReasonId)
+            .maybeSingle();
+          lossReasonName = (reasonRow as any)?.name ?? null;
+        }
+
+        await logStatusHistory("perda", cardData?.value ?? null, {
+          oldStatus: (cardData as any)?.status ?? null,
+          actionName: "Perdido",
+          lossReasonId: payload.lossReasonId,
+          lossReasonName,
+          lossComments: payload.lossComments || null,
+        });
+
+        toast({
+          title: "Sucesso",
+          description: "Negócio marcado como perdido.",
+        });
+
+        setDealStatusMoveOpen(false);
+        await fetchCardData();
+      } catch (e: any) {
+        console.error("Erro ao alterar status/mover oportunidade:", e);
+        toast({
+          title: "Erro",
+          description: e?.message || "Não foi possível realizar a ação.",
+          variant: "destructive",
+        });
+      } finally {
+        setIsDealStatusMoveLoading(false);
+      }
+    },
+    [authUser?.email, authUser?.id, authUser?.user_metadata?.full_name, cardData, cardId, dealStatusMoveMode, effectiveWorkspaceId, fetchCardData, getHeaders, logStatusHistory, toast]
+  );
+
   // Salvar atividade
   const handleSaveActivity = async () => {
     if (!cardId || !contact?.id || !activityForm.responsibleId) {
@@ -2159,6 +2352,73 @@ const normalizeFieldKey = (label: string) => {
   };
 
   const getActivityById = (id: string) => activities.find((a) => a.id === id);
+
+  // ✅ Ao abrir via Kanban de Atividades, já abrir o modal de edição da atividade específica.
+  // Faz isso depois que o detalhe do negócio montou e as atividades estão disponíveis (ou buscando no banco se necessário).
+  useEffect(() => {
+    if (!openActivityEditId) return;
+    if (!cardId) return;
+    if (lastAutoOpenedActivityEditIdRef.current === openActivityEditId) return;
+
+    const run = async () => {
+      try {
+        let activity: any | null = getActivityById(openActivityEditId) || null;
+
+        if (!activity) {
+          const { data, error } = await supabase
+            .from("activities")
+            .select("*")
+            .eq("id", openActivityEditId)
+            .maybeSingle();
+          if (error) throw error;
+          activity = data || null;
+        }
+
+        if (!activity) {
+          toast({
+            title: "Atividade não encontrada",
+            description: "Não foi possível localizar a atividade para edição.",
+            variant: "destructive",
+          });
+          lastAutoOpenedActivityEditIdRef.current = openActivityEditId;
+          return;
+        }
+
+        const scheduled = activity.scheduled_for ? new Date(activity.scheduled_for) : new Date();
+        const endFromDuration = new Date(scheduled);
+        const durationMinutes = activity.duration_minutes || 30;
+        endFromDuration.setMinutes(endFromDuration.getMinutes() + durationMinutes);
+
+        setActivityEditForm({
+          type: activity.type || "Ligação abordada",
+          subject: activity.subject || "",
+          description: activity.description || "",
+          availability: activity.availability || "livre",
+          startDate: scheduled,
+          startTime: formatTime(scheduled),
+          endDate: endFromDuration,
+          endTime: formatTime(endFromDuration),
+          responsibleId: activity.responsible_id || "",
+          markAsDone: !!activity.is_completed,
+        });
+        setSelectedActivityForEdit(activity);
+        setIsActivityEditModalOpen(true);
+
+        lastAutoOpenedActivityEditIdRef.current = openActivityEditId;
+      } catch (e: any) {
+        console.error("Erro ao auto-abrir edição da atividade:", e);
+        toast({
+          title: "Erro",
+          description: e?.message || "Não foi possível abrir a edição da atividade.",
+          variant: "destructive",
+        });
+        lastAutoOpenedActivityEditIdRef.current = openActivityEditId;
+      }
+    };
+
+    // Garantir que o Sheet já abriu antes do modal de edição (evita flicker/stack estranho)
+    setTimeout(() => void run(), 0);
+  }, [activities, cardId, openActivityEditId, toast]);
 
   const openActivityEditFromHistory = useCallback(
     (event: any) => {
@@ -2913,84 +3173,60 @@ const normalizeFieldKey = (label: string) => {
               )}
 
             <div className="flex items-center gap-2">
-                {isLoadingActions ? (
-                  <div className="flex items-center gap-2">
-                    <div className="h-9 w-24 bg-gray-200 dark:bg-gray-700 animate-pulse rounded-none" />
-                    <div className="h-9 w-24 bg-gray-200 dark:bg-gray-700 animate-pulse rounded-none" />
-                  </div>
-                ) : (
-                  (() => {
-                  const cardStatus = cardData?.status?.toLowerCase() || 'aberto';
-                  const isMasterOrAdmin = userRole === 'master' || userRole === 'admin';
-                  const isClosed = cardStatus === 'ganho' || cardStatus === 'perda' || cardStatus === 'perdido';
+              {(() => {
+                const cardStatus = (cardData?.status || "aberto").toLowerCase();
+                const isBusy = isExecutingAction || isMarkingAsLost || isDealStatusMoveLoading;
 
-                  // Filtrar ações baseadas no estado do negócio e papel do usuário
-                  const filteredActions = pipelineActions.filter((action: any) => {
-                    const state = action.deal_state;
-                    
-                    // Regra: Ações de 'Aberto' (Reabrir) só aparecem para Master/Admin e se fechado
-                    if (state === 'Aberto') {
-                      const show = isMasterOrAdmin && isClosed;
-                      return show;
-                    }
-                    
-                    // Regra: Ações de 'Ganho' e 'Perda' só aparecem se estiver aberto
-                    if (state === 'Ganho' || state === 'Perda') {
-                      const show = cardStatus === 'aberto';
-                      return show;
-                    }
-
-                    return true;
-                  });
-
-                  if (filteredActions.length === 0) {
-                    console.log('⚠️ [Actions] Nenhuma ação passou pelos filtros:', { 
-                      cardStatus, 
-                      userRole, 
-                      totalActions: pipelineActions.length,
-                      actionsStates: pipelineActions.map(a => a.deal_state)
-                    });
-                  }
-
-                  // Ordenar: Ganho, Perda, outros
-                  const orderedActions = [...filteredActions].sort((a, b) => {
-                    const order = { 'Ganho': 1, 'Perda': 2, 'Aberto': 3 };
-                    return (order[a.deal_state] || 99) - (order[b.deal_state] || 99);
-                  });
-
-                  return orderedActions.map((action: any) => {
-                    const isWin = action.deal_state === 'Ganho';
-                    const isLoss = action.deal_state === 'Perda';
-                    const shouldDisable = isExecutingAction;
-                    const isReopen = action.deal_state === 'Aberto';
-
-                    return (
-              <Button
-                        key={action.id}
+                if (cardStatus === "aberto") {
+                  return (
+                    <>
+                      <Button
                         size="sm"
-                        onClick={() => {
-                          console.log('🎯 Botão clicado:', action.action_name);
-                          executeAction(action);
-                        }}
-                        disabled={shouldDisable}
+                        onClick={() => handleMarkAsWon()}
+                        disabled={isBusy}
                         className={cn(
                           "h-9 px-4 text-sm font-semibold rounded-none shadow-sm transition-all",
-                          isWin 
-                            ? "bg-green-600 hover:bg-green-700 text-white border-transparent dark:bg-green-600 dark:hover:bg-green-700 dark:text-white" 
-                            : isLoss 
-                              ? "bg-red-600 hover:bg-red-700 text-white border-transparent dark:bg-red-600 dark:hover:bg-red-700 dark:text-white" 
-                              : isReopen
-                                ? "bg-blue-600 hover:bg-blue-700 text-white border-transparent dark:bg-blue-600 dark:hover:bg-blue-700 dark:text-white"
-                                : "bg-white text-gray-900 border border-gray-300 hover:bg-gray-100 dark:bg-[#1b1b1b] dark:text-gray-100 dark:border-gray-700"
+                          "bg-green-600 hover:bg-green-700 text-white border-transparent dark:bg-green-600 dark:hover:bg-green-700 dark:text-white"
                         )}
                       >
-                        {isExecutingAction ? '...' : action.action_name}
-              </Button>
-                    );
-                  });
-                  })()
-                )}
-              </div>
+                        Ganho
+                      </Button>
+                      <Button
+                        size="sm"
+                        onClick={() => {
+                          setDealStatusMoveMode("lost");
+                          setDealStatusMoveOpen(true);
+                        }}
+                        disabled={isBusy}
+                        className={cn(
+                          "h-9 px-4 text-sm font-semibold rounded-none shadow-sm transition-all",
+                          "bg-red-600 hover:bg-red-700 text-white border-transparent dark:bg-red-600 dark:hover:bg-red-700 dark:text-white"
+                        )}
+                      >
+                        Perdido
+                      </Button>
+                    </>
+                  );
+                }
+
+                return (
+                  <Button
+                    size="sm"
+                    onClick={() => {
+                      setDealStatusMoveMode("reopen");
+                      setDealStatusMoveOpen(true);
+                    }}
+                    disabled={isBusy}
+                    className={cn(
+                      "h-9 px-4 text-sm font-semibold rounded-none shadow-sm transition-all",
+                      "bg-blue-600 hover:bg-blue-700 text-white border-transparent dark:bg-blue-600 dark:hover:bg-blue-700 dark:text-white"
+                    )}
+                  >
+                    Reabrir
+                  </Button>
+                );
+              })()}
+            </div>
               
               {/* Popover de ações do card */}
               <Popover open={isCardActionsPopoverOpen} onOpenChange={setIsCardActionsPopoverOpen}>
@@ -5453,6 +5689,18 @@ const normalizeFieldKey = (label: string) => {
         onConfirm={handleMarkAsLost}
         workspaceId={cardData?.workspace_id || effectiveWorkspaceId || selectedWorkspace?.workspace_id || ""}
         isLoading={isMarkingAsLost}
+      />
+
+      <DealStatusMoveModal
+        open={dealStatusMoveOpen}
+        onOpenChange={setDealStatusMoveOpen}
+        mode={dealStatusMoveMode}
+        workspaceId={cardData?.workspace_id || effectiveWorkspaceId || selectedWorkspace?.workspace_id || ""}
+        pipelines={(availablePipelines || []).map((p: any) => ({ id: p.id, name: p.name }))}
+        defaultPipelineId={cardData?.pipeline_id || ""}
+        defaultColumnId={cardData?.column_id || ""}
+        isLoading={isDealStatusMoveLoading}
+        onConfirm={handleDealStatusMoveConfirm}
       />
 
       <AttachmentPreviewModal

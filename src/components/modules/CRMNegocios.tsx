@@ -23,6 +23,7 @@ import { CriarPipelineModal } from "@/components/modals/CriarPipelineModal";
 import { CriarNegocioModal } from "@/components/modals/CriarNegocioModal";
 import { DealDetailsModal } from "@/components/modals/DealDetailsModal";
 import { DealDetailsPage } from "@/pages/DealDetailsPage";
+import { useAuth } from "@/hooks/useAuth";
 import { ChatModal } from "@/components/modals/ChatModal";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator } from "@/components/ui/dropdown-menu";
 import { TransferirModal } from "@/components/modals/TransferirModal";
@@ -894,6 +895,7 @@ function CRMNegociosContent({
   const {
     selectedWorkspace
   } = useWorkspace();
+  const { user, userRole } = useAuth();
   const { workspaceId: urlWorkspaceId } = useParams<{ workspaceId: string }>();
   const {
     canManagePipelines,
@@ -947,6 +949,7 @@ function CRMNegociosContent({
   } = usePipelineActiveUsers(selectedPipeline?.id, effectiveWorkspaceId);
   const queryClient = useQueryClient();
   const [searchTerm, setSearchTerm] = useState("");
+  // Panorama é um módulo próprio na sidebar (não fica dentro do Pipeline).
   const [selectedCard, setSelectedCard] = useState<any>(null);
   const [selectedChatCard, setSelectedChatCard] = useState<any>(null);
   const [isConfigModalOpen, setIsConfigModalOpen] = useState(false);
@@ -1533,6 +1536,8 @@ const [selectedCardForProduct, setSelectedCardForProduct] = useState<{
     });
     setIsDealDetailsModalOpen(true);
   };
+
+  // Panorama foi movido para um módulo próprio na sidebar.
   const handlePipelineCreate = async (nome: string) => {
     try {
       await createPipeline(nome, 'padrao'); // tipo padrão fixo

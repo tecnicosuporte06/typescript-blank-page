@@ -205,9 +205,9 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
     workspaces && workspaces.length > 0
       ? '' // Master-dashboard: por padrão mostra todos os workspaces
       : selectedWorkspace?.workspace_id ||
-        workspaces?.[0]?.workspace_id ||
-        ctxWorkspaces?.[0]?.workspace_id ||
-        ''
+      workspaces?.[0]?.workspace_id ||
+      ctxWorkspaces?.[0]?.workspace_id ||
+      ''
   );
   const [selectedFunnel, setSelectedFunnel] = useState<string>('all');
   const [selectedAgent, setSelectedAgent] = useState<string>('all');

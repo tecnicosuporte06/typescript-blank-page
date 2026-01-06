@@ -86,6 +86,8 @@ export function CRMAtividades() {
   const [dateFrom, setDateFrom] = useState<Date | undefined>(undefined);
   const [dateTo, setDateTo] = useState<Date | undefined>(undefined);
   const [selectedDealDetails, setSelectedDealDetails] = useState<SelectedDealDetails | null>(null);
+  const [autoOpenActivityEditId, setAutoOpenActivityEditId] = useState<string | null>(null);
+  const [openedFromCompletedColumn, setOpenedFromCompletedColumn] = useState(false);
   const [forceRescheduleModalOpen, setForceRescheduleModalOpen] = useState(false);
   const [forceRescheduleContext, setForceRescheduleContext] = useState<{ contactId: string; pipelineCardId?: string | null } | null>(null);
   const isDraggingRef = useRef(false);
@@ -98,14 +100,8 @@ export function CRMAtividades() {
   const startIndex = totalCount > 0 ? (page - 1) * pageSize + 1 : 0;
   const endIndex = totalCount > 0 ? Math.min(page * pageSize, totalCount) : 0;
 
-  // Evitar travamento no Kanban com muitos registros: por padrão, filtrar pela data de hoje
-  useEffect(() => {
-    if (viewMode !== "kanban") return;
-    if (dateFrom || dateTo) return;
-    const today = new Date();
-    setDateFrom(today);
-    setDateTo(today);
-  }, [viewMode, dateFrom, dateTo]);
+  // Importante: por padrão, NÃO aplicar filtro de data.
+  // O usuário escolhe o intervalo quando quiser.
 
   const handleOpenDealDetails = (activity: ActivityData) => {
     console.log("🎯 Abrindo detalhes do negócio para a atividade:", activity.id, "Card ID:", activity.pipeline_card_id);
@@ -124,12 +120,34 @@ export function CRMAtividades() {
     });
   };
 
-  const handleCloseDealDetails = () => setSelectedDealDetails(null);
+  const handleOpenDealDetailsOnly = (activity: ActivityData, opts?: { fromCompleted?: boolean }) => {
+    handleOpenDealDetails(activity);
+    setAutoOpenActivityEditId(null);
+    setOpenedFromCompletedColumn(!!opts?.fromCompleted);
+  };
+
+  const handleOpenDealDetailsAndEditActivity = (activity: ActivityData) => {
+    handleOpenDealDetails(activity);
+    setAutoOpenActivityEditId(activity.id);
+    setOpenedFromCompletedColumn(false);
+  };
+
+  const handleCloseDealDetails = () => {
+    setSelectedDealDetails(null);
+    setAutoOpenActivityEditId(null);
+    setOpenedFromCompletedColumn(false);
+  };
 
   // Regra: não pode fechar os detalhes da oportunidade se não existir atividade em aberto.
   const attemptCloseDealDetails = useCallback(async () => {
     if (!selectedWorkspace?.workspace_id) return;
     if (!selectedDealDetails?.cardId) {
+      handleCloseDealDetails();
+      return;
+    }
+
+    // Se abriu a oportunidade vindo da coluna "Concluídos", não forçar criação de atividade ao fechar.
+    if (openedFromCompletedColumn) {
       handleCloseDealDetails();
       return;
     }
@@ -170,7 +188,14 @@ export function CRMAtividades() {
         variant: "destructive",
       });
     }
-  }, [handleCloseDealDetails, selectedDealDetails?.cardId, selectedDealDetails?.contactId, selectedWorkspace?.workspace_id, toast]);
+  }, [
+    handleCloseDealDetails,
+    openedFromCompletedColumn,
+    selectedDealDetails?.cardId,
+    selectedDealDetails?.contactId,
+    selectedWorkspace?.workspace_id,
+    toast,
+  ]);
 
   const fetchActivities = useCallback(async () => {
     if (!selectedWorkspace?.workspace_id) return;
@@ -436,6 +461,8 @@ export function CRMAtividades() {
   // Se a oportunidade estiver aberta e não houver mais atividade em aberto, forçar criação de nova atividade
   useEffect(() => {
     if (!selectedDealDetails?.cardId) return;
+    // Se abriu vindo da coluna "Concluídos", não forçar modal de criação aqui.
+    if (openedFromCompletedColumn) return;
     const hasOpenForCard = activities.some(
       (a) =>
         a.pipeline_card_id === selectedDealDetails.cardId &&
@@ -450,7 +477,7 @@ export function CRMAtividades() {
       pipelineCardId: selectedDealDetails.cardId,
     });
     setForceRescheduleModalOpen(true);
-  }, [activities, selectedDealDetails?.cardId, selectedDealDetails?.contactId]);
+  }, [activities, openedFromCompletedColumn, selectedDealDetails?.cardId, selectedDealDetails?.contactId]);
 
   const isArquivoActivityType = (raw?: string | null) => {
     const t = (raw || "").toLowerCase().trim();
@@ -517,8 +544,8 @@ export function CRMAtividades() {
       case "overdue":
         return filteredActivities.filter((a) => !a.is_completed && classifyIsOverdue(a));
       case "scheduled":
-        // Regra: atrasadas também são agendadas (são "em aberto").
-        return filteredActivities.filter((a) => !a.is_completed);
+        // Regra (nova): "Agendadas" = abertas e NÃO atrasadas
+        return filteredActivities.filter((a) => !a.is_completed && !classifyIsOverdue(a));
       case "all":
       default:
         return filteredActivities;
@@ -529,8 +556,8 @@ export function CRMAtividades() {
     const all = filteredActivities;
     const completed = all.filter((a) => a.is_completed).length;
     const overdue = all.filter((a) => !a.is_completed && classifyIsOverdue(a)).length;
-    // Regra: "Agendadas" = todas as não concluídas (inclui atrasadas)
-    const scheduled = all.filter((a) => !a.is_completed).length;
+    // Regra (nova): "Agendadas" = abertas e NÃO atrasadas
+    const scheduled = all.filter((a) => !a.is_completed && !classifyIsOverdue(a)).length;
     return { all: all.length, scheduled, overdue, completed };
   }, [filteredActivities, nowMs]);
 
@@ -650,11 +677,11 @@ export function CRMAtividades() {
         const act = activities.find((a) => a.id === activityId);
         if (act?.pipeline_card_id) {
           // pequena defasagem para garantir state otimista aplicado
-          setTimeout(() => handleOpenDealDetails(act), 0);
+          setTimeout(() => handleOpenDealDetailsAndEditActivity(act), 0);
         }
       }
     },
-    [activities, handleOpenDealDetails, toast, updateActivityKanbanStatus]
+    [activities, handleOpenDealDetailsAndEditActivity, toast, updateActivityKanbanStatus]
   );
 
   function ActivityCardKanban({ activity }: { activity: ActivityData }) {
@@ -687,9 +714,13 @@ export function CRMAtividades() {
         {...(!isLockedCompleted ? listeners : {})}
         onClick={() => {
           if (isDraggingRef.current) return;
-          // Sempre abrir detalhes da oportunidade (não abrir modal de editar/criar atividade por aqui)
+          // Regra: na coluna "Concluídos", abrir apenas os detalhes do negócio (sem edição automática).
           if (activity.pipeline_card_id) {
-            handleOpenDealDetails(activity);
+            if (status === "completed") {
+              handleOpenDealDetailsOnly(activity, { fromCompleted: true });
+            } else {
+              handleOpenDealDetailsAndEditActivity(activity);
+            }
             return;
           }
           toast({
@@ -734,7 +765,11 @@ export function CRMAtividades() {
                 type="button"
                 onClick={(e) => {
                   e.stopPropagation();
-                  handleOpenDealDetails(activity);
+                  if (status === "completed") {
+                    handleOpenDealDetailsOnly(activity, { fromCompleted: true });
+                  } else {
+                    handleOpenDealDetailsAndEditActivity(activity);
+                  }
                 }}
                 className="font-medium text-black dark:text-white underline hover:opacity-80"
                 title="Ver detalhes do negócio"
@@ -1314,6 +1349,7 @@ export function CRMAtividades() {
             <DealDetailsPage 
               cardId={selectedDealDetails.cardId} 
               workspaceId={selectedWorkspace?.workspace_id || undefined}
+              openActivityEditId={autoOpenActivityEditId || undefined}
               onClose={attemptCloseDealDetails}
             />
           )}
