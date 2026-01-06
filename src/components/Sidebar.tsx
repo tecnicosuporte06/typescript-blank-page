@@ -12,7 +12,6 @@ import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
 import { NotificationTooltip } from "@/components/NotificationTooltip";
 import { useRealtimeNotifications } from "@/components/RealtimeNotificationProvider";
-import { useNotifications } from "@/hooks/useNotifications";
 import { useWhatsAppConversations } from "@/hooks/useWhatsAppConversations";
 import { useAuth } from "@/hooks/useAuth";
 import { useWorkspaces } from "@/hooks/useWorkspaces";
@@ -86,19 +85,14 @@ export function Sidebar({
   // Hooks para notificações - usando o provider compartilhado
   const {
     notifications,
-    totalUnread
-  } = useRealtimeNotifications();
-  
-  // Funções do hook original
-  const { 
+    totalUnread,
     markContactAsRead,
     markAllAsRead,
     getAvatarInitials,
     getAvatarColor,
-    formatTimestamp
-  } = useNotifications();
-  
-  
+    formatTimestamp,
+  } = useRealtimeNotifications();
+
   useEffect(() => {
     console.log('🔔 [Sidebar] Dados de notificação ATUALIZADOS:', {
       totalUnread,

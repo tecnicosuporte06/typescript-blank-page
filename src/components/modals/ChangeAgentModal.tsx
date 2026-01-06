@@ -3,7 +3,6 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
-import { ScrollArea } from '@/components/ui/scroll-area';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useWorkspace } from '@/contexts/WorkspaceContext';
@@ -140,11 +139,13 @@ export function ChangeAgentModal({
     setIsChanging(true);
     try {
       // Buscar nome do agente anterior e do novo agente
-      const { data: oldAgentData } = await supabase
-        .from('ai_agents')
-        .select('name')
-        .eq('id', actualCurrentAgentId)
-        .single();
+      const oldAgentData = actualCurrentAgentId
+        ? (await supabase
+            .from('ai_agents')
+            .select('name')
+            .eq('id', actualCurrentAgentId)
+            .single()).data
+        : null;
 
       const { data: newAgentData } = await supabase
         .from('ai_agents')
@@ -204,12 +205,28 @@ export function ChangeAgentModal({
   const handleDeactivateAgent = async () => {
     setIsChanging(true);
     try {
-      // Buscar nome do agente atual antes de desativar
-      const { data: agentData } = await supabase
-        .from('ai_agents')
-        .select('name')
-        .eq('id', actualCurrentAgentId)
+      // ✅ Fonte da verdade: buscar estado atual da conversa (evita id=null por race/stale state)
+      const { data: convData, error: convErr } = await supabase
+        .from('conversations')
+        .select('agente_ativo, agent_active_id')
+        .eq('id', conversationId)
         .single();
+
+      if (convErr) throw convErr;
+
+      const agentIdToLog =
+        (convData?.agente_ativo ? (convData?.agent_active_id || null) : null) ??
+        actualCurrentAgentId ??
+        null;
+
+      // Buscar nome do agente atual antes de desativar (somente se tiver ID)
+      const agentData = agentIdToLog
+        ? (await supabase
+            .from('ai_agents')
+            .select('name')
+            .eq('id', agentIdToLog)
+            .single()).data
+        : null;
 
       // Desativar o agente da conversa
       const { error } = await supabase
@@ -223,15 +240,22 @@ export function ChangeAgentModal({
       if (error) throw error;
 
       // Registrar no histórico de agentes
-      await supabase
-        .from('conversation_agent_history')
-        .insert({
-          conversation_id: conversationId,
-          action: 'deactivated',
-          agent_id: actualCurrentAgentId,
-          agent_name: agentData?.name || 'Agente IA',
-          changed_by: (await supabase.auth.getUser()).data.user?.id || null
+      if (agentIdToLog) {
+        await supabase
+          .from('conversation_agent_history')
+          .insert({
+            conversation_id: conversationId,
+            action: 'deactivated',
+            agent_id: agentIdToLog,
+            agent_name: agentData?.name || 'Agente IA',
+            changed_by: (await supabase.auth.getUser()).data.user?.id || null
+          });
+      } else {
+        console.warn('⚠️ handleDeactivateAgent: desativando sem agent_active_id para registrar histórico', {
+          conversationId,
+          convData
         });
+      }
 
       toast({
         title: "✅ Agente desativado",
@@ -277,7 +301,7 @@ export function ChangeAgentModal({
               <Loader2 className="w-6 h-6 animate-spin text-muted-foreground dark:text-gray-400" />
             </div>
           ) : agents && agents.length > 0 ? (
-            <ScrollArea className="max-h-[400px] pr-4 -mr-4">
+            <div className="max-h-[400px] overflow-y-auto pr-4 -mr-4">
               <div className="space-y-2 pr-4">
                 {agents.map((agent) => {
                   const isCurrentAgent = agent.id === actualCurrentAgentId;
@@ -336,7 +360,7 @@ export function ChangeAgentModal({
                   );
                 })}
               </div>
-            </ScrollArea>
+            </div>
           ) : (
             <div className="text-center py-8">
               <Bot className="w-10 h-10 mx-auto text-muted-foreground mb-2 opacity-50 dark:text-gray-500" />

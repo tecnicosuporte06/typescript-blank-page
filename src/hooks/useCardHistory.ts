@@ -572,31 +572,10 @@ export const useCardHistory = (cardId: string, contactId?: string) => {
 
           const eventType = activityTypeMap[activity.type] || 'activity_lembrete';
           const activityTypeName = activity.type || 'Atividade';
-          const createdTimestamp = activity.created_at || new Date().toISOString();
-
-          // Evento de criação
-          allEvents.push({
-            id: `${activity.id}_created`,
-            type: eventType,
-            action: 'created',
-            description: `${activityTypeName} "${activity.subject}" foi criada`,
-            timestamp: createdTimestamp,
-            user_name: activity.responsible_id ? usersMap.get(activity.responsible_id) : undefined,
-            metadata: {
-              activity_type: activity.type,
-              scheduled_for: activity.scheduled_for,
-              subject: activity.subject,
-              description: activity.description,
-              attachment_url: (activity as any).attachment_url,
-              attachment_name: (activity as any).attachment_name,
-              status: 'created'
-            }
-          });
-
-          // Evento de conclusão (se foi concluída)
-          // IMPORTANT: algumas atividades antigas (ou fluxos específicos) podem marcar is_completed=true
-          // sem preencher completed_at. Para não quebrar os filtros ("Realizadas" vs "Futuras"),
-          // geramos o evento de conclusão mesmo assim usando um fallback de timestamp.
+          
+          // Regra: uma atividade deve aparecer apenas UMA VEZ no histórico.
+          // - Se está em aberto: aparece como "created"
+          // - Se está concluída: aparece somente como "completed" (a aberta deixa de existir)
           if (activity.is_completed) {
             const completedTimestamp =
               activity.completed_at ||
@@ -619,6 +598,25 @@ export const useCardHistory = (cardId: string, contactId?: string) => {
                 attachment_url: (activity as any).attachment_url,
                 attachment_name: (activity as any).attachment_name,
                 status: 'completed'
+              }
+            });
+          } else {
+            const createdTimestamp = activity.created_at || new Date().toISOString();
+            allEvents.push({
+              id: `${activity.id}_created`,
+              type: eventType,
+              action: 'created',
+              description: `${activityTypeName} "${activity.subject}" foi criada`,
+              timestamp: createdTimestamp,
+              user_name: activity.responsible_id ? usersMap.get(activity.responsible_id) : undefined,
+              metadata: {
+                activity_type: activity.type,
+                scheduled_for: activity.scheduled_for,
+                subject: activity.subject,
+                description: activity.description,
+                attachment_url: (activity as any).attachment_url,
+                attachment_name: (activity as any).attachment_name,
+                status: 'created'
               }
             });
           }

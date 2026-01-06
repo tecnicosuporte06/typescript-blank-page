@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useWorkspace } from '@/contexts/WorkspaceContext';
 import { useAuth } from './useAuth';
@@ -16,6 +16,7 @@ export interface NotificationMessage {
   timestamp: Date;
   isMedia: boolean;
   status: 'unread' | 'read';
+  unreadCount?: number; // quantidade de mensagens não lidas desta conversa
 }
 
 export function useNotifications() {
@@ -25,9 +26,10 @@ export function useNotifications() {
   const { playNotificationSound } = useNotificationSound();
   const canViewAllNotifications = hasRole(['master', 'admin']);
   const isMaster = hasRole(['master']);
+  const activeConversationIdRef = useRef<string | null>(null);
 
   // Buscar notificações
-  const fetchNotifications = async () => {
+  const fetchNotifications = useCallback(async () => {
     if (!selectedWorkspace?.workspace_id || !user?.id) {
       console.log('⚠️ [useNotifications] Workspace ou user não disponível');
       return;
@@ -78,8 +80,6 @@ export function useNotifications() {
       });
 
       const staleNotificationIds: string[] = [];
-      // Limite simples por conversa para evitar explosão de itens, sem depender de unread_count
-      const conversationUsage = new Map<string, { allowed: number; used: number }>();
       const messageUsage = new Set<string>();
 
       const sanitizedNotifications = filteredData.filter((notif: any) => {
@@ -99,12 +99,6 @@ export function useNotifications() {
           return false;
         }
 
-        const usage = conversationUsage.get(conversationId) || { allowed: 20, used: 0 };
-        if (usage.used >= usage.allowed) {
-          staleNotificationIds.push(notif.id);
-          return false;
-        }
-
         // ✅ Evitar notificações duplicadas para a mesma mensagem
         const messageId = notif.message_id;
         if (messageId) {
@@ -114,9 +108,6 @@ export function useNotifications() {
           }
           messageUsage.add(messageId);
         }
-
-        usage.used += 1;
-        conversationUsage.set(conversationId, usage);
         return true;
       });
 
@@ -145,24 +136,114 @@ export function useNotifications() {
         senderType: notif.sender_type || 'contact',
         timestamp: new Date(notif.created_at),
         isMedia: ['image', 'video', 'audio', 'document'].includes(notif.message_type),
-        status: notif.status as 'unread' | 'read'
+        status: notif.status as 'unread' | 'read',
       }));
 
       const receivedNotifications = formattedNotifications.filter(
         (notif) => notif.senderType === 'contact'
       );
 
-      console.log('✅ [useNotifications] Notificações carregadas (recebidas):', receivedNotifications.length);
-      setNotifications(receivedNotifications);
+      // ✅ Agrupar por conversa:
+      // - contador = quantidade de notificações (1 por mensagem não lida)
+      // - item exibido = última notificação (mais recente) daquela conversa
+      const byConversation = new Map<string, { count: number; latest: NotificationMessage }>();
+      for (const notif of receivedNotifications) {
+        const prev = byConversation.get(notif.conversationId);
+        if (!prev) {
+          byConversation.set(notif.conversationId, { count: 1, latest: notif });
+          continue;
+        }
+        prev.count += 1;
+        // Como a query vem ordenada por created_at desc, o primeiro é o mais recente.
+        // Mesmo assim, garantimos pelo timestamp.
+        if (notif.timestamp > prev.latest.timestamp) {
+          prev.latest = notif;
+        }
+      }
+
+      const grouped = Array.from(byConversation.values()).map(({ count, latest }) => ({
+        ...latest,
+        unreadCount: count,
+      }));
+
+      // Ordena por mais recente
+      grouped.sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime());
+
+      console.log('✅ [useNotifications] Notificações agrupadas:', {
+        conversations: grouped.length,
+        unreadMessages: grouped.reduce((acc, n) => acc + (n.unreadCount || 0), 0),
+      });
+
+      setNotifications(grouped);
     } catch (err) {
       console.error('❌ [useNotifications] Erro ao buscar notificações:', err);
     }
-  };
+  }, [canViewAllNotifications, playNotificationSound, selectedWorkspace?.workspace_id, user?.id]);
 
   // Carregar notificações iniciais
   useEffect(() => {
     fetchNotifications();
   }, [selectedWorkspace?.workspace_id, user?.id]);
+
+  // ✅ Track de conversa ativa (pra não notificar quando o usuário está com a conversa aberta)
+  useEffect(() => {
+    const handler = (ev: any) => {
+      activeConversationIdRef.current = ev?.detail?.conversationId ?? null;
+    };
+    window.addEventListener('active-conversation-changed', handler as any);
+    return () => window.removeEventListener('active-conversation-changed', handler as any);
+  }, []);
+
+  // ✅ REALTIME baseado em MESSAGES (quando chega mensagem do contato, atualiza o sino em tempo real)
+  useEffect(() => {
+    if (!selectedWorkspace?.workspace_id || !user?.id) return;
+    const workspaceId = selectedWorkspace.workspace_id;
+
+    const channel = supabase
+      .channel(`notifications-messages-${workspaceId}`)
+      .on(
+        'postgres_changes',
+        {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'messages',
+          filter: `workspace_id=eq.${workspaceId}`,
+        },
+        (payload: any) => {
+          const row = payload?.new;
+          if (!row) return;
+
+          // Só notificar/atualizar sino para mensagem recebida do contato
+          if (String(row.sender_type || '').toLowerCase() !== 'contact') return;
+
+          const conversationId = row.conversation_id as string | undefined;
+          if (!conversationId) return;
+
+          // Se a conversa está ativa e a aba está visível, o WhatsAppChat vai marcar como lida.
+          // Então evitamos "piscar" notificação.
+          if (
+            activeConversationIdRef.current === conversationId &&
+            document.visibilityState === 'visible'
+          ) {
+            return;
+          }
+
+          try {
+            window.dispatchEvent(
+              new CustomEvent('new-contact-message', { detail: { conversationId } })
+            );
+          } catch {}
+
+          // Recarrega notificações imediatamente (sininho em realtime)
+          fetchNotifications();
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [fetchNotifications, selectedWorkspace?.workspace_id, user?.id]);
 
   // Real-time subscription com filtros nativos do Supabase
   useEffect(() => {
@@ -254,11 +335,11 @@ export function useNotifications() {
       });
       supabase.removeChannel(channel);
     };
-  }, [selectedWorkspace?.workspace_id, user?.id, canViewAllNotifications]);
+  }, [selectedWorkspace?.workspace_id, user?.id, canViewAllNotifications, fetchNotifications]);
 
   // Marcar conversa como lida
   const markContactAsRead = async (conversationId: string) => {
-    if (!user?.id || isMaster) {
+    if (!user?.id || !selectedWorkspace?.workspace_id || isMaster) {
       if (isMaster) {
         console.log('🔒 [useNotifications] Usuário master não altera notificações');
       }
@@ -271,15 +352,23 @@ export function useNotifications() {
       // Disparar evento global opcional (para outros componentes ouvirem, se necessário)
       try { window.dispatchEvent(new CustomEvent('conversation-read', { detail: { conversationId } })); } catch {}
 
-      const { error } = await supabase
+      let query = supabase
         .from('notifications')
-        .update({ 
+        .update({
           status: 'read',
-          read_at: new Date().toISOString()
+          read_at: new Date().toISOString(),
         })
+        .eq('workspace_id', selectedWorkspace.workspace_id)
         .eq('conversation_id', conversationId)
-        .eq('status', 'unread')
-        .eq('user_id', user.id);
+        .eq('status', 'unread');
+
+      // ✅ Admin consegue limpar tudo que ele está visualizando
+      // ✅ User limpa notificações dele OU sem responsável (user_id null)
+      if (!canViewAllNotifications) {
+        query = query.or(`user_id.eq.${user.id},user_id.is.null`);
+      }
+
+      const { error } = await query;
 
       if (error) throw error;
       
@@ -288,6 +377,8 @@ export function useNotifications() {
       fetchNotifications();
     } catch (err) {
       console.error('❌ [useNotifications] Erro ao marcar como lida:', err);
+      // Se falhar, re-sincroniza (para não ficar "sumido" apenas no otimista)
+      fetchNotifications();
     }
   };
 
@@ -301,15 +392,30 @@ export function useNotifications() {
     }
 
     try {
-      const { error } = await supabase
+      // Disparar evento global para zerar unread_count/messages (WhatsAppChat ou outros listeners)
+      try {
+        const conversationIds = Array.from(new Set(notifications.map((n) => n.conversationId)));
+        window.dispatchEvent(new CustomEvent('conversations-read-all', { detail: { conversationIds } }));
+      } catch {}
+
+      // Otimista: limpa o sino imediatamente
+      setNotifications([]);
+
+      let query = supabase
         .from('notifications')
-        .update({ 
+        .update({
           status: 'read',
-          read_at: new Date().toISOString()
+          read_at: new Date().toISOString(),
         })
-        .eq('user_id', user.id)
         .eq('workspace_id', selectedWorkspace.workspace_id)
         .eq('status', 'unread');
+
+      // ✅ Admin limpa tudo que ele vê; user limpa dele + sem responsável
+      if (!canViewAllNotifications) {
+        query = query.or(`user_id.eq.${user.id},user_id.is.null`);
+      }
+
+      const { error } = await query;
 
       if (error) throw error;
 
@@ -317,6 +423,8 @@ export function useNotifications() {
       await fetchNotifications();
     } catch (err) {
       console.error('❌ [useNotifications] Erro ao marcar todas como lidas:', err);
+      // rollback/sync
+      fetchNotifications();
     }
   };
 
@@ -349,7 +457,7 @@ export function useNotifications() {
 
   return {
     notifications,
-    totalUnread: notifications.length,
+    totalUnread: notifications.reduce((acc, n) => acc + (n.unreadCount || 0), 0),
     markContactAsRead,
     markAllAsRead,
     getAvatarInitials,

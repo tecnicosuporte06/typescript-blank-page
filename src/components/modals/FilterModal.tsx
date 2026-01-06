@@ -222,7 +222,7 @@ export function FilterModal({ open, onOpenChange, onApplyFilters, isDarkMode = f
           {/* Selecionar status */}
           <div>
             <Label htmlFor="status" className={`text-xs font-bold text-gray-700 dark:text-gray-200`}>
-              Status do negócio
+              Status da Oportunidade
             </Label>
             <Popover>
               <PopoverTrigger asChild>

@@ -148,6 +148,147 @@ export const useWhatsAppConversations = (options?: { enabled?: boolean }) => {
   const loadingMoreConversationsRef = useRef(false);
   const fetchTokenRef = useRef(0);
   const currentSearchRef = useRef<string | null>(null);
+  const unreadReconcileCacheRef = useRef<Map<string, number>>(new Map());
+
+  // ✅ Reconciliar unread_count com a realidade (messages.sender_type='contact' AND read_at IS NULL)
+  // Isso evita contadores "inflados" quando triggers/automations falham ou o unread_count deriva.
+  const reconcileUnreadCounts = useCallback(
+    async (conversationIds: string[]) => {
+      const workspaceId = selectedWorkspace?.workspace_id;
+      if (!workspaceId) return;
+
+      for (const conversationId of conversationIds) {
+        try {
+          const { count, error } = await supabase
+            .from('messages')
+            .select('id', { count: 'exact', head: true })
+            .eq('workspace_id', workspaceId)
+            .eq('conversation_id', conversationId)
+            .eq('sender_type', 'contact')
+            .is('read_at', null);
+
+          if (error) throw error;
+          const realCount = Math.max(Number(count ?? 0), 0);
+
+          const cached = unreadReconcileCacheRef.current.get(conversationId);
+          if (cached === realCount) continue;
+          unreadReconcileCacheRef.current.set(conversationId, realCount);
+
+          // Atualiza estado local se estiver divergente
+          setConversations((prev) => {
+            const idx = prev.findIndex((c) => c.id === conversationId);
+            if (idx === -1) return prev;
+            const current = prev[idx];
+            const currentUnread = Math.max(Number(current.unread_count ?? 0), 0);
+            if (currentUnread === realCount) return prev;
+            const updated = [...prev];
+            updated[idx] = { ...current, unread_count: realCount, _updated_at: Date.now() };
+            return updated;
+          });
+
+          // Tenta “curar” no banco também (best-effort; se RLS bloquear, ok)
+          try {
+            await supabase
+              .from('conversations')
+              .update({ unread_count: realCount })
+              .eq('id', conversationId);
+          } catch (_e) {
+            // ignore
+          }
+        } catch (e) {
+          console.warn('⚠️ [useWhatsAppConversations] Falha ao reconciliar unread_count:', {
+            conversationId,
+            e,
+          });
+        }
+      }
+    },
+    [selectedWorkspace?.workspace_id]
+  );
+
+  // ✅ Helper: buscar conversa + dependências sem depender de join por FK (evita PGRST200 em schema cache)
+  const fetchConversationWithRelations = useCallback(
+    async (conversationId: string) => {
+      if (!selectedWorkspace?.workspace_id) return null;
+      const workspaceId = selectedWorkspace.workspace_id;
+
+      const { data: conv, error: convErr } = await supabase
+        .from('conversations')
+        .select(
+          `
+            id,
+            agente_ativo,
+            agent_active_id,
+            status,
+            unread_count,
+            last_activity_at,
+            created_at,
+            evolution_instance,
+            contact_id,
+            workspace_id,
+            connection_id,
+            assigned_user_id
+          `
+        )
+        .eq('id', conversationId)
+        .eq('workspace_id', workspaceId)
+        .maybeSingle();
+
+      if (convErr || !conv) {
+        return null;
+      }
+
+      const [contactRes, connRes] = await Promise.all([
+        conv.contact_id
+          ? supabase
+              .from('contacts')
+              .select('id, name, phone, email, profile_image_url')
+              .eq('id', conv.contact_id)
+              .eq('workspace_id', workspaceId)
+              .maybeSingle()
+          : Promise.resolve({ data: null, error: null } as any),
+        conv.connection_id
+          ? supabase
+              .from('connections')
+              .select('id, instance_name, phone_number, status')
+              .eq('id', conv.connection_id)
+              .maybeSingle()
+          : Promise.resolve({ data: null, error: null } as any),
+      ]);
+
+      // last_message (1 item)
+      const { data: lastMessage } = await supabase
+        .from('messages')
+        .select('content, message_type, sender_type, created_at')
+        .eq('workspace_id', workspaceId)
+        .eq('conversation_id', conversationId)
+        .order('created_at', { ascending: false })
+        .limit(1);
+
+      return {
+        ...conv,
+        contacts: contactRes?.data ? [contactRes.data] : [],
+        connections: connRes?.data ? [connRes.data] : [],
+        last_message: lastMessage || [],
+      };
+    },
+    [selectedWorkspace?.workspace_id]
+  );
+
+  // Disparar reconciliação apenas para conversas que estão com unread_count > 0 (geralmente poucas)
+  useEffect(() => {
+    if (!selectedWorkspace?.workspace_id) return;
+    if (!enabled) return;
+    const candidates = conversations
+      .filter((c) => Math.max(Number(c.unread_count ?? 0), 0) > 0)
+      .slice(0, 30)
+      .map((c) => c.id);
+    if (candidates.length === 0) return;
+    const handle = window.setTimeout(() => {
+      reconcileUnreadCounts(candidates);
+    }, 500);
+    return () => window.clearTimeout(handle);
+  }, [conversations, enabled, reconcileUnreadCounts, selectedWorkspace?.workspace_id]);
 
   const fetchConversations = useCallback(async (options?: { search?: string | null }): Promise<boolean> => {
     try {
@@ -725,41 +866,10 @@ export const useWhatsAppConversations = (options?: { enabled?: boolean }) => {
             return;
           }
 
-          const { data: conversationData, error: convError } = await supabase
-            .from('conversations')
-            .select(`
-              id,
-              agente_ativo,
-              agent_active_id,
-              status,
-              unread_count,
-              last_activity_at,
-              created_at,
-              evolution_instance,
-              contact_id,
-              workspace_id,
-              connection_id,
-              assigned_user_id,
-              contacts!conversations_contact_id_fkey (
-                id,
-                name,
-                phone,
-                email,
-                profile_image_url
-              ),
-              connections!conversations_connection_id_fkey (
-                id,
-                instance_name,
-                phone_number,
-                status
-              )
-            `)
-            .eq('id', newConv.id)
-            .eq('workspace_id', selectedWorkspace.workspace_id)
-            .maybeSingle();
+          const conversationData = await fetchConversationWithRelations(newConv.id);
 
-          if (convError || !conversationData) {
-            console.error('❌ Erro ao buscar conversa completa:', convError);
+          if (!conversationData) {
+            console.error('❌ Erro ao buscar conversa completa (sem join):', newConv.id);
             return;
           }
 
@@ -795,41 +905,10 @@ export const useWhatsAppConversations = (options?: { enabled?: boolean }) => {
             return;
           }
 
-          const { data: conversationData, error: convError } = await supabase
-            .from('conversations')
-            .select(`
-              id,
-              agente_ativo,
-              agent_active_id,
-              status,
-              unread_count,
-              last_activity_at,
-              created_at,
-              evolution_instance,
-              contact_id,
-              workspace_id,
-              connection_id,
-              assigned_user_id,
-              contacts!conversations_contact_id_fkey (
-                id,
-                name,
-                phone,
-                email,
-                profile_image_url
-              ),
-              connections!conversations_connection_id_fkey (
-                id,
-                instance_name,
-                phone_number,
-                status
-              )
-            `)
-            .eq('id', updatedConv.id)
-            .eq('workspace_id', selectedWorkspace.workspace_id)
-            .maybeSingle();
+          const conversationData = await fetchConversationWithRelations(updatedConv.id);
 
-          if (convError || !conversationData) {
-            console.error('❌ Erro ao buscar conversa atualizada:', convError);
+          if (!conversationData) {
+            console.error('❌ Erro ao buscar conversa atualizada (sem join):', updatedConv.id);
             return;
           }
 

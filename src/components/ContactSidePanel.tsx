@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import { User, Briefcase, FileText, Paperclip, Pencil, Trash2, Plus, Pin, MapPin, MessageCircle, Trophy, Mail, Phone, Home, Globe, X, Loader2 } from "lucide-react";
 import { getInitials, getAvatarColor } from '@/lib/avatarUtils';
 import { Sheet, SheetContent } from "@/components/ui/sheet";
+import { DealDetailsPage } from "@/pages/DealDetailsPage";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -59,6 +60,8 @@ export function ContactSidePanel({
   contact,
   onContactUpdated
 }: ContactSidePanelProps) {
+  const [dealDetailsOpen, setDealDetailsOpen] = useState(false);
+  const [selectedDealCardId, setSelectedDealCardId] = useState<string | null>(null);
   const [editingContact, setEditingContact] = useState<Contact | null>(null);
   const [customFields, setCustomFields] = useState<Array<{
     key: string;
@@ -872,11 +875,15 @@ export function ContactSidePanel({
                                     ) : (
                                       <button
                                         type="button"
+                                        onClick={() => {
+                                          setSelectedDealCardId(deal.id);
+                                          setDealDetailsOpen(true);
+                                        }}
                                         onDoubleClick={() => {
                                           setEditingDealId(deal.id);
                                           setEditingDealTitle(deal.title);
                                         }}
-                                        className="w-full text-left font-semibold text-gray-800 truncate dark:text-gray-200"
+                                        className="w-full text-left font-semibold text-gray-800 truncate dark:text-gray-200 underline underline-offset-2 decoration-gray-400 hover:decoration-gray-700 dark:decoration-gray-500 dark:hover:decoration-gray-200"
                                         title="Clique duas vezes para editar"
                                       >
                                         {deal.pipeline}
@@ -914,6 +921,31 @@ export function ContactSidePanel({
                       </div>
                     </CardContent>
                   </Card>
+
+                  {/* Modal de detalhes da oportunidade */}
+                  <Sheet
+                    open={dealDetailsOpen && !!selectedDealCardId}
+                    onOpenChange={(open) => {
+                      setDealDetailsOpen(open);
+                      if (!open) setSelectedDealCardId(null);
+                    }}
+                  >
+                    <SheetContent
+                      side="right"
+                      className="p-0 sm:max-w-[95vw] w-[95vw] max-w-[1400px] h-full border-l border-gray-200 dark:border-gray-800 shadow-2xl [&>button]:hidden"
+                    >
+                      {selectedDealCardId ? (
+                        <DealDetailsPage
+                          cardId={selectedDealCardId}
+                          workspaceId={selectedWorkspace?.workspace_id || null}
+                          onClose={() => {
+                            setDealDetailsOpen(false);
+                            setSelectedDealCardId(null);
+                          }}
+                        />
+                      ) : null}
+                    </SheetContent>
+                  </Sheet>
 
                   {/* BLOCO 3: Observações */}
                   <Card className="border border-gray-300 rounded-none shadow-sm dark:border-gray-700 dark:bg-[#1f1f1f]">

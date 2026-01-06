@@ -53,6 +53,7 @@ import { ChangeAgentModal } from "@/components/modals/ChangeAgentModal";
 import { useWorkspaceAgent } from "@/hooks/useWorkspaceAgent";
 import { getInitials as getAvatarInitials } from "@/lib/avatarUtils";
 import { Sheet, SheetContent } from "@/components/ui/sheet";
+import { useRealtimeNotifications } from "@/components/RealtimeNotificationProvider";
 
 type ResponsibleFilterValue = 'ALL' | 'UNASSIGNED' | (string & {});
 
@@ -328,64 +329,31 @@ function DraggableDeal({
     refreshTags
   } = useContactTags(deal.contact?.id || null, resolvedWorkspaceId);
   
-  // Estado para contador de mensagens não lidas
-  const [unreadCount, setUnreadCount] = useState<number>(0);
-  
-  // Buscar unread_count da conversa do contato
-  useEffect(() => {
-    if (!deal.contact?.id || !resolvedWorkspaceId) {
-      setUnreadCount(0);
-      return;
-    }
-    
-    const fetchUnreadCount = async () => {
-      try {
-        const { data: conversations, error } = await supabase
-          .from('conversations')
-          .select('id, unread_count')
-          .eq('contact_id', deal.contact.id)
-          .eq('workspace_id', resolvedWorkspaceId)
-          .eq('status', 'open')
-          .limit(1);
-        
-        if (error) throw error;
-        
-        if (conversations && conversations.length > 0) {
-          setUnreadCount(conversations[0].unread_count || 0);
-        } else {
-          setUnreadCount(0);
-        }
-      } catch (error) {
-        console.error('Erro ao buscar unread_count:', error);
-        setUnreadCount(0);
-      }
-    };
-    
-    fetchUnreadCount();
-    
-    // Escutar mudanças em tempo real
-    const channel = supabase
-      .channel(`conversation-unread-${deal.contact.id}`)
-      .on(
-        'postgres_changes',
-        {
-          event: 'UPDATE',
-          schema: 'public',
-          table: 'conversations',
-          filter: `contact_id=eq.${deal.contact.id}`
-        },
-        (payload) => {
-          if (payload.new && typeof payload.new === 'object' && 'unread_count' in payload.new) {
-            setUnreadCount((payload.new as any).unread_count || 0);
-          }
-        }
-      )
-      .subscribe();
-    
-    return () => {
-      supabase.removeChannel(channel);
-    };
-  }, [deal.contact?.id, resolvedWorkspaceId]);
+  // ✅ Contagem de não lidas: mesma fonte do sino (notifications agrupadas por conversa)
+  const { notifications } = useRealtimeNotifications();
+  const conversationIdForUnread = deal.conversation?.id || (deal as any).conversation_id || null;
+  const unreadCount = useMemo(() => {
+    const fromNotifications = conversationIdForUnread
+      ? Math.max(
+          Number(
+            (notifications || []).find((n: any) => n.conversationId === conversationIdForUnread)
+              ?.unreadCount ?? 0
+          ),
+          0
+        )
+      : 0;
+
+    // Fallback: se ainda não tiver notificações carregadas, usar unread_count da conversa (se existir)
+    const convUnreadRaw = (deal.conversation as any)?.unread_count;
+    const fallback =
+      typeof convUnreadRaw === 'number'
+        ? convUnreadRaw
+        : typeof convUnreadRaw === 'string'
+          ? parseInt(convUnreadRaw) || 0
+          : 0;
+
+    return fromNotifications > 0 ? fromNotifications : Math.max(fallback, 0);
+  }, [conversationIdForUnread, notifications, deal.conversation]);
 
   // Estado para tarefa pendente (alerta)
   const [pendingTask, setPendingTask] = useState<any>(null);
@@ -653,7 +621,9 @@ function DraggableDeal({
                   variant="ghost" 
                   className={cn(
                     "h-5 w-5 p-0",
-                    (deal.conversation?.agente_ativo || deal.conversation?.queue?.ai_agent)
+                    // ✅ Verde SOMENTE quando o agente está ativo nesta conversa
+                    // (a fila pode ter ai_agent configurado mesmo com agente desativado)
+                    !!deal.conversation?.agente_ativo
                       ? "text-green-600 dark:text-green-400"
                       : "text-gray-500 dark:text-gray-400"
                   )} 
@@ -683,7 +653,11 @@ function DraggableDeal({
                 </Button>
               </TooltipTrigger>
               <TooltipContent className="z-[99999] bg-white dark:bg-[#1b1b1b] text-gray-900 dark:text-gray-100 px-2 py-1 text-[10px] font-medium border border-gray-200 dark:border-gray-700 shadow-lg" side="top">
-                <p>{deal.conversation?.queue?.ai_agent?.name || "Agente IA"}</p>
+                <p>
+                  {deal.conversation?.agente_ativo
+                    ? (deal.conversation?.queue?.ai_agent?.name || "Agente IA")
+                    : "Sem agente ativo"}
+                </p>
               </TooltipContent>
             </Tooltip>
 
@@ -2517,7 +2491,7 @@ const [selectedCardForProduct, setSelectedCardForProduct] = useState<{
                               <DropdownMenuContent align="end" className={`w-56 bg-white dark:bg-[#1b1b1b] border-gray-300 dark:border-gray-700`}>
                                 <DropdownMenuItem onClick={() => setIsCriarNegocioModalOpen(true)}>
                                   <Plus className="mr-2 h-4 w-4" />
-                                  Novo negócio
+                                  Adicionar oportunidade
                                 </DropdownMenuItem>
                                 {canManageColumns(selectedWorkspace?.workspace_id || undefined) && (
                                   <DropdownMenuItem onClick={() => {

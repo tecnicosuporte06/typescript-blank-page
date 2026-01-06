@@ -2668,9 +2668,8 @@ const normalizeFieldKey = (label: string) => {
         const updatedMetadata = {
           ...(historyRow.metadata as any),
           content: contentToSave,
-          description: `Anotação adicionada: ${contentToSave.slice(0, 100)}${
-            contentToSave.length > 100 ? "..." : ""
-          }`,
+          // ✅ NÃO truncar: o usuário precisa ver o texto completo no histórico
+          description: `Anotação adicionada: ${contentToSave}`,
         };
 
         await supabase
@@ -3668,7 +3667,7 @@ const normalizeFieldKey = (label: string) => {
                   <CheckSquare className="h-4 w-4 text-gray-400" />
                   <div className="flex-1 flex items-center justify-between gap-3 min-w-0">
                     <div className="text-gray-700 dark:text-gray-300 text-xs font-medium whitespace-nowrap">
-                      Qualificação do negócio
+                      Qualificar Oportunidade
                     </div>
                     <Select
                       value={normalizeDealQualification(cardData?.qualification)}
@@ -3759,26 +3758,29 @@ const normalizeFieldKey = (label: string) => {
 
             {/* Visão Geral */}
             <Collapsible defaultOpen>
-              <CollapsibleTrigger className="flex items-center justify-between w-full text-left font-medium text-sm py-2.5 px-3">
-                <div className="flex items-center gap-2">
-                  <ChevronDown className="h-4 w-4" />
-                  <span>Visão geral</span>
+              {/* ✅ Evita <button> dentro de <button>: CollapsibleTrigger vira um <div> via asChild */}
+              <CollapsibleTrigger asChild>
+                <div className="flex items-center justify-between w-full text-left font-medium text-sm py-2.5 px-3">
+                  <div className="flex items-center gap-2">
+                    <ChevronDown className="h-4 w-4" />
+                    <span>Visão geral</span>
+                  </div>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-6 w-6"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      // Recarregar dados
+                      if (cardId && contact?.id) {
+                        fetchActivities();
+                      }
+                    }}
+                    title="Atualizar"
+                  >
+                    <RefreshCw className="h-4 w-4" />
+                  </Button>
                 </div>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="h-6 w-6"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    // Recarregar dados
-                    if (cardId && contact?.id) {
-                      fetchActivities();
-                    }
-                  }}
-                  title="Atualizar"
-                >
-                  <RefreshCw className="h-4 w-4" />
-                </Button>
               </CollapsibleTrigger>
               <CollapsibleContent className="pt-2 space-y-4">
                 {overviewData ? (
@@ -5936,18 +5938,21 @@ function HistoryTimelineItem({
   const [isActionsOpen, setIsActionsOpen] = useState(false);
   const isNote = event.type === "notes";
   const isEditingNote = isNote && editingNoteId === event.metadata?.note_id;
-  const descriptionHtml = event.metadata?.description;
-  const looksLikeHtml = typeof descriptionHtml === "string" && /<\/?[a-z][\s\S]*>/i.test(descriptionHtml);
-  const [isDescExpanded, setIsDescExpanded] = useState(false);
-  const hasDescription = Boolean(descriptionHtml);
-  const descIsLong =
-    typeof descriptionHtml === "string" &&
-    (descriptionHtml.length > 180 || descriptionHtml.includes("\n"));
   const cleanNoteText = (text?: string) =>
     (text || "")
       .replace(/^Anotação adicionada:\s*/i, "")
       .replace(/^Anotação adicionada\s*/i, "")
       .trim();
+  const descriptionHtml = event.metadata?.description;
+  const hasDescription = Boolean(descriptionHtml);
+  const descPlainText = cleanNoteText(String(descriptionHtml || "")).replace(/<[^>]*>/g, "").trim();
+  const descIsLong = descPlainText.length > 220 || descPlainText.includes("\n");
+  // ✅ Priorizar `content` (texto completo). `description` pode ser resumo legado.
+  const noteBodyHtmlRaw = (event.metadata?.content || event.metadata?.description || event.description || "") as any;
+  const notePlainText = cleanNoteText(String(noteBodyHtmlRaw)).replace(/<[^>]*>/g, "").trim();
+  const noteIsLong = notePlainText.length > 220 || notePlainText.includes("\n");
+  const [isNoteExpanded, setIsNoteExpanded] = useState(false);
+  const [isDescExpanded, setIsDescExpanded] = useState(false);
 
   const activityAttachments = (() => {
     const md = event?.metadata || {};
@@ -6105,34 +6110,30 @@ function HistoryTimelineItem({
 
                   {/* Descrição abaixo com estilo colado e cor diferenciada */}
                   {hasDescription && (
-                    <div className="relative -mx-4 -mb-4 border-t border-amber-100 dark:border-amber-900/30">
-                      <div
-                        className={cn(
-                          "text-xs text-gray-900 dark:text-white font-sans p-3 bg-[#fffde7] dark:bg-amber-950/20 transition-all duration-200 prose dark:prose-invert prose-sm max-w-none note-editor cursor-pointer",
-                          !isDescExpanded && "max-h-[40px] overflow-hidden pr-10"
-                        )}
-                      >
-                        {looksLikeHtml ? (
-                          <div dangerouslySetInnerHTML={{ __html: cleanNoteText(descriptionHtml as string) }} />
-                        ) : (
-                          <pre className="whitespace-pre-wrap font-sans">
-                            {cleanNoteText(descriptionHtml as string)}
-                          </pre>
+                    <div className="-mx-4 -mb-4 border-t border-amber-100 dark:border-amber-900/30 p-3 bg-[#fffde7] dark:bg-amber-950/20">
+                      <div className="relative">
+                        <div
+                          className={cn(
+                            "text-xs text-gray-900 dark:text-white font-sans whitespace-pre-wrap",
+                            descIsLong && !isDescExpanded && "max-h-[40px] overflow-hidden pr-16"
+                          )}
+                        >
+                          {descPlainText}
+                        </div>
+                        {descIsLong && (
+                          <button
+                            type="button"
+                            className="absolute right-2 bottom-2 px-2 py-1 rounded-md border border-amber-200 dark:border-amber-900/40 bg-amber-50/90 dark:bg-amber-950/30 hover:bg-amber-50 dark:hover:bg-amber-950/40 text-amber-900 dark:text-amber-200 transition-colors text-[10px] font-semibold"
+                            onClick={(e) => {
+                              e.preventDefault();
+                              e.stopPropagation();
+                              setIsDescExpanded((v) => !v);
+                            }}
+                          >
+                            {isDescExpanded ? "Ver menos" : "Ver mais"}
+                          </button>
                         )}
                       </div>
-                      
-                      {/* Botão de expansão (ícone à direita) */}
-                      <button
-                        type="button"
-                        className="absolute right-2 top-2 p-1 rounded-md border border-gray-200 dark:border-gray-700 bg-white/50 dark:bg-[#1b1b1b]/50 hover:bg-white dark:hover:bg-[#1b1b1b] text-gray-500 transition-colors"
-                        onClick={() => setIsDescExpanded((v) => !v)}
-                      >
-                        {isDescExpanded ? (
-                          <X className="h-3 w-3" />
-                        ) : (
-                          <ChevronsUpDown className="h-3 w-3" />
-                        )}
-                      </button>
                     </div>
                   )}
                 </div>
@@ -6153,33 +6154,30 @@ function HistoryTimelineItem({
 
                   {/* Observações/descrição no mesmo bloco inferior usado pelas atividades */}
                   {hasDescription && (
-                    <div className="relative -mx-4 -mb-4 border-t border-amber-100 dark:border-amber-900/30 mt-3">
-                      <div
-                        className={cn(
-                          "text-xs text-gray-900 dark:text-white font-sans p-3 bg-[#fffde7] dark:bg-amber-950/20 transition-all duration-200 prose dark:prose-invert prose-sm max-w-none note-editor cursor-pointer",
-                          !isDescExpanded && "max-h-[40px] overflow-hidden pr-10"
-                        )}
-                      >
-                        {looksLikeHtml ? (
-                          <div dangerouslySetInnerHTML={{ __html: cleanNoteText(descriptionHtml as string) }} />
-                        ) : (
-                          <pre className="whitespace-pre-wrap font-sans">
-                            {cleanNoteText(descriptionHtml as string)}
-                          </pre>
+                    <div className="-mx-4 -mb-4 border-t border-amber-100 dark:border-amber-900/30 mt-3 p-3 bg-[#fffde7] dark:bg-amber-950/20">
+                      <div className="relative">
+                        <div
+                          className={cn(
+                            "text-xs text-gray-900 dark:text-white font-sans whitespace-pre-wrap",
+                            descIsLong && !isDescExpanded && "max-h-[40px] overflow-hidden pr-16"
+                          )}
+                        >
+                          {descPlainText}
+                        </div>
+                        {descIsLong && (
+                          <button
+                            type="button"
+                            className="absolute right-2 bottom-2 px-2 py-1 rounded-md border border-amber-200 dark:border-amber-900/40 bg-amber-50/90 dark:bg-amber-950/30 hover:bg-amber-50 dark:hover:bg-amber-950/40 text-amber-900 dark:text-amber-200 transition-colors text-[10px] font-semibold"
+                            onClick={(e) => {
+                              e.preventDefault();
+                              e.stopPropagation();
+                              setIsDescExpanded((v) => !v);
+                            }}
+                          >
+                            {isDescExpanded ? "Ver menos" : "Ver mais"}
+                          </button>
                         )}
                       </div>
-                      
-                      <button
-                        type="button"
-                        className="absolute right-2 top-2 p-1 rounded-md border border-gray-200 dark:border-gray-700 bg-white/50 dark:bg-[#1b1b1b]/50 hover:bg-white dark:hover:bg-[#1b1b1b] text-gray-500 transition-colors"
-                        onClick={() => setIsDescExpanded((v) => !v)}
-                      >
-                        {isDescExpanded ? (
-                          <X className="h-3 w-3" />
-                        ) : (
-                          <ChevronsUpDown className="h-3 w-3" />
-                        )}
-                      </button>
                     </div>
                   )}
                 </div>
@@ -6226,12 +6224,29 @@ function HistoryTimelineItem({
           {isNote && (
             <div className="mt-2">
               {!isEditingNote && (
-                <div 
-                  className="text-sm leading-relaxed break-words prose dark:prose-invert max-w-none note-editor text-gray-900 dark:text-white"
-                  dangerouslySetInnerHTML={{ 
-                    __html: event.metadata?.description || event.metadata?.content || event.description || "" 
-                  }}
-                />
+                <div className="relative">
+                  <div
+                    className={cn(
+                      "text-sm leading-relaxed break-words text-gray-900 dark:text-white whitespace-pre-wrap font-sans",
+                      noteIsLong && !isNoteExpanded && "max-h-[48px] overflow-hidden pr-16"
+                    )}
+                  >
+                    {notePlainText}
+                  </div>
+                  {noteIsLong && (
+                    <button
+                      type="button"
+                      className="absolute right-2 bottom-2 px-2 py-1 rounded-md border border-amber-200 dark:border-amber-900/40 bg-amber-50/90 dark:bg-amber-950/30 hover:bg-amber-50 dark:hover:bg-amber-950/40 text-amber-900 dark:text-amber-200 transition-colors text-[10px] font-semibold"
+                      onClick={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        setIsNoteExpanded((v) => !v);
+                      }}
+                    >
+                      {isNoteExpanded ? "Ver menos" : "Ver mais"}
+                    </button>
+                  )}
+                </div>
               )}
               {isEditingNote && (
                 <div className="space-y-2">

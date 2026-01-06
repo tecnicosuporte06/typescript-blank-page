@@ -1292,11 +1292,11 @@ export function PipelinesProvider({ children }: { children: React.ReactNode }) {
     
     setCards(current => 
       current.map(card => {
-        if (card.conversation_id === conversationId && card.conversation) {
+        if (card.conversation_id === conversationId) {
           return {
             ...card,
             conversation: {
-              ...card.conversation,
+              ...(card.conversation || { id: conversationId } as any),
               ...updates
             }
           };

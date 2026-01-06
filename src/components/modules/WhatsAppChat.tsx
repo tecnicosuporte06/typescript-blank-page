@@ -1,7 +1,6 @@
 import { useState, useEffect, useLayoutEffect, useRef, useCallback, useMemo, lazy, Suspense } from "react";
 import { flushSync } from "react-dom";
 import { useRealtimeNotifications } from "@/components/RealtimeNotificationProvider";
-import { useNotifications } from "@/hooks/useNotifications";
 import { getConnectionColor } from '@/lib/utils';
 import { getInitials, getAvatarColor } from '@/lib/avatarUtils';
 import { Button } from "@/components/ui/button";
@@ -149,8 +148,7 @@ export function WhatsAppChat({
   headerContact = null
 }: WhatsAppChatProps) {
   // Usar notificações para saber quais conversas têm mensagens não lidas  
-  const { notifications } = useRealtimeNotifications();
-  const { markContactAsRead } = useNotifications();
+  const { notifications, markContactAsRead } = useRealtimeNotifications();
   
   // Usar hook completo de conversas
   const {
@@ -172,10 +170,8 @@ export function WhatsAppChat({
   const notificationCounts = useMemo(() => {
     const counts = new Map<string, number>();
     notifications.forEach((notif) => {
-      counts.set(
-        notif.conversationId,
-        (counts.get(notif.conversationId) || 0) + 1
-      );
+      const next = typeof (notif as any)?.unreadCount === 'number' ? (notif as any).unreadCount : 1;
+      counts.set(notif.conversationId, next);
     });
     return counts;
   }, [notifications]);
@@ -287,6 +283,7 @@ export function WhatsAppChat({
   } | null>(null);
   const [isRecordedAudioSending, setIsRecordedAudioSending] = useState(false);
   const [isOpeningConversation, setIsOpeningConversation] = useState(false);
+  const lastAutoReadMessageIdRef = useRef<string | null>(null);
   const composerTextareaRef = useRef<HTMLTextAreaElement | null>(null);
   const [slashOpen, setSlashOpen] = useState(false);
   const [slashQuery, setSlashQuery] = useState("");
@@ -405,6 +402,7 @@ export function WhatsAppChat({
 
   // Verificar se há agente ativo na conversa selecionada
   const { hasAgent, isLoading: agentLoading, agent } = useWorkspaceAgent(selectedConversation?.id);
+  const isConversationAgentActive = !!selectedConversation?.agente_ativo;
 
   // Log do estado do agente após selectedConversation estar disponível
   useEffect(() => {
@@ -897,9 +895,84 @@ export function WhatsAppChat({
     if (isMasterUser) return;
     if (selectedConversation && conversationNotifications.has(selectedConversation.id)) {
       console.log('📖 Marcando conversa como lida:', selectedConversation.contact.name);
+      // ✅ Sino/notificações (tabela notifications)
       markContactAsRead(selectedConversation.id);
+      // ✅ Contadores reais (messages.read_at + conversations.unread_count)
+      markAsRead(selectedConversation.id);
     }
   }, [selectedConversation?.id, isMasterUser]);
+
+  // ✅ Informar ao app qual conversa está ativa (para evitar notificação enquanto está aberta)
+  useEffect(() => {
+    try {
+      window.dispatchEvent(
+        new CustomEvent('active-conversation-changed', {
+          detail: { conversationId: selectedConversation?.id ?? null },
+        })
+      );
+    } catch {}
+
+    return () => {
+      try {
+        window.dispatchEvent(
+          new CustomEvent('active-conversation-changed', {
+            detail: { conversationId: null },
+          })
+        );
+      } catch {}
+    };
+  }, [selectedConversation?.id]);
+
+  // ✅ Se chegar nova mensagem do contato enquanto a conversa está aberta, marcar como lida imediatamente (sem notificação)
+  useEffect(() => {
+    if (onlyMessages) return;
+    if (isMasterUser) return;
+    if (!selectedConversation) return;
+    if (document.visibilityState !== 'visible') return;
+    if (!messages || messages.length === 0) return;
+
+    const last = messages[messages.length - 1] as any;
+    if (!last) return;
+
+    const isFromContact = String(last.sender_type || '').toLowerCase() === 'contact';
+    const isUnread = !last.read_at;
+    const messageId = last.id || last.external_id || null;
+
+    if (!isFromContact || !isUnread || !messageId) return;
+    if (lastAutoReadMessageIdRef.current === messageId) return;
+
+    lastAutoReadMessageIdRef.current = messageId;
+    markContactAsRead(selectedConversation.id);
+    markAsRead(selectedConversation.id);
+  }, [messages, onlyMessages, isMasterUser, selectedConversation?.id, markAsRead, markContactAsRead]);
+
+  // ✅ Quando marcar como lida pelo sininho, também zerar contadores na lista (unread_count/messages)
+  useEffect(() => {
+    if (onlyMessages) return;
+    if (isMasterUser) return;
+
+    const handleConversationRead = (ev: any) => {
+      const conversationId = ev?.detail?.conversationId;
+      if (conversationId) {
+        markAsRead(conversationId);
+      }
+    };
+
+    const handleConversationsReadAll = (ev: any) => {
+      const ids: string[] = ev?.detail?.conversationIds || [];
+      ids.forEach((id) => {
+        if (id) markAsRead(id);
+      });
+    };
+
+    window.addEventListener('conversation-read', handleConversationRead as any);
+    window.addEventListener('conversations-read-all', handleConversationsReadAll as any);
+
+    return () => {
+      window.removeEventListener('conversation-read', handleConversationRead as any);
+      window.removeEventListener('conversations-read-all', handleConversationsReadAll as any);
+    };
+  }, [onlyMessages, isMasterUser, markAsRead]);
 
   // Fechar menu de “/” ao trocar de conversa
   useEffect(() => {
@@ -1486,22 +1559,23 @@ export function WhatsAppChat({
           email: convData.contact.email,
           profile_image_url: convData.contact.profile_image_url,
         },
-        agente_ativo: false,
-        agent_active_id: null,
-        status: 'open',
-        unread_count: 0,
-        last_activity_at: nowIso,
-        created_at: nowIso,
-        evolution_instance: null,
-        assigned_user_id: null,
-        assigned_user_name: null,
-        assigned_at: null,
-        connection_id: undefined,
-        connection: undefined,
-        queue_id: null,
-        workspace_id: selectedWorkspace.workspace_id,
-        conversation_tags: [],
-        last_message: [],
+        // ✅ refletir a realidade do banco (evita botão "Ativar" com agente ativo)
+        agente_ativo: !!convData.agente_ativo,
+        agent_active_id: convData.agent_active_id ?? null,
+        status: (convData.status ?? 'open') as any,
+        unread_count: typeof convData.unread_count === 'number' ? convData.unread_count : 0,
+        last_activity_at: convData.last_activity_at ?? nowIso,
+        created_at: convData.created_at ?? nowIso,
+        evolution_instance: convData.evolution_instance ?? null,
+        assigned_user_id: convData.assigned_user_id ?? null,
+        assigned_user_name: convData.assigned_user_name ?? null,
+        assigned_at: convData.assigned_at ?? null,
+        connection_id: convData.connection_id ?? undefined,
+        connection: convData.connection ?? undefined,
+        queue_id: convData.queue_id ?? null,
+        workspace_id: convData.workspace_id ?? selectedWorkspace.workspace_id,
+        conversation_tags: Array.isArray(convData.conversation_tags) ? convData.conversation_tags : [],
+        last_message: Array.isArray(convData.last_message) ? convData.last_message : [],
         messages: [],
         _updated_at: Date.now(),
       };
@@ -3257,7 +3331,7 @@ export function WhatsAppChat({
                 <div className="flex items-center gap-3 ml-auto">
                   {/* Botão do agente */}
                   <div className="flex items-center gap-2">
-                    {selectedConversation.agente_ativo && agent ? (
+                    {isConversationAgentActive ? (
                       <button
                         onClick={() => setChangeAgentModalOpen(true)}
                         className="flex items-center gap-2 px-3 py-1 rounded-none shadow-sm hover:shadow-md transition-all group h-8"
@@ -3279,7 +3353,7 @@ export function WhatsAppChat({
                             color: isDark ? "#ffffff" : "#2d2d2d"
                           }}
                         >
-                          {agent.name}
+                          {agentLoading ? "Carregando..." : (agent?.name || "Agente IA")}
                         </span>
                       </button>
                     ) : (

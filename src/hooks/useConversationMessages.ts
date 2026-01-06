@@ -3,6 +3,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 import { useWorkspace } from '@/contexts/WorkspaceContext';
 import { useWorkspaceHeaders } from '@/lib/workspaceHeaders';
+import type { RealtimeChannel } from '@supabase/supabase-js';
 
 interface WhatsAppMessage {
   id: string;
@@ -155,6 +156,22 @@ interface UseConversationMessagesReturn {
   removeMessage: (messageId: string) => void;
   clearMessages: () => void;
 }
+
+type RealtimeMessageEventDetail = {
+  workspaceId: string;
+  message: WhatsAppMessage;
+};
+
+type GlobalMessagesChannelState = {
+  workspaceId: string;
+  channel: RealtimeChannel;
+  subscribers: number;
+};
+
+let globalMessagesChannelState: GlobalMessagesChannelState | null = null;
+
+const REALTIME_MESSAGE_INSERT_EVENT = 'tezeus:realtime-message-insert';
+const REALTIME_MESSAGE_UPDATE_EVENT = 'tezeus:realtime-message-update';
 
 export function useConversationMessages(options?: {
   enableBackgroundPreload?: boolean;
@@ -449,245 +466,152 @@ export function useConversationMessages(options?: {
     const cleanupInterval = setInterval(() => {
       const now = Date.now();
       for (const [key, value] of cacheRef.current.entries()) {
-        if (now - value.timestamp > CACHE_TTL * 3) {
+        // Usa o TTL configurado (cacheTtlMs). Mantemos uma margem para não ser agressivo.
+        if (now - value.timestamp > cacheTtlMs * 3) {
           cacheRef.current.delete(key);
         }
       }
     }, 30000);
 
     return () => clearInterval(cleanupInterval);
-  }, []);
+  }, [cacheTtlMs]);
 
-  // ✅ SUBSCRIPTION DE MENSAGENS (ÚNICO E CENTRALIZADO)
+  // ✅ REALTIME: 1 canal por WORKSPACE (evita "Too many channels")
   useEffect(() => {
-    if (debug) {
-      console.log('🔄🔄🔄 [REALTIME] useEffect EXECUTADO:', {
-        currentConversationId,
-        workspaceId: selectedWorkspace?.workspace_id,
-        timestamp: new Date().toISOString()
-      });
-    }
+    const workspaceId = selectedWorkspace?.workspace_id;
+    if (!workspaceId) return;
+    if (typeof window === 'undefined') return;
 
-    if (!currentConversationId || !selectedWorkspace?.workspace_id) {
-      if (debug) {
-        console.log('⚠️ [useConversationMessages] Subscription NÃO iniciada - faltam dados:', {
-          currentConversationId,
-          workspaceId: selectedWorkspace?.workspace_id
-        });
+    // (Re)criar canal global se trocar de workspace
+    if (globalMessagesChannelState?.workspaceId && globalMessagesChannelState.workspaceId !== workspaceId) {
+      try {
+        supabase.removeChannel(globalMessagesChannelState.channel);
+      } catch {
+        // ignore
       }
-      return;
+      globalMessagesChannelState = null;
     }
 
-    // 🔥 Força remoção de canais antigos antes de criar novo
-    const existingChannels = supabase.getChannels();
-    const oldMessageChannels = existingChannels.filter(ch => 
-      ch.topic.includes('messages-') && ch.topic.includes(currentConversationId)
-    );
-    
-    if (oldMessageChannels.length > 0) {
-      if (debug) {
-        console.log('🧹 [REALTIME] Removendo canais antigos:', oldMessageChannels.map(ch => ch.topic));
-      }
-      oldMessageChannels.forEach(ch => supabase.removeChannel(ch));
-    }
+    if (!globalMessagesChannelState) {
+      const channelName = `messages-workspace-${workspaceId}`;
 
-    const channelName = `messages-${currentConversationId}-workspace-${selectedWorkspace.workspace_id}`;
-    if (debug) {
-      console.log('🔌🔌🔌 [REALTIME] INICIANDO SUBSCRIPTION:', {
-        channelName,
-        conversationId: currentConversationId,
-        workspaceId: selectedWorkspace.workspace_id,
-        filter: `conversation_id=eq.${currentConversationId}`,
-        timestamp: new Date().toISOString()
-      });
-    }
-
-    const channel = supabase
-      .channel(channelName)
-      .on(
-        'postgres_changes',
-        {
-          event: 'INSERT',
-          schema: 'public',
-          table: 'messages',
-          filter: `conversation_id=eq.${currentConversationId}`
-        },
-        (payload) => {
-          console.log('📨 [REALTIME] ✅ NOVA MENSAGEM RECEBIDA:', {
-            messageId: payload.new.id,
-            external_id: payload.new.external_id,
-            content: payload.new.content?.substring(0, 50),
-            conversationId: currentConversationId,
-            sender_type: payload.new.sender_type,
-            timestamp: new Date().toISOString(),
-            payload: payload.new
-          });
-          
-          const newMessage = payload.new as WhatsAppMessage;
-          setMessages(prev => {
-            const optimisticIndex =
-              newMessage.external_id
-                ? prev.findIndex(
-                    m => m.external_id === newMessage.external_id && m.id !== newMessage.id
-                  )
-                : -1;
-
-            if (optimisticIndex !== -1) {
-              console.log('🔄 [REALTIME] Substituindo mensagem otimista pela real:', {
-                optimisticId: prev[optimisticIndex].id,
-                realId: newMessage.id,
-                external_id: newMessage.external_id
-              });
-            }
-
-            const existsById = prev.some(m => m.id === newMessage.id);
-            const existsByExternalId =
-              newMessage.external_id && prev.some(m => m.external_id === newMessage.external_id);
-
-            const providerMatchIndex = prev.findIndex(existing => {
-              const existingProviderIds = getProviderLinkedIds(existing);
-              const incomingProviderIds = getProviderLinkedIds(newMessage);
-              const matchesIncomingExternal =
-                newMessage.external_id && existingProviderIds.includes(newMessage.external_id);
-              const matchesExistingExternal =
-                existing.external_id && incomingProviderIds.includes(existing.external_id);
-              const sharedProviderId = existingProviderIds.some(providerId =>
-                incomingProviderIds.includes(providerId)
-              );
-              return matchesIncomingExternal || matchesExistingExternal || sharedProviderId;
-            });
-
-            if (providerMatchIndex !== -1 && optimisticIndex === -1) {
-              console.log('🔗 [REALTIME] Mesclando mensagem com provider_msg_id correspondente:', {
-                providerMatchIndex,
-                provider_external: newMessage.external_id,
-                existing_provider_ids: getProviderLinkedIds(prev[providerMatchIndex])
-              });
-            }
-
-            if (existsById || existsByExternalId) {
-              console.log('⚠️ [REALTIME] Mensagem duplicada recebida:', {
-                id: newMessage.id,
-                external_id: newMessage.external_id,
-                existsById,
-                existsByExternalId,
-                providerMatchIndex
-              });
-            }
-
-            return dedupeAndSortMessages([...prev, newMessage]);
-          });
-          
-          // Invalidar cache
-          const workspaceId = selectedWorkspace?.workspace_id;
-          const convId = currentConversationId;
-          if (workspaceId && convId) {
-            const cacheKey = `${workspaceId}:${convId}`;
-            cacheRef.current.delete(cacheKey);
+      const channel = supabase
+        .channel(channelName)
+        .on(
+          'postgres_changes',
+          {
+            event: 'INSERT',
+            schema: 'public',
+            table: 'messages',
+            filter: `workspace_id=eq.${workspaceId}`,
+          },
+          (payload) => {
+            const message = payload.new as WhatsAppMessage;
+            window.dispatchEvent(
+              new CustomEvent<RealtimeMessageEventDetail>(REALTIME_MESSAGE_INSERT_EVENT, {
+                detail: { workspaceId, message },
+              })
+            );
           }
-          
-          console.log('✅ [REALTIME] Mensagem processada:', newMessage.id);
-        }
-      )
-      .on(
-        'postgres_changes',
-        {
-          event: 'UPDATE',
-          schema: 'public',
-          table: 'messages',
-          filter: `conversation_id=eq.${currentConversationId}`
-        },
-        (payload) => {
-          console.log('🔥🔥🔥 [REALTIME UPDATE] ✅ EVENTO RECEBIDO!', {
-            messageId: payload.new.id,
-            external_id: payload.new.external_id,
-            conversationId: currentConversationId,
-            expectedConversation: currentConversationId,
-            OLD_STATUS: payload.old?.status,
-            NEW_STATUS: payload.new.status,
-            OLD_delivered: payload.old?.delivered_at,
-            NEW_delivered: payload.new.delivered_at,
-            OLD_read: payload.old?.read_at,
-            NEW_read: payload.new.read_at,
-            timestamp: new Date().toISOString(),
-            fullPayload: payload
+        )
+        .on(
+          'postgres_changes',
+          {
+            event: 'UPDATE',
+            schema: 'public',
+            table: 'messages',
+            filter: `workspace_id=eq.${workspaceId}`,
+          },
+          (payload) => {
+            const message = payload.new as WhatsAppMessage;
+            window.dispatchEvent(
+              new CustomEvent<RealtimeMessageEventDetail>(REALTIME_MESSAGE_UPDATE_EVENT, {
+                detail: { workspaceId, message },
+              })
+            );
+          }
+        )
+        .subscribe((status, err) => {
+          if (!debug) return;
+          console.log('📡 [useConversationMessages] STATUS canal global:', {
+            status,
+            err,
+            channelName,
+            workspaceId,
+            ts: new Date().toISOString(),
           });
-          
-          const updatedMessage = payload.new as WhatsAppMessage;
-          
-          // Verificar se a mensagem está no estado local
-          setMessages(prev => {
-            const messageIndex = prev.findIndex(m => m.id === updatedMessage.id || m.external_id === updatedMessage.external_id);
-            console.log('🔍 [REALTIME UPDATE] Buscando mensagem no estado:', {
-              messageId: updatedMessage.id,
-              external_id: updatedMessage.external_id,
-              found: messageIndex !== -1,
-              messageIndex,
-              totalMessages: prev.length,
-              currentStatus: messageIndex !== -1 ? prev[messageIndex].status : 'not_found'
-            });
-            
-            if (messageIndex === -1) {
-              console.warn('⚠️ [REALTIME UPDATE] Mensagem NÃO encontrada no estado!');
-              return prev;
-            }
-            
-            const newMessages = [...prev];
-            const oldMessage = newMessages[messageIndex];
-            newMessages[messageIndex] = { ...oldMessage, ...updatedMessage };
-            
-            console.log('✅ [REALTIME UPDATE] Mensagem ATUALIZADA no estado:', {
-              messageId: updatedMessage.id,
-              oldStatus: oldMessage.status,
-              newStatus: newMessages[messageIndex].status,
-              oldDelivered: oldMessage.delivered_at,
-              newDelivered: newMessages[messageIndex].delivered_at,
-              oldRead: oldMessage.read_at,
-              newRead: newMessages[messageIndex].read_at
-            });
-            
-            return newMessages;
-          });
-          
-          console.log('✅ [REALTIME UPDATE] Atualização concluída!');
-        }
-      )
-      .subscribe((status, err) => {
-        console.log('📡📡📡 [REALTIME] STATUS DA SUBSCRIPTION:', {
-          status,
-          error: err,
-          channelName,
-          conversationId: currentConversationId,
-          timestamp: new Date().toISOString()
+          if (status === 'CHANNEL_ERROR') {
+            console.error('❌ [useConversationMessages] ERRO no canal global:', err);
+          }
         });
-        
-        if (status === 'SUBSCRIBED') {
-          console.log('✅✅✅ [REALTIME] SUBSCRIPTION ATIVA! Aguardando eventos INSERT e UPDATE...');
-          console.log('🔍 [REALTIME] Filtro ativo: conversation_id=eq.' + currentConversationId);
-        } else if (status === 'CHANNEL_ERROR') {
-          console.error('❌❌❌ [REALTIME] ERRO NO CANAL!', err);
-        } else if (status === 'TIMED_OUT') {
-          console.error('⏱️⏱️⏱️ [REALTIME] TIMEOUT NA SUBSCRIPTION!');
-        } else if (status === 'CLOSED') {
-          console.warn('🔴 [REALTIME] CANAL FECHADO');
-        }
-      });
 
-    console.log('🎯 [REALTIME] Subscription configurada e ativada para:', {
-      channelName,
-      conversationId: currentConversationId,
-      timestamp: new Date().toISOString()
-    });
+      globalMessagesChannelState = { workspaceId, channel, subscribers: 0 };
+    }
+
+    globalMessagesChannelState.subscribers += 1;
 
     return () => {
-      console.log('🔌 [useConversationMessages] 🔴 REMOVENDO subscription:', {
-        channelName,
-        conversationId: currentConversationId,
-        timestamp: new Date().toISOString()
-      });
-      supabase.removeChannel(channel);
+      if (!globalMessagesChannelState) return;
+      globalMessagesChannelState.subscribers -= 1;
+      if (globalMessagesChannelState.subscribers <= 0) {
+        try {
+          supabase.removeChannel(globalMessagesChannelState.channel);
+        } catch {
+          // ignore
+        }
+        globalMessagesChannelState = null;
+      }
     };
-  }, [currentConversationId, selectedWorkspace?.workspace_id]); // ✅ Removido addMessage e updateMessage para evitar re-criações
+  }, [selectedWorkspace?.workspace_id, debug]);
+
+  // ✅ Consumir eventos do canal global e aplicar só na conversa ativa
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const workspaceId = selectedWorkspace?.workspace_id;
+    if (!workspaceId) return;
+
+    const handleInsert = (evt: Event) => {
+      const detail = (evt as CustomEvent<RealtimeMessageEventDetail>).detail;
+      if (!detail || detail.workspaceId !== workspaceId) return;
+      const newMessage = detail.message;
+
+      // invalidar cache sempre que chega msg nova
+      const cacheKey = `${workspaceId}:${newMessage.conversation_id}`;
+      cacheRef.current.delete(cacheKey);
+
+      if (!currentConversationId || newMessage.conversation_id !== currentConversationId) return;
+
+      setMessages((prev) => dedupeAndSortMessages([...prev, newMessage]));
+    };
+
+    const handleUpdate = (evt: Event) => {
+      const detail = (evt as CustomEvent<RealtimeMessageEventDetail>).detail;
+      if (!detail || detail.workspaceId !== workspaceId) return;
+      const updatedMessage = detail.message;
+
+      const cacheKey = `${workspaceId}:${updatedMessage.conversation_id}`;
+      cacheRef.current.delete(cacheKey);
+
+      if (!currentConversationId || updatedMessage.conversation_id !== currentConversationId) return;
+
+      setMessages((prev) => {
+        const idx = prev.findIndex(
+          (m) => m.id === updatedMessage.id || (m.external_id && m.external_id === updatedMessage.external_id)
+        );
+        if (idx === -1) return prev;
+        const next = [...prev];
+        next[idx] = { ...next[idx], ...updatedMessage };
+        return next;
+      });
+    };
+
+    window.addEventListener(REALTIME_MESSAGE_INSERT_EVENT, handleInsert as any);
+    window.addEventListener(REALTIME_MESSAGE_UPDATE_EVENT, handleUpdate as any);
+    return () => {
+      window.removeEventListener(REALTIME_MESSAGE_INSERT_EVENT, handleInsert as any);
+      window.removeEventListener(REALTIME_MESSAGE_UPDATE_EVENT, handleUpdate as any);
+    };
+  }, [selectedWorkspace?.workspace_id, currentConversationId]);
 
   return {
     messages,

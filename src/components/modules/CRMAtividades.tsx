@@ -12,7 +12,9 @@ import {
   Map as MapIcon,
   Columns,
   Tag,
-  Calendar as CalendarIcon
+  Calendar as CalendarIcon,
+  Check,
+  ChevronsUpDown
 } from "lucide-react";
 import { format, startOfDay, endOfDay, isWithinInterval } from "date-fns";
 import { ptBR } from "date-fns/locale";
@@ -27,6 +29,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { CreateActivityModal } from "@/components/modals/CreateActivityModal";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Calendar } from "@/components/ui/calendar";
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
 import {
   DndContext,
   DragEndEvent,
@@ -82,6 +85,7 @@ export function CRMAtividades() {
   const [searchTerm, setSearchTerm] = useState("");
   const [viewMode, setViewMode] = useState<"list" | "kanban">("list");
   const [selectedCategory, setSelectedCategory] = useState<string>("all");
+  const [selectedResponsible, setSelectedResponsible] = useState<string>("ALL"); // ALL | UNASSIGNED | userId
   const [kanbanQuickFilter, setKanbanQuickFilter] = useState<"scheduled" | "overdue" | "completed" | "all">("all");
   const [dateFrom, setDateFrom] = useState<Date | undefined>(undefined);
   const [dateTo, setDateTo] = useState<Date | undefined>(undefined);
@@ -102,6 +106,13 @@ export function CRMAtividades() {
 
   // Importante: por padrão, NÃO aplicar filtro de data.
   // O usuário escolhe o intervalo quando quiser.
+
+  // ✅ Garantir regra de permissão: user vê apenas suas atividades
+  useEffect(() => {
+    if (userRole === "user" && user?.id) {
+      setSelectedResponsible(user.id);
+    }
+  }, [userRole, user?.id]);
 
   const handleOpenDealDetails = (activity: ActivityData) => {
     console.log("🎯 Abrindo detalhes do negócio para a atividade:", activity.id, "Card ID:", activity.pipeline_card_id);
@@ -208,6 +219,7 @@ export function CRMAtividades() {
       const hasAnyFilter =
         !!searchTerm.trim() ||
         selectedCategory !== "all" ||
+        selectedResponsible !== "ALL" ||
         !!dateFrom ||
         !!dateTo ||
         viewMode === "kanban";
@@ -230,6 +242,12 @@ export function CRMAtividades() {
 
       if (userRole === "user" && user?.id) {
         query = query.eq("responsible_id", user.id);
+      } else if (selectedResponsible !== "ALL") {
+        if (selectedResponsible === "UNASSIGNED") {
+          query = query.is("responsible_id", null);
+        } else {
+          query = query.eq("responsible_id", selectedResponsible);
+        }
       }
 
       const { data: activitiesData, error, count } = await query;
@@ -497,6 +515,16 @@ export function CRMAtividades() {
       // No Kanban, o status é controlado pelos cards de filtro acima das colunas.
       const statusOk = true;
 
+      const responsibleOk = (() => {
+        // user role é forçado via query + efeito, mas mantemos aqui como segurança.
+        if (userRole === "user" && user?.id) {
+          return activity.responsible_id === user.id;
+        }
+        if (selectedResponsible === "ALL") return true;
+        if (selectedResponsible === "UNASSIGNED") return !activity.responsible_id;
+        return activity.responsible_id === selectedResponsible;
+      })();
+
       const dateOk = (() => {
         if (!dateFrom && !dateTo) return true;
         const start = dateFrom ? startOfDay(dateFrom) : undefined;
@@ -523,9 +551,21 @@ export function CRMAtividades() {
       const matchesPipeline = activity.pipeline_name?.toLowerCase().includes(term);
       const matchesContact = activity.contact_name?.toLowerCase().includes(term);
       const searchOk = matchesSubject || matchesDeal || matchesResponsible || matchesPipeline || matchesContact;
-      return categoryOk && statusOk && dateOk && searchOk;
+      return categoryOk && statusOk && responsibleOk && dateOk && searchOk;
     });
-  }, [activities, searchTerm, selectedCategory, dateFrom, dateTo, viewMode]);
+  }, [activities, searchTerm, selectedCategory, selectedResponsible, dateFrom, dateTo, viewMode, userRole, user?.id]);
+
+  const responsibleOptions = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const a of activities) {
+      if (!a.responsible_id) continue;
+      map.set(a.responsible_id, a.responsible_name || "Desconhecido");
+    }
+    const options = Array.from(map.entries())
+      .map(([id, name]) => ({ id, name }))
+      .sort((a, b) => a.name.localeCompare(b.name, "pt-BR"));
+    return options;
+  }, [activities]);
 
   const ONE_MINUTE_MS = 60 * 1000;
   const nowMs = Date.now();
@@ -899,6 +939,91 @@ export function CRMAtividades() {
                 ))}
               </SelectContent>
             </Select>
+
+            {/* Filtro de usuário (responsável) */}
+            {userRole !== "user" ? (
+              <Popover>
+                <PopoverTrigger asChild>
+                  <button
+                    type="button"
+                    className={cn(
+                      "h-7 px-2 rounded-none border text-xs inline-flex items-center gap-2 w-52 justify-between",
+                      "border-gray-300 bg-white text-gray-800 hover:bg-gray-50",
+                      "dark:border-gray-700 dark:bg-[#1b1b1b] dark:text-gray-100 dark:hover:bg-[#222]"
+                    )}
+                    title="Filtrar por usuário responsável"
+                  >
+                    <span className="inline-flex items-center gap-2 min-w-0">
+                      <User className="h-3.5 w-3.5 text-gray-500 dark:text-gray-400 shrink-0" />
+                      <span className="truncate">
+                        {selectedResponsible === "ALL"
+                          ? "Todos usuários"
+                          : selectedResponsible === "UNASSIGNED"
+                            ? "Sem responsável"
+                            : (responsibleOptions.find((o) => o.id === selectedResponsible)?.name || "Usuário")}
+                      </span>
+                    </span>
+                    <ChevronsUpDown className="h-3.5 w-3.5 opacity-60 shrink-0" />
+                  </button>
+                </PopoverTrigger>
+                <PopoverContent
+                  className="p-0 rounded-none border border-[#d4d4d4] bg-white dark:bg-[#1b1b1b] dark:border-gray-700 w-72"
+                  align="start"
+                  onOpenAutoFocus={(e) => e.preventDefault()}
+                >
+                  <Command className="rounded-none">
+                    <CommandInput placeholder="Pesquisar usuário..." className="h-9" />
+                    <CommandList className="max-h-72">
+                      <CommandEmpty>Nenhum usuário encontrado.</CommandEmpty>
+                      <CommandGroup heading="Filtro">
+                        <CommandItem
+                          value="ALL"
+                          onSelect={() => setSelectedResponsible("ALL")}
+                        >
+                          <Check className={cn("mr-2 h-4 w-4", selectedResponsible === "ALL" ? "opacity-100" : "opacity-0")} />
+                          Todos usuários
+                        </CommandItem>
+                        <CommandItem
+                          value="UNASSIGNED"
+                          onSelect={() => setSelectedResponsible("UNASSIGNED")}
+                        >
+                          <Check className={cn("mr-2 h-4 w-4", selectedResponsible === "UNASSIGNED" ? "opacity-100" : "opacity-0")} />
+                          Sem responsável
+                        </CommandItem>
+                      </CommandGroup>
+                      <CommandGroup heading="Usuários">
+                        {responsibleOptions.map((opt) => (
+                          <CommandItem
+                            key={opt.id}
+                            value={opt.name}
+                            onSelect={() => setSelectedResponsible(opt.id)}
+                          >
+                            <Check className={cn("mr-2 h-4 w-4", selectedResponsible === opt.id ? "opacity-100" : "opacity-0")} />
+                            {opt.name}
+                          </CommandItem>
+                        ))}
+                      </CommandGroup>
+                    </CommandList>
+                  </Command>
+                </PopoverContent>
+              </Popover>
+            ) : (
+              <button
+                type="button"
+                disabled
+                className={cn(
+                  "h-7 px-2 rounded-none border text-xs inline-flex items-center gap-2 w-52 justify-between opacity-70 cursor-not-allowed",
+                  "border-gray-300 bg-white text-gray-800",
+                  "dark:border-gray-700 dark:bg-[#1b1b1b] dark:text-gray-100"
+                )}
+                title="Usuários com nível USER veem apenas suas atividades"
+              >
+                <span className="inline-flex items-center gap-2 min-w-0">
+                  <User className="h-3.5 w-3.5 text-gray-500 dark:text-gray-400 shrink-0" />
+                  <span className="truncate">Minhas atividades</span>
+                </span>
+              </button>
+            )}
 
             {/* Filtro de data (inicial e final) */}
             <Popover>

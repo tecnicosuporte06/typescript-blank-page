@@ -91,9 +91,16 @@ export function NotificationTooltip({
                         <span className="font-bold text-xs text-gray-800 truncate dark:text-gray-100">
                           {notification.contactName}
                         </span>
-                        <span className="text-[10px] text-gray-500 dark:text-gray-400">
-                          {formatTimestamp(notification.timestamp)}
-                        </span>
+                        <div className="flex items-center gap-2">
+                          {typeof (notification as any).unreadCount === 'number' && (notification as any).unreadCount > 0 && (
+                            <span className="min-w-5 h-5 px-1.5 inline-flex items-center justify-center rounded-full bg-red-600 text-white text-[10px] font-bold">
+                              {(notification as any).unreadCount > 99 ? '99+' : (notification as any).unreadCount}
+                            </span>
+                          )}
+                          <span className="text-[10px] text-gray-500 dark:text-gray-400">
+                            {formatTimestamp(notification.timestamp)}
+                          </span>
+                        </div>
                       </div>
                       
                       <div className="flex items-center gap-1 text-gray-600 dark:text-gray-300">
