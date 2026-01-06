@@ -13,6 +13,7 @@ import { useToast } from "@/hooks/use-toast";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Badge } from "@/components/ui/badge";
 import { Sheet, SheetContent } from "@/components/ui/sheet";
 import { DealDetailsPage } from "@/pages/DealDetailsPage";
 import { DealStatusMoveModal } from "@/components/modals/DealStatusMoveModal";
@@ -66,105 +67,57 @@ function CRMPanoramaContent() {
     setIsLoading(true);
     setErrorMsg(null);
     try {
-      // Buscar cards diretamente por workspace (via join com pipelines), para evitar “carrega às vezes”
-      // quando a lista de pipelines ainda não está pronta.
-      const runQuery = async () => {
-        let query = supabase
-          .from("pipeline_cards")
-          .select(
-            `
-            id,
-            status,
-            created_at,
-            updated_at,
-            value,
-            qualification,
-            pipeline_id,
-            column_id,
-            responsible_user_id,
-            contacts (
-              id,
-              name,
-              phone
-            ),
-            pipelines!inner (
-              id,
-              name,
-              workspace_id
-            ),
-            pipeline_columns (
-              id,
-              name
-            ),
-            responsible_user:system_users!pipeline_cards_responsible_user_id_fkey (
-              id,
-              name
-            )
-          `
-          )
-          .eq("pipelines.workspace_id", effectiveWorkspaceId)
-          .in("status", ["aberto", "ganho", "perda", "perdido"])
-          .order("created_at", { ascending: false });
-
-        if (pipelineFilter !== "ALL") {
-          query = query.eq("pipeline_id", pipelineFilter);
-        }
-
-        // Filtro por data (created_at)
-        if (dateFrom || dateTo) {
-          const from = dateFrom ? startOfDay(dateFrom) : undefined;
-          const to = dateTo ? endOfDay(dateTo) : undefined;
-          if (from && to) {
-            const start = from.getTime() <= to.getTime() ? from : to;
-            const end = from.getTime() <= to.getTime() ? to : from;
-            query = query.gte("created_at", start.toISOString()).lte("created_at", end.toISOString());
-          } else if (from) {
-            query = query.gte("created_at", from.toISOString());
-          } else if (to) {
-            query = query.lte("created_at", to.toISOString());
-          }
-        }
-
-        if (statusFilter !== "ALL") {
-          if (statusFilter === "perda") {
-            query = query.in("status", ["perda", "perdido"]);
-          } else {
-            query = query.eq("status", statusFilter);
-          }
-        }
-
-        const { data, error } = await query;
-        if (error) throw error;
-
-        if (userRole === "user") {
-          // consistente com pipeline: user vê sem responsável + atribuídos a ele
-          const uid = user?.id || null;
-          const filtered = (data || []).filter((c: any) => {
-            const responsibleId = c.responsible_user_id || c?.responsible_user?.id || null;
-            return !responsibleId || (!!uid && responsibleId === uid);
-          });
-          return filtered;
-        }
-
-        return data || [];
+      const userData = localStorage.getItem("currentUser");
+      const currentUserData = userData ? JSON.parse(userData) : null;
+      const headers = {
+        "x-system-user-id": currentUserData?.id || "",
+        "x-system-user-email": currentUserData?.email || "",
+        "x-workspace-id": effectiveWorkspaceId,
       };
 
-      // retry curto para falhas transitórias
-      let data: any[] = [];
-      let lastError: any = null;
-      for (let attempt = 0; attempt < 2; attempt++) {
-        try {
-          data = await runQuery();
-          lastError = null;
-          break;
-        } catch (e: any) {
-          lastError = e;
-          await new Promise((r) => setTimeout(r, 350 + attempt * 500));
-        }
+      if (!headers["x-system-user-id"] || !headers["x-system-user-email"]) {
+        throw new Error("Usuário não identificado. Faça login novamente.");
       }
-      if (lastError) throw lastError;
 
-      setRows((data || []).map((r: any) => ({ ...r, contact: r.contacts || null, contacts: undefined })));
+      const fromIso = dateFrom ? startOfDay(dateFrom).toISOString() : "";
+      const toIso = dateTo ? endOfDay(dateTo).toISOString() : "";
+      const name = new URLSearchParams({
+        pipeline_id: pipelineFilter,
+        status: statusFilter,
+        date_from: fromIso,
+        date_to: toIso,
+      }).toString();
+
+      const { data, error } = await supabase.functions.invoke(`pipeline-management/panorama?${name}`, {
+        method: "GET",
+        headers,
+      });
+
+      if (error) {
+        // melhor mensagem se vier estruturada
+        const body: any = (error as any)?.context?.body;
+        const parsed = typeof body === "string" ? (() => { try { return JSON.parse(body); } catch { return null; } })() : body;
+        const msg = parsed?.message || (error as any)?.message || "Não foi possível carregar o panorama.";
+        throw new Error(msg);
+      }
+
+      const normalized = (data || []).map((r: any) => ({
+        ...r,
+        contact: r.contact || null,
+      }));
+
+      // Regra de visualização: user vê sem responsável + atribuídos a ele
+      if (userRole === "user") {
+        const uid = user?.id || currentUserData?.id || null;
+        setRows(
+          normalized.filter((c: any) => {
+            const responsibleId = c.responsible_user_id || c?.responsible_user?.id || null;
+            return !responsibleId || (!!uid && responsibleId === uid);
+          })
+        );
+      } else {
+        setRows(normalized);
+      }
     } catch (e: any) {
       console.error("Erro ao carregar panorama:", e);
       setErrorMsg(e?.message || "Não foi possível carregar o panorama.");
@@ -421,12 +374,8 @@ function CRMPanoramaContent() {
                 {filteredRows.map((row: any) => {
                   const status = String(row.status || "").toLowerCase();
                   const statusLabel = status === "aberto" ? "Aberto" : status === "ganho" ? "Ganho" : "Perdido";
-                  const statusClass =
-                    status === "aberto"
-                      ? "bg-green-50 text-green-700 border-green-200 dark:bg-green-900/20 dark:text-green-200 dark:border-green-800/50"
-                      : status === "ganho"
-                        ? "bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-900/20 dark:text-blue-200 dark:border-blue-800/50"
-                        : "bg-red-50 text-red-700 border-red-200 dark:bg-red-900/20 dark:text-red-200 dark:border-red-800/50";
+                  const statusColor =
+                    status === "aberto" ? "#22c55e" : status === "ganho" ? "#3b82f6" : "#ef4444";
 
                   const contactName = row?.contact?.name || row?.contact?.phone || "-";
                   const createdAt = row?.created_at ? format(new Date(row.created_at), "dd/MM/yyyy HH:mm", { locale: ptBR }) : "-";
@@ -444,9 +393,17 @@ function CRMPanoramaContent() {
                       onClick={() => openDetails(row)}
                     >
                       <td className="px-3 py-2">
-                        <span className={cn("inline-flex items-center px-2 py-0.5 border rounded-none text-[10px] font-semibold", statusClass)}>
-                          {statusLabel}
-                        </span>
+                        <Badge
+                          variant="outline"
+                          className="rounded-none border px-2 py-0.5 text-[11px] font-semibold h-5 inline-flex items-center"
+                          style={{
+                            borderColor: statusColor,
+                            color: statusColor,
+                            backgroundColor: statusColor ? `${statusColor}99` : "rgba(0,0,0,0.06)",
+                          }}
+                        >
+                          <span className="text-black dark:text-white">{statusLabel}</span>
+                        </Badge>
                       </td>
                       <td className="px-3 py-2">
                         <div className="font-semibold text-gray-900 dark:text-gray-100 truncate max-w-[360px]" title={contactName}>
@@ -474,7 +431,7 @@ function CRMPanoramaContent() {
                 {filteredRows.length === 0 ? (
                   <tr>
                     <td colSpan={7} className="px-3 py-10 text-center text-gray-500 dark:text-gray-400">
-                      Nenhum negócio encontrado.
+                      Nenhuma oportunidade encontrada.
                     </td>
                   </tr>
                 ) : null}
