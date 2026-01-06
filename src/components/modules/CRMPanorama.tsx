@@ -23,6 +23,8 @@ import { Calendar } from "@/components/ui/calendar";
 type ResponsibleFilterValue = "ALL" | "UNASSIGNED" | string;
 
 function CRMPanoramaContent() {
+  const DEFAULT_PAGE_SIZE = 100;
+  const MIN_PAGE_SIZE = 10;
   const { selectedWorkspace } = useWorkspace();
   const { workspaceId: urlWorkspaceId } = useParams<{ workspaceId: string }>();
   const { user, userRole, hasRole } = useAuth();
@@ -39,6 +41,8 @@ function CRMPanoramaContent() {
   const [searchTerm, setSearchTerm] = useState("");
   const [dateFrom, setDateFrom] = useState<Date | undefined>(undefined);
   const [dateTo, setDateTo] = useState<Date | undefined>(undefined);
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
 
   const [rows, setRows] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -162,6 +166,19 @@ function CRMPanoramaContent() {
         return responsibleId === responsibleFilter;
       });
   }, [rows, responsibleFilter, searchTerm]);
+
+  // Resetar paginação ao mudar filtros
+  useEffect(() => {
+    setPage(1);
+  }, [pipelineFilter, statusFilter, responsibleFilter, searchTerm, dateFrom, dateTo]);
+
+  const totalCount = filteredRows.length;
+  const totalPages = Math.max(1, Math.ceil((totalCount || 0) / pageSize));
+  const startIndex = totalCount > 0 ? (page - 1) * pageSize + 1 : 0;
+  const endIndex = totalCount > 0 ? Math.min(page * pageSize, totalCount) : 0;
+  const pagedRows = useMemo(() => {
+    return filteredRows.slice((page - 1) * pageSize, (page - 1) * pageSize + pageSize);
+  }, [filteredRows, page, pageSize]);
 
   const openDetails = (row: any) => {
     setSelectedRow(row);
@@ -371,7 +388,7 @@ function CRMPanoramaContent() {
                 </tr>
               </thead>
               <tbody>
-                {filteredRows.map((row: any) => {
+                {pagedRows.map((row: any) => {
                   const status = String(row.status || "").toLowerCase();
                   const statusLabel = status === "aberto" ? "Aberto" : status === "ganho" ? "Ganho" : "Perdido";
                   const statusColor =
@@ -428,7 +445,7 @@ function CRMPanoramaContent() {
                   );
                 })}
 
-                {filteredRows.length === 0 ? (
+                {pagedRows.length === 0 ? (
                   <tr>
                     <td colSpan={7} className="px-3 py-10 text-center text-gray-500 dark:text-gray-400">
                       Nenhuma oportunidade encontrada.
@@ -438,6 +455,59 @@ function CRMPanoramaContent() {
               </tbody>
             </table>
           )}
+        </div>
+      </div>
+
+      {/* Footer fixo com paginação (igual Atividades) */}
+      <div className="sticky bottom-0 left-0 right-0 bg-[#f8f9fa] dark:bg-[#141414] border-t border-gray-300 dark:border-gray-700 px-4 py-2 z-20">
+        <div className="flex flex-wrap items-center justify-between gap-3 text-[11px] text-gray-600 dark:text-gray-400">
+          <div className="flex flex-wrap items-center gap-3">
+            <span>
+              Linhas {startIndex}-{endIndex} de {totalCount || 0}
+            </span>
+            <div className="flex items-center gap-1">
+              <span>Linhas/página:</span>
+              <Select
+                value={String(pageSize)}
+                onValueChange={(value) => {
+                  const parsed = Number(value);
+                  const normalized = Math.max(MIN_PAGE_SIZE, isNaN(parsed) ? DEFAULT_PAGE_SIZE : parsed);
+                  setPageSize(normalized);
+                  setPage(1);
+                }}
+              >
+                <SelectTrigger className="h-7 w-24 rounded-none">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {["10", "25", "50", "100", "200"].map((opt) => (
+                    <SelectItem key={opt} value={opt}>
+                      {opt}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              className="px-2 py-1 border border-gray-300 rounded-sm disabled:opacity-50 dark:border-gray-700"
+              onClick={() => setPage((p) => Math.max(1, p - 1))}
+              disabled={page === 1 || isLoading}
+            >
+              Anterior
+            </button>
+            <span>
+              Página {page} / {totalPages}
+            </span>
+            <button
+              className="px-2 py-1 border border-gray-300 rounded-sm disabled:opacity-50 dark:border-gray-700"
+              onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+              disabled={isLoading || page >= totalPages}
+            >
+              Próxima
+            </button>
+          </div>
         </div>
       </div>
 
