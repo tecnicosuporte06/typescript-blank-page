@@ -327,6 +327,7 @@ export function useWorkspaceMembers(workspaceId?: string) {
         description: errorMessage,
         variant: "destructive",
       });
+      throw error;
     }
   };
 
@@ -334,6 +335,7 @@ export function useWorkspaceMembers(workspaceId?: string) {
     members,
     isLoading,
     fetchMembers,
+    refreshMembers: fetchMembers,
     addMember,
     createUserAndAddToWorkspace,
     updateMember,

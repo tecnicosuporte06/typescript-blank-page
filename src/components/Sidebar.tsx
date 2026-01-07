@@ -92,7 +92,7 @@ export function Sidebar({
     getAvatarColor,
     formatTimestamp,
   } = useRealtimeNotifications();
-
+  
   useEffect(() => {
     console.log('🔔 [Sidebar] Dados de notificação ATUALIZADOS:', {
       totalUnread,

@@ -97,9 +97,9 @@ export function NotificationTooltip({
                               {(notification as any).unreadCount > 99 ? '99+' : (notification as any).unreadCount}
                             </span>
                           )}
-                          <span className="text-[10px] text-gray-500 dark:text-gray-400">
-                            {formatTimestamp(notification.timestamp)}
-                          </span>
+                        <span className="text-[10px] text-gray-500 dark:text-gray-400">
+                          {formatTimestamp(notification.timestamp)}
+                        </span>
                         </div>
                       </div>
                       

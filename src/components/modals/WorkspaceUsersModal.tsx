@@ -30,7 +30,7 @@ const MIN_PAGE_SIZE = 10;
 export function WorkspaceUsersModal({ open, onOpenChange, workspaceId, workspaceName }: WorkspaceUsersModalProps) {
   const { toast } = useToast();
   const { deleteUser } = useSystemUsers();
-  const { members, isLoading, removeMember, refreshMembers } = useWorkspaceMembers(workspaceId);
+  const { members, isLoading, removeMember, fetchMembers } = useWorkspaceMembers(workspaceId);
 
   const [searchTerm, setSearchTerm] = useState("");
   const [page, setPage] = useState(1);
@@ -107,7 +107,7 @@ export function WorkspaceUsersModal({ open, onOpenChange, workspaceId, workspace
   const onEditSuccess = () => {
     setIsEditModalOpen(false);
     setUserToEdit(null);
-    refreshMembers();
+    fetchMembers();
   };
 
   const requestDelete = (member: WorkspaceMember) => {
@@ -122,14 +122,20 @@ export function WorkspaceUsersModal({ open, onOpenChange, workspaceId, workspace
   const confirmDelete = async () => {
     if (!userToDelete) return;
     try {
-      await deleteUser(userToDelete.id);
+      // 1) Remove do workspace (evita FK/relacionamentos dependentes)
       await removeMember(userToDelete.memberId);
-      setIsDeleteModalOpen(false);
+      // 2) Deleta o usuário do sistema (dados do usuário)
+      const res = await deleteUser(userToDelete.id);
+      if ((res as any)?.error) {
+        throw new Error((res as any).error);
+      }
       setUserToDelete(null);
-      refreshMembers();
+      fetchMembers();
       toast({ title: "Sucesso", description: "Usuário excluído com sucesso" });
     } catch (e) {
-      // erros já tratados nos hooks
+      // Erros já mostram toast nos hooks, mas garantimos feedback caso venha como Error aqui.
+      const msg = (e as any)?.message;
+      if (msg) toast({ title: "Erro", description: msg, variant: "destructive" });
     }
   };
 
@@ -153,10 +159,11 @@ export function WorkspaceUsersModal({ open, onOpenChange, workspaceId, workspace
         />
 
         <DeletarUsuarioModal
-          open={isDeleteModalOpen}
-          onOpenChange={setIsDeleteModalOpen}
-          userToDelete={userToDelete}
+          isOpen={isDeleteModalOpen}
+          onClose={() => setIsDeleteModalOpen(false)}
+          userName={userToDelete?.name || "N/A"}
           onConfirm={confirmDelete}
+          isDarkMode={typeof document !== "undefined" ? document.documentElement.classList.contains("dark") : false}
         />
 
         <div className="space-y-4">

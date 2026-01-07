@@ -612,14 +612,14 @@ export function PipelinesProvider({ children }: { children: React.ReactNode }) {
 
       const parsedError = await readFunctionErrorBodyAsync(error);
       console.error('❌ Error creating card:', { error, parsedError });
-
+      
       // Verificar se é erro de card duplicado (do trigger do banco)
       const isDuplicate =
         error?.message?.includes('Já existe um card aberto') ||
         error?.message?.includes('duplicate_open_card') ||
         parsedError?.error === 'duplicate_open_card';
 
-      toast({
+        toast({
         title: isDuplicate ? "Negócio já existe" : "Erro",
         description:
           parsedError?.message ||
@@ -627,8 +627,8 @@ export function PipelinesProvider({ children }: { children: React.ReactNode }) {
           (isDuplicate
             ? "Este contato já possui um negócio aberto neste pipeline. Finalize o anterior antes de criar um novo."
             : "Erro ao criar card"),
-        variant: "destructive",
-      });
+          variant: "destructive",
+        });
 
       try {
         (error as any).__pipeline_create_handled = true;
@@ -636,7 +636,7 @@ export function PipelinesProvider({ children }: { children: React.ReactNode }) {
       } catch {
         // ignore
       }
-
+      
       throw error;
     }
   }, [getHeaders, selectedPipeline, toast]);

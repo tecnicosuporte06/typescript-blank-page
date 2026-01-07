@@ -18,13 +18,19 @@ export function DeletarUsuarioModal({
   userName,
   isDarkMode = false 
 }: DeletarUsuarioModalProps) {
-  const handleConfirm = () => {
-    onConfirm();
+  const handleConfirm = async () => {
+    await Promise.resolve(onConfirm());
     onClose();
   };
 
   return (
-    <Dialog open={isOpen} onOpenChange={onClose}>
+    <Dialog
+      open={isOpen}
+      onOpenChange={(open) => {
+        // Só reagir ao fechamento (evita fechar imediatamente ao abrir)
+        if (!open) onClose();
+      }}
+    >
       <DialogContent className={cn(
         "max-w-md",
         isDarkMode 

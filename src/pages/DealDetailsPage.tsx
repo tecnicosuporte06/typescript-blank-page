@@ -50,9 +50,17 @@ interface DealDetailsPageProps {
   // Quando informado, ao abrir o detalhe do negócio, abre automaticamente o modal de edição
   // da atividade específica (usado pelo Kanban de Atividades para acelerar o fluxo).
   openActivityEditId?: string;
+  // Modo "resumido" para edição de atividade: mostra apenas Detalhes da oportunidade + Aba Atividades.
+  mode?: "full" | "activity_edit";
 }
 
-export function DealDetailsPage({ cardId: propCardId, workspaceId: propWorkspaceId, onClose, openActivityEditId }: DealDetailsPageProps = {}) {
+export function DealDetailsPage({
+  cardId: propCardId,
+  workspaceId: propWorkspaceId,
+  onClose,
+  openActivityEditId,
+  mode = "full",
+}: DealDetailsPageProps = {}) {
   const { cardId: paramCardId, workspaceId: paramWorkspaceId } = useParams<{ cardId: string; workspaceId: string }>();
   
   const cardId = propCardId || paramCardId;
@@ -102,6 +110,14 @@ const [manualValue, setManualValue] = useState<string>("");
   const [historyFilter, setHistoryFilter] = useState<string>("all");
   const didInitActivityTimeRef = useRef(false);
   const lastAutoOpenedActivityEditIdRef = useRef<string | null>(null);
+
+  const [mainTab, setMainTab] = useState<"anotacoes" | "atividade" | "mensagens">(() =>
+    mode === "activity_edit" ? "atividade" : "anotacoes"
+  );
+
+  useEffect(() => {
+    if (mode === "activity_edit") setMainTab("atividade");
+  }, [mode]);
   
   // Estados para modal de seleção de coluna
   const [isColumnSelectModalOpen, setIsColumnSelectModalOpen] = useState(false);
@@ -123,6 +139,7 @@ const [manualValue, setManualValue] = useState<string>("");
 // Estados para edição a partir do histórico
 const [selectedActivityForEdit, setSelectedActivityForEdit] = useState<any | null>(null);
 const [isActivityEditModalOpen, setIsActivityEditModalOpen] = useState(false);
+const [activityEditModalTab, setActivityEditModalTab] = useState<"detalhes" | "atividade">("atividade");
 const [activityEditForm, setActivityEditForm] = useState({
   type: "Ligação abordada",
   subject: "",
@@ -165,6 +182,11 @@ const [conversationId, setConversationId] = useState<string | null>(null);
     observer.observe(root, { attributes: true, attributeFilter: ["class"] });
     return () => observer.disconnect();
   }, []);
+
+  // Ao abrir o modal de edição, iniciar sempre na aba de Atividade (edição)
+  useEffect(() => {
+    if (isActivityEditModalOpen) setActivityEditModalTab("atividade");
+  }, [isActivityEditModalOpen]);
 const [isEditingCompany, setIsEditingCompany] = useState(false);
 const [tempCompany, setTempCompany] = useState("");
 const [isSavingCompany, setIsSavingCompany] = useState(false);
@@ -1261,15 +1283,36 @@ const normalizeFieldKey = (label: string) => {
       return;
     }
 
-    const mapped = (workspaceMembers || [])
-      .filter((m: any) => !m?.is_hidden && (m?.role === "admin" || m?.role === "user"))
-      .map((m: any) => ({
-        id: m.user?.id || m.user_id,
-        name: m.user?.name || "",
-        profile_image_url: m.user?.avatar || m.user?.profile_image_url || null,
-        profile: m.role,
-      }))
-      .filter((u: any) => u.id && u.name);
+    // Importante: o "nível" que aparece no modal de usuários vem de `member.user.profile`.
+    // Para manter consistência e não "sumir" usuário, filtramos por `user.profile` (fallback: member.role).
+    const byId = new Map<string, any>();
+    for (const m of workspaceMembers || []) {
+      const id = m?.user?.id || m?.user_id;
+      if (!id) continue;
+
+      const profile = String(m?.user?.profile || m?.role || "").toLowerCase().trim();
+      if (profile === "master") continue;
+      if (profile !== "admin" && profile !== "user") continue;
+
+      const name =
+        String(m?.user?.name || "").trim() ||
+        String(m?.user?.email || "").trim() ||
+        String(id || "").trim();
+
+      // Preferir registro com nome preenchido
+      const prev = byId.get(id);
+      const next = {
+        id,
+        name,
+        profile_image_url: m?.user?.avatar || m?.user?.profile_image_url || null,
+        profile,
+      };
+      if (!prev || (!prev?.name && next.name)) {
+        byId.set(id, next);
+      }
+    }
+
+    const mapped = Array.from(byId.values()).filter((u: any) => u.id && u.name);
 
     mapped.sort((a: any, b: any) => String(a.name).localeCompare(String(b.name), "pt-BR"));
     setUsers(mapped);
@@ -2402,7 +2445,7 @@ const normalizeFieldKey = (label: string) => {
           markAsDone: !!activity.is_completed,
         });
         setSelectedActivityForEdit(activity);
-        setIsActivityEditModalOpen(true);
+        setMainTab("atividade");
 
         lastAutoOpenedActivityEditIdRef.current = openActivityEditId;
       } catch (e: any) {
@@ -2452,7 +2495,7 @@ const normalizeFieldKey = (label: string) => {
           markAsDone: !!activity.is_completed,
         });
         setSelectedActivityForEdit(activity);
-        setIsActivityEditModalOpen(true);
+        setMainTab("atividade");
       } catch (error) {
         console.error("Erro ao preparar edição da atividade:", error);
         toast({
@@ -4052,9 +4095,10 @@ const normalizeFieldKey = (label: string) => {
           <>
           {/* Tabs */}
           <Tabs
-            defaultValue="anotacoes"
+            value={mainTab}
             className="flex-1 flex flex-col overflow-hidden"
             onValueChange={(tab) => {
+              setMainTab(tab as any);
               if (tab !== "atividade") return;
               if (didInitActivityTimeRef.current) return;
 
@@ -4087,13 +4131,15 @@ const normalizeFieldKey = (label: string) => {
           >
             <div className="border-b border-gray-200 dark:border-gray-700 px-6">
               <TabsList className="bg-transparent gap-4">
-                <TabsTrigger 
-                  value="anotacoes" 
-                  className="flex items-center gap-2 rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:shadow-none dark:text-gray-400 dark:data-[state=active]:text-white"
-                >
-                  <FileText className="h-4 w-4" />
-                  <span>Anotações</span>
-                </TabsTrigger>
+                {mode !== "activity_edit" && (
+                  <TabsTrigger 
+                    value="anotacoes" 
+                    className="flex items-center gap-2 rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:shadow-none dark:text-gray-400 dark:data-[state=active]:text-white"
+                  >
+                    <FileText className="h-4 w-4" />
+                    <span>Anotações</span>
+                  </TabsTrigger>
+                )}
                 <TabsTrigger 
                   value="atividade" 
                   className="flex items-center gap-2 rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:shadow-none dark:text-gray-400 dark:data-[state=active]:text-white"
@@ -4101,13 +4147,15 @@ const normalizeFieldKey = (label: string) => {
                   <CalendarIconLucide className="h-4 w-4" />
                   <span>Atividades</span>
                 </TabsTrigger>
-                <TabsTrigger 
-                  value="mensagens" 
-                  className="flex items-center gap-2 rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:shadow-none dark:text-gray-400 dark:data-[state=active]:text-white"
-                >
-                  <MessageSquareIcon className="h-4 w-4" />
-                  <span>Mensagens</span>
-                </TabsTrigger>
+                {mode !== "activity_edit" && (
+                  <TabsTrigger 
+                    value="mensagens" 
+                    className="flex items-center gap-2 rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:shadow-none dark:text-gray-400 dark:data-[state=active]:text-white"
+                  >
+                    <MessageSquareIcon className="h-4 w-4" />
+                    <span>Mensagens</span>
+                  </TabsTrigger>
+                )}
               </TabsList>
             </div>
 
@@ -4554,9 +4602,320 @@ const normalizeFieldKey = (label: string) => {
               </TabsContent>
 
               <TabsContent value="atividade" className="mt-0">
-                <div className="flex gap-6 h-full">
-                  {/* Área Principal - Formulário de Atividade */}
-                  <div className="flex-1 space-y-6 p-6">
+                {/* Quando estamos editando uma atividade específica (vindo do histórico/Kanban),
+                   mostrar o formulário de EDIÇÃO no mesmo layout do Detalhes (sem abrir Dialog separado). */}
+                {selectedActivityForEdit ? (
+                  <div className="flex flex-col h-full">
+                    <div className="p-6 space-y-6 flex-1 overflow-y-auto">
+                      <div className="flex items-center justify-between gap-3">
+                        <div className="min-w-0">
+                          <div className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">
+                            Edição de atividade
+                          </div>
+                          <div className="text-sm font-semibold text-gray-900 dark:text-gray-100 truncate">
+                            {selectedActivityForEdit?.type || "Atividade"}
+                          </div>
+                        </div>
+                        <Button
+                          variant="outline"
+                          className="rounded-none"
+                          onClick={() => {
+                            setSelectedActivityForEdit(null);
+                            if (mode === "activity_edit") onClose?.();
+                          }}
+                        >
+                          Voltar
+                        </Button>
+                      </div>
+
+                      {/* Assunto */}
+                      <div className="space-y-2">
+                        <label className="text-sm font-semibold text-gray-900 dark:text-gray-200">Assunto</label>
+                        <Input
+                          placeholder={activityEditForm.type}
+                          value={activityEditForm.subject}
+                          onChange={(e) => setActivityEditForm({ ...activityEditForm, subject: e.target.value })}
+                          className={cn(
+                            "h-11 focus:border-blue-500",
+                            isUiDarkMode
+                              ? "bg-[#1a1a1a] border-gray-700 text-gray-100 placeholder:text-gray-500"
+                              : "bg-white border-gray-300 text-gray-900 placeholder:text-gray-400"
+                          )}
+                        />
+                      </div>
+
+                      {/* Tipo */}
+                      <div className="space-y-2">
+                        <label className="text-sm font-semibold text-gray-900 dark:text-gray-200">Tipo de atividade</label>
+                        <TooltipProvider>
+                          <div className="flex items-center gap-2 flex-wrap">
+                            {[
+                              { label: "Mensagem", type: "Mensagem", icon: MessageSquareIcon },
+                              { label: "Ligação não atendida", type: "Ligação não atendida", icon: Phone },
+                              { label: "Ligação atendida", type: "Ligação atendida", icon: Phone },
+                              { label: "Ligação abordada", type: "Ligação abordada", icon: Phone },
+                              { label: "Ligação agendada", type: "Ligação agendada", icon: Phone },
+                              { label: "Ligação de follow up", type: "Ligação de follow up", icon: Phone },
+                              { label: "Reunião agendada", type: "Reunião agendada", icon: CalendarIconLucide },
+                              { label: "Reunião realizada", type: "Reunião realizada", icon: CalendarIconLucide },
+                              { label: "Reunião não realizada", type: "Reunião não realizada", icon: CalendarIconLucide },
+                              { label: "Reunião reagendada", type: "Reunião reagendada", icon: CalendarIconLucide },
+                              { label: "WhatsApp enviado", type: "WhatsApp enviado", icon: MessageSquareIcon },
+                            ].map((option) => {
+                              const Icon = option.icon;
+                              return (
+                                <Tooltip key={option.type}>
+                                  <TooltipTrigger asChild>
+                                    <button
+                                      type="button"
+                                      onClick={() => setActivityEditForm({ ...activityEditForm, type: option.type })}
+                                      className={cn(
+                                        "p-2 rounded-md transition-colors",
+                                        activityEditForm.type === option.type
+                                          ? "bg-[#eab308] text-black"
+                                          : isUiDarkMode
+                                            ? "bg-[#1a1a1a] border border-gray-700 text-gray-300 hover:bg-[#252525] hover:text-gray-100"
+                                            : "bg-white border border-gray-300 text-gray-700 hover:bg-gray-100"
+                                      )}
+                                    >
+                                      <Icon className="h-5 w-5" />
+                                    </button>
+                                  </TooltipTrigger>
+                                  <TooltipContent className="bg-white dark:bg-[#1b1b1b] border-gray-200 dark:border-gray-700 text-gray-900 dark:text-gray-100 shadow-md">
+                                    <p>{option.label}</p>
+                                  </TooltipContent>
+                                </Tooltip>
+                              );
+                            })}
+                          </div>
+                        </TooltipProvider>
+                      </div>
+
+                      {/* Data/Hora */}
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        <div className="space-y-2">
+                          <label className="text-sm font-semibold text-gray-900 dark:text-gray-200">Data de início</label>
+                          <Popover open={showEditStartDatePicker} onOpenChange={setShowEditStartDatePicker}>
+                            <PopoverTrigger asChild>
+                              <Button
+                                variant="outline"
+                                className={cn(
+                                  "w-full justify-start text-left font-normal h-11 rounded-md",
+                                  isUiDarkMode
+                                    ? "bg-[#1a1a1a] border-gray-700 text-gray-100 hover:bg-[#252525]"
+                                    : "bg-white border-gray-300 text-gray-900 hover:bg-gray-100"
+                                )}
+                              >
+                                <CalendarIconLucide className={cn("mr-3 h-4 w-4", isUiDarkMode ? "text-gray-400" : "text-gray-500")} />
+                                {format(activityEditForm.startDate, "dd 'de' MMM 'de' yyyy", { locale: ptBR })}
+                              </Button>
+                            </PopoverTrigger>
+                            <PopoverContent className={cn("w-auto p-0", isUiDarkMode ? "bg-[#1b1b1b] border-gray-700" : "bg-white border-gray-200")} align="start">
+                              <Calendar
+                                mode="single"
+                                selected={activityEditForm.startDate}
+                                onSelect={(date) => {
+                                  if (!date) return;
+                                  setActivityEditForm({ ...activityEditForm, startDate: date, endDate: date });
+                                  setShowEditStartDatePicker(false);
+                                }}
+                                initialFocus
+                              />
+                            </PopoverContent>
+                          </Popover>
+                        </div>
+
+                        <div className="space-y-2">
+                          <label className="text-sm font-semibold text-gray-900 dark:text-gray-200">Hora de início</label>
+                          <select
+                            className={cn(
+                              "h-11 px-3 py-1 text-sm font-normal border rounded-md w-full",
+                              isUiDarkMode ? "bg-[#1a1a1a] border-gray-700 text-gray-100" : "bg-white border-gray-300 text-gray-900"
+                            )}
+                            value={activityEditForm.startTime}
+                            onChange={(e) => {
+                              const time = e.target.value;
+                              const [hour, minute] = time.split(":").map(Number);
+                              // manter o comportamento atual: ajustar fim automaticamente (+5 min)
+                              let endHour = hour;
+                              let endMinute = minute + 5;
+                              if (endMinute >= 60) {
+                                endMinute -= 60;
+                                endHour = (endHour + 1) % 24;
+                              }
+                              const endTime = `${endHour.toString().padStart(2, "0")}:${endMinute.toString().padStart(2, "0")}`;
+                              setActivityEditForm({ ...activityEditForm, startTime: time, endTime });
+                            }}
+                          >
+                            {timeOptions.map((time) => (
+                              <option key={time} value={time}>
+                                {time}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        <div className="space-y-2">
+                          <label className="text-sm font-semibold text-gray-900 dark:text-gray-200">Data de fim</label>
+                          <Popover open={showEditEndDatePicker} onOpenChange={setShowEditEndDatePicker}>
+                            <PopoverTrigger asChild>
+                              <Button
+                                variant="outline"
+                                className={cn(
+                                  "w-full justify-start text-left font-normal h-11 rounded-md",
+                                  isUiDarkMode
+                                    ? "bg-[#1a1a1a] border-gray-700 text-gray-100 hover:bg-[#252525]"
+                                    : "bg-white border-gray-300 text-gray-900 hover:bg-gray-100"
+                                )}
+                              >
+                                <CalendarIconLucide className={cn("mr-3 h-4 w-4", isUiDarkMode ? "text-gray-400" : "text-gray-500")} />
+                                {format(activityEditForm.endDate, "dd 'de' MMM 'de' yyyy", { locale: ptBR })}
+                              </Button>
+                            </PopoverTrigger>
+                            <PopoverContent className={cn("w-auto p-0", isUiDarkMode ? "bg-[#1b1b1b] border-gray-700" : "bg-white border-gray-200")} align="start">
+                              <Calendar
+                                mode="single"
+                                selected={activityEditForm.endDate}
+                                onSelect={(date) => {
+                                  if (!date) return;
+                                  setActivityEditForm({ ...activityEditForm, endDate: date });
+                                  setShowEditEndDatePicker(false);
+                                }}
+                                initialFocus
+                              />
+                            </PopoverContent>
+                          </Popover>
+                        </div>
+
+                        <div className="space-y-2">
+                          <label className="text-sm font-semibold text-gray-900 dark:text-gray-200">Hora de fim</label>
+                          <select
+                            className={cn(
+                              "h-11 px-3 py-1 text-sm font-normal border rounded-md w-full",
+                              isUiDarkMode ? "bg-[#1a1a1a] border-gray-700 text-gray-100" : "bg-white border-gray-300 text-gray-900"
+                            )}
+                            value={activityEditForm.endTime}
+                            onChange={(e) => setActivityEditForm({ ...activityEditForm, endTime: e.target.value })}
+                          >
+                            {timeOptions.map((time) => (
+                              <option key={time} value={time}>
+                                {time}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                      </div>
+
+                      {/* Responsável */}
+                      <div className="space-y-2">
+                        <label className="text-sm font-semibold text-gray-900 dark:text-gray-200">Responsável</label>
+                        <Select
+                          value={activityEditForm.responsibleId}
+                          onValueChange={(v) => setActivityEditForm({ ...activityEditForm, responsibleId: v })}
+                        >
+                          <SelectTrigger
+                            className={cn(
+                              "h-11",
+                              isUiDarkMode ? "bg-[#1a1a1a] border-gray-700 text-gray-100" : "bg-white border-gray-300 text-gray-900"
+                            )}
+                          >
+                            <SelectValue placeholder="Responsável" />
+                          </SelectTrigger>
+                          <SelectContent className={cn(isUiDarkMode ? "bg-[#1b1b1b] border-gray-700 text-gray-100" : "bg-white border-gray-200 text-gray-900")}>
+                            {users.map((u) => (
+                              <SelectItem key={u.id} value={u.id}>
+                                {u.name}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+
+                      {/* Descrição */}
+                      <div className="space-y-2">
+                        <label className="text-sm font-semibold text-gray-900 dark:text-gray-200">Descrição</label>
+                        <Textarea
+                          placeholder="Adicione detalhes sobre a atividade..."
+                          value={activityEditForm.description}
+                          onChange={(e) => setActivityEditForm({ ...activityEditForm, description: e.target.value })}
+                          className={cn(
+                            "min-h-[120px] focus:border-blue-500",
+                            isUiDarkMode
+                              ? "bg-[#1a1a1a] border-gray-700 text-gray-100 placeholder:text-gray-500"
+                              : "bg-white border-gray-300 text-gray-900 placeholder:text-gray-400"
+                          )}
+                        />
+                      </div>
+
+                      {/* Conclusão */}
+                      <div className="flex items-center gap-3 pt-2">
+                        <Checkbox
+                          id="activity-edit-done-inline"
+                          checked={activityEditForm.markAsDone}
+                          onCheckedChange={(checked) =>
+                            setActivityEditForm({ ...activityEditForm, markAsDone: checked === true })
+                          }
+                          className={cn(
+                            isUiDarkMode ? "border-gray-700" : "border-gray-300",
+                            "data-[state=checked]:bg-blue-600 data-[state=checked]:border-blue-600"
+                          )}
+                        />
+                        <label
+                          htmlFor="activity-edit-done-inline"
+                          className={cn(
+                            "text-sm font-medium cursor-pointer",
+                            isUiDarkMode ? "text-gray-200" : "text-gray-900"
+                          )}
+                        >
+                          Marcar como concluída
+                        </label>
+                      </div>
+                    </div>
+
+                    <div
+                      className={cn(
+                        "mt-0 mx-0 mb-0 border-t flex items-center justify-end gap-4 shrink-0 px-6 py-4",
+                        isUiDarkMode ? "border-gray-600 bg-[#1f1f1f]" : "border-gray-200 bg-white"
+                      )}
+                    >
+                      <Button
+                        variant="outline"
+                        onClick={() => {
+                          setSelectedActivityForEdit(null);
+                          if (mode === "activity_edit") onClose?.();
+                        }}
+                        className={cn(
+                          "h-10 rounded-none",
+                          isUiDarkMode
+                            ? "border-gray-600 text-gray-200 hover:bg-[#252525] hover:text-white"
+                            : "border-gray-300 text-gray-700 hover:bg-gray-100"
+                        )}
+                      >
+                        Cancelar
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        onClick={handleDeleteActivity}
+                        className="text-red-200 hover:text-red-100 hover:bg-red-500/20 h-10 px-2 flex items-center gap-2 rounded-none"
+                      >
+                        <X className="h-4 w-4" />
+                        Excluir
+                      </Button>
+                      <Button
+                        onClick={handleUpdateActivity}
+                        className="bg-[#eab308] hover:bg-[#ca8a04] text-black font-semibold h-10 px-8 rounded-none"
+                      >
+                        Salvar Alterações
+                      </Button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="space-y-8">
+                  <div className="flex gap-6 h-full">
+                    {/* Área Principal - Formulário de Atividade */}
+                    <div className="flex-1 space-y-6 p-6">
                     {/* Título da Atividade */}
                     <div>
                       <Input
@@ -5188,6 +5547,8 @@ const normalizeFieldKey = (label: string) => {
                         )}
                     </div>
                 </div>
+                  </div>
+                )}
               </TabsContent>
 
               <TabsContent value="mensagens" className="mt-0">
@@ -5234,373 +5595,576 @@ const normalizeFieldKey = (label: string) => {
       <Dialog open={isActivityEditModalOpen} onOpenChange={setIsActivityEditModalOpen}>
         <DialogContent
           className={cn(
-            "max-w-2xl p-0 overflow-hidden border",
-            isUiDarkMode ? "bg-[#0f0f0f] border-gray-800" : "bg-white border-gray-200"
+            "max-w-6xl w-full h-[90vh] p-0 gap-0 flex flex-col",
+            isUiDarkMode ? "bg-[#2d2d2d] border-gray-600" : "bg-white border-gray-200"
           )}
         >
-          <div className="flex flex-col h-full max-h-[90vh]">
-            <DialogHeader
-              className={cn(
-                "px-6 py-4 border-b shrink-0",
-                isUiDarkMode ? "border-gray-800 bg-[#1a1a1a]" : "border-gray-200 bg-white"
-              )}
-            >
-              <DialogTitle
-                className={cn("text-xl font-semibold", isUiDarkMode ? "text-white" : "text-gray-900")}
-              >
-                Editar atividade
-              </DialogTitle>
+          {/* Header no padrão do modal de Detalhes da Oportunidade (resumido) */}
+          <DialogHeader
+            className={cn(
+              "mx-0 mt-0 px-6 py-4 border-b shrink-0 bg-primary text-primary-foreground",
+              isUiDarkMode ? "border-gray-600" : "border-gray-200"
+            )}
+          >
+            <div className="flex items-center gap-4 flex-1 pr-8">
+              <Avatar className="w-12 h-12 border-2 border-white/20">
+                <AvatarImage
+                  src={(contact as any)?.profile_image_url}
+                  alt={contact?.name || "Contato"}
+                />
+                <AvatarFallback className="bg-white/20 text-primary-foreground font-semibold text-lg">
+                  {contact?.name ? String(contact.name).charAt(0).toUpperCase() : "?"}
+                </AvatarFallback>
+              </Avatar>
+
+              <div className="flex items-start gap-4 flex-1 min-w-0">
+                <div className="flex flex-col min-w-0">
+                  <DialogTitle className="text-xl font-bold text-left truncate text-primary-foreground">
+                    {contact?.name || dealName || contact?.phone || "Sem nome"}
+                  </DialogTitle>
+                  <div className="flex items-center gap-2 text-primary-foreground/80">
+                    <p className="text-sm text-left">{contact?.phone || "-"}</p>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2 flex-wrap">
+                  {(contactTags || []).slice(0, 3).map((tag: any) => (
+                    <Badge
+                      key={tag.id || tag.name}
+                      variant="outline"
+                      className="border-white/40 bg-white/10 px-2 py-0.5 text-xs text-primary-foreground"
+                    >
+                      {tag.name}
+                    </Badge>
+                  ))}
+                  {(contactTags || []).length > 3 && (
+                    <Badge
+                      variant="outline"
+                      className="border-white/40 bg-white/10 px-2 py-0.5 text-xs text-primary-foreground"
+                    >
+                      +{(contactTags || []).length - 3}
+                    </Badge>
+                  )}
+                </div>
+              </div>
+            </div>
           </DialogHeader>
 
-            <div className="p-6 space-y-6 overflow-y-auto">
-              {/* Assunto/Título */}
-              <div className="space-y-2">
-                <label className="text-sm font-semibold text-gray-900 dark:text-gray-200">Assunto</label>
-            <Input
-                  placeholder={activityEditForm.type}
-              value={activityEditForm.subject}
-              onChange={(e) => setActivityEditForm({ ...activityEditForm, subject: e.target.value })}
+          <Tabs
+            value={activityEditModalTab}
+            onValueChange={(v) => setActivityEditModalTab(v as any)}
+            className="flex-1 min-h-0 flex flex-col"
+          >
+            <div
+              className={cn(
+                "px-6 py-3 border-b shrink-0",
+                isUiDarkMode ? "border-gray-600 bg-[#1f1f1f]" : "border-gray-200 bg-white"
+              )}
+            >
+              <TabsList
+                className={cn(
+                  "rounded-none bg-transparent p-0 h-auto gap-2",
+                  isUiDarkMode ? "text-gray-200" : "text-gray-900"
+                )}
+              >
+                <TabsTrigger
+                  value="detalhes"
                   className={cn(
-                    "h-11 focus:border-blue-500",
+                    "rounded-none px-4 py-2 text-sm font-semibold border",
                     isUiDarkMode
-                      ? "bg-[#1a1a1a] border-gray-700 text-gray-100 placeholder:text-gray-500"
-                      : "bg-white border-gray-300 text-gray-900 placeholder:text-gray-400"
+                      ? "border-gray-600 data-[state=active]:bg-[#2a2a2a] data-[state=active]:text-white"
+                      : "border-gray-200 data-[state=active]:bg-gray-100 data-[state=active]:text-gray-900"
                   )}
-            />
-              </div>
+                >
+                  Detalhes da oportunidade
+                </TabsTrigger>
+                <TabsTrigger
+                  value="atividade"
+                  className={cn(
+                    "rounded-none px-4 py-2 text-sm font-semibold border",
+                    isUiDarkMode
+                      ? "border-gray-600 data-[state=active]:bg-[#2a2a2a] data-[state=active]:text-white"
+                      : "border-gray-200 data-[state=active]:bg-gray-100 data-[state=active]:text-gray-900"
+                  )}
+                >
+                  Atividade (edição)
+                </TabsTrigger>
+              </TabsList>
+            </div>
 
-              {/* Ícones de tipo */}
-              <div className="space-y-2">
-                <label className="text-sm font-semibold text-gray-900 dark:text-gray-200">Tipo de atividade</label>
-            <div className="flex items-center gap-2 flex-wrap">
-              {[
-                { label: "Mensagem", type: "Mensagem", icon: MessageSquareIcon },
-                { label: "Ligação não atendida", type: "Ligação não atendida", icon: Phone },
-                { label: "Ligação atendida", type: "Ligação atendida", icon: Phone },
-                { label: "Ligação abordada", type: "Ligação abordada", icon: Phone },
-                { label: "Ligação agendada", type: "Ligação agendada", icon: Phone },
-                { label: "Ligação de follow up", type: "Ligação de follow up", icon: Phone },
-                { label: "Reunião agendada", type: "Reunião agendada", icon: CalendarIconLucide },
-                { label: "Reunião realizada", type: "Reunião realizada", icon: CalendarIconLucide },
-                { label: "Reunião não realizada", type: "Reunião não realizada", icon: CalendarIconLucide },
-                { label: "Reunião reagendada", type: "Reunião reagendada", icon: CalendarIconLucide },
-                { label: "WhatsApp enviado", type: "WhatsApp enviado", icon: MessageSquareIcon },
-              ].map((option) => {
-                const Icon = option.icon;
-                return (
-                  <Tooltip key={option.type}>
-                    <TooltipTrigger asChild>
-                      <button
-                        onClick={() => setActivityEditForm({ ...activityEditForm, type: option.type })}
-                        className={cn(
-                          "p-2 rounded-md transition-colors",
-                          activityEditForm.type === option.type
-                                ? "bg-[#eab308] text-black"
-                                : isUiDarkMode
-                                  ? "bg-[#1a1a1a] border border-gray-700 text-gray-300 hover:bg-[#252525] hover:text-gray-100"
-                                  : "bg-white border border-gray-300 text-gray-700 hover:bg-gray-100"
-                        )}
-                      >
-                        <Icon className="h-5 w-5" />
-                      </button>
-                    </TooltipTrigger>
-                        <TooltipContent
+            {/* Resumo: Detalhes da oportunidade */}
+            <TabsContent value="detalhes" className="mt-0 flex-1 min-h-0 overflow-y-auto p-6">
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                <div
+                  className={cn(
+                    "border p-4 rounded-none",
+                    isUiDarkMode ? "border-gray-600 bg-[#1f1f1f] text-gray-100" : "border-gray-200 bg-white text-gray-900"
+                  )}
+                >
+                  <div className="flex items-center justify-between gap-3">
+                    <h3 className="font-semibold">Oportunidade</h3>
+                    <Badge
+                      variant="outline"
+                      className={cn(
+                        "rounded-none text-xs",
+                        isUiDarkMode ? "border-gray-600 text-gray-200" : "border-gray-200 text-gray-700"
+                      )}
+                    >
+                      {String(cardData?.status || "aberto")}
+                    </Badge>
+                  </div>
+                  <p className={cn("mt-2 text-sm", isUiDarkMode ? "text-gray-200" : "text-gray-700")}>
+                    {dealName || cardData?.description || "-"}
+                  </p>
+
+                  <div className="mt-4 grid grid-cols-2 gap-3 text-xs">
+                    <div>
+                      <div className={cn("font-semibold", isUiDarkMode ? "text-gray-200" : "text-gray-700")}>Pipeline</div>
+                      <div className={cn("mt-0.5", isUiDarkMode ? "text-gray-100" : "text-gray-900")}>
+                        {pipelineData?.name || "-"}
+                      </div>
+                    </div>
+                    <div>
+                      <div className={cn("font-semibold", isUiDarkMode ? "text-gray-200" : "text-gray-700")}>Etapa</div>
+                      <div className={cn("mt-0.5", isUiDarkMode ? "text-gray-100" : "text-gray-900")}>
+                        {currentColumn?.name || "-"}
+                      </div>
+                    </div>
+                    <div>
+                      <div className={cn("font-semibold", isUiDarkMode ? "text-gray-200" : "text-gray-700")}>Responsável</div>
+                      <div className={cn("mt-0.5", isUiDarkMode ? "text-gray-100" : "text-gray-900")}>
+                        {owner?.name || "-"}
+                      </div>
+                    </div>
+                    <div>
+                      <div className={cn("font-semibold", isUiDarkMode ? "text-gray-200" : "text-gray-700")}>Valor</div>
+                      <div className={cn("mt-0.5", isUiDarkMode ? "text-gray-100" : "text-gray-900")}>
+                        {typeof cardData?.value === "number"
+                          ? cardData.value.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })
+                          : typeof cardData?.value === "string" && cardData.value
+                            ? cardData.value
+                            : "-"}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <div
+                  className={cn(
+                    "border p-4 rounded-none",
+                    isUiDarkMode ? "border-gray-600 bg-[#1f1f1f] text-gray-100" : "border-gray-200 bg-white text-gray-900"
+                  )}
+                >
+                  <h3 className="font-semibold">Contato</h3>
+                  <div className="mt-3 space-y-2 text-sm">
+                    <div className="flex items-center justify-between gap-3">
+                      <span className={cn("text-xs font-semibold", isUiDarkMode ? "text-gray-200" : "text-gray-700")}>Nome</span>
+                      <span className={cn("text-sm", isUiDarkMode ? "text-gray-100" : "text-gray-900")}>
+                        {contact?.name || "-"}
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between gap-3">
+                      <span className={cn("text-xs font-semibold", isUiDarkMode ? "text-gray-200" : "text-gray-700")}>Telefone</span>
+                      <span className={cn("text-sm", isUiDarkMode ? "text-gray-100" : "text-gray-900")}>
+                        {contact?.phone || "-"}
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between gap-3">
+                      <span className={cn("text-xs font-semibold", isUiDarkMode ? "text-gray-200" : "text-gray-700")}>Empresa</span>
+                      <span className={cn("text-sm", isUiDarkMode ? "text-gray-100" : "text-gray-900")}>
+                        {(contact as any)?.company || "-"}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </TabsContent>
+
+            {/* Aba: Edição da atividade (mantém o formulário atual) */}
+            <TabsContent value="atividade" className="mt-0 flex-1 min-h-0 overflow-hidden">
+              <div className="flex flex-col h-full">
+                <div className="p-6 space-y-6 overflow-y-auto flex-1 min-h-0">
+                  {/* Assunto/Título */}
+                  <div className="space-y-2">
+                    <label className="text-sm font-semibold text-gray-900 dark:text-gray-200">Assunto</label>
+                    <Input
+                      placeholder={activityEditForm.type}
+                      value={activityEditForm.subject}
+                      onChange={(e) => setActivityEditForm({ ...activityEditForm, subject: e.target.value })}
+                      className={cn(
+                        "h-11 focus:border-blue-500",
+                        isUiDarkMode
+                          ? "bg-[#1a1a1a] border-gray-700 text-gray-100 placeholder:text-gray-500"
+                          : "bg-white border-gray-300 text-gray-900 placeholder:text-gray-400"
+                      )}
+                    />
+                  </div>
+
+                  {/* Ícones de tipo */}
+                  <div className="space-y-2">
+                    <label className="text-sm font-semibold text-gray-900 dark:text-gray-200">Tipo de atividade</label>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      {[
+                        { label: "Mensagem", type: "Mensagem", icon: MessageSquareIcon },
+                        { label: "Ligação não atendida", type: "Ligação não atendida", icon: Phone },
+                        { label: "Ligação atendida", type: "Ligação atendida", icon: Phone },
+                        { label: "Ligação abordada", type: "Ligação abordada", icon: Phone },
+                        { label: "Ligação agendada", type: "Ligação agendada", icon: Phone },
+                        { label: "Ligação de follow up", type: "Ligação de follow up", icon: Phone },
+                        { label: "Reunião agendada", type: "Reunião agendada", icon: CalendarIconLucide },
+                        { label: "Reunião realizada", type: "Reunião realizada", icon: CalendarIconLucide },
+                        { label: "Reunião não realizada", type: "Reunião não realizada", icon: CalendarIconLucide },
+                        { label: "Reunião reagendada", type: "Reunião reagendada", icon: CalendarIconLucide },
+                        { label: "WhatsApp enviado", type: "WhatsApp enviado", icon: MessageSquareIcon },
+                      ].map((option) => {
+                        const Icon = option.icon;
+                        return (
+                          <Tooltip key={option.type}>
+                            <TooltipTrigger asChild>
+                              <button
+                                onClick={() => setActivityEditForm({ ...activityEditForm, type: option.type })}
+                                className={cn(
+                                  "p-2 rounded-md transition-colors",
+                                  activityEditForm.type === option.type
+                                    ? "bg-[#eab308] text-black"
+                                    : isUiDarkMode
+                                      ? "bg-[#1a1a1a] border border-gray-700 text-gray-300 hover:bg-[#252525] hover:text-gray-100"
+                                      : "bg-white border border-gray-300 text-gray-700 hover:bg-gray-100"
+                                )}
+                              >
+                                <Icon className="h-5 w-5" />
+                              </button>
+                            </TooltipTrigger>
+                            <TooltipContent
+                              className={cn(
+                                "shadow-md",
+                                isUiDarkMode
+                                  ? "bg-[#1b1b1b] border-gray-700 text-gray-100"
+                                  : "bg-white border-gray-200 text-gray-900"
+                              )}
+                            >
+                              <p>{option.label}</p>
+                            </TooltipContent>
+                          </Tooltip>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  {/* Grid para Datas e Horas */}
+                  <div className="grid grid-cols-2 gap-6">
+                    {/* Data de início */}
+                    <div className="space-y-2">
+                      <label className="text-sm font-semibold text-gray-900 dark:text-gray-200">Data de início</label>
+                      <Popover open={showEditStartDatePicker} onOpenChange={setShowEditStartDatePicker}>
+                        <PopoverTrigger asChild>
+                          <Button
+                            variant="outline"
+                            className={cn(
+                              "w-full justify-start text-left font-normal h-11 rounded-md",
+                              isUiDarkMode
+                                ? "bg-[#1a1a1a] border-gray-700 text-gray-100 hover:bg-[#252525]"
+                                : "bg-white border-gray-300 text-gray-900 hover:bg-gray-100"
+                            )}
+                          >
+                            <CalendarIconLucide
+                              className={cn("mr-3 h-4 w-4", isUiDarkMode ? "text-gray-400" : "text-gray-500")}
+                            />
+                            {format(activityEditForm.startDate, "dd 'de' MMM 'de' yyyy", { locale: ptBR })}
+                          </Button>
+                        </PopoverTrigger>
+                        <PopoverContent
                           className={cn(
-                            "shadow-md",
+                            "w-auto p-0",
+                            isUiDarkMode ? "bg-[#1b1b1b] border-gray-700" : "bg-white border-gray-200"
+                          )}
+                          align="start"
+                        >
+                          <Calendar
+                            mode="single"
+                            selected={activityEditForm.startDate}
+                            onSelect={(date) => {
+                              if (date) {
+                                setActivityEditForm({ ...activityEditForm, startDate: date, endDate: date });
+                                setShowEditStartDatePicker(false);
+                              }
+                            }}
+                            initialFocus
+                          />
+                        </PopoverContent>
+                      </Popover>
+                    </div>
+                    {/* Hora de início */}
+                    <div className="space-y-2">
+                      <label className="text-sm font-semibold text-gray-900 dark:text-gray-200">Hora de início</label>
+                      <Popover open={showEditStartTimePicker} onOpenChange={setShowEditStartTimePicker}>
+                        <PopoverTrigger asChild>
+                          <Button
+                            variant="outline"
+                            className={cn(
+                              "w-full justify-start text-left font-normal h-11 rounded-md",
+                              isUiDarkMode
+                                ? "bg-[#1a1a1a] border-gray-700 text-gray-100 hover:bg-[#252525]"
+                                : "bg-white border-gray-300 text-gray-900 hover:bg-gray-100"
+                            )}
+                          >
+                            <Clock className={cn("mr-3 h-4 w-4", isUiDarkMode ? "text-gray-400" : "text-gray-500")} />
+                            {activityEditForm.startTime}
+                          </Button>
+                        </PopoverTrigger>
+                        <PopoverContent
+                          className={cn(
+                            "w-32 p-0",
+                            isUiDarkMode ? "bg-[#1b1b1b] border-gray-700" : "bg-white border-gray-200"
+                          )}
+                          align="start"
+                        >
+                          <ScrollArea className="h-60">
+                            <div className="p-1">
+                              {timeOptions.map((time) => (
+                                <button
+                                  key={time}
+                                  className={cn(
+                                    "w-full text-left px-3 py-2 text-sm rounded-sm transition-colors",
+                                    isUiDarkMode ? "text-gray-100 hover:bg-gray-800" : "text-gray-900 hover:bg-gray-100",
+                                    activityEditForm.startTime === time && "bg-primary text-primary-foreground font-semibold"
+                                  )}
+                                  onClick={() => {
+                                    const [hour, minute] = time.split(":").map(Number);
+
+                                    // Calcular hora fim (5 minutos depois)
+                                    let endHour = hour;
+                                    let endMinute = minute + 5;
+                                    if (endMinute >= 60) {
+                                      endMinute -= 60;
+                                      endHour = (endHour + 1) % 24;
+                                    }
+                                    const endTime = `${endHour.toString().padStart(2, "0")}:${endMinute
+                                      .toString()
+                                      .padStart(2, "0")}`;
+
+                                    setActivityEditForm({
+                                      ...activityEditForm,
+                                      startTime: time,
+                                      endTime: endTime,
+                                    });
+                                    setShowEditStartTimePicker(false);
+                                  }}
+                                >
+                                  {time}
+                                </button>
+                              ))}
+                            </div>
+                          </ScrollArea>
+                        </PopoverContent>
+                      </Popover>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-6">
+                    {/* Data de fim */}
+                    <div className="space-y-2">
+                      <label className="text-sm font-semibold text-gray-900 dark:text-gray-200">Data de fim</label>
+                      <Popover open={showEditEndDatePicker} onOpenChange={setShowEditEndDatePicker}>
+                        <PopoverTrigger asChild>
+                          <Button
+                            variant="outline"
+                            className={cn(
+                              "w-full justify-start text-left font-normal h-11 rounded-md",
+                              isUiDarkMode
+                                ? "bg-[#1a1a1a] border-gray-700 text-gray-100 hover:bg-[#252525]"
+                                : "bg-white border-gray-300 text-gray-900 hover:bg-gray-100"
+                            )}
+                          >
+                            <CalendarIconLucide
+                              className={cn("mr-3 h-4 w-4", isUiDarkMode ? "text-gray-400" : "text-gray-500")}
+                            />
+                            {format(activityEditForm.endDate, "dd 'de' MMM 'de' yyyy", { locale: ptBR })}
+                          </Button>
+                        </PopoverTrigger>
+                        <PopoverContent
+                          className={cn(
+                            "w-auto p-0",
+                            isUiDarkMode ? "bg-[#1b1b1b] border-gray-700" : "bg-white border-gray-200"
+                          )}
+                          align="start"
+                        >
+                          <Calendar
+                            mode="single"
+                            selected={activityEditForm.endDate}
+                            onSelect={(date) => {
+                              if (date) {
+                                setActivityEditForm({ ...activityEditForm, endDate: date });
+                                setShowEditEndDatePicker(false);
+                              }
+                            }}
+                            initialFocus
+                          />
+                        </PopoverContent>
+                      </Popover>
+                    </div>
+                    {/* Hora de fim */}
+                    <div className="space-y-2">
+                      <label className="text-sm font-semibold text-gray-900 dark:text-gray-200">Hora de fim</label>
+                      <Popover open={showEditEndTimePicker} onOpenChange={setShowEditEndTimePicker}>
+                        <PopoverTrigger asChild>
+                          <Button
+                            variant="outline"
+                            className={cn(
+                              "w-full justify-start text-left font-normal h-11 rounded-md",
+                              isUiDarkMode
+                                ? "bg-[#1a1a1a] border-gray-700 text-gray-100 hover:bg-[#252525]"
+                                : "bg-white border-gray-300 text-gray-900 hover:bg-gray-100"
+                            )}
+                          >
+                            <Clock className={cn("mr-3 h-4 w-4", isUiDarkMode ? "text-gray-400" : "text-gray-500")} />
+                            {activityEditForm.endTime}
+                          </Button>
+                        </PopoverTrigger>
+                        <PopoverContent
+                          className={cn(
+                            "w-32 p-0",
+                            isUiDarkMode ? "bg-[#1b1b1b] border-gray-700" : "bg-white border-gray-200"
+                          )}
+                          align="start"
+                        >
+                          <ScrollArea className="h-60">
+                            <div className="p-1">
+                              {timeOptions.map((time) => (
+                                <button
+                                  key={time}
+                                  className={cn(
+                                    "w-full text-left px-3 py-2 text-sm rounded-sm transition-colors",
+                                    isUiDarkMode ? "text-gray-100 hover:bg-gray-800" : "text-gray-900 hover:bg-gray-100",
+                                    activityEditForm.endTime === time && "bg-primary text-primary-foreground font-semibold"
+                                  )}
+                                  onClick={() => {
+                                    setActivityEditForm({ ...activityEditForm, endTime: time });
+                                    setShowEditEndTimePicker(false);
+                                  }}
+                                >
+                                  {time}
+                                </button>
+                              ))}
+                            </div>
+                          </ScrollArea>
+                        </PopoverContent>
+                      </Popover>
+                    </div>
+                  </div>
+
+                  {/* Responsável */}
+                  <div className="grid grid-cols-2 gap-6">
+                    <div className="space-y-2">
+                      <label className="text-sm font-semibold text-gray-900 dark:text-gray-200">Responsável</label>
+                      <Select
+                        value={activityEditForm.responsibleId}
+                        onValueChange={(v) => setActivityEditForm({ ...activityEditForm, responsibleId: v })}
+                      >
+                        <SelectTrigger
+                          className={cn(
+                            "h-11",
+                            isUiDarkMode
+                              ? "bg-[#1a1a1a] border-gray-700 text-gray-100"
+                              : "bg-white border-gray-300 text-gray-900"
+                          )}
+                        >
+                          <SelectValue placeholder="Responsável" />
+                        </SelectTrigger>
+                        <SelectContent
+                          className={cn(
                             isUiDarkMode
                               ? "bg-[#1b1b1b] border-gray-700 text-gray-100"
                               : "bg-white border-gray-200 text-gray-900"
                           )}
                         >
-                      <p>{option.label}</p>
-                    </TooltipContent>
-                  </Tooltip>
-                );
-              })}
-            </div>
-              </div>
-
-              {/* Grid para Datas e Horas */}
-              <div className="grid grid-cols-2 gap-6">
-                {/* Data de início */}
-              <div className="space-y-2">
-                  <label className="text-sm font-semibold text-gray-900 dark:text-gray-200">Data de início</label>
-                <Popover open={showEditStartDatePicker} onOpenChange={setShowEditStartDatePicker}>
-                  <PopoverTrigger asChild>
-                      <Button
-                        variant="outline"
-                        className={cn(
-                          "w-full justify-start text-left font-normal h-11 rounded-md",
-                          isUiDarkMode
-                            ? "bg-[#1a1a1a] border-gray-700 text-gray-100 hover:bg-[#252525]"
-                            : "bg-white border-gray-300 text-gray-900 hover:bg-gray-100"
-                        )}
-                      >
-                        <CalendarIconLucide className={cn("mr-3 h-4 w-4", isUiDarkMode ? "text-gray-400" : "text-gray-500")} />
-                      {format(activityEditForm.startDate, "dd 'de' MMM 'de' yyyy", { locale: ptBR })}
-                    </Button>
-                  </PopoverTrigger>
-                    <PopoverContent
-                      className={cn(
-                        "w-auto p-0",
-                        isUiDarkMode ? "bg-[#1b1b1b] border-gray-700" : "bg-white border-gray-200"
-                      )}
-                      align="start"
-                    >
-                      <Calendar mode="single" selected={activityEditForm.startDate} onSelect={(date) => { if (date) { setActivityEditForm({ ...activityEditForm, startDate: date, endDate: date }); setShowEditStartDatePicker(false); } }} initialFocus />
-                  </PopoverContent>
-                </Popover>
-              </div>
-                {/* Hora de início */}
-              <div className="space-y-2">
-                  <label className="text-sm font-semibold text-gray-900 dark:text-gray-200">Hora de início</label>
-                <Popover open={showEditStartTimePicker} onOpenChange={setShowEditStartTimePicker}>
-                  <PopoverTrigger asChild>
-                      <Button
-                        variant="outline"
-                        className={cn(
-                          "w-full justify-start text-left font-normal h-11 rounded-md",
-                          isUiDarkMode
-                            ? "bg-[#1a1a1a] border-gray-700 text-gray-100 hover:bg-[#252525]"
-                            : "bg-white border-gray-300 text-gray-900 hover:bg-gray-100"
-                        )}
-                      >
-                        <Clock className={cn("mr-3 h-4 w-4", isUiDarkMode ? "text-gray-400" : "text-gray-500")} />
-                      {activityEditForm.startTime}
-                    </Button>
-                  </PopoverTrigger>
-                    <PopoverContent
-                      className={cn(
-                        "w-32 p-0",
-                        isUiDarkMode ? "bg-[#1b1b1b] border-gray-700" : "bg-white border-gray-200"
-                      )}
-                      align="start"
-                    >
-                      <ScrollArea className="h-60">
-                        <div className="p-1">
-                          {timeOptions.map((time) => (
-                            <button 
-                              key={time} 
-                              className={cn(
-                                "w-full text-left px-3 py-2 text-sm rounded-sm transition-colors",
-                                isUiDarkMode ? "text-gray-100 hover:bg-gray-800" : "text-gray-900 hover:bg-gray-100",
-                                activityEditForm.startTime === time && "bg-primary text-primary-foreground font-semibold"
-                              )} 
-                              onClick={() => { 
-                                const [hour, minute] = time.split(':').map(Number);
-                                
-                                // Calcular hora fim (5 minutos depois)
-                                let endHour = hour;
-                                let endMinute = minute + 5;
-                                if (endMinute >= 60) {
-                                  endMinute -= 60;
-                                  endHour = (endHour + 1) % 24;
-                                }
-                                const endTime = `${endHour.toString().padStart(2, '0')}:${endMinute.toString().padStart(2, '0')}`;
-
-                                setActivityEditForm({ 
-                                  ...activityEditForm, 
-                                  startTime: time,
-                                  endTime: endTime 
-                                }); 
-                                setShowEditStartTimePicker(false); 
-                              }}
-                            >
-                              {time}
-                            </button>
+                          {users.map((user) => (
+                            <SelectItem key={user.id} value={user.id}>
+                              {user.name}
+                            </SelectItem>
                           ))}
-                        </div>
-                      </ScrollArea>
-                  </PopoverContent>
-                </Popover>
-                </div>
-              </div>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
 
-              <div className="grid grid-cols-2 gap-6">
-                {/* Data de fim */}
-              <div className="space-y-2">
-                  <label className="text-sm font-semibold text-gray-900 dark:text-gray-200">Data de fim</label>
-                <Popover open={showEditEndDatePicker} onOpenChange={setShowEditEndDatePicker}>
-                  <PopoverTrigger asChild>
-                      <Button
-                        variant="outline"
-                        className={cn(
-                          "w-full justify-start text-left font-normal h-11 rounded-md",
-                          isUiDarkMode
-                            ? "bg-[#1a1a1a] border-gray-700 text-gray-100 hover:bg-[#252525]"
-                            : "bg-white border-gray-300 text-gray-900 hover:bg-gray-100"
-                        )}
-                      >
-                        <CalendarIconLucide className={cn("mr-3 h-4 w-4", isUiDarkMode ? "text-gray-400" : "text-gray-500")} />
-                      {format(activityEditForm.endDate, "dd 'de' MMM 'de' yyyy", { locale: ptBR })}
-                    </Button>
-                  </PopoverTrigger>
-                    <PopoverContent
+                  {/* Descrição */}
+                  <div className="space-y-2">
+                    <label className="text-sm font-semibold text-gray-900 dark:text-gray-200">Descrição</label>
+                    <Textarea
+                      placeholder="Adicione detalhes sobre a atividade..."
+                      value={activityEditForm.description}
+                      onChange={(e) => setActivityEditForm({ ...activityEditForm, description: e.target.value })}
                       className={cn(
-                        "w-auto p-0",
-                        isUiDarkMode ? "bg-[#1b1b1b] border-gray-700" : "bg-white border-gray-200"
-                      )}
-                      align="start"
-                    >
-                      <Calendar mode="single" selected={activityEditForm.endDate} onSelect={(date) => { if (date) { setActivityEditForm({ ...activityEditForm, endDate: date }); setShowEditEndDatePicker(false); } }} initialFocus />
-                  </PopoverContent>
-                </Popover>
-              </div>
-                {/* Hora de fim */}
-              <div className="space-y-2">
-                  <label className="text-sm font-semibold text-gray-900 dark:text-gray-200">Hora de fim</label>
-                <Popover open={showEditEndTimePicker} onOpenChange={setShowEditEndTimePicker}>
-                  <PopoverTrigger asChild>
-                      <Button
-                        variant="outline"
-                        className={cn(
-                          "w-full justify-start text-left font-normal h-11 rounded-md",
-                          isUiDarkMode
-                            ? "bg-[#1a1a1a] border-gray-700 text-gray-100 hover:bg-[#252525]"
-                            : "bg-white border-gray-300 text-gray-900 hover:bg-gray-100"
-                        )}
-                      >
-                        <Clock className={cn("mr-3 h-4 w-4", isUiDarkMode ? "text-gray-400" : "text-gray-500")} />
-                      {activityEditForm.endTime}
-                    </Button>
-                  </PopoverTrigger>
-                    <PopoverContent
-                      className={cn(
-                        "w-32 p-0",
-                        isUiDarkMode ? "bg-[#1b1b1b] border-gray-700" : "bg-white border-gray-200"
-                      )}
-                      align="start"
-                    >
-                      <ScrollArea className="h-60">
-                        <div className="p-1">
-                          {timeOptions.map((time) => (
-                            <button
-                              key={time}
-                              className={cn(
-                                "w-full text-left px-3 py-2 text-sm rounded-sm transition-colors",
-                                isUiDarkMode ? "text-gray-100 hover:bg-gray-800" : "text-gray-900 hover:bg-gray-100",
-                                activityEditForm.endTime === time && "bg-primary text-primary-foreground font-semibold"
-                              )}
-                              onClick={() => { setActivityEditForm({ ...activityEditForm, endTime: time }); setShowEditEndTimePicker(false); }}
-                            >
-                              {time}
-                            </button>
-                          ))}
-                        </div>
-                      </ScrollArea>
-                  </PopoverContent>
-                </Popover>
-                </div>
-              </div>
-
-              {/* Responsável */}
-              <div className="grid grid-cols-2 gap-6">
-              <div className="space-y-2">
-                <label className="text-sm font-semibold text-gray-900 dark:text-gray-200">Responsável</label>
-                <Select
-                  value={activityEditForm.responsibleId}
-                  onValueChange={(v) => setActivityEditForm({ ...activityEditForm, responsibleId: v })}
-                >
-                    <SelectTrigger
-                      className={cn(
-                        "h-11",
+                        "min-h-[120px] focus:border-blue-500",
                         isUiDarkMode
-                          ? "bg-[#1a1a1a] border-gray-700 text-gray-100"
-                          : "bg-white border-gray-300 text-gray-900"
+                          ? "bg-[#1a1a1a] border-gray-700 text-gray-100 placeholder:text-gray-500"
+                          : "bg-white border-gray-300 text-gray-900 placeholder:text-gray-400"
                       )}
-                    >
-                    <SelectValue placeholder="Responsável" />
-                  </SelectTrigger>
-                    <SelectContent
+                    />
+                  </div>
+
+                  {/* Checkbox de conclusão */}
+                  <div className="flex items-center gap-3 pt-2">
+                    <Checkbox
+                      id="activity-edit-done"
+                      checked={activityEditForm.markAsDone}
+                      onCheckedChange={(checked) =>
+                        setActivityEditForm({ ...activityEditForm, markAsDone: checked === true })
+                      }
                       className={cn(
-                        isUiDarkMode
-                          ? "bg-[#1b1b1b] border-gray-700 text-gray-100"
-                          : "bg-white border-gray-200 text-gray-900"
+                        isUiDarkMode ? "border-gray-700" : "border-gray-300",
+                        "data-[state=checked]:bg-blue-600 data-[state=checked]:border-blue-600"
+                      )}
+                    />
+                    <label
+                      htmlFor="activity-edit-done"
+                      className={cn(
+                        "text-sm font-medium cursor-pointer",
+                        isUiDarkMode ? "text-gray-200" : "text-gray-900"
                       )}
                     >
-                    {users.map((user) => (
-                      <SelectItem key={user.id} value={user.id}>
-                        {user.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              </div>
+                      Marcar como concluída
+                    </label>
+                  </div>
+                </div>
 
-              {/* Descrição */}
-            <div className="space-y-2">
-                <label className="text-sm font-semibold text-gray-900 dark:text-gray-200">Descrição</label>
-            <Textarea
-                  placeholder="Adicione detalhes sobre a atividade..."
-              value={activityEditForm.description}
-              onChange={(e) => setActivityEditForm({ ...activityEditForm, description: e.target.value })}
+                <DialogFooter
                   className={cn(
-                    "min-h-[120px] focus:border-blue-500",
-                    isUiDarkMode
-                      ? "bg-[#1a1a1a] border-gray-700 text-gray-100 placeholder:text-gray-500"
-                      : "bg-white border-gray-300 text-gray-900 placeholder:text-gray-400"
-                  )}
-                />
-              </div>
-
-              {/* Checkbox de conclusão */}
-              <div className="flex items-center gap-3 pt-2">
-                <Checkbox
-                  id="activity-edit-done"
-                  checked={activityEditForm.markAsDone}
-                  onCheckedChange={(checked) => setActivityEditForm({ ...activityEditForm, markAsDone: checked === true })}
-                  className={cn(
-                    isUiDarkMode ? "border-gray-700" : "border-gray-300",
-                    "data-[state=checked]:bg-blue-600 data-[state=checked]:border-blue-600"
-                  )}
-                />
-                <label
-                  htmlFor="activity-edit-done"
-                  className={cn(
-                    "text-sm font-medium cursor-pointer",
-                    isUiDarkMode ? "text-gray-200" : "text-gray-900"
+                    "mt-0 mx-0 mb-0 border-t flex items-center justify-end gap-4 shrink-0 px-6 py-4",
+                    isUiDarkMode ? "border-gray-600 bg-[#1f1f1f]" : "border-gray-200 bg-white"
                   )}
                 >
-                  Marcar como concluída
-                </label>
+                  <Button
+                    variant="outline"
+                    onClick={() => setIsActivityEditModalOpen(false)}
+                    className={cn(
+                      "h-10 rounded-none",
+                      isUiDarkMode
+                        ? "border-gray-600 text-gray-200 hover:bg-[#252525] hover:text-white"
+                        : "border-gray-300 text-gray-700 hover:bg-gray-100"
+                    )}
+                  >
+                    Cancelar
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    onClick={handleDeleteActivity}
+                    className="text-red-200 hover:text-red-100 hover:bg-red-500/20 h-10 px-2 flex items-center gap-2 rounded-none"
+                  >
+                    <X className="h-4 w-4" />
+                    Excluir
+                  </Button>
+                  <Button
+                    onClick={handleUpdateActivity}
+                    className="bg-[#eab308] hover:bg-[#ca8a04] text-black font-semibold h-10 px-8 rounded-none"
+                  >
+                    Salvar Alterações
+                  </Button>
+                </DialogFooter>
               </div>
-              </div>
-
-            <DialogFooter
-              className={cn(
-                "mt-0 mx-0 mb-0 border-t flex items-center justify-end gap-4 shrink-0 px-6 py-4",
-                isUiDarkMode ? "border-gray-800 bg-[#1a1a1a]" : "border-gray-200 bg-white"
-              )}
-            >
-              <Button 
-                variant="outline" 
-                onClick={() => setIsActivityEditModalOpen(false)}
-                className={cn(
-                  "h-10",
-                  isUiDarkMode
-                    ? "border-gray-700 text-gray-200 hover:bg-[#252525] hover:text-white"
-                    : "border-gray-300 text-gray-700 hover:bg-gray-100"
-                )}
-              >
-              Cancelar
-            </Button>
-              <Button 
-                variant="ghost" 
-                onClick={handleDeleteActivity}
-                className="text-red-500 hover:text-red-400 hover:bg-red-500/10 h-10 px-2 flex items-center gap-2"
-              >
-                <X className="h-4 w-4" />
-              Excluir
-            </Button>
-              <Button 
-                onClick={handleUpdateActivity}
-                className="bg-[#eab308] hover:bg-[#ca8a04] text-black font-semibold h-10 px-8 rounded-md"
-              >
-                Salvar Alterações
-              </Button>
-          </DialogFooter>
-          </div>
+            </TabsContent>
+          </Tabs>
         </DialogContent>
       </Dialog>
 

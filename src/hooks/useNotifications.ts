@@ -354,7 +354,7 @@ export function useNotifications() {
 
       let query = supabase
         .from('notifications')
-        .update({
+        .update({ 
           status: 'read',
           read_at: new Date().toISOString(),
         })
@@ -403,7 +403,7 @@ export function useNotifications() {
 
       let query = supabase
         .from('notifications')
-        .update({
+        .update({ 
           status: 'read',
           read_at: new Date().toISOString(),
         })

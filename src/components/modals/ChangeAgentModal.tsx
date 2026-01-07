@@ -141,9 +141,9 @@ export function ChangeAgentModal({
       // Buscar nome do agente anterior e do novo agente
       const oldAgentData = actualCurrentAgentId
         ? (await supabase
-            .from('ai_agents')
-            .select('name')
-            .eq('id', actualCurrentAgentId)
+        .from('ai_agents')
+        .select('name')
+        .eq('id', actualCurrentAgentId)
             .single()).data
         : null;
 
@@ -241,14 +241,14 @@ export function ChangeAgentModal({
 
       // Registrar no histórico de agentes
       if (agentIdToLog) {
-        await supabase
-          .from('conversation_agent_history')
-          .insert({
-            conversation_id: conversationId,
-            action: 'deactivated',
+      await supabase
+        .from('conversation_agent_history')
+        .insert({
+          conversation_id: conversationId,
+          action: 'deactivated',
             agent_id: agentIdToLog,
-            agent_name: agentData?.name || 'Agente IA',
-            changed_by: (await supabase.auth.getUser()).data.user?.id || null
+          agent_name: agentData?.name || 'Agente IA',
+          changed_by: (await supabase.auth.getUser()).data.user?.id || null
           });
       } else {
         console.warn('⚠️ handleDeactivateAgent: desativando sem agent_active_id para registrar histórico', {

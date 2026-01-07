@@ -143,6 +143,14 @@ export function CRMAtividades() {
     setOpenedFromCompletedColumn(false);
   };
 
+  // No modo LISTA, sempre abrir no modo de edição (igual ao Kanban “abrir e editar”),
+  // mas, se a atividade já estiver concluída, permitir fechar sem forçar criação de nova.
+  const handleOpenDealDetailsAndEditActivityFromList = (activity: ActivityData) => {
+    handleOpenDealDetails(activity);
+    setAutoOpenActivityEditId(activity.id);
+    setOpenedFromCompletedColumn(!!activity.is_completed);
+  };
+
   const handleCloseDealDetails = () => {
     setSelectedDealDetails(null);
     setAutoOpenActivityEditId(null);
@@ -1240,7 +1248,14 @@ export function CRMAtividades() {
                 </tr>
               ) : (
                 filteredActivities.map((activity) => (
-                  <tr key={activity.id} className="hover:bg-blue-50 group h-[32px] dark:hover:bg-[#1f2937]">
+                  <tr
+                    key={activity.id}
+                    className="hover:bg-blue-50 group h-[32px] dark:hover:bg-[#1f2937] cursor-pointer"
+                    onClick={() => {
+                      if (!activity.pipeline_card_id) return;
+                      handleOpenDealDetailsAndEditActivityFromList(activity);
+                    }}
+                  >
                     <td className="border border-[#e0e0e0] px-2 py-0 w-[150px] max-w-[150px] dark:border-gray-700 dark:text-gray-200">
                       <div className="truncate" title={activity.pipeline_name || ''}>
                         {activity.pipeline_name}
@@ -1275,7 +1290,11 @@ export function CRMAtividades() {
                         {activity.pipeline_card_id ? (
                           <button
                             type="button"
-                            onClick={() => handleOpenDealDetails(activity)}
+                            onClick={(e) => {
+                              e.preventDefault();
+                              e.stopPropagation();
+                              handleOpenDealDetailsAndEditActivityFromList(activity);
+                            }}
                             className="text-black dark:text-white underline hover:opacity-80 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary rounded-sm"
                             title="Ver detalhes do negócio"
                           >
@@ -1475,6 +1494,7 @@ export function CRMAtividades() {
               cardId={selectedDealDetails.cardId} 
               workspaceId={selectedWorkspace?.workspace_id || undefined}
               openActivityEditId={autoOpenActivityEditId || undefined}
+              mode={autoOpenActivityEditId ? "activity_edit" : "full"}
               onClose={attemptCloseDealDetails}
             />
           )}

@@ -495,51 +495,51 @@ export function useConversationMessages(options?: {
     if (!globalMessagesChannelState) {
       const channelName = `messages-workspace-${workspaceId}`;
 
-      const channel = supabase
-        .channel(channelName)
-        .on(
-          'postgres_changes',
-          {
-            event: 'INSERT',
-            schema: 'public',
-            table: 'messages',
+    const channel = supabase
+      .channel(channelName)
+      .on(
+        'postgres_changes',
+        {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'messages',
             filter: `workspace_id=eq.${workspaceId}`,
-          },
-          (payload) => {
+        },
+        (payload) => {
             const message = payload.new as WhatsAppMessage;
             window.dispatchEvent(
               new CustomEvent<RealtimeMessageEventDetail>(REALTIME_MESSAGE_INSERT_EVENT, {
                 detail: { workspaceId, message },
               })
             );
-          }
-        )
-        .on(
-          'postgres_changes',
-          {
-            event: 'UPDATE',
-            schema: 'public',
-            table: 'messages',
+        }
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'messages',
             filter: `workspace_id=eq.${workspaceId}`,
-          },
-          (payload) => {
+        },
+        (payload) => {
             const message = payload.new as WhatsAppMessage;
             window.dispatchEvent(
               new CustomEvent<RealtimeMessageEventDetail>(REALTIME_MESSAGE_UPDATE_EVENT, {
                 detail: { workspaceId, message },
               })
             );
-          }
-        )
-        .subscribe((status, err) => {
+        }
+      )
+      .subscribe((status, err) => {
           if (!debug) return;
           console.log('📡 [useConversationMessages] STATUS canal global:', {
-            status,
+          status,
             err,
-            channelName,
+          channelName,
             workspaceId,
             ts: new Date().toISOString(),
-          });
+        });
           if (status === 'CHANNEL_ERROR') {
             console.error('❌ [useConversationMessages] ERRO no canal global:', err);
           }
