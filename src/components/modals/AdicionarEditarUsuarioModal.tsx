@@ -21,6 +21,7 @@ import { useToast } from "@/components/ui/use-toast";
 import { useWorkspaces } from "@/hooks/useWorkspaces";
 import { useWorkspaceConnections } from "@/hooks/useWorkspaceConnections";
 import { useSystemUsers, type SystemUser } from "@/hooks/useSystemUsers";
+import { useWorkspaceMembers } from "@/hooks/useWorkspaceMembers";
 import { useCargos } from "@/hooks/useCargos";
 import { cn } from "@/lib/utils";
 
@@ -47,6 +48,7 @@ export function AdicionarEditarUsuarioModal({
   const [avatarFile, setAvatarFile] = useState<File | null>(null);
   const [avatarPreview, setAvatarPreview] = useState<string>('');
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const effectiveLockWorkspace = Boolean(workspaceId) || Boolean(lockWorkspace);
   
   // Form data
   const [formData, setFormData] = useState({
@@ -63,13 +65,8 @@ export function AdicionarEditarUsuarioModal({
   const { workspaces, isLoading: workspacesLoading } = useWorkspaces();
   const { connections, isLoading: connectionsLoading } = useWorkspaceConnections(selectedWorkspaceId);
   const { createUser, updateUser } = useSystemUsers();
+  const { createUserAndAddToWorkspace } = useWorkspaceMembers(selectedWorkspaceId);
 
-  useEffect(() => {
-    if (open && workspaceId) {
-      setSelectedWorkspaceId(workspaceId);
-    }
-  }, [open, workspaceId]);
-  
   const uploadAvatar = async (file: File, userId: string): Promise<string | null> => {
     try {
       const { supabase } = await import('@/integrations/supabase/client');
@@ -140,8 +137,11 @@ export function AdicionarEditarUsuarioModal({
         });
         setAvatarPreview(editingUser.avatar || '');
         
-        // Get workspace from user's workspaces (first one if multiple)
-        if (editingUser.workspaces && editingUser.workspaces.length > 0) {
+        // Se o modal está travado para um workspace específico, sempre respeite o workspace atual.
+        // Caso contrário, usa o primeiro workspace do usuário (se houver).
+        if (workspaceId) {
+          setSelectedWorkspaceId(workspaceId);
+        } else if (editingUser.workspaces && editingUser.workspaces.length > 0) {
           setSelectedWorkspaceId(editingUser.workspaces[0].id);
         }
       } else {
@@ -155,18 +155,28 @@ export function AdicionarEditarUsuarioModal({
           phone: '',
           avatar: ''
         });
-        setSelectedWorkspaceId('');
+        setSelectedWorkspaceId(workspaceId || '');
         setAvatarFile(null);
         setAvatarPreview('');
       }
     }
-  }, [open, editingUser]);
+  }, [open, editingUser, workspaceId]);
 
   const handleSubmit = async () => {
     if (!formData.name || !formData.email || !formData.profile) {
       toast({
         title: "Erro",
         description: "Preencha todos os campos obrigatórios",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    // Usuários master não fazem sentido no contexto de uma empresa (e não aparecem na lista de membros)
+    if (effectiveLockWorkspace && formData.profile === 'master') {
+      toast({
+        title: "Erro",
+        description: "Usuário Master não pode ser criado nesta tela. Use Administração de Usuários.",
         variant: "destructive"
       });
       return;
@@ -226,16 +236,31 @@ export function AdicionarEditarUsuarioModal({
           phone: formData.phone,
           default_channel: formData.default_channel || null
         };
-
-        const result = await createUser(userData);
         
-        if (result.error) {
-          throw new Error(result.error);
-        }
+        // Como o formulário exige "Empresa", sempre criamos o usuário E vinculamos ao workspace selecionado,
+        // para que ele apareça na lista de membros da empresa.
+        const memberRole =
+          formData.profile === 'master'
+            ? 'master'
+            : formData.profile === 'admin'
+              ? 'admin'
+              : 'user';
+
+        await createUserAndAddToWorkspace(
+          {
+            name: userData.name,
+            email: userData.email,
+            profile: userData.profile,
+            senha: userData.senha,
+            default_channel: userData.default_channel || undefined,
+            phone: userData.phone || undefined
+          },
+          memberRole
+        );
 
         toast({
           title: "Sucesso",
-          description: "Usuário criado com sucesso"
+          description: "Usuário criado e adicionado à empresa com sucesso"
         });
       }
 
@@ -287,6 +312,9 @@ export function AdicionarEditarUsuarioModal({
   };
 
   const isEditing = !!editingUser;
+  const selectedWorkspaceName = selectedWorkspaceId
+    ? workspaces.find((w) => w.workspace_id === selectedWorkspaceId)?.name
+    : undefined;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -297,7 +325,9 @@ export function AdicionarEditarUsuarioModal({
             {isEditing ? 'Editar Usuário' : 'Adicionar Usuário'}
           </DialogTitle>
           <DialogDescription className="text-xs text-primary-foreground/80 mt-1 dark:text-gray-300">
-            {isEditing ? 'Modifique os dados do usuário e selecione a empresa.' : 'Preencha os dados do novo usuário e selecione a empresa.'}
+            {isEditing
+              ? (effectiveLockWorkspace ? 'Modifique os dados do usuário.' : 'Modifique os dados do usuário e selecione a empresa.')
+              : (effectiveLockWorkspace ? 'Preencha os dados do novo usuário.' : 'Preencha os dados do novo usuário e selecione a empresa.')}
           </DialogDescription>
         </DialogHeader>
 
@@ -381,7 +411,7 @@ export function AdicionarEditarUsuarioModal({
                   <SelectContent className="rounded-none border-[#d4d4d4] dark:border-gray-700">
                     <SelectItem value="user">Usuário</SelectItem>
                     <SelectItem value="admin">Administrador</SelectItem>
-                    <SelectItem value="master">Master</SelectItem>
+                    {!effectiveLockWorkspace && <SelectItem value="master">Master</SelectItem>}
                   </SelectContent>
                 </Select>
               </div>
@@ -426,7 +456,7 @@ export function AdicionarEditarUsuarioModal({
           </div>
 
           {/* Empresa Selection */}
-          {workspaces.length > 0 && !lockWorkspace && (
+          {workspaces.length > 0 && !effectiveLockWorkspace && (
             <div className="space-y-4">
               <h3 className="font-semibold text-xs text-gray-700 dark:text-gray-300 uppercase tracking-wide">Empresa</h3>
               <div className="space-y-1.5">
@@ -443,6 +473,19 @@ export function AdicionarEditarUsuarioModal({
                     ))}
                   </SelectContent>
                 </Select>
+              </div>
+            </div>
+          )}
+          
+          {/* Empresa (travada no contexto atual) */}
+          {effectiveLockWorkspace && selectedWorkspaceId && (
+            <div className="space-y-4">
+              <h3 className="font-semibold text-xs text-gray-700 dark:text-gray-300 uppercase tracking-wide">Empresa</h3>
+              <div className="space-y-1.5">
+                <Label className="text-xs font-medium text-gray-700 dark:text-gray-300">Empresa</Label>
+                <div className="h-8 flex items-center px-3 text-xs rounded-none border border-[#d4d4d4] dark:border-gray-700 bg-white dark:bg-[#2d2d2d] text-gray-900 dark:text-gray-200">
+                  {selectedWorkspaceName || '—'}
+                </div>
               </div>
             </div>
           )}

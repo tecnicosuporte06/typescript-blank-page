@@ -231,7 +231,7 @@ function CRMPanoramaContent() {
 
         <div className="px-2 md:px-4 py-2">
           <div className="w-full border border-[#d4d4d4] dark:border-gray-700 rounded-none p-2 md:p-3 shadow-sm bg-background dark:bg-[#1a1a1a]">
-            <div className="flex w-full items-center gap-2 overflow-x-auto">
+            <div className="flex w-full flex-wrap items-center gap-2 overflow-x-hidden">
               <div className="flex-shrink-0">
                 <Select value={pipelineFilter} onValueChange={setPipelineFilter}>
                   <SelectTrigger className="w-[200px] h-7 text-xs bg-white dark:bg-[#1b1b1b] border-gray-300 dark:border-gray-700 rounded-none text-gray-900 dark:text-gray-100">
@@ -260,7 +260,7 @@ function CRMPanoramaContent() {
                 </SelectContent>
               </Select>
 
-              <div className="relative flex-1 min-w-[150px] max-w-xs">
+              <div className="relative w-full sm:flex-1 sm:min-w-[220px] sm:max-w-xs">
                 <Input
                   type="text"
                   placeholder="Buscar por contato, telefone ou pipeline..."
@@ -370,20 +370,20 @@ function CRMPanoramaContent() {
           <div className="p-4 text-xs text-red-600 dark:text-red-400">{errorMsg}</div>
         ) : null}
 
-        <div className="h-full overflow-auto">
+        <div className="h-full overflow-y-auto overflow-x-hidden">
           {isLoading ? (
             <div className="p-6 text-sm text-gray-500 dark:text-gray-400">Carregando panorama...</div>
           ) : (
-            <table className="w-full text-xs">
+            <table className="w-full text-xs table-fixed">
               <thead className="sticky top-0 z-10 bg-[#f3f3f3] dark:bg-[#1a1a1a] border-b border-gray-200 dark:border-gray-700">
                 <tr>
-                  <th className="text-left font-semibold px-3 py-2 w-[90px]">Status</th>
+                  <th className="text-left font-semibold px-3 py-2 w-24">Status</th>
                   <th className="text-left font-semibold px-3 py-2">Contato</th>
-                  <th className="text-left font-semibold px-3 py-2 w-[160px]">Pipeline</th>
-                  <th className="text-left font-semibold px-3 py-2 w-[160px]">Etapa</th>
-                  <th className="text-left font-semibold px-3 py-2 w-[140px]">Criado em</th>
-                  <th className="text-left font-semibold px-3 py-2 w-[160px]">Resp.</th>
-                  <th className="text-right font-semibold px-3 py-2 w-[110px]">Valor</th>
+                  <th className="text-left font-semibold px-3 py-2">Pipeline</th>
+                  <th className="text-left font-semibold px-3 py-2">Etapa</th>
+                  <th className="text-left font-semibold px-3 py-2 w-40">Criado em</th>
+                  <th className="text-left font-semibold px-3 py-2">Resp.</th>
+                  <th className="text-right font-semibold px-3 py-2 w-28">Valor</th>
                   {/* Coluna de ações removida: abrir detalhes é via clique na linha */}
                 </tr>
               </thead>
@@ -423,22 +423,24 @@ function CRMPanoramaContent() {
                         </Badge>
                       </td>
                       <td className="px-3 py-2">
-                        <div className="font-semibold text-gray-900 dark:text-gray-100 truncate max-w-[360px]" title={contactName}>
-                          {contactName}
+                        <div className="min-w-0">
+                          <div className="font-semibold text-gray-900 dark:text-gray-100 truncate" title={contactName}>
+                            {contactName}
+                          </div>
+                          {row?.contact?.phone ? (
+                            <div className="text-[10px] text-gray-500 dark:text-gray-400">{row.contact.phone}</div>
+                          ) : null}
                         </div>
-                        {row?.contact?.phone ? (
-                          <div className="text-[10px] text-gray-500 dark:text-gray-400">{row.contact.phone}</div>
-                        ) : null}
                       </td>
-                      <td className="px-3 py-2 text-gray-700 dark:text-gray-300 truncate" title={pipelineName}>
-                        {pipelineName}
+                      <td className="px-3 py-2 text-gray-700 dark:text-gray-300">
+                        <div className="truncate" title={pipelineName}>{pipelineName}</div>
                       </td>
-                      <td className="px-3 py-2 text-gray-700 dark:text-gray-300 truncate" title={stageName}>
-                        {stageName}
+                      <td className="px-3 py-2 text-gray-700 dark:text-gray-300">
+                        <div className="truncate" title={stageName}>{stageName}</div>
                       </td>
                       <td className="px-3 py-2 text-gray-700 dark:text-gray-300">{createdAt}</td>
-                      <td className="px-3 py-2 text-gray-700 dark:text-gray-300 truncate" title={respName}>
-                        {respName}
+                      <td className="px-3 py-2 text-gray-700 dark:text-gray-300">
+                        <div className="truncate" title={respName}>{respName}</div>
                       </td>
                       <td className="px-3 py-2 text-right text-gray-700 dark:text-gray-300">{valText}</td>
                     </tr>

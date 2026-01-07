@@ -185,6 +185,8 @@ export function WorkspaceUsersPage({
         open={isModalOpen}
         onOpenChange={setIsModalOpen}
         editingUser={editingUser}
+        workspaceId={workspaceId}
+        lockWorkspace
         onSuccess={() => {
           refreshMembers();
           setIsModalOpen(false);

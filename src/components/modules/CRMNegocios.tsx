@@ -199,6 +199,7 @@ interface DraggableDealProps {
   columnColor?: string;
   onChatClick?: (deal: Deal) => void;
   onValueClick?: (deal: Deal) => void;
+  onEditPendingTask?: (activityId: string) => void;
   isSelectionMode?: boolean;
   isSelected?: boolean;
   onToggleSelection?: () => void;
@@ -217,6 +218,7 @@ function DraggableDeal({
   columnColor = '#6b7280',
   onChatClick,
   onValueClick,
+  onEditPendingTask,
   isSelectionMode = false,
   isSelected = false,
   onToggleSelection,
@@ -357,6 +359,7 @@ function DraggableDeal({
 
   // Estado para tarefa pendente (alerta)
   const [pendingTask, setPendingTask] = useState<any>(null);
+  const [isPendingTaskPopoverOpen, setIsPendingTaskPopoverOpen] = useState(false);
 
   // Buscar tarefa pendente mais urgente para este negócio
   useEffect(() => {
@@ -732,7 +735,7 @@ function DraggableDeal({
               })();
 
               return (
-                <Popover>
+                <Popover open={isPendingTaskPopoverOpen} onOpenChange={setIsPendingTaskPopoverOpen}>
                   <PopoverTrigger asChild>
                     <Button
                       size="icon"
@@ -747,7 +750,12 @@ function DraggableDeal({
                   </PopoverTrigger>
                   <PopoverContent
                     className="w-72 p-0 bg-white dark:bg-[#1b1b1b] border-gray-200 dark:border-gray-700 shadow-xl z-[10000] overflow-hidden rounded-none"
-                    onClick={(e) => e.stopPropagation()}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      if (!pendingTask?.id) return;
+                      setIsPendingTaskPopoverOpen(false);
+                      onEditPendingTask?.(pendingTask.id);
+                    }}
                     align="start"
                   >
                     <div className="p-3 border-b border-gray-200 dark:border-gray-700 bg-gray-50/50 dark:bg-gray-800/50">
@@ -933,6 +941,7 @@ function CRMNegociosContent({
   const [isCriarPipelineModalOpen, setIsCriarPipelineModalOpen] = useState(false);
   const [isCriarNegocioModalOpen, setIsCriarNegocioModalOpen] = useState(false);
   const [isDealDetailsModalOpen, setIsDealDetailsModalOpen] = useState(false);
+  const [autoOpenActivityEditId, setAutoOpenActivityEditId] = useState<string | null>(null);
   const [isChatModalOpen, setIsChatModalOpen] = useState(false);
   const [selectedDealDetailsForSheet, setSelectedDealDetailsForSheet] = useState<any | null>(null);
   const [activeId, setActiveId] = useState<string | null>(null);
@@ -1487,7 +1496,7 @@ const [selectedCardForProduct, setSelectedCardForProduct] = useState<{
   }, [cards, columns, draggedColumn, moveCardOptimistic, reorderColumns]);
   const navigate = useNavigate();
   
-  const openCardDetails = (card: any) => {
+  const openCardDetails = (card: any, opts?: { openActivityEditId?: string | null }) => {
     console.log('🔍 Abrindo detalhes do card:', card);
     console.log('📋 Card completo:', {
       id: card.id,
@@ -1508,6 +1517,7 @@ const [selectedCardForProduct, setSelectedCardForProduct] = useState<{
       contactName: card.contact?.name || card.description || card.name,
       contactPhone: card.contact?.phone,
     });
+    setAutoOpenActivityEditId(opts?.openActivityEditId ?? null);
     setIsDealDetailsModalOpen(true);
   };
 
@@ -2214,7 +2224,7 @@ const [selectedCardForProduct, setSelectedCardForProduct] = useState<{
                                             Total: {formatCurrency(calculateColumnTotal())}
                                           </div>
                                           <div>
-                                            {columnCards.length} {columnCards.length === 1 ? 'negócio' : 'negócios'}
+                                            {columnCards.length} {columnCards.length === 1 ? 'oportunidade' : 'oportunidades'}
                                           </div>
                                         </div>
                                       </div>
@@ -2456,7 +2466,7 @@ const [selectedCardForProduct, setSelectedCardForProduct] = useState<{
                                 </div>
                                 <div className="flex items-center gap-2">
                                   <span>
-                                    {columnCards.length} {columnCards.length === 1 ? 'negócio' : 'negócios'}
+                                    {columnCards.length} {columnCards.length === 1 ? 'oportunidade' : 'oportunidades'}
                                   </span>
                                   {columnAutomationCounts[column.id] > 0 && (
                                      <TooltipProvider>
@@ -2509,7 +2519,7 @@ const [selectedCardForProduct, setSelectedCardForProduct] = useState<{
                                   setSelectedCardsForTransfer(new Set());
                                 }}>
                                   <ArrowRight className="mr-2 h-4 w-4" />
-                                  Transferir negócios
+                                  Transferir Oportunidades
                                 </DropdownMenuItem>
                                 {canManageColumns(selectedWorkspace?.workspace_id || undefined) && (
                                   <DropdownMenuItem onClick={() => {
@@ -2559,7 +2569,7 @@ const [selectedCardForProduct, setSelectedCardForProduct] = useState<{
                         ) : columnCards.length === 0 ? (
                           <div className="flex items-center justify-center h-32 text-center">
                             <p className={`text-muted-foreground dark:text-gray-400 text-sm`}>
-                              Nenhum negócio encontrado nesta etapa
+                              Nenhuma oportunidade encontrada nesta etapa
                             </p>
                           </div>
                         ) : (
@@ -2598,7 +2608,7 @@ const [selectedCardForProduct, setSelectedCardForProduct] = useState<{
                             product_value: productValue ?? null,
                             hasProduct: !!productId
                           };
-                          return <DraggableDeal key={card.id} deal={deal} isDarkMode={isDarkMode} onClick={() => !isSelectionMode && openCardDetails(card)} columnColor={column.color} workspaceId={effectiveWorkspaceId} onOpenTransferModal={handleOpenTransferModal} onVincularResponsavel={handleVincularResponsavel} onChatClick={dealData => {
+                          return <DraggableDeal key={card.id} deal={deal} isDarkMode={isDarkMode} onClick={() => !isSelectionMode && openCardDetails(card)} onEditPendingTask={(activityId) => openCardDetails(card, { openActivityEditId: activityId })} columnColor={column.color} workspaceId={effectiveWorkspaceId} onOpenTransferModal={handleOpenTransferModal} onVincularResponsavel={handleVincularResponsavel} onChatClick={dealData => {
                             console.log('🎯 CRM: Abrindo chat para deal:', dealData);
                             console.log('🆔 CRM: Deal ID:', dealData.id);
                             console.log('🗣️ CRM: Deal conversation:', dealData.conversation);
@@ -2731,7 +2741,7 @@ const [selectedCardForProduct, setSelectedCardForProduct] = useState<{
                 hasProduct: !!productId
               };
               return <div className="w-[300px]">
-                <DraggableDeal deal={deal} isDarkMode={isDarkMode} onClick={() => {}} columnColor={activeColumn?.color} workspaceId={effectiveWorkspaceId} onChatClick={dealData => {
+                <DraggableDeal deal={deal} isDarkMode={isDarkMode} onClick={() => {}} onEditPendingTask={(activityId) => openCardDetails(activeCard, { openActivityEditId: activityId })} columnColor={activeColumn?.color} workspaceId={effectiveWorkspaceId} onChatClick={dealData => {
                 console.log('🎯 CRM DragOverlay: Abrindo chat para deal:', dealData);
                 setSelectedChatCard(dealData);
                 setIsChatModalOpen(true);
@@ -2793,6 +2803,7 @@ const [selectedCardForProduct, setSelectedCardForProduct] = useState<{
             setIsDealDetailsModalOpen(false);
             setSelectedCard(null);
             setSelectedDealDetailsForSheet(null);
+            setAutoOpenActivityEditId(null);
           }
         }}
       >
@@ -2804,10 +2815,13 @@ const [selectedCardForProduct, setSelectedCardForProduct] = useState<{
             <DealDetailsPage
               cardId={selectedDealDetailsForSheet.id}
               workspaceId={effectiveWorkspaceId}
+              openActivityEditId={autoOpenActivityEditId || undefined}
+              mode={autoOpenActivityEditId ? "activity_edit" : "full"}
               onClose={() => {
                 setIsDealDetailsModalOpen(false);
                 setSelectedCard(null);
                 setSelectedDealDetailsForSheet(null);
+                setAutoOpenActivityEditId(null);
               }}
             />
           )}

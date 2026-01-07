@@ -66,6 +66,7 @@ export function CRMAgenda() {
   const [activities, setActivities] = useState<ActivityData[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [selectedDealDetails, setSelectedDealDetails] = useState<SelectedDealDetails | null>(null);
+  const [autoOpenActivityEditId, setAutoOpenActivityEditId] = useState<string | null>(null);
   const [view, setView] = useState<ViewType>('month');
   const [currentDate, setCurrentDate] = useState(new Date());
   const [selectedDate, setSelectedDate] = useState<Date | null>(null);
@@ -102,6 +103,7 @@ export function CRMAgenda() {
     if (!activity.pipeline_card_id) {
       return;
     }
+    setAutoOpenActivityEditId(null);
     setSelectedDealDetails({
       cardId: activity.pipeline_card_id,
       pipelineId: activity.pipeline_id || "",
@@ -113,7 +115,24 @@ export function CRMAgenda() {
     });
   };
 
-  const handleCloseDealDetails = () => setSelectedDealDetails(null);
+  const handleOpenDealDetailsAndEditActivity = (activity: ActivityData) => {
+    if (!activity.pipeline_card_id) return;
+    setAutoOpenActivityEditId(activity.id);
+    setSelectedDealDetails({
+      cardId: activity.pipeline_card_id,
+      pipelineId: activity.pipeline_id || "",
+      columnId: activity.column_id || "",
+      contactId: activity.contact_id,
+      contactName: activity.contact_name || activity.deal_name || "Contato",
+      contactPhone: activity.contact_phone || "",
+      dealName: activity.deal_name || activity.contact_name || "Negócio",
+    });
+  };
+
+  const handleCloseDealDetails = () => {
+    setSelectedDealDetails(null);
+    setAutoOpenActivityEditId(null);
+  };
 
   const fetchActivities = async () => {
     if (!selectedWorkspace?.workspace_id) return;
@@ -895,7 +914,7 @@ export function CRMAgenda() {
                                       {activity.pipeline_card_id ? (
                                         <button
                                           type="button"
-                                          onClick={() => handleOpenDealDetails(activity)}
+                                        onClick={() => handleOpenDealDetailsAndEditActivity(activity)}
                                           className="text-black dark:text-white underline hover:opacity-80 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary rounded-sm"
                                           title="Ver detalhes do negócio"
                                         >
@@ -1077,7 +1096,7 @@ export function CRMAgenda() {
                                         {activity.pipeline_card_id ? (
                                           <button
                                             type="button"
-                                            onClick={() => handleOpenDealDetails(activity)}
+                                            onClick={() => handleOpenDealDetailsAndEditActivity(activity)}
                                             className="text-black dark:text-white underline hover:opacity-80 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary rounded-sm"
                                             title="Ver detalhes do negócio"
                                           >
@@ -1119,12 +1138,14 @@ export function CRMAgenda() {
       <Sheet open={Boolean(selectedDealDetails)} onOpenChange={(open) => !open && handleCloseDealDetails()}>
         <SheetContent 
           side="right" 
-          className="p-0 sm:max-w-[90vw] w-[90vw] border-l border-gray-200 dark:border-gray-800 shadow-2xl transition-all duration-500 ease-in-out"
+          className="p-0 sm:max-w-[90vw] w-[90vw] border-l border-gray-200 dark:border-gray-800 shadow-2xl transition-all duration-500 ease-in-out [&>button.absolute]:hidden"
         >
           {selectedDealDetails && (
             <DealDetailsPage 
               cardId={selectedDealDetails.cardId} 
               workspaceId={selectedWorkspace?.workspace_id}
+              openActivityEditId={autoOpenActivityEditId || undefined}
+              mode={autoOpenActivityEditId ? "activity_edit" : "full"}
               onClose={handleCloseDealDetails}
             />
           )}

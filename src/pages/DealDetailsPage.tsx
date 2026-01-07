@@ -4616,16 +4616,6 @@ const normalizeFieldKey = (label: string) => {
                             {selectedActivityForEdit?.type || "Atividade"}
                           </div>
                         </div>
-                        <Button
-                          variant="outline"
-                          className="rounded-none"
-                          onClick={() => {
-                            setSelectedActivityForEdit(null);
-                            if (mode === "activity_edit") onClose?.();
-                          }}
-                        >
-                          Voltar
-                        </Button>
                       </div>
 
                       {/* Assunto */}

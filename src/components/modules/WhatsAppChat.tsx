@@ -1665,6 +1665,14 @@ export function WhatsAppChat({
                   if (!prev || prev.id !== selectedConversationId) return prev;
                   return {
                     ...prev,
+                    // ✅ refletir a realidade do banco (evita botão "Ativar" com agente ativo)
+                    agente_ativo: !!convData?.agente_ativo,
+                    agent_active_id: convData?.agent_active_id ?? null,
+                    queue_id: convData?.queue_id ?? prev.queue_id ?? null,
+                    status: (convData?.status ?? prev.status ?? 'open') as any,
+                    assigned_user_id: convData?.assigned_user_id ?? prev.assigned_user_id ?? null,
+                    assigned_user_name: convData?.assigned_user_name ?? prev.assigned_user_name ?? null,
+                    assigned_at: convData?.assigned_at ?? prev.assigned_at ?? null,
                     contact: {
                       id: contact.id,
                       name: (contact.name && contact.name !== '-' ? contact.name : '') || '',
