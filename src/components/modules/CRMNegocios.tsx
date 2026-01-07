@@ -702,18 +702,18 @@ function DraggableDeal({
               const daysDiff = differenceInDays(taskDate, today);
 
               // ✅ Regra solicitada (por tempo real):
-              // - Amarelo: a partir de 1 dia (24h) antes do horário agendado
-              // - Vermelho: atraso a partir de 1 minuto após o horário agendado
-              // - Verde: ainda longe (> 24h)
+              // - Verde: até 2 dias antes de vencer (ex.: Amanhã / Em 2d / etc. — desde que NÃO seja o dia do vencimento)
+              // - Amarelo: no dia do vencimento (00:00–23:59), enquanto não passou do horário + 1 minuto
+              // - Vermelho: passou de 1 minuto do horário agendado
               const ONE_MINUTE_MS = 60_000;
               const ONE_DAY_MS = 24 * 60 * 60 * 1000;
 
               const isOverdue = now.getTime() > scheduledAt.getTime() + ONE_MINUTE_MS;
-              const isWithinOneDay = !isOverdue && (scheduledAt.getTime() - now.getTime()) <= ONE_DAY_MS;
+              const isDueToday = !isOverdue && daysDiff === 0;
 
               let iconColor = "text-green-500";
               if (isOverdue) iconColor = "text-red-500";
-              else if (isWithinOneDay) iconColor = "text-yellow-500";
+              else if (isDueToday) iconColor = "text-yellow-500";
 
               const badgeText = (() => {
                 if (isOverdue) {

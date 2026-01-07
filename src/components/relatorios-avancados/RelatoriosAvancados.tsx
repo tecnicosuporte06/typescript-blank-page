@@ -792,7 +792,15 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
         .from('activities')
         .select('*');
       if (hasDateRange && from && to) {
-        activitiesQuery = activitiesQuery.gte('created_at', from).lte('created_at', to);
+        // ✅ Atividades do período: considerar scheduled_for / completed_at (e fallback created_at)
+        // Isso evita “sumir” atividade do dia atual quando ela foi criada dias atrás.
+        activitiesQuery = activitiesQuery.or(
+          [
+            `and(scheduled_for.gte.${from},scheduled_for.lte.${to})`,
+            `and(completed_at.gte.${from},completed_at.lte.${to})`,
+            `and(created_at.gte.${from},created_at.lte.${to})`,
+          ].join(',')
+        );
       }
 
       // Conversations (assumidas)
@@ -1133,6 +1141,12 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
     return true;
   };
 
+  // ✅ Para relatórios: "data da atividade" deve refletir o dia do evento (agendada/concluída),
+  // não apenas quando foi criada no banco.
+  const getActivityDateIso = (a: any): string | undefined => {
+    return a?.completed_at || a?.scheduled_for || a?.created_at;
+  };
+
   const getEffectiveRange = (preset: ConversionPeriodPreset, from: Date | null, to: Date | null) => {
     if (preset === 'custom') return { from, to };
     if (preset === 'all') return { from: null, to: null };
@@ -1146,7 +1160,7 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
     const rawLabel = String(metricKey).replace(/^activity:/, '');
     const k = normalizeText(rawLabel);
     return (activitiesScoped || []).filter((a: any) => {
-      if (!withinRange(a?.created_at, rangeFrom, rangeTo)) return false;
+      if (!withinRange(getActivityDateIso(a), rangeFrom, rangeTo)) return false;
       return normalizeText(a?.type) === k;
     }).length;
   };
@@ -1204,7 +1218,7 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
   const filterActivitiesForSection = (list: any[], rangeFrom: Date | null, rangeTo: Date | null, agent: string, tagIds: string[]) => {
     const allowedContacts = buildAllowedContactIdsByTags(tagIds);
     return (list || [])
-      .filter((a: any) => withinRange(a?.created_at, rangeFrom, rangeTo))
+      .filter((a: any) => withinRange(getActivityDateIso(a), rangeFrom, rangeTo))
       .filter((a: any) => {
         if (agent === 'all') return true;
         if (agent === 'ia') return !a?.responsible_id;
@@ -1576,7 +1590,7 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
         if (dateRange && (dateRange.from || dateRange.to)) {
           contactsF = contactsF.filter((c: any) => withinDate(c.created_at));
           conversationsF = conversationsF.filter((c: any) => withinDate(c.created_at));
-          activitiesF = activitiesF.filter((a: any) => withinDate(a.created_at));
+          activitiesF = activitiesF.filter((a: any) => withinDate(getActivityDateIso(a)));
         }
 
         const leadsReceivedF = cardsF.length;
@@ -2217,7 +2231,7 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
     } else {
       const n = (v?: string | null) => (v || '').toLowerCase().trim();
       (activities || []).forEach((a: any) => {
-        if (!withinRange(a?.created_at, from, to)) return;
+        if (!withinRange(getActivityDateIso(a), from, to)) return;
         const t = ensure(a?.responsible_id);
         if (!t) return;
 
