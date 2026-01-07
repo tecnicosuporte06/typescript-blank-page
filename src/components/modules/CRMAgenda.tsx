@@ -11,7 +11,9 @@ import {
   Briefcase,
   Map as MapIcon,
   Columns,
-  X
+  X,
+  ChevronsUpDown,
+  Check
 } from "lucide-react";
 import { format, startOfMonth, endOfMonth, eachDayOfInterval, isSameMonth, isSameDay, isToday, startOfWeek, endOfWeek, addMonths, subMonths, addDays, subDays, addWeeks, subWeeks, startOfDay, endOfDay, getHours, getMinutes } from "date-fns";
 import { ptBR } from "date-fns/locale";
@@ -23,6 +25,8 @@ import { DealDetailsPage } from "@/pages/DealDetailsPage";
 import { Sheet, SheetContent } from "@/components/ui/sheet";
 import { cn } from "@/lib/utils";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
+import { useWorkspaceMembers } from "@/hooks/useWorkspaceMembers";
 
 interface ActivityData {
   id: string;
@@ -65,7 +69,34 @@ export function CRMAgenda() {
   const [view, setView] = useState<ViewType>('month');
   const [currentDate, setCurrentDate] = useState(new Date());
   const [selectedDate, setSelectedDate] = useState<Date | null>(null);
+  const [selectedResponsible, setSelectedResponsible] = useState<string>("ALL"); // ALL | userId
+  const { members: workspaceMembers } = useWorkspaceMembers(selectedWorkspace?.workspace_id);
+  const [openDayPopoverKey, setOpenDayPopoverKey] = useState<string | null>(null);
   const { toast } = useToast();
+
+  const canFilterByUser = userRole === "master" || userRole === "admin";
+
+  // ✅ Garantir regra: user só vê suas atividades
+  useEffect(() => {
+    if (userRole === "user" && user?.id) {
+      setSelectedResponsible(user.id);
+    }
+  }, [userRole, user?.id]);
+
+  const responsibleOptions = useMemo(() => {
+    const byId = new Map<string, { id: string; name: string }>();
+    for (const m of workspaceMembers || []) {
+      const id = (m as any)?.user?.id || (m as any)?.user_id;
+      if (!id) continue;
+      const profile = String((m as any)?.user?.profile || (m as any)?.role || "").toLowerCase().trim();
+      if (profile === "master") continue;
+      if (profile !== "admin" && profile !== "user") continue;
+      const name = String((m as any)?.user?.name || "").trim() || String((m as any)?.user?.email || "").trim();
+      if (!name) continue;
+      byId.set(id, { id, name });
+    }
+    return Array.from(byId.values()).sort((a, b) => a.name.localeCompare(b.name, "pt-BR"));
+  }, [workspaceMembers]);
 
   const handleOpenDealDetails = (activity: ActivityData) => {
     if (!activity.pipeline_card_id) {
@@ -123,6 +154,8 @@ export function CRMAgenda() {
 
       if (userRole === "user" && user?.id) {
         query = query.eq("responsible_id", user.id);
+      } else if (canFilterByUser && selectedResponsible !== "ALL") {
+        query = query.eq("responsible_id", selectedResponsible);
       }
 
       const { data: activitiesData, error } = await query;
@@ -296,7 +329,7 @@ export function CRMAgenda() {
 
   useEffect(() => {
     fetchActivities();
-  }, [selectedWorkspace?.workspace_id, currentDate, view]);
+  }, [selectedWorkspace?.workspace_id, currentDate, view, selectedResponsible]);
 
   // Agrupar atividades por data
   const activitiesByDate = useMemo(() => {
@@ -474,6 +507,58 @@ export function CRMAgenda() {
             </span>
           </div>
           <div className="flex items-center gap-2">
+            {/* Filtro por usuário (somente master/admin) */}
+            {canFilterByUser && (
+              <Popover>
+                <PopoverTrigger asChild>
+                  <button
+                    type="button"
+                    className={cn(
+                      "h-7 px-2 rounded-none border text-xs inline-flex items-center gap-2 w-52 justify-between",
+                      "border-gray-300 bg-white text-gray-800 hover:bg-gray-50",
+                      "dark:border-gray-700 dark:bg-[#1b1b1b] dark:text-gray-100 dark:hover:bg-[#222]"
+                    )}
+                    title="Filtrar por usuário responsável"
+                  >
+                    <span className="inline-flex items-center gap-2 min-w-0">
+                      <User className="h-3.5 w-3.5 text-gray-500 dark:text-gray-400 shrink-0" />
+                      <span className="truncate">
+                        {selectedResponsible === "ALL"
+                          ? "Todos usuários"
+                          : (responsibleOptions.find((o) => o.id === selectedResponsible)?.name || "Usuário")}
+                      </span>
+                    </span>
+                    <ChevronsUpDown className="h-3.5 w-3.5 opacity-60 shrink-0" />
+                  </button>
+                </PopoverTrigger>
+                <PopoverContent
+                  className="p-0 rounded-none border border-[#d4d4d4] bg-white dark:bg-[#1b1b1b] dark:border-gray-700 w-72"
+                  align="start"
+                  onOpenAutoFocus={(e) => e.preventDefault()}
+                >
+                  <Command className="rounded-none">
+                    <CommandInput placeholder="Pesquisar usuário..." className="h-9" />
+                    <CommandList className="max-h-72">
+                      <CommandEmpty>Nenhum usuário encontrado.</CommandEmpty>
+                      <CommandGroup heading="Filtro">
+                        <CommandItem value="ALL" onSelect={() => setSelectedResponsible("ALL")}>
+                          <Check className={cn("mr-2 h-4 w-4", selectedResponsible === "ALL" ? "opacity-100" : "opacity-0")} />
+                          Todos usuários
+                        </CommandItem>
+                      </CommandGroup>
+                      <CommandGroup heading="Usuários">
+                        {responsibleOptions.map((opt) => (
+                          <CommandItem key={opt.id} value={opt.name} onSelect={() => setSelectedResponsible(opt.id)}>
+                            <Check className={cn("mr-2 h-4 w-4", selectedResponsible === opt.id ? "opacity-100" : "opacity-0")} />
+                            {opt.name}
+                          </CommandItem>
+                        ))}
+                      </CommandGroup>
+                    </CommandList>
+                  </Command>
+                </PopoverContent>
+              </Popover>
+            )}
             <div className="flex items-center gap-1 border border-gray-300 dark:border-gray-600 rounded-none">
               <Button
                 variant={view === 'day' ? 'default' : 'ghost'}
@@ -870,9 +955,14 @@ export function CRMAgenda() {
                 const isCurrentMonth = isSameMonth(day, currentDate);
                 const isDayToday = isToday(day);
                 const isSelected = selectedDate && isSameDay(day, selectedDate);
+                const dayKey = format(day, "yyyy-MM-dd", { locale: ptBR });
 
                 return (
-                  <Popover key={index}>
+                  <Popover
+                    key={dayKey}
+                    open={openDayPopoverKey === dayKey}
+                    onOpenChange={(open) => setOpenDayPopoverKey(open ? dayKey : null)}
+                  >
                     <PopoverTrigger asChild>
                       <button
                         className={cn(
@@ -881,7 +971,10 @@ export function CRMAgenda() {
                           isDayToday && "bg-yellow-50 dark:bg-yellow-900/20",
                           isSelected && "bg-blue-50 dark:bg-blue-900/20 ring-2 ring-blue-500 dark:ring-blue-400"
                         )}
-                        onClick={() => setSelectedDate(day)}
+                        onClick={() => {
+                          setSelectedDate(day);
+                          if (dayActivities.length > 0) setOpenDayPopoverKey(dayKey);
+                        }}
                       >
                         <div className="flex items-center justify-between mb-1">
                           <span
@@ -931,7 +1024,10 @@ export function CRMAgenda() {
                               variant="ghost"
                               size="icon"
                               className="h-6 w-6"
-                              onClick={() => setSelectedDate(null)}
+                              onClick={() => {
+                                setSelectedDate(null);
+                                setOpenDayPopoverKey(null);
+                              }}
                             >
                               <X className="h-4 w-4" />
                             </Button>
