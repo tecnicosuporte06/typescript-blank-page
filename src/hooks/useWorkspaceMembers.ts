@@ -146,7 +146,9 @@ export function useWorkspaceMembers(workspaceId?: string) {
         body: {
           action: 'create',
           userData: userData
-        }
+        },
+        // keep headers consistent; some deployments rely on auth context/logging
+        headers: getRequestHeaders()
       });
 
       if (createError) {
@@ -159,27 +161,40 @@ export function useWorkspaceMembers(workspaceId?: string) {
 
       const newUserId = createResponse.data.id;
 
-      // Add user to workspace via edge function to handle RLS
-      const { data: memberResponse, error: memberError } = await supabase.functions.invoke('manage-workspace-members', {
-        body: {
-          action: 'add',
-          workspaceId: workspaceId,
-          userId: newUserId,
-          role: role
-        },
-        headers: getRequestHeaders()
-      });
+      try {
+        // Add user to workspace via edge function to handle RLS
+        const { data: memberResponse, error: memberError } = await supabase.functions.invoke('manage-workspace-members', {
+          body: {
+            action: 'add',
+            workspaceId: workspaceId,
+            userId: newUserId,
+            role: role
+          },
+          headers: getRequestHeaders()
+        });
 
-      if (memberError) {
-        throw memberError;
+        if (memberError) {
+          throw memberError;
+        }
+
+        if (!memberResponse.success) {
+          throw new Error(memberResponse.error || 'Falha ao adicionar membro ao workspace');
+        }
+
+        fetchMembers();
+        return memberResponse.member;
+      } catch (memberErr) {
+        // Important: avoid leaving orphan system_users when linking fails (limits/permissions/etc)
+        try {
+          await supabase.functions.invoke('manage-system-user', {
+            body: { action: 'delete', userId: newUserId },
+            headers: getRequestHeaders()
+          });
+        } catch (rollbackErr) {
+          console.error('Rollback failed while deleting newly created user:', rollbackErr);
+        }
+        throw memberErr;
       }
-
-      if (!memberResponse.success) {
-        throw new Error(memberResponse.error || 'Falha ao adicionar membro ao workspace');
-      }
-
-      fetchMembers();
-      return memberResponse.member;
     } catch (error: any) {
       console.error('Error creating user and adding to workspace:', error);
       

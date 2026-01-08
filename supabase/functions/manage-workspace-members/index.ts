@@ -268,14 +268,18 @@ serve(async (req) => {
           console.error('Error fetching workspace limits:', limitsError)
         }
 
-        const userLimit = limits?.user_limit || 5
+        // user_limit semantics:
+        // - null/undefined => use default (5)
+        // - 0 => unlimited (do not enforce)
+        const userLimit = (limits?.user_limit ?? 5)
 
-        // Count current users (excluding master users who are hidden)
+        // Count current users (exclude hidden members and master role)
         const { count: currentUserCount, error: countError } = await supabase
           .from('workspace_members')
           .select('*', { count: 'exact', head: true })
           .eq('workspace_id', workspaceId)
           .eq('is_hidden', false)
+          .neq('role', 'master')
 
         if (countError) {
           console.error('Error counting workspace members:', countError)
@@ -285,10 +289,10 @@ serve(async (req) => {
           )
         }
 
-        console.log('Current users:', currentUserCount, 'Limit:', userLimit)
+        console.log('Current users:', currentUserCount, 'Limit:', userLimit, 'Raw limits row:', limits)
 
         // Check if limit reached (only for non-master workspaces)
-        if (!isMaster && currentUserCount && currentUserCount >= userLimit) {
+        if (!isMaster && userLimit > 0 && (currentUserCount ?? 0) >= userLimit) {
           return new Response(
             JSON.stringify({ 
               success: false, 
