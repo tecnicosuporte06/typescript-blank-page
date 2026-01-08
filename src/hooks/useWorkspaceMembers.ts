@@ -140,19 +140,56 @@ export function useWorkspaceMembers(workspaceId?: string) {
   ) => {
     if (!workspaceId) return;
 
-    const getEdgeFunctionErrorMessage = (err: any, fallback: string) => {
+    const getEdgeFunctionErrorMessage = async (err: any, fallback: string) => {
       if (!err) return fallback;
       if (typeof err === 'string') return err;
       // Supabase Functions errors often include the real payload in err.context.body
-      const body = err?.context?.body;
-      if (body) {
+      const rawBody = err?.context?.body;
+
+      const parseJsonBody = (text: string) => {
         try {
-          const parsed = typeof body === 'string' ? JSON.parse(body) : body;
-          return parsed?.error || parsed?.message || fallback;
+          const parsed = JSON.parse(text);
+          return parsed?.error || parsed?.message || null;
         } catch {
-          // ignore parse failure
+          return null;
         }
+      };
+
+      try {
+        if (rawBody) {
+          if (typeof rawBody === 'string') {
+            return parseJsonBody(rawBody) || rawBody || fallback;
+          }
+
+          // If it's already an object
+          if (typeof rawBody === 'object' && !ArrayBuffer.isView(rawBody) && !(rawBody instanceof ArrayBuffer) && !(rawBody instanceof ReadableStream)) {
+            return rawBody?.error || rawBody?.message || fallback;
+          }
+
+          // Uint8Array / ArrayBuffer
+          if (ArrayBuffer.isView(rawBody) || rawBody instanceof ArrayBuffer) {
+            const bytes = ArrayBuffer.isView(rawBody) ? rawBody : new Uint8Array(rawBody);
+            const text = new TextDecoder().decode(bytes as any);
+            return parseJsonBody(text) || text || fallback;
+          }
+
+          // ReadableStream (browser)
+          if (rawBody instanceof ReadableStream) {
+            const text = await new Response(rawBody).text();
+            return parseJsonBody(text) || text || fallback;
+          }
+        }
+
+        // Some versions expose a Response object in context
+        const resp = err?.context?.response;
+        if (resp && typeof resp.text === 'function') {
+          const text = await resp.text();
+          return parseJsonBody(text) || text || fallback;
+        }
+      } catch {
+        // ignore parsing failures
       }
+
       return err?.message || fallback;
     };
 
@@ -169,7 +206,8 @@ export function useWorkspaceMembers(workspaceId?: string) {
       });
 
       if (createError) {
-        throw new Error(getEdgeFunctionErrorMessage(createError, 'Falha ao criar usuário'));
+        const msg = await getEdgeFunctionErrorMessage(createError, 'Falha ao criar usuário');
+        throw new Error(msg);
       }
 
       if (!createResponse.success) {
@@ -191,7 +229,8 @@ export function useWorkspaceMembers(workspaceId?: string) {
         });
 
         if (memberError) {
-          throw new Error(getEdgeFunctionErrorMessage(memberError, 'Falha ao adicionar membro ao workspace'));
+          const msg = await getEdgeFunctionErrorMessage(memberError, 'Falha ao adicionar membro ao workspace');
+          throw new Error(msg);
         }
 
         if (!memberResponse.success) {
