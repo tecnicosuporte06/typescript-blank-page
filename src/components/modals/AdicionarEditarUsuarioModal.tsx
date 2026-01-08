@@ -384,6 +384,7 @@ export function AdicionarEditarUsuarioModal({
                 <Input
                   id="name"
                   placeholder="Nome completo"
+                  autoComplete="off"
                   value={formData.name}
                   onChange={(e) => setFormData(prev => ({ ...prev, name: e.target.value }))}
                   className="h-8 text-xs rounded-none border-[#d4d4d4] dark:border-gray-700 bg-white dark:bg-[#2d2d2d] focus-visible:ring-1 focus-visible:ring-primary"
@@ -396,6 +397,7 @@ export function AdicionarEditarUsuarioModal({
                   id="email"
                   type="email"
                   placeholder="usuario@exemplo.com"
+                  autoComplete="off"
                   value={formData.email}
                   onChange={(e) => setFormData(prev => ({ ...prev, email: e.target.value }))}
                   className="h-8 text-xs rounded-none border-[#d4d4d4] dark:border-gray-700 bg-white dark:bg-[#2d2d2d] focus-visible:ring-1 focus-visible:ring-primary"
@@ -425,6 +427,8 @@ export function AdicionarEditarUsuarioModal({
                     id="senha"
                     type={showPassword ? "text" : "password"}
                     placeholder={isEditing ? "Digite nova senha (opcional)" : "Digite a senha"}
+                    // Prevent browser autofill/password managers from injecting stored credentials here
+                    autoComplete={isEditing ? "new-password" : "new-password"}
                     value={formData.senha}
                     onChange={(e) => setFormData(prev => ({ ...prev, senha: e.target.value }))}
                     className="h-8 text-xs rounded-none border-[#d4d4d4] dark:border-gray-700 bg-white dark:bg-[#2d2d2d] focus-visible:ring-1 focus-visible:ring-primary pr-8"
@@ -446,6 +450,7 @@ export function AdicionarEditarUsuarioModal({
                 <Input
                   id="phone"
                   placeholder="(11) 99999-9999"
+                  autoComplete="off"
                   value={formData.phone}
                   onChange={(e) => setFormData(prev => ({ ...prev, phone: e.target.value }))}
                   className="h-8 text-xs rounded-none border-[#d4d4d4] dark:border-gray-700 bg-white dark:bg-[#2d2d2d] focus-visible:ring-1 focus-visible:ring-primary"
