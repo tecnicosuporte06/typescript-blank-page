@@ -2155,7 +2155,9 @@ serve(async (req) => {
                 error?.code === '23505' ||
                 errorMessage.includes('duplicate key value') ||
                 errorMessage.includes('duplicate_open_card') ||
-                errorDetails.includes('duplicate_open_card');
+                errorDetails.includes('duplicate_open_card') ||
+                // Trigger validation message (workspace-level uniqueness)
+                errorMessage.includes('Já existe um card aberto');
 
               if (isDuplicateError) {
                 console.warn('⚠️ Duplicate open card detected for contact:', {
@@ -2167,7 +2169,7 @@ serve(async (req) => {
                 return new Response(
                   JSON.stringify({
                     error: 'duplicate_open_card',
-                    message: 'Não foi possível criar o negócio: já existe um negócio (card) com status ABERTO para este contato dentro deste pipeline. Finalize (ganho/perda) ou feche o negócio existente antes de criar um novo.'
+                    message: 'Não foi possível criar o negócio: já existe um negócio (card) com status ABERTO para este contato nesta empresa. Finalize (ganho/perda) ou feche o negócio existente antes de criar um novo.'
                   }),
                   { status: 409, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
                 );

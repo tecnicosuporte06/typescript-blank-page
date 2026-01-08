@@ -82,9 +82,26 @@ export function usePipelineCards(pipelineId: string | null) {
       return data;
     } catch (error) {
       console.error('Error creating card:', error);
+      // Extract real error message from Edge Function response
+      const ctx: any = (error as any)?.context;
+      let detailedMessage: string | null =
+        ctx?.body?.message ||
+        ctx?.body?.error ||
+        ctx?.body?.details ||
+        null;
+
+      if (!detailedMessage && typeof ctx?.body === 'string') {
+        try {
+          const parsed = JSON.parse(ctx.body);
+          detailedMessage = parsed?.message || parsed?.error || parsed?.details || null;
+        } catch {
+          detailedMessage = ctx.body;
+        }
+      }
+
       toast({
         title: "Erro",
-        description: "Erro ao criar card",
+        description: detailedMessage || (error as any)?.message || "Erro ao criar card",
         variant: "destructive",
       });
       throw error;
