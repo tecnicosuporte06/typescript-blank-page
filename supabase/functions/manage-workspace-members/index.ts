@@ -313,6 +313,13 @@ serve(async (req) => {
           .single()
 
         if (memberError) {
+          // Friendly error for duplicated membership
+          if (memberError.code === '23505' || memberError.message?.toLowerCase().includes('duplicate key')) {
+            return new Response(
+              JSON.stringify({ success: false, error: 'Este usuário já está vinculado a esta empresa.' }),
+              { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+            )
+          }
           return new Response(
             JSON.stringify({ success: false, error: memberError.message }),
             { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }

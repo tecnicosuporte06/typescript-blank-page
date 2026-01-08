@@ -15,7 +15,7 @@ Deno.serve(async (req) => {
     const requestBody = await req.text();
     console.log('Request received:', requestBody);
     
-    const { action, userData, userId } = JSON.parse(requestBody);
+    const { action, userData, userId, workspaceId } = JSON.parse(requestBody);
     console.log('Action:', action, 'UserData keys:', Object.keys(userData || {}), 'UserId:', userId);
 
     const supabaseUrl = Deno.env.get('SUPABASE_URL');
@@ -93,6 +93,7 @@ Deno.serve(async (req) => {
 
     if (action === 'create') {
       const { name, email, profile, senha, cargo_ids, default_channel, status } = userData;
+      const normalizedEmail = email?.trim()?.toLowerCase();
       
       console.log('Fields received:', {
         name: name || 'MISSING',
@@ -106,7 +107,7 @@ Deno.serve(async (req) => {
 
       // Validate required fields
       if (!name?.trim() || !email?.trim() || !profile?.trim() || !senha?.trim()) {
-        const missing = [];
+        const missing: string[] = [];
         if (!name?.trim()) missing.push('nome');
         if (!email?.trim()) missing.push('email');
         if (!profile?.trim()) missing.push('perfil');
@@ -120,13 +121,57 @@ Deno.serve(async (req) => {
       }
 
       try {
+        // If the email already exists, return a user-friendly message.
+        // When workspaceId is provided, make the message specific to "already in this company".
+        if (normalizedEmail) {
+          const { data: existingUser, error: existingUserError } = await supabase
+            .from('system_users')
+            .select('id, email')
+            .eq('email', normalizedEmail)
+            .maybeSingle();
+
+          if (existingUserError) {
+            console.error('Error checking existing user by email:', existingUserError);
+          } else if (existingUser?.id) {
+            if (workspaceId) {
+              const { data: existingMembership, error: membershipError } = await supabase
+                .from('workspace_members')
+                .select('id')
+                .eq('workspace_id', workspaceId)
+                .eq('user_id', existingUser.id)
+                .maybeSingle();
+
+              if (membershipError) {
+                console.error('Error checking existing membership:', membershipError);
+              }
+
+              if (existingMembership?.id) {
+                return new Response(
+                  JSON.stringify({ error: 'Este e-mail já está cadastrado nesta empresa.' }),
+                  { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+                );
+              }
+
+              return new Response(
+                JSON.stringify({ error: 'Este e-mail já está cadastrado no sistema. Você pode vincular este usuário à empresa em vez de criar novamente.' }),
+                { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+              );
+            }
+
+            return new Response(
+              JSON.stringify({ error: 'Este email já está sendo usado por outro usuário' }),
+              { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+            );
+          }
+        }
+
         // Insert user directly (let database handle unique constraints)
         console.log('Attempting to insert user...');
         const { data, error } = await supabase
           .from('system_users')
           .insert({
             name: name.trim(),
-            email: email.trim().toLowerCase(),
+            email: normalizedEmail,
             profile: profile.trim(),
             status: status || 'active',
             senha: senha,

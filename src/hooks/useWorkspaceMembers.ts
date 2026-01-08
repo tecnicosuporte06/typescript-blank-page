@@ -140,19 +140,36 @@ export function useWorkspaceMembers(workspaceId?: string) {
   ) => {
     if (!workspaceId) return;
 
+    const getEdgeFunctionErrorMessage = (err: any, fallback: string) => {
+      if (!err) return fallback;
+      if (typeof err === 'string') return err;
+      // Supabase Functions errors often include the real payload in err.context.body
+      const body = err?.context?.body;
+      if (body) {
+        try {
+          const parsed = typeof body === 'string' ? JSON.parse(body) : body;
+          return parsed?.error || parsed?.message || fallback;
+        } catch {
+          // ignore parse failure
+        }
+      }
+      return err?.message || fallback;
+    };
+
     try {
       // Create user via edge function
       const { data: createResponse, error: createError } = await supabase.functions.invoke('manage-system-user', {
         body: {
           action: 'create',
-          userData: userData
+          userData: userData,
+          workspaceId
         },
         // keep headers consistent; some deployments rely on auth context/logging
         headers: getRequestHeaders()
       });
 
       if (createError) {
-        throw createError;
+        throw new Error(getEdgeFunctionErrorMessage(createError, 'Falha ao criar usuário'));
       }
 
       if (!createResponse.success) {
@@ -174,7 +191,7 @@ export function useWorkspaceMembers(workspaceId?: string) {
         });
 
         if (memberError) {
-          throw memberError;
+          throw new Error(getEdgeFunctionErrorMessage(memberError, 'Falha ao adicionar membro ao workspace'));
         }
 
         if (!memberResponse.success) {
