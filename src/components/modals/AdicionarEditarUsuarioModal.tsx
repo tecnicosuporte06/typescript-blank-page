@@ -318,81 +318,85 @@ export function AdicionarEditarUsuarioModal({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto p-0 gap-0 border border-[#d4d4d4] bg-white dark:bg-[#1f1f1f] dark:border-gray-700 shadow-sm rounded-none">
-        <DialogHeader className="bg-primary p-4 rounded-none m-0 border-b border-[#d4d4d4] dark:border-gray-700 dark:bg-transparent">
-          <DialogTitle className="flex items-center gap-2 text-primary-foreground text-base font-bold dark:text-white">
+      <DialogContent className="w-[min(1280px,96vw)] max-w-none p-0 gap-0 border border-[#d4d4d4] bg-white dark:bg-[#1f1f1f] dark:border-gray-700 shadow-sm rounded-none overflow-hidden">
+        <DialogHeader className="bg-primary px-6 py-5 rounded-none m-0 border-b border-[#d4d4d4] dark:border-gray-700 dark:bg-transparent">
+          <DialogTitle className="flex items-center gap-2 text-primary-foreground text-lg font-bold dark:text-white">
             <User className="w-4 h-4 text-primary-foreground dark:text-white" />
             {isEditing ? 'Editar Usuário' : 'Adicionar Usuário'}
           </DialogTitle>
-          <DialogDescription className="text-xs text-primary-foreground/80 mt-1 dark:text-gray-300">
+          <DialogDescription className="text-sm text-primary-foreground/80 mt-1 dark:text-gray-300">
             {isEditing
               ? (effectiveLockWorkspace ? 'Modifique os dados do usuário.' : 'Modifique os dados do usuário e selecione a empresa.')
               : (effectiveLockWorkspace ? 'Preencha os dados do novo usuário.' : 'Preencha os dados do novo usuário e selecione a empresa.')}
           </DialogDescription>
         </DialogHeader>
 
-        <div className="p-6 space-y-6 bg-white dark:bg-[#1f1f1f]">
+        <div className="px-6 py-5 bg-white dark:bg-[#1f1f1f]">
+          <div className="grid grid-cols-12 gap-6 items-start">
           {/* Avatar Upload */}
-          <div className="flex items-center gap-4 pb-4 border-b border-[#d4d4d4] dark:border-gray-700">
-            <div className="relative">
-              <div className="w-16 h-16 rounded-full bg-[#f0f0f0] dark:bg-gray-800 flex items-center justify-center overflow-hidden border-2 border-[#d4d4d4] dark:border-gray-700">
+          <div className="col-span-12 lg:col-span-3 border border-[#d4d4d4] dark:border-gray-700 bg-white dark:bg-[#1f1f1f] p-5">
+            <div className="flex items-center lg:flex-col lg:items-center gap-4">
+              <div className="relative">
+                <div className="w-20 h-20 rounded-full bg-[#f0f0f0] dark:bg-gray-800 flex items-center justify-center overflow-hidden border-2 border-[#d4d4d4] dark:border-gray-700">
                 {avatarPreview ? (
                   <img src={avatarPreview} alt="Avatar" className="w-full h-full object-cover" />
                 ) : (
-                  <User className="h-8 w-8 text-gray-500 dark:text-gray-400" />
+                  <User className="h-10 w-10 text-gray-500 dark:text-gray-400" />
+                )}
+                </div>
+                {avatarPreview && (
+                  <button
+                    onClick={handleRemoveAvatar}
+                    className="absolute -top-1 -right-1 bg-red-600 text-white rounded-full p-1 hover:bg-red-700"
+                  >
+                    <X className="h-3 w-3" />
+                  </button>
                 )}
               </div>
-              {avatarPreview && (
-                <button
-                  onClick={handleRemoveAvatar}
-                  className="absolute -top-1 -right-1 bg-red-600 text-white rounded-full p-1 hover:bg-red-700"
+
+              <div className="min-w-0 flex-1 lg:flex-none">
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="image/*"
+                  onChange={handleAvatarChange}
+                  className="hidden"
+                />
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => fileInputRef.current?.click()}
+                  className="h-9 px-4 text-sm rounded-none border-[#d4d4d4] dark:border-gray-700 hover:bg-gray-100 dark:hover:bg-gray-800 w-full lg:w-auto"
                 >
-                  <X className="h-3 w-3" />
-                </button>
-              )}
-            </div>
-            <div>
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept="image/*"
-                onChange={handleAvatarChange}
-                className="hidden"
-              />
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                onClick={() => fileInputRef.current?.click()}
-                className="h-7 px-3 text-xs rounded-none border-[#d4d4d4] dark:border-gray-700 hover:bg-gray-100 dark:hover:bg-gray-800"
-              >
-                <Camera className="h-3.5 w-3.5 mr-1.5" />
-                {avatarPreview ? 'Alterar Foto' : 'Adicionar Foto'}
-              </Button>
-              <p className="text-[10px] text-gray-500 dark:text-gray-400 mt-1">
-                JPG, PNG ou GIF (máx. 5MB)
-              </p>
+                  <Camera className="h-4 w-4 mr-2" />
+                  {avatarPreview ? 'Alterar Foto' : 'Adicionar Foto'}
+                </Button>
+                <p className="text-xs text-gray-500 dark:text-gray-400 mt-2">
+                  JPG, PNG ou GIF (máx. 5MB)
+                </p>
+              </div>
             </div>
           </div>
 
           {/* Dados Básicos */}
-          <div className="space-y-4">
-            <h3 className="font-semibold text-xs text-gray-700 dark:text-gray-300 uppercase tracking-wide">Dados Básicos</h3>
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-1.5">
-                <Label htmlFor="name" className="text-xs font-medium text-gray-700 dark:text-gray-300">Nome *</Label>
+          <div className="col-span-12 lg:col-span-6 border border-[#d4d4d4] dark:border-gray-700 bg-white dark:bg-[#1f1f1f] p-5">
+            <h3 className="font-semibold text-sm text-gray-700 dark:text-gray-200 uppercase tracking-wide mb-4">Dados Básicos</h3>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="name" className="text-sm font-medium text-gray-700 dark:text-gray-300">Nome *</Label>
                 <Input
                   id="name"
                   placeholder="Nome completo"
                   autoComplete="off"
                   value={formData.name}
                   onChange={(e) => setFormData(prev => ({ ...prev, name: e.target.value }))}
-                  className="h-8 text-xs rounded-none border-[#d4d4d4] dark:border-gray-700 bg-white dark:bg-[#2d2d2d] focus-visible:ring-1 focus-visible:ring-primary"
+                  className="h-9 text-sm rounded-none border-[#d4d4d4] dark:border-gray-700 bg-white dark:bg-[#2d2d2d] focus-visible:ring-1 focus-visible:ring-primary"
                 />
               </div>
               
-              <div className="space-y-1.5">
-                <Label htmlFor="email" className="text-xs font-medium text-gray-700 dark:text-gray-300">E-mail *</Label>
+              <div className="space-y-2">
+                <Label htmlFor="email" className="text-sm font-medium text-gray-700 dark:text-gray-300">E-mail *</Label>
                 <Input
                   id="email"
                   type="email"
@@ -400,14 +404,14 @@ export function AdicionarEditarUsuarioModal({
                   autoComplete="off"
                   value={formData.email}
                   onChange={(e) => setFormData(prev => ({ ...prev, email: e.target.value }))}
-                  className="h-8 text-xs rounded-none border-[#d4d4d4] dark:border-gray-700 bg-white dark:bg-[#2d2d2d] focus-visible:ring-1 focus-visible:ring-primary"
+                  className="h-9 text-sm rounded-none border-[#d4d4d4] dark:border-gray-700 bg-white dark:bg-[#2d2d2d] focus-visible:ring-1 focus-visible:ring-primary"
                 />
               </div>
               
-              <div className="space-y-1.5">
-                <Label htmlFor="profile" className="text-xs font-medium text-gray-700 dark:text-gray-300">Perfil *</Label>
+              <div className="space-y-2">
+                <Label htmlFor="profile" className="text-sm font-medium text-gray-700 dark:text-gray-300">Perfil *</Label>
                 <Select value={formData.profile} onValueChange={(value) => setFormData(prev => ({ ...prev, profile: value }))}>
-                  <SelectTrigger className="h-8 text-xs rounded-none border-[#d4d4d4] dark:border-gray-700 bg-white dark:bg-[#2d2d2d]">
+                  <SelectTrigger className="h-9 text-sm rounded-none border-[#d4d4d4] dark:border-gray-700 bg-white dark:bg-[#2d2d2d]">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent className="rounded-none border-[#d4d4d4] dark:border-gray-700">
@@ -418,8 +422,8 @@ export function AdicionarEditarUsuarioModal({
                 </Select>
               </div>
               
-              <div className="space-y-1.5">
-                <Label htmlFor="senha" className="text-xs font-medium text-gray-700 dark:text-gray-300">
+              <div className="space-y-2">
+                <Label htmlFor="senha" className="text-sm font-medium text-gray-700 dark:text-gray-300">
                   {isEditing ? 'Nova Senha (deixe vazio para manter)' : 'Senha *'}
                 </Label>
                 <div className="relative">
@@ -431,29 +435,29 @@ export function AdicionarEditarUsuarioModal({
                     autoComplete={isEditing ? "new-password" : "new-password"}
                     value={formData.senha}
                     onChange={(e) => setFormData(prev => ({ ...prev, senha: e.target.value }))}
-                    className="h-8 text-xs rounded-none border-[#d4d4d4] dark:border-gray-700 bg-white dark:bg-[#2d2d2d] focus-visible:ring-1 focus-visible:ring-primary pr-8"
+                    className="h-9 text-sm rounded-none border-[#d4d4d4] dark:border-gray-700 bg-white dark:bg-[#2d2d2d] focus-visible:ring-1 focus-visible:ring-primary pr-10"
                   />
                   <Button
                     type="button"
                     variant="ghost"
                     size="icon"
-                    className="absolute right-1 top-1/2 -translate-y-1/2 h-6 w-6 hover:bg-gray-100 dark:hover:bg-gray-800"
+                    className="absolute right-1 top-1/2 -translate-y-1/2 h-8 w-8 hover:bg-gray-100 dark:hover:bg-gray-800"
                     onClick={() => setShowPassword(!showPassword)}
                   >
-                    {showPassword ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
+                    {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                   </Button>
                 </div>
               </div>
               
-              <div className="space-y-1.5">
-                <Label htmlFor="phone" className="text-xs font-medium text-gray-700 dark:text-gray-300">Telefone</Label>
+              <div className="space-y-2 md:col-span-2">
+                <Label htmlFor="phone" className="text-sm font-medium text-gray-700 dark:text-gray-300">Telefone</Label>
                 <Input
                   id="phone"
                   placeholder="(11) 99999-9999"
                   autoComplete="off"
                   value={formData.phone}
                   onChange={(e) => setFormData(prev => ({ ...prev, phone: e.target.value }))}
-                  className="h-8 text-xs rounded-none border-[#d4d4d4] dark:border-gray-700 bg-white dark:bg-[#2d2d2d] focus-visible:ring-1 focus-visible:ring-primary"
+                  className="h-9 text-sm rounded-none border-[#d4d4d4] dark:border-gray-700 bg-white dark:bg-[#2d2d2d] focus-visible:ring-1 focus-visible:ring-primary"
                 />
               </div>
 
@@ -461,13 +465,14 @@ export function AdicionarEditarUsuarioModal({
           </div>
 
           {/* Empresa Selection */}
-          {workspaces.length > 0 && !effectiveLockWorkspace && (
-            <div className="space-y-4">
-              <h3 className="font-semibold text-xs text-gray-700 dark:text-gray-300 uppercase tracking-wide">Empresa</h3>
-              <div className="space-y-1.5">
-                <Label htmlFor="workspace" className="text-xs font-medium text-gray-700 dark:text-gray-300">Empresa *</Label>
+          <div className="col-span-12 lg:col-span-3 border border-[#d4d4d4] dark:border-gray-700 bg-white dark:bg-[#1f1f1f] p-5">
+            <h3 className="font-semibold text-sm text-gray-700 dark:text-gray-200 uppercase tracking-wide mb-4">Empresa</h3>
+
+            {!effectiveLockWorkspace && (
+              <div className="space-y-2">
+                <Label htmlFor="workspace" className="text-sm font-medium text-gray-700 dark:text-gray-300">Empresa *</Label>
                 <Select value={selectedWorkspaceId} onValueChange={setSelectedWorkspaceId}>
-                  <SelectTrigger className="h-8 text-xs rounded-none border-[#d4d4d4] dark:border-gray-700 bg-white dark:bg-[#2d2d2d]">
+                  <SelectTrigger className="h-9 text-sm rounded-none border-[#d4d4d4] dark:border-gray-700 bg-white dark:bg-[#2d2d2d]">
                     <SelectValue placeholder="Selecione uma empresa" />
                   </SelectTrigger>
                   <SelectContent className="rounded-none border-[#d4d4d4] dark:border-gray-700">
@@ -479,61 +484,58 @@ export function AdicionarEditarUsuarioModal({
                   </SelectContent>
                 </Select>
               </div>
-            </div>
-          )}
-          
-          {/* Empresa (travada no contexto atual) */}
-          {effectiveLockWorkspace && selectedWorkspaceId && (
-            <div className="space-y-4">
-              <h3 className="font-semibold text-xs text-gray-700 dark:text-gray-300 uppercase tracking-wide">Empresa</h3>
-              <div className="space-y-1.5">
-                <Label className="text-xs font-medium text-gray-700 dark:text-gray-300">Empresa</Label>
-                <div className="h-8 flex items-center px-3 text-xs rounded-none border border-[#d4d4d4] dark:border-gray-700 bg-white dark:bg-[#2d2d2d] text-gray-900 dark:text-gray-200">
+            )}
+
+            {effectiveLockWorkspace && selectedWorkspaceId && (
+              <div className="space-y-2">
+                <Label className="text-sm font-medium text-gray-700 dark:text-gray-300">Empresa</Label>
+                <div className="h-9 flex items-center px-3 text-sm rounded-none border border-[#d4d4d4] dark:border-gray-700 bg-white dark:bg-[#2d2d2d] text-gray-900 dark:text-gray-200">
                   {selectedWorkspaceName || '—'}
                 </div>
               </div>
-            </div>
-          )}
+            )}
 
-          {/* Canal Padrão */}
-          {selectedWorkspaceId && connections.length > 0 && (
-            <div className="space-y-4">
-              <h3 className="font-semibold text-xs text-gray-700 dark:text-gray-300 uppercase tracking-wide">Canal Padrão</h3>
-              <div className="space-y-1.5">
-                <Label htmlFor="default_channel" className="text-xs font-medium text-gray-700 dark:text-gray-300">Canal WhatsApp</Label>
-                <Select value={formData.default_channel} onValueChange={(value) => setFormData(prev => ({ ...prev, default_channel: value }))}>
-                  <SelectTrigger className="h-8 text-xs rounded-none border-[#d4d4d4] dark:border-gray-700 bg-white dark:bg-[#2d2d2d]">
-                    <SelectValue placeholder="Selecione um canal (opcional)" />
-                  </SelectTrigger>
-                  <SelectContent className="rounded-none border-[#d4d4d4] dark:border-gray-700">
-                    {connections.map((connection) => (
-                      <SelectItem key={connection.id} value={connection.id}>
-                        {connection.instance_name || connection.phone_number || connection.id}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+            {selectedWorkspaceId && connections.length > 0 && (
+              <div className="mt-6">
+                <h3 className="font-semibold text-sm text-gray-700 dark:text-gray-200 uppercase tracking-wide mb-3">Canal Padrão</h3>
+                <div className="space-y-2">
+                  <Label htmlFor="default_channel" className="text-sm font-medium text-gray-700 dark:text-gray-300">Canal WhatsApp</Label>
+                  <Select value={formData.default_channel} onValueChange={(value) => setFormData(prev => ({ ...prev, default_channel: value }))}>
+                    <SelectTrigger className="h-9 text-sm rounded-none border-[#d4d4d4] dark:border-gray-700 bg-white dark:bg-[#2d2d2d]">
+                      <SelectValue placeholder="Selecione um canal (opcional)" />
+                    </SelectTrigger>
+                    <SelectContent className="rounded-none border-[#d4d4d4] dark:border-gray-700">
+                      {connections.map((connection) => (
+                        <SelectItem key={connection.id} value={connection.id}>
+                          {connection.instance_name || connection.phone_number || connection.id}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
               </div>
-            </div>
-          )}
-          
-          <div className="flex gap-2 pt-4 border-t border-[#d4d4d4] dark:border-gray-700">
-            <Button 
-              onClick={handleSubmit}
-              disabled={isSubmitting || !formData.name || !formData.email || !formData.profile || (!isEditing && !formData.senha) || !selectedWorkspaceId}
-              className="h-7 px-4 text-xs rounded-none bg-primary hover:bg-primary/90"
-            >
-              {isSubmitting ? (isEditing ? "Salvando..." : "Criando...") : (isEditing ? "Salvar Alterações" : "Criar Usuário")}
-            </Button>
-            <Button 
-              variant="outline" 
-              onClick={handleCancel}
-              disabled={isSubmitting}
-              className="h-7 px-4 text-xs rounded-none border-[#d4d4d4] dark:border-gray-700 hover:bg-gray-100 dark:hover:bg-gray-800"
-            >
-              Cancelar
-            </Button>
+            )}
           </div>
+
+          </div>
+        </div>
+
+        <div className="px-6 py-4 border-t border-[#d4d4d4] dark:border-gray-700 bg-white dark:bg-[#1f1f1f] flex items-center justify-end gap-3">
+          <Button
+            variant="outline"
+            onClick={handleCancel}
+            disabled={isSubmitting}
+            className="h-9 px-5 text-sm rounded-none border-[#d4d4d4] dark:border-gray-700 hover:bg-gray-100 dark:hover:bg-gray-800"
+          >
+            Cancelar
+          </Button>
+          <Button
+            onClick={handleSubmit}
+            disabled={isSubmitting || !formData.name || !formData.email || !formData.profile || (!isEditing && !formData.senha) || !selectedWorkspaceId}
+            className="h-9 px-5 text-sm rounded-none bg-primary hover:bg-primary/90"
+          >
+            {isSubmitting ? (isEditing ? "Salvando..." : "Criando...") : (isEditing ? "Salvar Alterações" : "Criar Usuário")}
+          </Button>
         </div>
       </DialogContent>
     </Dialog>
