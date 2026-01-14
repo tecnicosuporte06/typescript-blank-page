@@ -3267,15 +3267,21 @@ export function WhatsAppChat({
                   </Avatar>
                   
                   <div className="flex items-center gap-2">
-                    <h3 className="font-bold text-gray-900 text-sm tracking-tight dark:text-gray-100">
+                    <h3 className="font-bold text-gray-900 text-xs tracking-tight dark:text-gray-100">
                       {onlyMessages ? (
                         isHeaderContactResolved ? (
-                          (selectedConversation.contact?.name && selectedConversation.contact.name !== '-' ? selectedConversation.contact.name : '')
+                          (() => {
+                            const name = selectedConversation.contact?.name && selectedConversation.contact.name !== '-' ? selectedConversation.contact.name : '';
+                            return name.length > 8 ? name.substring(0, 8) + '...' : name;
+                          })()
                         ) : (
                           <Skeleton className="h-4 w-24 rounded-none inline-block align-middle bg-gray-200 dark:bg-gray-700" />
                         )
                       ) : (
-                        (selectedConversation.contact?.name && selectedConversation.contact.name !== '-' ? selectedConversation.contact.name : (selectedConversation.contact?.phone || ''))
+                        (() => {
+                          const name = selectedConversation.contact?.name && selectedConversation.contact.name !== '-' ? selectedConversation.contact.name : (selectedConversation.contact?.phone || '');
+                          return name.length > 8 ? name.substring(0, 8) + '...' : name;
+                        })()
                       )}
                     </h3>
                     {selectedConversation.contact?.id && (
@@ -3322,12 +3328,16 @@ export function WhatsAppChat({
                           <Bot className="w-3.5 h-3.5 text-green-600 dark:text-green-400 group-hover:scale-110 transition-transform" />
                         </div>
                         <span 
-                          className="text-xs font-bold leading-none"
+                          className="font-bold leading-none"
                           style={{
-                            color: isDark ? "#ffffff" : "#2d2d2d"
+                            color: isDark ? "#ffffff" : "#2d2d2d",
+                            fontSize: "10px"
                           }}
                         >
-                          {agentLoading ? "Carregando..." : (agent?.name || "Agente IA")}
+                          {agentLoading ? "Carregando..." : (() => {
+                            const name = agent?.name || "Agente IA";
+                            return name.length > 8 ? name.substring(0, 8) + '...' : name;
+                          })()}
                         </span>
                       </button>
                     ) : (

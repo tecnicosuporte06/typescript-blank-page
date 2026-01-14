@@ -34,7 +34,7 @@ type RequestPayload = {
   limit?: number;
   search?: string; // nome ou telefone
   tag?: string; // etiqueta
-  documentName?: string;
+  documentNameFilter?: string;
   createdFrom?: string; // ISO ou yyyy-mm-dd
   createdTo?: string;   // ISO ou yyyy-mm-dd
 
@@ -118,6 +118,50 @@ async function requireWorkspaceMember(supabase: any, workspaceId: string, system
   }
 }
 
+// Query direta para contar registros - SIMPLES E FUNCIONAL
+async function countFromTable(
+  supabase: any,
+  table: string,
+  filters: Record<string, any> = {},
+  inFilters: Record<string, string[]> = {},
+  gteFilters: Record<string, string> = {},
+): Promise<number> {
+  try {
+    let q = supabase.from(table).select("*", { count: "exact", head: true });
+    
+    // Aplica filtros eq
+    for (const [key, value] of Object.entries(filters)) {
+      if (value !== undefined && value !== null) {
+        q = q.eq(key, value);
+      }
+    }
+    
+    // Aplica filtros in
+    for (const [key, values] of Object.entries(inFilters)) {
+      if (values && values.length > 0) {
+        q = q.in(key, values);
+      }
+    }
+    
+    // Aplica filtros gte
+    for (const [key, value] of Object.entries(gteFilters)) {
+      if (value) {
+        q = q.gte(key, value);
+      }
+    }
+    
+    const { count, error } = await q;
+    if (error) {
+      console.error(`countFromTable error on ${table}:`, error.message);
+      return 0;
+    }
+    return Number(count || 0);
+  } catch (e) {
+    console.error(`countFromTable exception on ${table}:`, e);
+    return 0;
+  }
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
@@ -176,7 +220,7 @@ serve(async (req) => {
       const tag = String(payload.tag || "").trim();
       if (tag && tag !== "all") q = q.eq("tag", tag);
 
-      const doc = String(payload.documentName || "").trim();
+      const doc = String(payload.documentNameFilter || "").trim();
       if (doc && doc !== "all") q = q.eq("document_name", doc);
 
       const fromIso = payload.createdFrom ? normalizeDateBoundary(String(payload.createdFrom), false) : null;
@@ -453,28 +497,75 @@ serve(async (req) => {
       (resps || []).forEach((r: any) => respByContact.set(r.contact_id, r));
 
       const totalContatos = contactIds.length;
-      // Preferir a tabela nova (disparador_campaign_message_send) para total de enviadas.
-      // Observação: como essa tabela não tem workspace_id, aqui filtramos diretamente por campaign_id.
-      let totalEnviadas = 0;
-      try {
-        const { count } = await supabase
-          .from("disparador_campaign_message_send")
-          .select("id", { count: "exact", head: true })
-          .eq("campaign_id", campaignId);
-        totalEnviadas = Number(count || 0);
-      } catch {
-        // fallback: caso a tabela não exista ainda ou dê erro, usa send_events
-        totalEnviadas = (sends || []).filter((s: any) => s.status === "sent").length;
-      }
-      const totalFalhas = (sends || []).filter((s: any) => s.status === "failed").length;
-      const totalQueued = (sends || []).filter((s: any) => s.status === "queued").length;
 
-      const totalRespostas = (resps || []).length;
-      const respostasPositivas = (resps || []).filter((r: any) => r.kind === "positive").length;
-      const respostasNegativas = (resps || []).filter((r: any) => r.kind === "negative").length;
+      let totalEnviadas = 0;
+      let totalNaoEnviadas = 0;
+      let totalRespostas = 0;
+      let respostasPositivas = 0;
+      let respostasNegativas = 0;
+
+      // Tentar primeiro disparador_message_send
+      const { data: msgSendData, error: msgSendError } = await supabase
+        .from("disparador_message_send")
+        .select("*")
+        .eq("campaign_id", campaignId);
+
+      const msgs = msgSendData || [];
+      console.log(`[campaigns.report] disparador_message_send: ${msgs.length} rows, error: ${msgSendError?.message || 'none'}`);
+
+      if (msgs.length > 0) {
+        const sampleRow = msgs[0];
+        console.log(`[campaigns.report] Sample row keys: ${Object.keys(sampleRow).join(', ')}`);
+        
+        const statusConvCol = 
+          "status_convertion" in sampleRow ? "status_convertion" :
+          "status-convertion" in sampleRow ? "status-convertion" :
+          "status_conversion" in sampleRow ? "status_conversion" :
+          "status-conversion" in sampleRow ? "status-conversion" : null;
+
+        const statusCol = "status" in sampleRow ? "status" : null;
+
+        msgs.forEach((m: any) => {
+          if (statusCol) {
+            if (m[statusCol] === true) {
+              totalEnviadas++;
+            } else if (m[statusCol] === false) {
+              totalNaoEnviadas++;
+            }
+          }
+
+          if (statusConvCol) {
+            const convValue = m[statusConvCol];
+            if (convValue === true) {
+              respostasPositivas++;
+              totalRespostas++;
+            } else if (convValue === false) {
+              respostasNegativas++;
+              totalRespostas++;
+            }
+          }
+        });
+      }
+
+      // Fallback: disparador_campaign_message_send
+      if (totalEnviadas === 0 && totalNaoEnviadas === 0) {
+        const { data: campaignMsgs, error: campaignMsgsError } = await supabase
+          .from("disparador_campaign_message_send")
+          .select("*")
+          .eq("campaign_id", campaignId);
+
+        const fallbackMsgs = campaignMsgs || [];
+        console.log(`[campaigns.report] disparador_campaign_message_send: ${fallbackMsgs.length} rows, error: ${campaignMsgsError?.message || 'none'}`);
+
+        if (fallbackMsgs.length > 0) {
+          totalEnviadas = fallbackMsgs.length;
+        }
+      }
 
       const conversaoPositivaPct = pct(respostasPositivas, totalEnviadas);
       const conversaoNegativaPct = pct(respostasNegativas, totalEnviadas);
+      
+      console.log(`[campaigns.report] KPIs: enviadas=${totalEnviadas}, naoEnviadas=${totalNaoEnviadas}, respostas=${totalRespostas}`);
 
       const contacts = (contactsData || [])
         .map((c: any) => {
@@ -495,16 +586,15 @@ serve(async (req) => {
           totalContatos,
           totalEnviadas,
           totalRespostas,
-          totalFalhas,
+          totalNaoEnviadas,
           respostasPositivas,
           conversaoPositivaPct,
           respostasNegativas,
           conversaoNegativaPct,
         },
         sendStatus: {
-          queued: totalQueued,
           sent: totalEnviadas,
-          failed: totalFalhas,
+          notSent: totalNaoEnviadas,
         },
         contacts,
       });
@@ -527,74 +617,101 @@ serve(async (req) => {
     if (payload.action === "dashboard.get") {
       const todayStart = new Date();
       todayStart.setHours(0, 0, 0, 0);
-      const todayIso = todayStart.toISOString();
       const pct = (num: number, den: number) => (den > 0 ? Number(((num / den) * 100).toFixed(2)) : 0);
 
-      const [activeRes, campaignIdsRes, totalFailedRes, respRes] = await Promise.all([
-        supabase
-          .from("disparador_campaigns")
-          .select("id", { count: "exact", head: true })
-          .eq("workspace_id", payload.workspaceId)
-          .neq("status", "concluida"),
-        supabase
-          .from("disparador_campaigns")
-          .select("id")
-          .eq("workspace_id", payload.workspaceId),
-        supabase
-          .from("disparador_send_events")
-          .select("id", { count: "exact", head: true })
-          .eq("workspace_id", payload.workspaceId)
-          .eq("status", "failed"),
-        supabase
-          .from("disparador_response_events")
-          .select("id, kind")
-          .eq("workspace_id", payload.workspaceId),
-      ]);
+      // 1) Buscar campanhas ativas e IDs
+      const { data: campaignsData, count: campanhasAtivas } = await supabase
+        .from("disparador_campaigns")
+        .select("id", { count: "exact" })
+        .eq("workspace_id", payload.workspaceId)
+        .neq("status", "concluida");
 
-      const campanhasAtivas = Number(activeRes?.count || 0);
-      const totalFalhas = Number(totalFailedRes?.count || 0);
+      const campaignIds = (campaignsData || []).map((c: any) => c.id).filter(Boolean);
 
-      // Envios hoje / total enviadas:
-      // Preferir a tabela nova disparador_campaign_message_send (quando existir) para alimentar o card.
-      // Como essa tabela não tem workspace_id, filtramos por campanhas do workspace.
-      let enviosHoje = 0;
       let totalEnviadas = 0;
-      const campaignIds = (Array.isArray(campaignIdsRes?.data) ? campaignIdsRes.data : [])
-        .map((r: any) => r?.id)
-        .filter(Boolean);
+      let totalNaoEnviadas = 0;
+      let enviosHoje = 0;
+      let totalRespostas = 0;
+      let respostasPositivas = 0;
+      let respostasNegativas = 0;
 
       if (campaignIds.length > 0) {
-        try {
-          const [sentTodayFromMsgSend, totalSentFromMsgSend] = await Promise.all([
-            supabase
-              .from("disparador_campaign_message_send")
-              .select("id", { count: "exact", head: true })
-              .in("campaign_id", campaignIds)
-              .gte("created_at", todayIso),
-            supabase
-              .from("disparador_campaign_message_send")
-              .select("id", { count: "exact", head: true })
-              .in("campaign_id", campaignIds),
-          ]);
+        // Tentar primeiro a tabela disparador_message_send (tem status e status_convertion)
+        const { data: msgSendData, error: msgSendError } = await supabase
+          .from("disparador_message_send")
+          .select("*")
+          .in("campaign_id", campaignIds);
 
-          enviosHoje = Number(sentTodayFromMsgSend?.count || 0);
-          totalEnviadas = Number(totalSentFromMsgSend?.count || 0);
-        } catch {
-          // fallback silencioso (mantém 0) caso a tabela não exista ou dê erro
-          enviosHoje = 0;
-          totalEnviadas = 0;
+        const msgs = msgSendData || [];
+        console.log(`[dashboard.get] disparador_message_send: ${msgs.length} rows, error: ${msgSendError?.message || 'none'}`);
+
+        if (msgs.length > 0) {
+          // Detectar nomes das colunas
+          const sampleRow = msgs[0];
+          console.log(`[dashboard.get] Sample row keys: ${Object.keys(sampleRow).join(', ')}`);
+          
+          const statusConvCol = 
+            "status_convertion" in sampleRow ? "status_convertion" :
+            "status-convertion" in sampleRow ? "status-convertion" :
+            "status_conversion" in sampleRow ? "status_conversion" :
+            "status-conversion" in sampleRow ? "status-conversion" : null;
+
+          const statusCol = "status" in sampleRow ? "status" : null;
+          console.log(`[dashboard.get] statusCol: ${statusCol}, statusConvCol: ${statusConvCol}`);
+
+          msgs.forEach((m: any) => {
+            // Status de envio: true = enviada, false = não enviada
+            if (statusCol) {
+              if (m[statusCol] === true) {
+                totalEnviadas++;
+                if (m.created_at && new Date(m.created_at) >= todayStart) {
+                  enviosHoje++;
+                }
+              } else if (m[statusCol] === false) {
+                totalNaoEnviadas++;
+              }
+            }
+
+            // Status de conversão
+            if (statusConvCol) {
+              const convValue = m[statusConvCol];
+              if (convValue === true) {
+                respostasPositivas++;
+                totalRespostas++;
+              } else if (convValue === false) {
+                respostasNegativas++;
+                totalRespostas++;
+              }
+            }
+          });
+        }
+
+        // Se não encontrou nada em disparador_message_send, tentar disparador_campaign_message_send
+        if (totalEnviadas === 0 && totalNaoEnviadas === 0) {
+          const { data: campaignMsgs, error: campaignMsgsError } = await supabase
+            .from("disparador_campaign_message_send")
+            .select("*")
+            .in("campaign_id", campaignIds);
+
+          const fallbackMsgs = campaignMsgs || [];
+          console.log(`[dashboard.get] disparador_campaign_message_send: ${fallbackMsgs.length} rows, error: ${campaignMsgsError?.message || 'none'}`);
+
+          if (fallbackMsgs.length > 0) {
+            // Essa tabela não tem status de envio, então considera tudo como enviado
+            totalEnviadas = fallbackMsgs.length;
+            enviosHoje = fallbackMsgs.filter((m: any) => m.created_at && new Date(m.created_at) >= todayStart).length;
+          }
         }
       }
 
-      const respRows: any[] = Array.isArray(respRes?.data) ? (respRes.data as any[]) : [];
-      const totalRespostas = respRows.length;
-      const respostasPositivas = respRows.filter((r) => r.kind === "positive").length;
-      const respostasNegativas = respRows.filter((r) => r.kind === "negative").length;
-
+      // 3) Calcular métricas de conversão
       const taxaRespostaTotalPct = pct(totalRespostas, totalEnviadas);
       const conversaoPositivaPct = pct(respostasPositivas, totalEnviadas);
       const conversaoNegativaPct = pct(respostasNegativas, totalEnviadas);
+      
+      console.log(`[dashboard.get] KPIs: enviadas=${totalEnviadas}, naoEnviadas=${totalNaoEnviadas}, respostas=${totalRespostas}, pos=${respostasPositivas}, neg=${respostasNegativas}`);
 
+      // 4) Performance por usuário (se tiver dados em send_events)
       const { data: sendsData } = await supabase
         .from("disparador_send_events")
         .select("triggered_by, status, campaign_id, contact_id")
@@ -651,15 +768,16 @@ serve(async (req) => {
       return json(200, {
         success: true,
         kpis: {
-          campanhasAtivas,
+          campanhasAtivas: Number(campanhasAtivas || 0),
           enviosHoje,
           taxaRespostaTotalPct,
+          totalRespostas,
           respostasPositivas,
           respostasNegativas,
           conversaoPositivaPct,
           conversaoNegativaPct,
           totalEnviadas,
-          totalFalhas,
+          totalNaoEnviadas,
         },
         userPerf,
       });

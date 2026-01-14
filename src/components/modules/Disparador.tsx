@@ -55,12 +55,13 @@ export function Disparador() {
     campanhasAtivas: 0,
     enviosHoje: 0,
     taxaRespostaTotalPct: 0,
+    totalRespostas: 0,
     respostasPositivas: 0,
     respostasNegativas: 0,
     conversaoPositivaPct: 0,
     conversaoNegativaPct: 0,
     totalEnviadas: 0,
-    totalFalhas: 0,
+    totalNaoEnviadas: 0,
   });
   const [userPerf, setUserPerf] = useState<any[]>([]);
 
@@ -86,7 +87,7 @@ export function Disparador() {
           limit: 2000,
           search: contactsSearch,
           tag: contactsTag,
-          documentName: contactsDoc,
+          documentNameFilter: contactsDoc,
           createdFrom,
           createdTo,
         },
@@ -221,12 +222,13 @@ export function Disparador() {
         campanhasAtivas: 0,
         enviosHoje: 0,
         taxaRespostaTotalPct: 0,
+        totalRespostas: 0,
         respostasPositivas: 0,
         respostasNegativas: 0,
         conversaoPositivaPct: 0,
         conversaoNegativaPct: 0,
         totalEnviadas: 0,
-        totalFalhas: 0,
+        totalNaoEnviadas: 0,
       });
       setUserPerf([]);
       return;
@@ -420,12 +422,12 @@ export function Disparador() {
                             <div className="text-xl font-semibold">{kpis.totalEnviadas}</div>
                           </div>
                           <div className="border border-gray-200 dark:border-gray-700 p-3 rounded-none">
-                            <div className="text-[11px] text-gray-600 dark:text-gray-300">Respostas (pos + neg)</div>
-                            <div className="text-xl font-semibold">{kpis.respostasPositivas + kpis.respostasNegativas}</div>
+                            <div className="text-[11px] text-gray-600 dark:text-gray-300">Total de respostas</div>
+                            <div className="text-xl font-semibold">{kpis.totalRespostas}</div>
                           </div>
                           <div className="border border-gray-200 dark:border-gray-700 p-3 rounded-none">
                             <div className="text-[11px] text-gray-600 dark:text-gray-300">Mensagens não enviadas</div>
-                            <div className="text-xl font-semibold">{kpis.totalFalhas}</div>
+                            <div className="text-xl font-semibold">{kpis.totalNaoEnviadas}</div>
                           </div>
                         </div>
                       </CardContent>
