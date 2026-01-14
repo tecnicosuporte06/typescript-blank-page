@@ -504,36 +504,40 @@ serve(async (req) => {
       let respostasPositivas = 0;
       let respostasNegativas = 0;
 
-      // Tentar primeiro disparador_message_send
+      // Buscar dados da tabela disparador_campaign_message_send para esta campanha
       const { data: msgSendData, error: msgSendError } = await supabase
-        .from("disparador_message_send")
+        .from("disparador_campaign_message_send")
         .select("*")
         .eq("campaign_id", campaignId);
 
       const msgs = msgSendData || [];
-      console.log(`[campaigns.report] disparador_message_send: ${msgs.length} rows, error: ${msgSendError?.message || 'none'}`);
+      console.log(`[campaigns.report] disparador_campaign_message_send: ${msgs.length} rows, error: ${msgSendError?.message || 'none'}`);
 
       if (msgs.length > 0) {
         const sampleRow = msgs[0];
-        console.log(`[campaigns.report] Sample row keys: ${Object.keys(sampleRow).join(', ')}`);
+        const allKeys = Object.keys(sampleRow);
+        console.log(`[campaigns.report] Sample row keys: ${allKeys.join(', ')}`);
         
-        const statusConvCol = 
-          "status_convertion" in sampleRow ? "status_convertion" :
-          "status-convertion" in sampleRow ? "status-convertion" :
-          "status_conversion" in sampleRow ? "status_conversion" :
-          "status-conversion" in sampleRow ? "status-conversion" : null;
+        // Detectar coluna de conversão (pode ter espaços, hífen ou underscore)
+        const statusConvCol = allKeys.find(k => 
+          k === "status - convertion" ||
+          k === "status_convertion" || 
+          k === "status-convertion" || 
+          k === "status_conversion" || 
+          k === "status-conversion"
+        ) || null;
 
-        const statusCol = "status" in sampleRow ? "status" : null;
+        console.log(`[campaigns.report] statusConvCol found: ${statusConvCol}`);
 
         msgs.forEach((m: any) => {
-          if (statusCol) {
-            if (m[statusCol] === true) {
-              totalEnviadas++;
-            } else if (m[statusCol] === false) {
-              totalNaoEnviadas++;
-            }
+          // Status de envio
+          if (m.status === true) {
+            totalEnviadas++;
+          } else if (m.status === false) {
+            totalNaoEnviadas++;
           }
 
+          // Status de conversão
           if (statusConvCol) {
             const convValue = m[statusConvCol];
             if (convValue === true) {
@@ -547,25 +551,10 @@ serve(async (req) => {
         });
       }
 
-      // Fallback: disparador_campaign_message_send
-      if (totalEnviadas === 0 && totalNaoEnviadas === 0) {
-        const { data: campaignMsgs, error: campaignMsgsError } = await supabase
-          .from("disparador_campaign_message_send")
-          .select("*")
-          .eq("campaign_id", campaignId);
-
-        const fallbackMsgs = campaignMsgs || [];
-        console.log(`[campaigns.report] disparador_campaign_message_send: ${fallbackMsgs.length} rows, error: ${campaignMsgsError?.message || 'none'}`);
-
-        if (fallbackMsgs.length > 0) {
-          totalEnviadas = fallbackMsgs.length;
-        }
-      }
-
       const conversaoPositivaPct = pct(respostasPositivas, totalEnviadas);
       const conversaoNegativaPct = pct(respostasNegativas, totalEnviadas);
       
-      console.log(`[campaigns.report] KPIs: enviadas=${totalEnviadas}, naoEnviadas=${totalNaoEnviadas}, respostas=${totalRespostas}`);
+      console.log(`[campaigns.report] Results: enviadas=${totalEnviadas}, naoEnviadas=${totalNaoEnviadas}, pos=${respostasPositivas}, neg=${respostasNegativas}`);
 
       const contacts = (contactsData || [])
         .map((c: any) => {
@@ -635,74 +624,58 @@ serve(async (req) => {
       let respostasPositivas = 0;
       let respostasNegativas = 0;
 
-      if (campaignIds.length > 0) {
-        // Tentar primeiro a tabela disparador_message_send (tem status e status_convertion)
-        const { data: msgSendData, error: msgSendError } = await supabase
-          .from("disparador_message_send")
-          .select("*")
-          .in("campaign_id", campaignIds);
+      // Buscar dados da tabela disparador_campaign_message_send
+      // Estrutura: id, campaign_id, created_at, content, contact_number, status, "status - convertion", workspace_id
+      const { data: msgSendData, error: msgSendError } = await supabase
+        .from("disparador_campaign_message_send")
+        .select("*")
+        .eq("workspace_id", payload.workspaceId);
 
-        const msgs = msgSendData || [];
-        console.log(`[dashboard.get] disparador_message_send: ${msgs.length} rows, error: ${msgSendError?.message || 'none'}`);
+      const msgs = msgSendData || [];
+      console.log(`[dashboard.get] disparador_campaign_message_send: ${msgs.length} rows, error: ${msgSendError?.message || 'none'}`);
 
-        if (msgs.length > 0) {
-          // Detectar nomes das colunas
-          const sampleRow = msgs[0];
-          console.log(`[dashboard.get] Sample row keys: ${Object.keys(sampleRow).join(', ')}`);
-          
-          const statusConvCol = 
-            "status_convertion" in sampleRow ? "status_convertion" :
-            "status-convertion" in sampleRow ? "status-convertion" :
-            "status_conversion" in sampleRow ? "status_conversion" :
-            "status-conversion" in sampleRow ? "status-conversion" : null;
+      if (msgs.length > 0) {
+        const sampleRow = msgs[0];
+        const allKeys = Object.keys(sampleRow);
+        console.log(`[dashboard.get] Sample row keys: ${allKeys.join(', ')}`);
+        
+        // Detectar coluna de conversão (pode ter espaços, hífen ou underscore)
+        const statusConvCol = allKeys.find(k => 
+          k === "status - convertion" ||
+          k === "status_convertion" || 
+          k === "status-convertion" || 
+          k === "status_conversion" || 
+          k === "status-conversion"
+        ) || null;
 
-          const statusCol = "status" in sampleRow ? "status" : null;
-          console.log(`[dashboard.get] statusCol: ${statusCol}, statusConvCol: ${statusConvCol}`);
+        console.log(`[dashboard.get] statusConvCol found: ${statusConvCol}`);
 
-          msgs.forEach((m: any) => {
-            // Status de envio: true = enviada, false = não enviada
-            if (statusCol) {
-              if (m[statusCol] === true) {
-                totalEnviadas++;
-                if (m.created_at && new Date(m.created_at) >= todayStart) {
-                  enviosHoje++;
-                }
-              } else if (m[statusCol] === false) {
-                totalNaoEnviadas++;
-              }
+        msgs.forEach((m: any) => {
+          // Status de envio: true = enviada, false = não enviada
+          if (m.status === true) {
+            totalEnviadas++;
+            if (m.created_at && new Date(m.created_at) >= todayStart) {
+              enviosHoje++;
             }
-
-            // Status de conversão
-            if (statusConvCol) {
-              const convValue = m[statusConvCol];
-              if (convValue === true) {
-                respostasPositivas++;
-                totalRespostas++;
-              } else if (convValue === false) {
-                respostasNegativas++;
-                totalRespostas++;
-              }
-            }
-          });
-        }
-
-        // Se não encontrou nada em disparador_message_send, tentar disparador_campaign_message_send
-        if (totalEnviadas === 0 && totalNaoEnviadas === 0) {
-          const { data: campaignMsgs, error: campaignMsgsError } = await supabase
-            .from("disparador_campaign_message_send")
-            .select("*")
-            .in("campaign_id", campaignIds);
-
-          const fallbackMsgs = campaignMsgs || [];
-          console.log(`[dashboard.get] disparador_campaign_message_send: ${fallbackMsgs.length} rows, error: ${campaignMsgsError?.message || 'none'}`);
-
-          if (fallbackMsgs.length > 0) {
-            // Essa tabela não tem status de envio, então considera tudo como enviado
-            totalEnviadas = fallbackMsgs.length;
-            enviosHoje = fallbackMsgs.filter((m: any) => m.created_at && new Date(m.created_at) >= todayStart).length;
+          } else if (m.status === false) {
+            totalNaoEnviadas++;
           }
-        }
+
+          // Status de conversão (coluna "status - convertion")
+          if (statusConvCol) {
+            const convValue = m[statusConvCol];
+            if (convValue === true) {
+              respostasPositivas++;
+              totalRespostas++;
+            } else if (convValue === false) {
+              respostasNegativas++;
+              totalRespostas++;
+            }
+          }
+        });
       }
+
+      console.log(`[dashboard.get] Results: enviadas=${totalEnviadas}, naoEnviadas=${totalNaoEnviadas}, pos=${respostasPositivas}, neg=${respostasNegativas}`);
 
       // 3) Calcular métricas de conversão
       const taxaRespostaTotalPct = pct(totalRespostas, totalEnviadas);

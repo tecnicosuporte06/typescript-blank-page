@@ -3324,7 +3324,6 @@ export function WhatsAppChat({
                         title="Agente ativo - clique para trocar"
                       >
                         <div className="flex items-center gap-1.5">
-                          <div className="w-1.5 h-1.5 bg-green-500 dark:bg-green-400 rounded-full animate-pulse shadow-lg shadow-green-500/50 dark:shadow-green-400/50" />
                           <Bot className="w-3.5 h-3.5 text-green-600 dark:text-green-400 group-hover:scale-110 transition-transform" />
                         </div>
                         <span 
