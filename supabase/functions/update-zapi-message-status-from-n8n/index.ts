@@ -20,7 +20,9 @@ serve(async (req) => {
       status: rawStatus, 
       phone,
       connection_id: connectionId,
-      conversation_id: conversationId  // ← ID da conversa (já vem no webhook N8N)
+      conversation_id: conversationId,  // ← ID da conversa (já vem no webhook N8N)
+      external_id: externalIdFromBody,
+      webhook_data: webhookData
     } = payload;
 
     // Validações
@@ -37,20 +39,65 @@ serve(async (req) => {
     const normalizedStatus = rawStatus === 'received' ? 'delivered' : rawStatus.toLowerCase();
     console.log('📊 Status:', rawStatus, '->', normalizedStatus);
 
+    // ============================================================
+    // ✅ ESTRATÉGIA 0 (DETERMINÍSTICA): buscar por provider message id (Z-API ids[0])
+    // ============================================================
+    const providerExternalId: string | null =
+      externalIdFromBody ||
+      (Array.isArray(webhookData?.ids) ? webhookData.ids?.[0] : null) ||
+      webhookData?.messageId ||
+      payload?.messageId ||
+      null;
+
     // 🎯 ESTRATÉGIA DE BUSCA POR TIMESTAMP
     console.log('🔍 Buscando mensagem para atualizar:', { 
       conversationId, 
       phone, 
       connectionId, 
       workspaceId, 
-      status: normalizedStatus 
+      status: normalizedStatus,
+      providerExternalId
     });
     
     let message = null;
     let searchError = null;
+
+    // ✅ Strategy 0: provider id saved at send-time (preferred)
+    if (providerExternalId) {
+      console.log('🔍 Strategy 0: Buscando por provider message id (evolution_key_id / metadata.provider_msg_id):', providerExternalId);
+
+      const { data: byEvolutionKey, error: byEvolutionKeyErr } = await supabase
+        .from('messages')
+        .select('id, external_id, status, delivered_at, read_at, content, created_at, sender_type, conversation_id')
+        .eq('workspace_id', workspaceId)
+        .eq('evolution_key_id', providerExternalId)
+        .maybeSingle();
+
+      if (byEvolutionKeyErr) {
+        searchError = byEvolutionKeyErr;
+      } else if (byEvolutionKey) {
+        message = byEvolutionKey;
+        console.log('✅ Mensagem encontrada por evolution_key_id (provider id):', message.id);
+      } else {
+        const { data: byMetadataProviderId, error: byMetaErr } = await supabase
+          .from('messages')
+          .select('id, external_id, status, delivered_at, read_at, content, created_at, sender_type, conversation_id')
+          .eq('workspace_id', workspaceId)
+          // @ts-ignore - PostgREST JSON path filter
+          .eq('metadata->>provider_msg_id', providerExternalId)
+          .maybeSingle();
+
+        if (byMetaErr) {
+          searchError = byMetaErr;
+        } else if (byMetadataProviderId) {
+          message = byMetadataProviderId;
+          console.log('✅ Mensagem encontrada por metadata.provider_msg_id (provider id):', message.id);
+        }
+      }
+    }
     
     // ✅ ESTRATÉGIA 1: Buscar por conversation_id + timestamp (últimos 60 segundos)
-    if (conversationId) {
+    if (!message && conversationId) {
       console.log('🔍 Buscando por conversation_id + timestamp:', conversationId);
       
       // Determinar qual status buscar baseado no callback recebido
@@ -180,7 +227,8 @@ serve(async (req) => {
         phone,
         connectionId,
         workspaceId,
-        strategy: 'conversation_id (timestamp) → phone+connection (timestamp)',
+        providerExternalId,
+        strategy: 'provider_id (evolution_key_id/metadata.provider_msg_id) → conversation_id (timestamp) → phone+connection (timestamp)',
         sender_types: ['user', 'agent', 'system']
       });
       

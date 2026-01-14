@@ -149,7 +149,16 @@ interface UseConversationMessagesReturn {
   loading: boolean;
   loadingMore: boolean;
   hasMore: boolean;
-  loadInitial: (conversationId: string, forceRefresh?: boolean) => Promise<void>;
+  loadInitial: (
+    conversationId: string,
+    arg?:
+      | boolean
+      | {
+          forceRefresh?: boolean;
+          /** Refresh sem "piscar" a UI: não limpa `messages` antes do fetch. */
+          preserveExisting?: boolean;
+        }
+  ) => Promise<void>;
   loadMore: () => Promise<void>;
   addMessage: (message: WhatsAppMessage) => void;
   updateMessage: (messageId: string, updates: Partial<WhatsAppMessage>) => void;
@@ -195,6 +204,7 @@ export function useConversationMessages(options?: {
 
   // Cache em memória
   const cacheRef = useRef<Map<string, { messages: WhatsAppMessage[]; timestamp: number; cursorBefore: string | null; hasMore: boolean }>>(new Map());
+  const activeConversationIdRef = useRef<string | null>(null);
 
   // ✅ ESTABILIZAR headers com useMemo
   const headers = useMemo(() => {
@@ -216,17 +226,24 @@ export function useConversationMessages(options?: {
     setHasMore(true);
     setCursorBefore(null);
     setCurrentConversationId(null);
+    activeConversationIdRef.current = null;
   }, []);
 
-  const loadInitial = useCallback(async (conversationId: string, forceRefresh = false) => {
+  const loadInitial = useCallback(async (conversationId: string, arg: UseConversationMessagesReturn['loadInitial'] extends (id: any, a?: infer A) => any ? A : any = false) => {
     const workspaceId = selectedWorkspace?.workspace_id;
     if (!workspaceId) return;
+
+    const forceRefresh =
+      typeof arg === 'boolean' ? arg : (arg?.forceRefresh ?? false);
+    const preserveExisting =
+      typeof arg === 'boolean' ? false : (arg?.preserveExisting ?? false);
 
     if (debug) {
       console.log('🔄 [useConversationMessages] loadInitial chamado:', {
         conversationId,
         workspaceId,
         forceRefresh,
+        preserveExisting,
         timestamp: new Date().toISOString()
       });
     }
@@ -241,6 +258,7 @@ export function useConversationMessages(options?: {
       setMessages(cached.messages);
       setCursorBefore(cached.cursorBefore);
       setHasMore(cached.hasMore);
+      activeConversationIdRef.current = conversationId;
       return;
     }
     if (forceRefresh) {
@@ -248,10 +266,16 @@ export function useConversationMessages(options?: {
     }
 
     setLoading(true);
+    setCurrentConversationId(conversationId);
+    activeConversationIdRef.current = conversationId;
+
+    // Em refresh "suave" (ex.: voltar foco da aba), evitamos limpar as mensagens
+    // para não quebrar o scroll do usuário.
+    if (!preserveExisting) {
     setMessages([]);
     setHasMore(true);
     setCursorBefore(null);
-    setCurrentConversationId(conversationId);
+    }
 
     try {
       const { data, error } = await supabase.functions.invoke('whatsapp-get-messages', {
@@ -266,6 +290,17 @@ export function useConversationMessages(options?: {
 
       const newMessages = data?.items || [];
       const normalizedMessages = dedupeAndSortMessages(newMessages);
+
+      // Evitar resposta atrasada sobrescrever outra conversa
+      if (activeConversationIdRef.current !== conversationId) {
+        if (debug) {
+          console.log('⏭️ [useConversationMessages] Ignorando resposta atrasada:', {
+            conversationId,
+            activeConversationId: activeConversationIdRef.current
+          });
+        }
+        return;
+      }
       
       setMessages(normalizedMessages);
       const nextBefore = data?.nextBefore;

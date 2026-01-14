@@ -2,7 +2,7 @@ import { Video, Mic, FileText, Reply } from 'lucide-react';
 
 interface QuotedMessage {
   id: string;
-  content: string;
+  content?: any;
   sender_type: 'agent' | 'contact' | 'system' | 'ia' | 'user';
   message_type?: string;
   file_url?: string;
@@ -18,6 +18,7 @@ interface QuotedMessagePreviewProps {
 export function QuotedMessagePreview({ quotedMessage, senderName, onQuoteClick }: QuotedMessagePreviewProps) {
   const renderMediaPreview = () => {
     const messageType = quotedMessage.message_type;
+    const safeContent = typeof quotedMessage?.content === "string" ? quotedMessage.content : (quotedMessage?.content ? String(quotedMessage.content) : "");
 
     // Imagem
     if (messageType === 'image' && quotedMessage.file_url) {
@@ -83,9 +84,9 @@ export function QuotedMessagePreview({ quotedMessage, senderName, onQuoteClick }
     // Texto (fallback)
     return (
       <p className="text-sm text-muted-foreground truncate">
-        {quotedMessage.content.length > 50 
-          ? quotedMessage.content.substring(0, 50) + '...' 
-          : quotedMessage.content}
+        {safeContent.length > 50
+          ? safeContent.substring(0, 50) + "..."
+          : (safeContent || "-")}
       </p>
     );
   };

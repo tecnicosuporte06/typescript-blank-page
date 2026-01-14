@@ -8,6 +8,11 @@ const corsHeaders = {
   'Access-Control-Max-Age': '86400',
 };
 
+// Runtime cache (Edge Functions may reuse the same isolate between requests).
+// Some deployments use a legacy schema where pipeline_cards.title does not exist.
+// If we detect that once, we avoid retrying every request (which doubles load time).
+let PIPELINE_CARDS_HAS_TITLE: boolean | null = null;
+
 interface Database {
   public: {
     Tables: {
@@ -1863,75 +1868,31 @@ serve(async (req) => {
         if (method === 'GET') {
           const pipelineId = url.searchParams.get('pipeline_id');
           const cardId = url.searchParams.get('id');
+          const columnId = url.searchParams.get('column_id');
+          const limitParam = url.searchParams.get('limit');
+          const offsetParam = url.searchParams.get('offset');
+          const liteParam = url.searchParams.get('lite');
+          const viewParam = url.searchParams.get('view');
+
+          const isLite =
+            liteParam === '1' ||
+            liteParam === 'true' ||
+            viewParam === 'lite';
+
+          const parsedLimit = limitParam ? Number(limitParam) : null;
+          const parsedOffset = offsetParam ? Number(offsetParam) : 0;
+
+          // Pagination is optional and backward-compatible: when limit is omitted, returns all cards (old behavior)
+          const shouldPaginate =
+            parsedLimit !== null &&
+            Number.isFinite(parsedLimit) &&
+            parsedLimit > 0 &&
+            Number.isFinite(parsedOffset) &&
+            parsedOffset >= 0;
           
           // Se tiver cardId, buscar card específico
           if (cardId) {
-            const { data: card, error } = await supabaseClient
-              .from('pipeline_cards')
-              .select(`
-                *,
-                contact:contacts(
-                  *,
-                  contact_tags(
-                    tag_id,
-                    tags!contact_tags_tag_id_fkey(id, name, color)
-                  )
-                ),
-                conversation:conversations(
-                  *,
-                  connection:connections!conversations_connection_id_fkey(
-                    id,
-                    instance_name,
-                    phone_number,
-                    status,
-                    metadata
-                  ),
-                  queue:queues!conversations_queue_id_fkey(
-                    id,
-                    name,
-                    ai_agent:ai_agents(
-                      id,
-                      name
-                    )
-                  )
-                ),
-                responsible_user:system_users!responsible_user_id(id, name, avatar),
-                products:pipeline_cards_products(
-                  id,
-                  product_id,
-                  quantity,
-                  unit_value,
-                  total_value,
-                  product:products(
-                    id,
-                    name,
-                    value
-                  )
-                )
-              `)
-              .eq('id', cardId)
-              .maybeSingle();
-
-            if (error) throw error;
-            return new Response(JSON.stringify(card), {
-              headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-            });
-          }
-          
-          // Caso contrário, buscar todos os cards do pipeline
-          if (!pipelineId) {
-            return new Response(
-              JSON.stringify({ error: 'Pipeline ID or Card ID required' }),
-              { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-            );
-          }
-
-          console.log(`📊 Fetching cards for pipeline: ${pipelineId}`);
-          
-          // Primeiro tentar buscar apenas os cards básicos para identificar se o problema é nos relacionamentos
-          const { data: cards, error } = await supabaseClient
-            .from('pipeline_cards')
-            .select(`
+            const selectFull = `
               *,
               contact:contacts(
                 *,
@@ -1971,19 +1932,324 @@ serve(async (req) => {
                   value
                 )
               )
-            `)
+            `;
+
+            // NOTE:
+            // Some deployments don't have pipeline_cards.title (legacy schema uses description only).
+            // We try the "normal" select first, and if it fails with 42703 on pipeline_cards.title,
+            // we retry with an alias title:description.
+            const selectLite = `
+              id,
+              pipeline_id,
+              column_id,
+              contact_id,
+              conversation_id,
+              responsible_user_id,
+              title,
+              description,
+              value,
+              status,
+              tags,
+              created_at,
+              updated_at,
+              contact:contacts(
+                id,
+                name,
+                phone,
+                email
+              ),
+              conversation:conversations(
+                id,
+                unread_count,
+                assigned_user_id,
+                agente_ativo,
+                agent_active_id
+              ),
+              responsible_user:system_users!responsible_user_id(id, name, avatar)
+            `;
+
+            const selectLiteLegacyNoTitle = `
+              id,
+              pipeline_id,
+              column_id,
+              contact_id,
+              conversation_id,
+              responsible_user_id,
+              title:description,
+              description,
+              value,
+              status,
+              tags,
+              created_at,
+              updated_at,
+              contact:contacts(
+                id,
+                name,
+                phone,
+                email
+              ),
+              conversation:conversations(
+                id,
+                unread_count,
+                assigned_user_id,
+                agente_ativo,
+                agent_active_id
+              ),
+              responsible_user:system_users!responsible_user_id(id, name, avatar)
+            `;
+
+            let card: any = null;
+            let error: any = null;
+
+            if (isLite) {
+              const effectiveSelect =
+                PIPELINE_CARDS_HAS_TITLE === false ? selectLiteLegacyNoTitle : selectLite;
+
+              const r1 = await supabaseClient
+                .from('pipeline_cards')
+                .select(effectiveSelect)
+                .eq('id', cardId)
+                .maybeSingle();
+              card = r1.data;
+              error = r1.error;
+
+              // Detect legacy schema (no title) and cache the result to avoid retrying every request.
+              if (
+                error &&
+                String((error as any).code) === '42703' &&
+                String((error as any).message || '').includes('pipeline_cards.title')
+              ) {
+                PIPELINE_CARDS_HAS_TITLE = false;
+                const r2 = await supabaseClient
+                  .from('pipeline_cards')
+                  .select(selectLiteLegacyNoTitle)
+                  .eq('id', cardId)
+                  .maybeSingle();
+                card = r2.data;
+                error = r2.error;
+              } else if (!error) {
+                // If we can successfully select `title`, cache as available.
+                PIPELINE_CARDS_HAS_TITLE = true;
+              }
+            } else {
+              const r = await supabaseClient
+                .from('pipeline_cards')
+                .select(selectFull)
+                .eq('id', cardId)
+                .maybeSingle();
+              card = r.data;
+              error = r.error;
+            }
+
+            if (error) {
+              console.error('❌ Error fetching card by id:', error);
+              return new Response(
+                JSON.stringify({
+                  error: 'fetch_card_failed',
+                  message: (error as any).message,
+                  details: (error as any).details,
+                  hint: (error as any).hint,
+                  code: (error as any).code,
+                  meta: { isLite, cardId },
+                }),
+                { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+              );
+            }
+            return new Response(JSON.stringify(card), {
+              headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+            });
+          }
+          
+          // Caso contrário, buscar todos os cards do pipeline
+          if (!pipelineId) {
+            return new Response(
+              JSON.stringify({ error: 'Pipeline ID or Card ID required' }),
+              { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+            );
+          }
+
+          console.log(`📊 Fetching cards for pipeline: ${pipelineId}`);
+          
+          // Primeiro tentar buscar apenas os cards básicos para identificar se o problema é nos relacionamentos
+          const selectLite = `
+                  id,
+                  pipeline_id,
+                  column_id,
+                  contact_id,
+                  conversation_id,
+                  responsible_user_id,
+                  title,
+                  description,
+                  value,
+                  status,
+                  tags,
+                  created_at,
+                  updated_at,
+                  contact:contacts(
+                    id,
+                    name,
+                    phone,
+                    email
+                  ),
+                  conversation:conversations(
+                    id,
+                    unread_count,
+                    assigned_user_id,
+                    agente_ativo,
+                    agent_active_id
+                  ),
+                  responsible_user:system_users!responsible_user_id(id, name, avatar)
+          `;
+
+          const selectLiteLegacyNoTitle = `
+                  id,
+                  pipeline_id,
+                  column_id,
+                  contact_id,
+                  conversation_id,
+                  responsible_user_id,
+                  title:description,
+                  description,
+                  value,
+                  status,
+                  tags,
+                  created_at,
+                  updated_at,
+                  contact:contacts(
+                    id,
+                    name,
+                    phone,
+                    email
+                  ),
+                  conversation:conversations(
+                    id,
+                    unread_count,
+                    assigned_user_id,
+                    agente_ativo,
+                    agent_active_id
+                  ),
+                  responsible_user:system_users!responsible_user_id(id, name, avatar)
+          `;
+
+          const effectiveLiteSelect =
+            PIPELINE_CARDS_HAS_TITLE === false ? selectLiteLegacyNoTitle : selectLite;
+
+          let query = supabaseClient
+            .from('pipeline_cards')
+            .select(
+              isLite
+                ? effectiveLiteSelect
+                : `
+                  *,
+                  contact:contacts(
+                    *,
+                    contact_tags(
+                      tag_id,
+                      tags!contact_tags_tag_id_fkey(id, name, color)
+                    )
+                  ),
+                  conversation:conversations(
+                    *,
+                    connection:connections!conversations_connection_id_fkey(
+                      id,
+                      instance_name,
+                      phone_number,
+                      status,
+                      metadata
+                    ),
+                    queue:queues!conversations_queue_id_fkey(
+                      id,
+                      name,
+                      ai_agent:ai_agents(
+                        id,
+                        name
+                      )
+                    )
+                  ),
+                  responsible_user:system_users!responsible_user_id(id, name, avatar),
+                  products:pipeline_cards_products(
+                    id,
+                    product_id,
+                    quantity,
+                    unit_value,
+                    total_value,
+                    product:products(
+                      id,
+                      name,
+                      value
+                    )
+                  )
+                `
+            )
             .eq('pipeline_id', pipelineId)
             .order('created_at', { ascending: false });
+
+          if (columnId) {
+            query = query.eq('column_id', columnId);
+          }
+
+          // When paginating, we intentionally let the client request limit+1 to infer hasMore
+          if (shouldPaginate) {
+            const start = parsedOffset;
+            const end = parsedOffset + parsedLimit - 1; // supabase range is inclusive
+            query = query.range(start, end);
+          }
+
+          let { data: cards, error } = await query;
+
+          // Backward-compat: retry lite select if deployment doesn't have pipeline_cards.title
+          if (
+            error &&
+            isLite &&
+            String(error.code) === '42703' &&
+            String(error.message || '').includes('pipeline_cards.title')
+          ) {
+            PIPELINE_CARDS_HAS_TITLE = false;
+            let retry = supabaseClient
+              .from('pipeline_cards')
+              .select(selectLiteLegacyNoTitle)
+              .eq('pipeline_id', pipelineId)
+              .order('created_at', { ascending: false });
+
+            if (columnId) retry = retry.eq('column_id', columnId);
+            if (shouldPaginate) {
+              const start = parsedOffset;
+              const end = parsedOffset + parsedLimit - 1;
+              retry = retry.range(start, end);
+            }
+
+            const r2 = await retry;
+            cards = r2.data;
+            error = r2.error;
+          } else if (!error && isLite) {
+            PIPELINE_CARDS_HAS_TITLE = true;
+          }
 
           if (error) {
             console.error('❌ Error fetching cards:', error);
             console.error('❌ Error details:', {
-              message: error.message,
-              details: error.details,
-              hint: error.hint,
-              code: error.code
+              message: (error as any).message,
+              details: (error as any).details,
+              hint: (error as any).hint,
+              code: (error as any).code
             });
-            throw error;
+            return new Response(
+              JSON.stringify({
+                error: 'fetch_cards_failed',
+                message: (error as any).message,
+                details: (error as any).details,
+                hint: (error as any).hint,
+                code: (error as any).code,
+                meta: {
+                  isLite,
+                  pipelineId,
+                  columnId,
+                  limit: parsedLimit,
+                  offset: parsedOffset,
+                },
+              }),
+              { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+            );
           }
           
           console.log(`✅ Successfully fetched ${cards?.length || 0} cards`);

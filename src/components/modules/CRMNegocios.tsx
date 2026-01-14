@@ -13,7 +13,7 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Settings, Search, Plus, ListFilter, Eye, MoreHorizontal, Phone, MessageCircle, MessageSquare, Calendar, Clock, DollarSign, EyeOff, Folder, AlertTriangle, AlertCircle, Check, MoreVertical, Edit, Download, ArrowRight, X, Tag, Bot, Zap, ChevronLeft, ChevronRight, Menu, GripVertical } from "lucide-react";
+import { Settings, Search, Plus, ListFilter, Eye, MoreHorizontal, Phone, MessageCircle, MessageSquare, Calendar, Clock, DollarSign, EyeOff, Folder, AlertTriangle, AlertCircle, Check, MoreVertical, Edit, Download, ArrowRight, X, Tag, Bot, Zap, ChevronLeft, ChevronRight, Menu, GripVertical, Loader2 } from "lucide-react";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { AddColumnModal } from "@/components/modals/AddColumnModal";
 import { PipelineConfigModal } from "@/components/modals/PipelineConfigModal";
@@ -57,31 +57,16 @@ import { useRealtimeNotifications } from "@/components/RealtimeNotificationProvi
 
 type ResponsibleFilterValue = 'ALL' | 'UNASSIGNED' | (string & {});
 
+const IS_DEV = import.meta.env.DEV;
+const devLog = (...args: any[]) => {
+  if (IS_DEV) console.log(...args);
+};
+
 // Componente de Badge do Agente
-function AgentBadge({ conversationId }: { conversationId: string }) {
+function AgentBadge({ conversationId, isDarkMode }: { conversationId: string; isDarkMode: boolean }) {
   const { agent, isLoading } = useWorkspaceAgent(conversationId);
-  const [isDark, setIsDark] = useState(false);
-  
-  console.log('🤖 [AgentBadge] Renderizando:', { conversationId, hasAgent: !!agent, isLoading });
-  
-  // Detectar mudanças no tema
-  useEffect(() => {
-    const checkTheme = () => {
-      setIsDark(document.documentElement.classList.contains("dark"));
-    };
-    
-    // Verificar tema inicial
-    checkTheme();
-    
-    // Observar mudanças na classe 'dark' do documentElement
-    const observer = new MutationObserver(checkTheme);
-    observer.observe(document.documentElement, {
-      attributes: true,
-      attributeFilter: ['class']
-    });
-    
-    return () => observer.disconnect();
-  }, []);
+
+  devLog('🤖 [AgentBadge] Renderizando:', { conversationId, hasAgent: !!agent, isLoading });
   
   if (isLoading) return null;
   if (!agent) return null;
@@ -92,9 +77,9 @@ function AgentBadge({ conversationId }: { conversationId: string }) {
       : agent.name;
   
   // Ajuste de cor para claro/escuro
-  const bg = isDark ? "#5e5b5b" : "rgb(217, 217, 217)";
-  const border = isDark ? "#5e5b5b" : "rgb(217, 217, 217)";
-  const text = isDark ? "#ffffff" : "#2d2d2d";
+  const bg = isDarkMode ? "#5e5b5b" : "rgb(217, 217, 217)";
+  const border = isDarkMode ? "#5e5b5b" : "rgb(217, 217, 217)";
+  const text = isDarkMode ? "#ffffff" : "#2d2d2d";
 
   return (
     <Tooltip>
@@ -913,12 +898,16 @@ function CRMNegociosContent({
     isLoading,
     isLoadingColumns,
     isLoadingCards,
+    isLoadingInitialCardsByColumn,
+    hasMoreCardsByColumn,
+    isLoadingMoreCardsByColumn,
     createPipeline,
     selectPipeline,
     createColumn,
     createCard,
     moveCard,
     moveCardOptimistic,
+    fetchMoreCards,
     getCardsByColumn,
     updateCard,
     refreshCurrentPipeline,
@@ -1121,6 +1110,8 @@ const [selectedCardForProduct, setSelectedCardForProduct] = useState<{
     })
   );
 
+  const columnsKey = useMemo(() => columns.map((c) => c.id).join('-'), [columns]);
+
   // ✅ CRÍTICO: Limpar estado do drag quando colunas mudarem
   // Isso previne o bug de travamento na segunda movimentação
   useEffect(() => {
@@ -1128,39 +1119,68 @@ const [selectedCardForProduct, setSelectedCardForProduct] = useState<{
     setDraggedColumn(null);
     setActiveId(null);
     setDragOverColumn(null);
-  }, [columns.map(c => c.id).join('-')]);
+  }, [columnsKey]);
 
   // 🔥 Buscar contagens de automações por coluna
   useEffect(() => {
+    let cancelled = false;
+
     const fetchAutomationCounts = async () => {
       if (!columns || columns.length === 0) {
-        setColumnAutomationCounts({});
+        setColumnAutomationCounts((prev) => (Object.keys(prev).length === 0 ? prev : {}));
         return;
       }
 
       try {
-        const counts: Record<string, number> = {};
-        
-        // Buscar contagem de automações para cada coluna
-        await Promise.all(
-          columns.map(async (column) => {
-            const { count } = await supabase
-              .from('crm_column_automations')
-              .select('*', { count: 'exact', head: true })
-              .eq('column_id', column.id);
-            
-            counts[column.id] = count || 0;
-          })
-        );
+        const columnIds = columns.map((c) => c.id);
 
-        setColumnAutomationCounts(counts);
+        // ✅ 1 request: buscar todas as automações dessas colunas e agregar no client
+        // (evita N+1 de count por coluna; normalmente a tabela é pequena)
+        const { data, error } = await supabase
+          .from('crm_column_automations')
+          .select('column_id')
+          .in('column_id', columnIds);
+
+        if (error) throw error;
+
+        const counts: Record<string, number> = {};
+        for (const id of columnIds) counts[id] = 0;
+        for (const row of (data || []) as Array<{ column_id: string }>) {
+          if (row?.column_id) counts[row.column_id] = (counts[row.column_id] || 0) + 1;
+        }
+
+        if (cancelled) return;
+
+        // Evita loop de render em dev/StrictMode e evita rerender quando nada mudou
+        setColumnAutomationCounts((prev) => {
+          const prevKeys = Object.keys(prev);
+          const nextKeys = Object.keys(counts);
+          if (prevKeys.length !== nextKeys.length) return counts;
+
+          for (const k of nextKeys) {
+            if (prev[k] !== counts[k]) return counts;
+          }
+
+          return prev;
+        });
       } catch (error) {
         console.error('Erro ao buscar contagens de automações:', error);
       }
     };
 
-    fetchAutomationCounts();
-  }, [columns]);
+    const run = () => fetchAutomationCounts();
+
+    // ✅ Não competir com o 1º paint do pipeline
+    const w = window as any;
+    if (typeof w.requestIdleCallback === 'function') {
+      w.requestIdleCallback(run, { timeout: 1500 });
+    } else {
+      setTimeout(run, 0);
+    }
+    return () => {
+      cancelled = true;
+    };
+  }, [columnsKey]);
 
   // O loading é gerenciado automaticamente pelo PipelinesContext
   // quando o workspace muda, ele limpa os dados e mostra skeleton
@@ -1804,7 +1824,9 @@ const [selectedCardForProduct, setSelectedCardForProduct] = useState<{
                         
                         <div className="flex-1 min-w-0">
                           {isLoading ? (
-                            <Skeleton className="h-9 w-full" />
+                            <div className="h-9 w-full flex items-center justify-center border border-gray-300 dark:border-gray-700 bg-background dark:bg-[#1b1b1b]">
+                              <Loader2 className="h-4 w-4 animate-spin text-muted-foreground dark:text-gray-400" />
+                            </div>
                           ) : pipelines && pipelines.length > 0 ? (
                             <Select
                               value={selectedPipeline?.id || ""}
@@ -1931,7 +1953,9 @@ const [selectedCardForProduct, setSelectedCardForProduct] = useState<{
                       {/* Pipeline Selector */}
                       <div className="flex-shrink-0">
                         {isLoading ? (
-                          <Skeleton className="h-7 w-[180px]" />
+                          <div className="h-7 w-[180px] flex items-center justify-center border border-gray-300 dark:border-gray-700 bg-white dark:bg-[#1b1b1b]">
+                            <Loader2 className="h-4 w-4 animate-spin text-muted-foreground dark:text-gray-400" />
+                          </div>
                         ) : pipelines && pipelines.length > 0 ? (
                           <Select
                             value={selectedPipeline?.id || ""}
@@ -2089,36 +2113,11 @@ const [selectedCardForProduct, setSelectedCardForProduct] = useState<{
                 className="flex-1 min-h-0 px-2 md:px-4 overflow-hidden"
               >
                   {isLoading ? (
-                    <div className="flex gap-4 h-full w-full">
-                      {[...Array(4)].map((_, index) => (
-                        <div key={index} className="w-60 sm:w-72 flex-shrink-0 h-full">
-                          <div className={`bg-card dark:bg-[#111111] rounded-lg border border-t-4 border-t-gray-400 dark:border-t-gray-700 h-full`}>
-                            <div className="p-4 pb-3">
-                              <div className="flex items-center justify-between">
-                                <div className="flex items-center gap-2">
-                                  <Skeleton className="w-3 h-3 rounded-full bg-gray-300 dark:bg-gray-700" />
-                                  <Skeleton className="h-5 w-24 bg-gray-300 dark:bg-gray-700" />
-                                  <Skeleton className="h-5 w-8 rounded-full bg-gray-300 dark:bg-gray-700" />
-                                </div>
-                                <Skeleton className="h-4 w-16 bg-gray-300 dark:bg-gray-700" />
-                              </div>
-                            </div>
-                            <div className="p-3 pt-0 space-y-3">
-                              {[...Array(3)].map((_, cardIndex) => (
-                                <div key={cardIndex} className={`bg-muted/20 dark:bg-gray-800/20 rounded-lg p-4 space-y-2`}>
-                                  <Skeleton className="h-5 w-full bg-gray-300 dark:bg-gray-700" />
-                                  <Skeleton className="h-4 w-3/4 bg-gray-300 dark:bg-gray-700" />
-                                  <Skeleton className="h-4 w-1/2 bg-gray-300 dark:bg-gray-700" />
-                                  <div className="flex justify-between items-center mt-3">
-                                    <Skeleton className="h-4 w-16 bg-gray-300 dark:bg-gray-700" />
-                                    <Skeleton className="h-4 w-20 bg-gray-300 dark:bg-gray-700" />
-                                  </div>
-                                </div>
-                              ))}
-                            </div>
-                          </div>
-                        </div>
-                      ))}
+                    <div className="flex items-center justify-center h-full w-full">
+                      <div className="flex flex-col items-center gap-2">
+                        <Loader2 className="h-7 w-7 animate-spin text-muted-foreground dark:text-gray-400" />
+                        <span className="text-xs text-muted-foreground dark:text-gray-400">Carregando pipeline...</span>
+                      </div>
                     </div>
                   ) : !selectedPipeline ? (
                     <div className={`flex items-center justify-center h-64 border-2 border-dashed border-border dark:border-gray-700 rounded-lg`}>
@@ -2131,48 +2130,11 @@ const [selectedCardForProduct, setSelectedCardForProduct] = useState<{
                       </div>
                     </div>
                   ) : isLoadingColumns ? (
-                    <div className="flex gap-4 h-full" style={{ minWidth: 'max-content' }}>
-                      {[...Array(3)].map((_, index) => (
-                        <div key={index} className="w-60 sm:w-72 flex-shrink-0 h-full">
-                          <div className={`bg-card dark:bg-[#111111] rounded-lg border border-t-4 dark:border-gray-700 h-full flex flex-col`}>
-                            <div className="p-4 pb-3 flex-shrink-0">
-                              <div className="flex items-center justify-between">
-                                <div className="flex items-center gap-2">
-                                  <Skeleton className="w-3 h-3 rounded-full bg-gray-300 dark:bg-gray-700" />
-                                  <Skeleton className="h-5 w-24 bg-gray-300 dark:bg-gray-700" />
-                                  <Skeleton className="h-5 w-8 rounded-full bg-gray-300 dark:bg-gray-700" />
-                                </div>
-                                <Skeleton className="h-6 w-6 bg-gray-300 dark:bg-gray-700" />
-                              </div>
-                            </div>
-                            <div className="flex-1 p-3 pt-0 space-y-3">
-                              {[...Array(3)].map((_, cardIndex) => (
-                                <div key={cardIndex} className={`bg-muted/20 dark:bg-gray-800/20 rounded-lg p-4 space-y-2`}>
-                                  <div className="flex items-start gap-3 mb-3">
-                                    <Skeleton className="w-10 h-10 rounded-full bg-gray-300 dark:bg-gray-700" />
-                                    <div className="flex-1">
-                                      <div className="flex justify-between items-start mb-2">
-                                        <Skeleton className="h-5 w-32 bg-gray-300 dark:bg-gray-700" />
-                                        <Skeleton className="h-5 w-20 bg-gray-300 dark:bg-gray-700" />
-                                      </div>
-                                    </div>
-                                  </div>
-                                  <div className="mb-3">
-                                    <Skeleton className="h-4 w-16 bg-gray-300 dark:bg-gray-700" />
-                                  </div>
-                                  <div className="flex justify-between items-center pt-2">
-                                    <div className="flex gap-1">
-                                      <Skeleton className="h-6 w-6 bg-gray-300 dark:bg-gray-700" />
-                                      <Skeleton className="h-6 w-6 bg-gray-300 dark:bg-gray-700" />
-                                    </div>
-                                    <Skeleton className="h-4 w-12 bg-gray-300 dark:bg-gray-700" />
-                                  </div>
-                                </div>
-                              ))}
-                            </div>
-                          </div>
-                        </div>
-                      ))}
+                    <div className="flex items-center justify-center h-full w-full">
+                      <div className="flex flex-col items-center gap-2">
+                        <Loader2 className="h-7 w-7 animate-spin text-muted-foreground dark:text-gray-400" />
+                        <span className="text-xs text-muted-foreground dark:text-gray-400">Carregando colunas...</span>
+                      </div>
                     </div>
                   ) : (
                     <div
@@ -2232,35 +2194,28 @@ const [selectedCardForProduct, setSelectedCardForProduct] = useState<{
                                   </div>
 
                                   {/* Cards Area */}
-                                  <div className={`flex-1 p-2 overflow-y-auto min-h-0 bg-white dark:bg-[#111111] scrollbar-thin scrollbar-thumb-gray-column scrollbar-track-transparent`}>
+                                  <div
+                                    className={`flex-1 p-2 overflow-y-auto min-h-0 bg-white dark:bg-[#111111] scrollbar-thin scrollbar-thumb-gray-column scrollbar-track-transparent relative`}
+                                    onScroll={(e) => {
+                                      const el = e.currentTarget;
+                                      const nearBottom = el.scrollTop + el.clientHeight >= el.scrollHeight - 120;
+                                      if (nearBottom) {
+                                        fetchMoreCards(column.id);
+                                      }
+                                    }}
+                                  >
+                                    {isLoadingInitialCardsByColumn?.[column.id] && (
+                                      <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                                        <div className="flex flex-col items-center gap-2">
+                                          <Loader2 className="h-6 w-6 animate-spin text-muted-foreground dark:text-gray-400" />
+                                          <span className="text-xs text-muted-foreground dark:text-gray-400">Carregando...</span>
+                                        </div>
+                                      </div>
+                                    )}
                                      <SortableContext items={columnCards.map(card => `card-${card.id}`)} strategy={verticalListSortingStrategy}>
-                                       {isLoadingCards ? (
-                                         <div className="space-y-3">
-                                           {[...Array(3)].map((_, cardIndex) => (
-                                             <div key={cardIndex} className={`bg-muted/20 dark:bg-gray-800/20 rounded-lg p-4 space-y-2`}>
-                                               <div className="flex items-start gap-3 mb-3">
-                                                 <Skeleton className="w-10 h-10 rounded-full bg-gray-300 dark:bg-gray-700" />
-                                                 <div className="flex-1">
-                                                   <div className="flex justify-between items-start mb-2">
-                                                     <Skeleton className="h-5 w-32 bg-gray-300 dark:bg-gray-700" />
-                                                     <Skeleton className="h-5 w-20 bg-gray-300 dark:bg-gray-700" />
-                                                   </div>
-                                                 </div>
-                                               </div>
-                                               <div className="mb-3">
-                                                 <Skeleton className="h-4 w-16 bg-gray-300 dark:bg-gray-700" />
-                                               </div>
-                                               <div className="flex justify-between items-center pt-2">
-                                                 <div className="flex gap-1">
-                                                   <Skeleton className="h-6 w-6 bg-gray-300 dark:bg-gray-700" />
-                                                   <Skeleton className="h-6 w-6 bg-gray-300 dark:bg-gray-700" />
-                                                 </div>
-                                                 <Skeleton className="h-4 w-12 bg-gray-300 dark:bg-gray-700" />
-                                               </div>
-                                             </div>
-                                           ))}
-                                         </div>
-                                       ) : columnCards.length > 0 ? columnCards.map(card => {
+                                       {isLoadingInitialCardsByColumn?.[column.id] ? (
+                                         <div className="h-24" />
+                                       ) : columnCards.length > 0 ? columnCards.map((card, idx) => {
                                          const productRelations = Array.isArray((card as any).products) ? (card as any).products : [];
                                          const primaryProduct = productRelations.length > 0 ? productRelations[0] : null;
                                          const productName = primaryProduct?.product?.name || (card as any).product_name;
@@ -2304,76 +2259,86 @@ const [selectedCardForProduct, setSelectedCardForProduct] = useState<{
                                            } : (card.conversation_id ? { id: card.conversation_id, unread_count: 0 } : undefined),
                                          };
 
-                                         return (
-                                           <DraggableDeal
-                                             key={card.id}
-                                             deal={deal}
-                                             isDarkMode={isDarkMode}
-                                             onClick={() => !isSelectionMode && openCardDetails(card)}
-                                             columnColor={column.color}
-                                             workspaceId={effectiveWorkspaceId}
-                                             onChatClick={(dealData) => {
-                                               setSelectedChatCard(dealData);
-                                               setIsChatModalOpen(true);
-                                             }}
-                                             onValueClick={(dealData) => {
-                                               setSelectedCardForProduct({
-                                                 id: dealData.id,
-                                                 value: dealData.value,
-                                                 productId: dealData.product_id || null,
-                                               });
-                                               setIsVincularProdutoModalOpen(true);
-                                             }}
-                                             isSelectionMode={isSelectionMode && selectedColumnForAction === column.id}
-                                             isSelected={selectedCardsForTransfer.has(card.id)}
-                                             onToggleSelection={() => {
-                                               const newSet = new Set(selectedCardsForTransfer);
-                                               if (newSet.has(card.id)) {
-                                                 newSet.delete(card.id);
-                                               } else {
-                                                 newSet.add(card.id);
-                                               }
-                                               setSelectedCardsForTransfer(newSet);
-                                             }}
-                                             onEditContact={(contactId) => {
-                                               setSelectedContactId(contactId);
-                                               setIsEditarContatoModalOpen(true);
-                                             }}
-                                             onLinkProduct={(cardId, currentValue, currentProductId) => {
-                                               setSelectedCardForProduct({
-                                                 id: cardId,
-                                                 value: currentValue,
-                                                 productId: currentProductId || null,
-                                               });
-                                               setIsVincularProdutoModalOpen(true);
-                                             }}
-                                             onDeleteCard={(cardId) => {
-                                               const cardToDelete = cards.find((c) => c.id === cardId);
-                                               setSelectedCardForDeletion({
-                                                 id: cardId,
-                                                 name: cardToDelete?.title || 'este negócio',
-                                               });
-                                               setIsDeleteDealModalOpen(true);
-                                             }}
-                                             onOpenTransferModal={(cardId) => {
-                                               setSelectedCardsForTransfer(new Set([cardId]));
-                                               setIsTransferirModalOpen(true);
-                                             }}
-                                             onVincularResponsavel={(cardId, conversationId, currentResponsibleId, contactId) => {
-                                               setSelectedCardForResponsavel({ cardId, conversationId, currentResponsibleId, contactId });
-                                               setIsVincularResponsavelModalOpen(true);
-                                             }}
-                                             onConfigureAgent={(conversationId) => {
-                                               setSelectedConversationForAgent(conversationId);
-                                               setAgentModalOpen(true);
-                                             }}
-                                           />
-                                         );
-                                       }) : (
+                                        return (
+                                          <div
+                                            key={card.id}
+                                            className="pipeline-card-enter"
+                                            style={{ animationDelay: `${Math.min(idx * 20, 200)}ms` }}
+                                          >
+                                            <DraggableDeal
+                                              deal={deal}
+                                              isDarkMode={isDarkMode}
+                                              onClick={() => !isSelectionMode && openCardDetails(card)}
+                                              columnColor={column.color}
+                                              workspaceId={effectiveWorkspaceId}
+                                              onChatClick={(dealData) => {
+                                                setSelectedChatCard(dealData);
+                                                setIsChatModalOpen(true);
+                                              }}
+                                              onValueClick={(dealData) => {
+                                                setSelectedCardForProduct({
+                                                  id: dealData.id,
+                                                  value: dealData.value,
+                                                  productId: dealData.product_id || null,
+                                                });
+                                                setIsVincularProdutoModalOpen(true);
+                                              }}
+                                              isSelectionMode={isSelectionMode && selectedColumnForAction === column.id}
+                                              isSelected={selectedCardsForTransfer.has(card.id)}
+                                              onToggleSelection={() => {
+                                                const newSet = new Set(selectedCardsForTransfer);
+                                                if (newSet.has(card.id)) {
+                                                  newSet.delete(card.id);
+                                                } else {
+                                                  newSet.add(card.id);
+                                                }
+                                                setSelectedCardsForTransfer(newSet);
+                                              }}
+                                              onEditContact={(contactId) => {
+                                                setSelectedContactId(contactId);
+                                                setIsEditarContatoModalOpen(true);
+                                              }}
+                                              onLinkProduct={(cardId, currentValue, currentProductId) => {
+                                                setSelectedCardForProduct({
+                                                  id: cardId,
+                                                  value: currentValue,
+                                                  productId: currentProductId || null,
+                                                });
+                                                setIsVincularProdutoModalOpen(true);
+                                              }}
+                                              onDeleteCard={(cardId) => {
+                                                const cardToDelete = cards.find((c) => c.id === cardId);
+                                                setSelectedCardForDeletion({
+                                                  id: cardId,
+                                                  name: cardToDelete?.title || 'este negócio',
+                                                });
+                                                setIsDeleteDealModalOpen(true);
+                                              }}
+                                              onOpenTransferModal={(cardId) => {
+                                                setSelectedCardsForTransfer(new Set([cardId]));
+                                                setIsTransferirModalOpen(true);
+                                              }}
+                                              onVincularResponsavel={(cardId, conversationId, currentResponsibleId, contactId) => {
+                                                setSelectedCardForResponsavel({ cardId, conversationId, currentResponsibleId, contactId });
+                                                setIsVincularResponsavelModalOpen(true);
+                                              }}
+                                              onConfigureAgent={(conversationId) => {
+                                                setSelectedConversationForAgent(conversationId);
+                                                setAgentModalOpen(true);
+                                              }}
+                                            />
+                                          </div>
+                                        );
+                                      }) : (
                                          <div className={`text-center text-muted-foreground dark:text-gray-400 text-sm py-8`}>
                                            Nenhum negócio nesta coluna
                                          </div>
                                        )}
+                                      {!isLoadingCards && hasMoreCardsByColumn?.[column.id] && (
+                                        <div className="py-2 text-center text-xs text-muted-foreground dark:text-gray-400">
+                                          {isLoadingMoreCardsByColumn?.[column.id] ? 'Carregando mais...' : 'Role para carregar mais'}
+                                        </div>
+                                      )}
                                      </SortableContext>
                                   </div>
                                 </div>
@@ -2536,36 +2501,30 @@ const [selectedCardForProduct, setSelectedCardForProduct] = useState<{
                         </div>
                         
                         {/* Corpo da coluna - fundo colorido */}
-                        <div className={cn(
-                          "flex-1 p-2 overflow-y-auto min-h-0 bg-[#f9f9f9] dark:bg-[#0a0a0a] transition-all duration-200 scrollbar-thin scrollbar-thumb-gray-column scrollbar-track-transparent",
+                        <div
+                          className={cn(
+                          "flex-1 p-2 overflow-y-auto min-h-0 bg-[#f9f9f9] dark:bg-[#0a0a0a] transition-all duration-200 scrollbar-thin scrollbar-thumb-gray-column scrollbar-track-transparent relative",
                           !draggedColumn && dragOverColumn === column.id && "ring-1 ring-primary/10 bg-primary/5 dark:bg-primary/10"
-                        )}>
-                        {isLoadingCards ? (
-                          <div className="space-y-3">
-                            {[...Array(3)].map((_, cardIndex) => (
-                              <div key={cardIndex} className={`bg-muted/20 dark:bg-gray-800/20 rounded-lg p-4 space-y-2`}>
-                                <div className="flex items-start gap-3 mb-3">
-                                  <Skeleton className="w-10 h-10 rounded-full bg-gray-300 dark:bg-gray-700" />
-                                  <div className="flex-1">
-                                    <div className="flex justify-between items-start mb-2">
-                                      <Skeleton className="h-5 w-32 bg-gray-300 dark:bg-gray-700" />
-                                      <Skeleton className="h-5 w-20 bg-gray-300 dark:bg-gray-700" />
-                                    </div>
-                                  </div>
-                                </div>
-                                <div className="mb-3">
-                                  <Skeleton className="h-4 w-16 bg-gray-300 dark:bg-gray-700" />
-                                </div>
-                                <div className="flex justify-between items-center pt-2">
-                                  <div className="flex gap-1">
-                                    <Skeleton className="h-6 w-6 bg-gray-300 dark:bg-gray-700" />
-                                    <Skeleton className="h-6 w-6 bg-gray-300 dark:bg-gray-700" />
-                                  </div>
-                                  <Skeleton className="h-4 w-12 bg-gray-300 dark:bg-gray-700" />
-                                </div>
-                              </div>
-                            ))}
+                          )}
+                          onScroll={(e) => {
+                            const el = e.currentTarget;
+                            const nearBottom = el.scrollTop + el.clientHeight >= el.scrollHeight - 120;
+                            if (nearBottom) {
+                              fetchMoreCards(column.id);
+                            }
+                          }}
+                        >
+                        {isLoadingInitialCardsByColumn?.[column.id] && (
+                          <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                            <div className="flex flex-col items-center gap-2">
+                              <Loader2 className="h-6 w-6 animate-spin text-muted-foreground dark:text-gray-400" />
+                              <span className="text-xs text-muted-foreground dark:text-gray-400">Carregando...</span>
+                            </div>
                           </div>
+                        )}
+
+                        {isLoadingInitialCardsByColumn?.[column.id] ? (
+                          <div className="h-24" />
                         ) : columnCards.length === 0 ? (
                           <div className="flex items-center justify-center h-32 text-center">
                             <p className={`text-muted-foreground dark:text-gray-400 text-sm`}>
@@ -2578,7 +2537,7 @@ const [selectedCardForProduct, setSelectedCardForProduct] = useState<{
                               items={columnCards.map(card => `card-${card.id}`)}
                               strategy={verticalListSortingStrategy}
                             >
-                                {columnCards.map(card => {
+                                {columnCards.map((card, idx) => {
                           const productRelations = Array.isArray((card as any).products) ? (card as any).products : [];
                           const primaryProduct = productRelations.length > 0 ? productRelations[0] : null;
                           const productName = primaryProduct?.product?.name || null;
@@ -2608,7 +2567,13 @@ const [selectedCardForProduct, setSelectedCardForProduct] = useState<{
                             product_value: productValue ?? null,
                             hasProduct: !!productId
                           };
-                          return <DraggableDeal key={card.id} deal={deal} isDarkMode={isDarkMode} onClick={() => !isSelectionMode && openCardDetails(card)} onEditPendingTask={(activityId) => openCardDetails(card, { openActivityEditId: activityId })} columnColor={column.color} workspaceId={effectiveWorkspaceId} onOpenTransferModal={handleOpenTransferModal} onVincularResponsavel={handleVincularResponsavel} onChatClick={dealData => {
+                          return (
+                            <div
+                              key={card.id}
+                              className="pipeline-card-enter"
+                              style={{ animationDelay: `${Math.min(idx * 20, 200)}ms` }}
+                            >
+                              <DraggableDeal deal={deal} isDarkMode={isDarkMode} onClick={() => !isSelectionMode && openCardDetails(card)} onEditPendingTask={(activityId) => openCardDetails(card, { openActivityEditId: activityId })} columnColor={column.color} workspaceId={effectiveWorkspaceId} onOpenTransferModal={handleOpenTransferModal} onVincularResponsavel={handleVincularResponsavel} onChatClick={dealData => {
                             console.log('🎯 CRM: Abrindo chat para deal:', dealData);
                             console.log('🆔 CRM: Deal ID:', dealData.id);
                             console.log('🗣️ CRM: Deal conversation:', dealData.conversation);
@@ -2651,8 +2616,16 @@ const [selectedCardForProduct, setSelectedCardForProduct] = useState<{
                             });
                             setIsDeleteDealModalOpen(true);
                           }} />
+                            </div>
+                          );
                         })}
                                 
+                              {!isLoadingCards && hasMoreCardsByColumn?.[column.id] && (
+                                <div className="py-2 text-center text-xs text-muted-foreground dark:text-gray-400">
+                                  {isLoadingMoreCardsByColumn?.[column.id] ? 'Carregando mais...' : 'Role para carregar mais'}
+                                </div>
+                              )}
+
                               {/* Invisible drop zone for empty columns and bottom of lists */}
                               <div className="min-h-[40px] w-full" />
                             </SortableContext>

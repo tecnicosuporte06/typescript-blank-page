@@ -163,14 +163,25 @@ serve(async (req) => {
 
     console.log(`✅ [${id}] Connection: ${conn.id}, Workspace: ${conn.workspace_id}, Instance Name: ${conn.instance_name}`);
 
-    const n8nUrl = conn.provider?.n8n_webhook_url;
-    
-    if (n8nUrl) {
-      console.log(`🚀 [${id}] Forwarding to: ${n8nUrl}`);
-      
-      // Extrair external_id do messageId do Z-API
-      // Para MessageStatusCallback, o ID vem em data.ids[0]
-      const externalId = data.messageId || data.id || (data.ids && data.ids[0]) || null;
+    const statusN8nUrl = "https://n8n-n8n.upvzfg.easypanel.host/webhook/status-tezeus";
+    const defaultN8nUrl = conn.provider?.n8n_webhook_url;
+
+    // Extrair external_id do messageId do Z-API
+    // Para MessageStatusCallback, o ID vem em data.ids[0]
+    const externalId = data.messageId || data.id || (data.ids && data.ids[0]) || null;
+
+    // Detectar eventos de status (para roteamento dedicado)
+    // Importante: alguns payloads de mensagem podem conter "status" -> NÃO queremos roteá-los como status.
+    // Aqui só consideramos status quando for explicitamente callback, ou quando vier ids[0] + status.
+    const isStatusCallback =
+      data?.type === 'MessageStatusCallback' ||
+      data?.event === 'DeliveryCallback' ||
+      (Array.isArray(data?.ids) && data.ids.length > 0 && !!data?.status);
+
+    const forwardUrl = isStatusCallback ? statusN8nUrl : defaultN8nUrl;
+
+    if (forwardUrl) {
+      console.log(`🚀 [${id}] Forwarding to: ${forwardUrl}`, { isStatusCallback });
       
       // Verificar se há mídia no payload
       const mediaInfo = extractMediaInfo(data);
@@ -344,6 +355,152 @@ serve(async (req) => {
           status: normalizedStatus // ✅ Sobrescrever status no webhook_data também
         }
       };
+
+      // ============================================================
+      // ORIGIN FLAGS (outside-system vs system vs ai_agent)
+      // ============================================================
+      let originDebug: any = {
+        match_strategy: null,
+        matched_message_id: null,
+        external_id: externalId,
+      };
+
+      let message_origin: 'external_outside_system' | 'system' | 'ai_agent' | 'unknown' = 'unknown';
+      let is_ai_agent = false;
+      let is_system_message = false;
+
+      if (externalId && conn.workspace_id) {
+        try {
+          // Strategy 1 (preferred): provider id stored in messages.evolution_key_id (used for providerMsgId)
+          const { data: byProviderId } = await supabase
+            .from('messages')
+            .select('id, sender_type, origem_resposta')
+            .eq('workspace_id', conn.workspace_id)
+            .eq('evolution_key_id', externalId)
+            .order('created_at', { ascending: false })
+            .limit(1)
+            .maybeSingle();
+
+          let matched = byProviderId as any;
+          if (matched?.id) {
+            originDebug.match_strategy = 'evolution_key_id';
+            originDebug.matched_message_id = matched.id;
+          } else {
+            // Strategy 2: sometimes we store request id / clientMessageId in external_id
+            const { data: byExternalId } = await supabase
+              .from('messages')
+              .select('id, sender_type, origem_resposta')
+              .eq('workspace_id', conn.workspace_id)
+              .eq('external_id', externalId)
+              .order('created_at', { ascending: false })
+              .limit(1)
+              .maybeSingle();
+
+            if (byExternalId?.id) {
+              matched = byExternalId as any;
+              originDebug.match_strategy = 'external_id';
+              originDebug.matched_message_id = matched.id;
+            } else {
+              // Strategy 3: metadata.provider_msg_id
+              const { data: byMetadataProviderId } = await supabase
+                .from('messages')
+                .select('id, sender_type, origem_resposta')
+                .eq('workspace_id', conn.workspace_id)
+                // PostgREST JSON path filter
+                // @ts-ignore
+                .eq('metadata->>provider_msg_id', externalId)
+                .order('created_at', { ascending: false })
+                .limit(1)
+                .maybeSingle();
+
+              if (byMetadataProviderId?.id) {
+                matched = byMetadataProviderId as any;
+                originDebug.match_strategy = 'metadata.provider_msg_id';
+                originDebug.matched_message_id = matched.id;
+              } else {
+                matched = null;
+                originDebug.match_strategy = 'none';
+              }
+            }
+          }
+
+          if (matched?.id) {
+            is_ai_agent = String(matched.origem_resposta || '').toLowerCase() === 'automatica';
+            is_system_message = !is_ai_agent;
+            message_origin = is_ai_agent ? 'ai_agent' : 'system';
+          } else {
+            // Not found in DB => message likely came from outside the system (manual WhatsApp send or inbound from contact)
+            message_origin = 'external_outside_system';
+            is_ai_agent = false;
+            is_system_message = false;
+          }
+        } catch (e) {
+          console.warn(`⚠️ [${id}] Failed to resolve message_origin via DB:`, e);
+          originDebug.match_strategy = 'error';
+          message_origin = 'unknown';
+        }
+      } else {
+        // No externalId => can't correlate
+        message_origin = 'unknown';
+        originDebug.match_strategy = 'missing_external_id';
+      }
+
+      n8nPayload.message_origin = message_origin;
+      n8nPayload.is_ai_agent = is_ai_agent;
+      n8nPayload.is_system_message = is_system_message;
+      n8nPayload.origin_debug = originDebug;
+
+      // ============================================================
+      // FILTRO: não disparar webhook de status para mensagens do sistema
+      // Caso específico: DeliveryCallback + is_system_message = true
+      // ============================================================
+      const isDeliveryCallback =
+        data?.type === 'DeliveryCallback' ||
+        data?.event === 'DeliveryCallback' ||
+        n8nPayload.event_type === 'DeliveryCallback';
+
+      if (is_system_message && isDeliveryCallback) {
+        console.log(`🛑 [${id}] Ignorando DeliveryCallback do sistema (sem forward para N8N)`, {
+          external_id: externalId,
+          connection_id: conn.id,
+          workspace_id: conn.workspace_id,
+          origin_debug: originDebug,
+        });
+
+        return new Response(
+          JSON.stringify({ success: true, ignored: true, reason: 'system_delivery_callback', id }),
+          { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+
+      // ============================================================
+      // FILTRO: não disparar webhook para ReceivedCallback vindo da API (mensagem do sistema)
+      // Caso específico: ReceivedCallback + fromApi=true + is_system_message=true
+      // ============================================================
+      const isReceivedCallback =
+        data?.type === 'ReceivedCallback' ||
+        data?.event === 'ReceivedCallback' ||
+        n8nPayload.event_type === 'ReceivedCallback';
+
+      const fromApi =
+        data?.fromApi === true ||
+        data?.fromApi === 'true' ||
+        data?.from_api === true ||
+        data?.from_api === 'true';
+
+      if (is_system_message && isReceivedCallback && fromApi) {
+        console.log(`🛑 [${id}] Ignorando ReceivedCallback do sistema (fromApi=true) (sem forward para N8N)`, {
+          external_id: externalId,
+          connection_id: conn.id,
+          workspace_id: conn.workspace_id,
+          origin_debug: originDebug,
+        });
+
+        return new Response(
+          JSON.stringify({ success: true, ignored: true, reason: 'system_received_callback_from_api', id }),
+          { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
       
       // Adicionar dados de mídia se disponível
       if (mediaInfo) {
@@ -356,13 +513,23 @@ serve(async (req) => {
         };
       }
       
-      fetch(n8nUrl, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(n8nPayload)
-      })
-        .then(r => console.log(`✅ [${id}] N8N: ${r.status}`))
-        .catch(e => console.error(`❌ [${id}] N8N error:`, e));
+      try {
+        const n8nResponse = await fetch(forwardUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(n8nPayload)
+        });
+
+        const status = n8nResponse.status;
+        if (!n8nResponse.ok) {
+          const text = await n8nResponse.text().catch(() => '');
+          console.error(`❌ [${id}] N8N webhook failed: ${status}`, text);
+        } else {
+          console.log(`✅ [${id}] N8N: ${status}`);
+        }
+      } catch (e) {
+        console.error(`❌ [${id}] N8N error:`, e);
+      }
     } else {
       console.warn(`⚠️ [${id}] No N8N webhook URL configured for this provider`);
     }

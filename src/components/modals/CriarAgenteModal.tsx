@@ -161,6 +161,9 @@ Exemplo: [ENVIE PARA O TOOL \`qualificar-cliente\` (METODO POST) o workspace_id:
     try {
       // 1. Gerar ID do agente
       const agentId = generateRandomId();
+      let extractedTextForRag: string | null = null;
+      let knowledgeFilePathForRag: string | null = null;
+      let knowledgeFileIdForRag: string | null = null;
 
       // 2. Upload do arquivo de conhecimento (se houver)
       if (knowledgeFile) {
@@ -189,6 +192,7 @@ Exemplo: [ENVIE PARA O TOOL \`qualificar-cliente\` (METODO POST) o workspace_id:
         if (!extractData?.success) throw new Error(extractData?.error || 'Falha ao extrair texto do arquivo');
 
         const extractedText = extractData.text;
+        extractedTextForRag = extractedText;
 
         // Upload para Storage
         const { error: uploadError } = await supabase.storage
@@ -196,11 +200,14 @@ Exemplo: [ENVIE PARA O TOOL \`qualificar-cliente\` (METODO POST) o workspace_id:
           .upload(filePath, knowledgeFile);
 
         if (uploadError) throw uploadError;
+        knowledgeFilePathForRag = filePath;
 
         // Salvar na tabela ai_agent_knowledge_files com texto extraído
+        const knowledgeFileId = generateRandomId();
         const { error: fileError } = await supabase
           .from('ai_agent_knowledge_files')
           .insert([{
+            id: knowledgeFileId,
             agent_id: agentId,
             file_name: knowledgeFile.name,
             file_path: filePath,
@@ -211,6 +218,10 @@ Exemplo: [ENVIE PARA O TOOL \`qualificar-cliente\` (METODO POST) o workspace_id:
           }]);
 
         if (fileError) throw fileError;
+
+        // Guardar id do registro criado para disparar o RAG
+        // (o id "certo" é o da ai_agent_knowledge_files)
+        knowledgeFileIdForRag = knowledgeFileId;
       }
 
       // 3. Inserir agente no banco
@@ -241,6 +252,33 @@ Exemplo: [ENVIE PARA O TOOL \`qualificar-cliente\` (METODO POST) o workspace_id:
         });
 
       if (error) throw error;
+
+      // 4. Criar registro na documents_base (RAG) e disparar webhook via Edge Function (com logs no Supabase)
+      if (extractedTextForRag) {
+        try {
+          if (!knowledgeFileIdForRag) throw new Error('knowledge_file_id não encontrado');
+
+          const { data: ragData, error: ragError } = await supabase.functions.invoke('rag-webhook', {
+            body: {
+              workspace_id: formData.workspace_id,
+              agent_id: agentId,
+              knowledge_file_id: knowledgeFileIdForRag,
+              text: extractedTextForRag,
+              file_name: knowledgeFile?.name ?? null,
+              file_path: knowledgeFilePathForRag,
+            },
+          });
+
+          if (ragError) throw ragError;
+
+          if (!ragData?.success) {
+            throw new Error(ragData?.error || 'Falha ao processar RAG');
+          }
+        } catch (ragError) {
+          console.error('Falha ao processar RAG (Edge Function):', ragError);
+          // Não bloquear a criação do agente se o RAG falhar
+        }
+      }
 
       // Invalidar cache do workspace-agent para atualizar o botão
       queryClient.invalidateQueries({ queryKey: ['workspace-agent'] });

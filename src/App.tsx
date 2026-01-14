@@ -53,6 +53,13 @@ const App = () => (
                 </RoleProtectedRoute>
               </ProtectedRoute>
             } />
+            <Route path="/workspace/:workspaceId/disparador" element={
+              <ProtectedRoute>
+                <RoleProtectedRoute allowedRoles={['master', 'admin', 'user']}>
+                  <TezeusCRM />
+                </RoleProtectedRoute>
+              </ProtectedRoute>
+            } />
             <Route path="/workspace/:workspaceId/mensagens-rapidas" element={
               <ProtectedRoute>
                 <RoleProtectedRoute allowedRoles={['master', 'admin', 'user']}>
@@ -266,6 +273,13 @@ const App = () => (
               </ProtectedRoute>
             } />
             <Route path="/conversas" element={
+              <ProtectedRoute>
+                <RoleProtectedRoute allowedRoles={['master', 'admin', 'user']}>
+                  <TezeusCRM />
+                </RoleProtectedRoute>
+              </ProtectedRoute>
+            } />
+            <Route path="/disparador" element={
               <ProtectedRoute>
                 <RoleProtectedRoute allowedRoles={['master', 'admin', 'user']}>
                   <TezeusCRM />

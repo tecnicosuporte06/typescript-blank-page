@@ -565,43 +565,97 @@ serve(async (req) => {
         });
       }
     } catch (parseError) {
-      // Se não conseguir fazer parse, assumir que é texto simples e sucesso
+      // Se não conseguir fazer parse, assumir que é texto simples e sucesso  
       responseData = { response: responseText };
     }
 
     console.log(`✅ [${messageId}] N8N webhook executado com sucesso`);
     console.log(`📊 [${messageId}] N8N response data:`, JSON.stringify(responseData, null, 2));
 
-    // 🔄 UPDATE external_id with Evolution API message ID if available
-    // Tentar múltiplos caminhos para encontrar o Evolution message ID
-    const evolutionMessageId = 
-      responseData?.key?.id ||                    // Formato direto
-      responseData?.data?.key?.id ||              // Formato com "data"
-      responseData?.evolution_key_id ||           // Formato evolution_key_id
-      responseData?.response?.key?.id ||          // Nested response
-      responseData?.[0]?.data?.key?.id;           // Formato array
+    // ============================================================
+    // Persist provider message id for status correlation
+    // - Evolution: we historically used external_id = evolution key.id
+    // - Z-API: we must persist provider_msg_id (messageId) WITHOUT overwriting external_id
+    // ============================================================
 
-    if (evolutionMessageId && messageId) {
-      console.log(`🔄 [${messageId}] Updating external_id to Evolution message ID: ${evolutionMessageId}`);
-      
-      const { error: updateError } = await supabase
-        .from('messages')
-        .update({ 
-          external_id: evolutionMessageId,
-          status: 'sent'  // Update status to sent after successful send
-        })
-        .eq('id', messageId);
-      
-      if (updateError) {
-        console.error(`❌ [${messageId}] Failed to update external_id:`, updateError);
+    // Z-API workflow returns provider_msg_id (preferred) or messageId/id (legacy)
+    const zapiProviderMsgId =
+      responseData?.provider_msg_id ||
+      responseData?.messageId ||
+      responseData?.id ||
+      responseData?.response?.provider_msg_id ||
+      responseData?.response?.messageId ||
+      responseData?.response?.id ||
+      responseData?.[0]?.provider_msg_id ||
+      responseData?.[0]?.messageId ||
+      responseData?.[0]?.id;
+
+    if (providerType === 'zapi') {
+      if (zapiProviderMsgId && messageId) {
+        console.log(`🔄 [${messageId}] Saving Z-API provider_msg_id for status correlation: ${zapiProviderMsgId}`);
+
+        // Merge metadata safely: read existing metadata first
+        const { data: msgMetaRow } = await supabase
+          .from('messages')
+          .select('metadata')
+          .eq('id', messageId)
+          .maybeSingle();
+
+        const nextMetadata = {
+          ...(msgMetaRow?.metadata || {}),
+          provider: 'zapi',
+          provider_msg_id: zapiProviderMsgId,
+        };
+
+        const { error: updateError } = await supabase
+          .from('messages')
+          .update({
+            evolution_key_id: zapiProviderMsgId,
+            status: 'sent',
+            metadata: nextMetadata,
+          })
+          .eq('id', messageId);
+
+        if (updateError) {
+          console.error(`❌ [${messageId}] Failed to save Z-API provider_msg_id:`, updateError);
+        } else {
+          console.log(`✅ [${messageId}] Z-API provider_msg_id saved successfully (evolution_key_id + metadata.provider_msg_id)`);
+        }
       } else {
-        console.log(`✅ [${messageId}] external_id updated successfully to ${evolutionMessageId}`);
-        console.log(`🔔 [${messageId}] WEBHOOK UPDATE EXPECTED: Evolution should now send messages.update webhooks for this message`);
+        console.log(`⚠️ [${messageId}] Z-API send response missing provider_msg_id; status correlation may fail`, {
+          hasResponse: !!responseData,
+        });
       }
     } else {
-      console.log(`⚠️ [${messageId}] No Evolution message ID found in response`);
-      console.log(`📋 [${messageId}] Response structure:`, JSON.stringify(responseData, null, 2));
-      console.log(`❌ [${messageId}] WARNING: Without external_id, status updates via webhook cannot be tracked!`);
+      // Evolution: keep previous behavior (update external_id to evolution message key.id) if available
+      const evolutionMessageId =
+        responseData?.key?.id ||                    // Formato direto
+        responseData?.data?.key?.id ||              // Formato com "data"
+        responseData?.evolution_key_id ||           // Formato evolution_key_id
+        responseData?.response?.key?.id ||          // Nested response
+        responseData?.[0]?.data?.key?.id;           // Formato array
+
+      if (evolutionMessageId && messageId) {
+        console.log(`🔄 [${messageId}] Updating external_id to Evolution message ID: ${evolutionMessageId}`);
+
+        const { error: updateError } = await supabase
+          .from('messages')
+          .update({
+            external_id: evolutionMessageId,
+            status: 'sent'  // Update status to sent after successful send
+          })
+          .eq('id', messageId);
+
+        if (updateError) {
+          console.error(`❌ [${messageId}] Failed to update external_id:`, updateError);
+        } else {
+          console.log(`✅ [${messageId}] external_id updated successfully to ${evolutionMessageId}`);
+          console.log(`🔔 [${messageId}] WEBHOOK UPDATE EXPECTED: Evolution should now send messages.update webhooks for this message`);
+        }
+      } else {
+        console.log(`⚠️ [${messageId}] No Evolution message ID found in response`);
+        console.log(`📋 [${messageId}] Response structure:`, JSON.stringify(responseData, null, 2));
+      }
     }
 
     return new Response(JSON.stringify({

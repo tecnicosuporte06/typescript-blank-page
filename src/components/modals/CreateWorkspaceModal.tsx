@@ -3,6 +3,7 @@ import * as React from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
 import {
   Dialog,
   DialogContent,
@@ -21,6 +22,7 @@ interface CreateWorkspaceModalProps {
     cnpj?: string;
     connectionLimit?: number;
     userLimit?: number;
+    disparadorEnabled?: boolean;
   };
 }
 
@@ -30,6 +32,7 @@ export function CreateWorkspaceModal({ open, onOpenChange, workspace }: CreateWo
     cnpj: "",
     connectionLimit: 0,
     userLimit: 0,
+    disparadorEnabled: false,
   });
   const [isSubmitting, setIsSubmitting] = useState(false);
   const { createWorkspace, updateWorkspace } = useWorkspaces();
@@ -49,7 +52,7 @@ export function CreateWorkspaceModal({ open, onOpenChange, workspace }: CreateWo
       try {
         const { data: limitData, error } = await supabase
           .from('workspace_limits')
-          .select('connection_limit, user_limit')
+          .select('connection_limit, user_limit, disparador_enabled')
           .eq('workspace_id', workspace.workspace_id)
           .maybeSingle();
         
@@ -66,6 +69,7 @@ export function CreateWorkspaceModal({ open, onOpenChange, workspace }: CreateWo
             cnpj: workspace.cnpj || "",
             connectionLimit: limitData.connection_limit ?? 0,
             userLimit: limitData.user_limit ?? 0,
+            disparadorEnabled: limitData.disparador_enabled ?? false,
           };
           
           console.log('✅ Setting form data from direct fetch:', newFormData);
@@ -80,7 +84,7 @@ export function CreateWorkspaceModal({ open, onOpenChange, workspace }: CreateWo
       fetchLimitsDirectly();
     } else if (!workspace && open) {
       console.log('🆕 New workspace - resetting form');
-      setFormData({ name: "", cnpj: "", connectionLimit: 0, userLimit: 0 });
+      setFormData({ name: "", cnpj: "", connectionLimit: 0, userLimit: 0, disparadorEnabled: false });
     }
   }, [workspace?.workspace_id, open]);
 
@@ -108,13 +112,20 @@ export function CreateWorkspaceModal({ open, onOpenChange, workspace }: CreateWo
           cnpj: formData.cnpj.trim() || undefined,
           connectionLimit: formData.connectionLimit,
           userLimit: formData.userLimit,
+          disparadorEnabled: formData.disparadorEnabled,
         });
       } else {
-        await createWorkspace(formData.name.trim(), formData.cnpj.trim() || undefined, formData.connectionLimit, formData.userLimit);
+        await createWorkspace(
+          formData.name.trim(),
+          formData.cnpj.trim() || undefined,
+          formData.connectionLimit,
+          formData.userLimit,
+          formData.disparadorEnabled,
+        );
       }
       
       // Reset form
-      setFormData({ name: "", cnpj: "", connectionLimit: 0, userLimit: 0 });
+      setFormData({ name: "", cnpj: "", connectionLimit: 0, userLimit: 0, disparadorEnabled: false });
       onOpenChange(false);
     } catch (error) {
       // Error is handled in the hook
@@ -124,7 +135,7 @@ export function CreateWorkspaceModal({ open, onOpenChange, workspace }: CreateWo
   };
 
   const handleCancel = () => {
-    setFormData({ name: "", cnpj: "", connectionLimit: 0, userLimit: 0 });
+    setFormData({ name: "", cnpj: "", connectionLimit: 0, userLimit: 0, disparadorEnabled: false });
     onOpenChange(false);
   };
 
@@ -197,6 +208,19 @@ export function CreateWorkspaceModal({ open, onOpenChange, workspace }: CreateWo
             <p className="text-xs text-muted-foreground dark:text-gray-500">
               Número máximo de usuários que podem ser criados para esta empresa
             </p>
+          </div>
+
+          <div className="flex items-center justify-between border border-[#d4d4d4] dark:border-gray-700 p-3 bg-white dark:bg-[#0f0f0f]">
+            <div className="space-y-0.5">
+              <div className="text-sm font-medium text-gray-800 dark:text-gray-100">Habilitar Disparador</div>
+              <div className="text-xs text-muted-foreground dark:text-gray-500">
+                Produto adicional: controla a visibilidade do módulo Disparador para esta empresa
+              </div>
+            </div>
+            <Switch
+              checked={!!formData.disparadorEnabled}
+              onCheckedChange={(checked) => setFormData((prev) => ({ ...prev, disparadorEnabled: checked }))}
+            />
           </div>
 
           <div className="flex justify-end gap-2 pt-4">

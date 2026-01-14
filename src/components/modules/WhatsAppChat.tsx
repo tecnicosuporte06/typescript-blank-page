@@ -208,6 +208,24 @@ export function WhatsAppChat({
     cacheTtlMs: onlyMessages ? 15000 : 5000,
     debug: false,
   });
+
+  // Resolve conteúdo de mensagens citadas mesmo quando o backend não preenche quoted_message.content
+  const messageLookup = useMemo(() => {
+    const map = new Map<string, any>();
+    const add = (key?: string | null, msg?: any) => {
+      const k = typeof key === "string" ? key.trim() : "";
+      if (k) map.set(k, msg);
+    };
+    (messages || []).forEach((m: any) => {
+      add(m?.id, m);
+      add(m?.external_id, m);
+      add(m?.evolution_key_id, m);
+      // alguns providers usam ids dentro do metadata
+      add(m?.metadata?.provider_msg_id, m);
+      add(m?.metadata?.provider_message_id, m);
+    });
+    return map;
+  }, [messages]);
   const {
     selectedWorkspace
   } = useWorkspace();
@@ -2975,59 +2993,7 @@ export function WhatsAppChat({
                   <ContextMenu>
                     <ContextMenuTrigger asChild>
                       <div className={cn("relative flex items-center px-3 py-2 cursor-pointer rounded-none transition-all duration-300 ease-in-out border-b border-[#d4d4d4] bg-white dark:bg-[#1f1f1f] dark:border-gray-700", "group-hover/list:opacity-70 hover:!opacity-100 hover:bg-[#e6f2ff] dark:hover:bg-[#2d2d2d] hover:z-10", selectedConversation?.id === conversation.id && "bg-[#e6f2ff] dark:bg-[#2d2d2d] !opacity-100")} onClick={() => handleSelectConversation(conversation)} role="button" tabIndex={0}>
-                  {/* Status indicator bar - cor da conexão */}
-                  {/* Barra de status/identificação da conexão com tooltip detalhado */}
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <span className="absolute left-0 top-0 bottom-0 w-1" style={{
-                    backgroundColor: (() => {
-                      // Se tem conexão, usa cor da conexão (salva ou gerada por hash)
-                      if (conversation.connection) {
-                        return getConnectionColor(
-                          conversation.connection.id, 
-                          conversation.connection.metadata
-                        );
-                      }
-                      // Senão, usa lógica do agente
-                      return conversation.agente_ativo ? 'rgb(83, 0, 235)' : 'rgb(76, 175, 80)';
-                    })()
-                  }} />
-                    </TooltipTrigger>
-                    <TooltipContent side="right" className="max-w-xs rounded-none border-[#d4d4d4]">
-                      {conversation.connection ? (
-                        <div className="space-y-1">
-                          <p className="text-xs font-bold">{conversation.connection.instance_name || 'Instância'}</p>
-                          {conversation.connection.phone_number && (
-                            <p className="text-xs text-muted-foreground">{conversation.connection.phone_number}</p>
-                          )}
-                          <p className="text-[10px] mt-1">
-                            {(() => {
-                              const status = (conversation.connection.status || '').toLowerCase();
-                              switch (status) {
-                                case 'open':
-                                case 'connected':
-                                  return 'Status: Conectado';
-                                case 'creating':
-                                  return 'Status: Criando';
-                                case 'connecting':
-                                  return 'Status: Conectando';
-                                case 'closed':
-                                case 'disconnected':
-                                  return 'Status: Desconectado';
-                                default:
-                                  return `Status: ${conversation.connection.status || 'N/A'}`;
-                              }
-                            })()}
-                          </p>
-                        </div>
-                      ) : (
-                        <div className="space-y-1">
-                          <p className="text-xs font-bold">{conversation.agente_ativo ? 'AGENTE IA' : 'ATIVO'}</p>
-                          <p className="text-[10px] text-muted-foreground">Sem conexão vinculada</p>
-                        </div>
-                      )}
-                    </TooltipContent>
-                  </Tooltip>
+                  {/* Removido: barra lateral colorida (indicador de conexão) */}
                     
                     {/* Avatar container */}
                     <div className="flex-shrink-0 mr-3 ml-2">
@@ -3668,14 +3634,28 @@ export function WhatsAppChat({
                       
                       {/* Mostrar mensagem quotada se existir */}
                       {message.quoted_message && message.reply_to_message_id && (
+                        (() => {
+                          const ref = messageLookup.get(String(message.reply_to_message_id || "").trim());
+                          const qm: any = message.quoted_message || {};
+                          const resolvedQuoted = {
+                            ...qm,
+                            // se vier vazio do backend, tenta pegar do ref
+                            content: (qm.content ?? "").toString().trim() ? qm.content : (ref?.content ?? qm.content),
+                            message_type: qm.message_type || ref?.message_type,
+                            file_url: qm.file_url || ref?.file_url,
+                            file_name: qm.file_name || ref?.file_name,
+                          };
+                          return (
                         <QuotedMessagePreview
-                          quotedMessage={message.quoted_message}
+                          quotedMessage={resolvedQuoted}
                           senderName={getSenderDisplayName(
                             message.quoted_message.sender_type,
                             selectedConversation.contact?.name || ''
                           )}
                           onQuoteClick={() => scrollToMessage(message.reply_to_message_id!)}
                         />
+                          );
+                        })()
                       )}
 
                       {/* Renderizar conteúdo baseado no tipo */}
@@ -4209,22 +4189,7 @@ export function WhatsAppChat({
       </Sheet>
       </div>
 
-      {/* ✅ Listener para recarregar mensagens quando a página fica visível novamente */}
-      {(() => {
-        useEffect(() => {
-          if (onlyMessages) return;
-          const handleVisibilityChange = () => {
-            if (document.visibilityState === 'visible' && selectedConversation?.id) {
-              loadMessages(selectedConversation.id, true); // ✅ Forçar refresh
-            }
-          };
-
-          document.addEventListener('visibilitychange', handleVisibilityChange);
-          return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
-        }, [selectedConversation?.id]);
-
-        return null;
-      })()}
+      {/* Removido: listener de visibilitychange que forçava refresh de mensagens ao voltar foco (causava "refresh interno"). */}
 
       {/* Modal de edição de mensagem */}
       <Dialog open={!!editingMessage} onOpenChange={(open) => !open && setEditingMessage(null)}>

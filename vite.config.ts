@@ -12,6 +12,12 @@ export default defineConfig(({ mode }) => ({
     hmr: {
       protocol: 'ws',
     },
+    // Windows + OneDrive costuma falhar no file watching (HMR não invalida módulo).
+    // Polling garante que alterações em `src/**` reflitam no browser sem “cache fantasma”.
+    watch: {
+      usePolling: true,
+      interval: 200,
+    },
   },
   build: {
     outDir: 'dist',

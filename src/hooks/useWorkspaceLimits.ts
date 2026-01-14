@@ -7,6 +7,7 @@ interface WorkspaceLimit {
   workspace_id: string;
   connection_limit: number;
   user_limit: number;
+  disparador_enabled?: boolean;
   created_at: string;
   updated_at: string;
 }
@@ -54,6 +55,7 @@ export function useWorkspaceLimits(workspaceId: string) {
 
       const connectionLimit = data?.connectionLimit || 1;
       const userLimit = data?.userLimit || 5;
+      const disparadorEnabled = data?.disparadorEnabled ?? true;
       const currentConnections = data?.connectionsCount || 0;
       const currentUsers = data?.usersCount || 0;
 
@@ -64,6 +66,7 @@ export function useWorkspaceLimits(workspaceId: string) {
         workspace_id: workspaceId,
         connection_limit: connectionLimit,
         user_limit: userLimit,
+        disparador_enabled: disparadorEnabled,
         created_at: '',
         updated_at: ''
       });

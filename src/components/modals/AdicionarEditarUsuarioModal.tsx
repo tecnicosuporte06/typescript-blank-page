@@ -336,45 +336,45 @@ export function AdicionarEditarUsuarioModal({
           {/* Avatar Upload */}
           <div className="col-span-12 lg:col-span-3 border border-[#d4d4d4] dark:border-gray-700 bg-white dark:bg-[#1f1f1f] p-5">
             <div className="flex items-center lg:flex-col lg:items-center gap-4">
-              <div className="relative">
+            <div className="relative">
                 <div className="w-20 h-20 rounded-full bg-[#f0f0f0] dark:bg-gray-800 flex items-center justify-center overflow-hidden border-2 border-[#d4d4d4] dark:border-gray-700">
                 {avatarPreview ? (
                   <img src={avatarPreview} alt="Avatar" className="w-full h-full object-cover" />
                 ) : (
                   <User className="h-10 w-10 text-gray-500 dark:text-gray-400" />
                 )}
-                </div>
-                {avatarPreview && (
-                  <button
-                    onClick={handleRemoveAvatar}
-                    className="absolute -top-1 -right-1 bg-red-600 text-white rounded-full p-1 hover:bg-red-700"
-                  >
-                    <X className="h-3 w-3" />
-                  </button>
-                )}
               </div>
+              {avatarPreview && (
+                <button
+                  onClick={handleRemoveAvatar}
+                  className="absolute -top-1 -right-1 bg-red-600 text-white rounded-full p-1 hover:bg-red-700"
+                >
+                  <X className="h-3 w-3" />
+                </button>
+              )}
+            </div>
 
               <div className="min-w-0 flex-1 lg:flex-none">
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  accept="image/*"
-                  onChange={handleAvatarChange}
-                  className="hidden"
-                />
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  onClick={() => fileInputRef.current?.click()}
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/*"
+                onChange={handleAvatarChange}
+                className="hidden"
+              />
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => fileInputRef.current?.click()}
                   className="h-9 px-4 text-sm rounded-none border-[#d4d4d4] dark:border-gray-700 hover:bg-gray-100 dark:hover:bg-gray-800 w-full lg:w-auto"
-                >
+              >
                   <Camera className="h-4 w-4 mr-2" />
-                  {avatarPreview ? 'Alterar Foto' : 'Adicionar Foto'}
-                </Button>
+                {avatarPreview ? 'Alterar Foto' : 'Adicionar Foto'}
+              </Button>
                 <p className="text-xs text-gray-500 dark:text-gray-400 mt-2">
-                  JPG, PNG ou GIF (máx. 5MB)
-                </p>
+                JPG, PNG ou GIF (máx. 5MB)
+              </p>
               </div>
             </div>
           </div>
@@ -483,52 +483,52 @@ export function AdicionarEditarUsuarioModal({
                     ))}
                   </SelectContent>
                 </Select>
-              </div>
-            )}
-
-            {effectiveLockWorkspace && selectedWorkspaceId && (
+            </div>
+          )}
+          
+          {effectiveLockWorkspace && selectedWorkspaceId && (
               <div className="space-y-2">
                 <Label className="text-sm font-medium text-gray-700 dark:text-gray-300">Empresa</Label>
                 <div className="h-9 flex items-center px-3 text-sm rounded-none border border-[#d4d4d4] dark:border-gray-700 bg-white dark:bg-[#2d2d2d] text-gray-900 dark:text-gray-200">
                   {selectedWorkspaceName || '—'}
-                </div>
               </div>
-            )}
+            </div>
+          )}
 
-            {selectedWorkspaceId && connections.length > 0 && (
+          {selectedWorkspaceId && connections.length > 0 && (
               <div className="mt-6">
                 <h3 className="font-semibold text-sm text-gray-700 dark:text-gray-200 uppercase tracking-wide mb-3">Canal Padrão</h3>
                 <div className="space-y-2">
                   <Label htmlFor="default_channel" className="text-sm font-medium text-gray-700 dark:text-gray-300">Canal WhatsApp</Label>
-                  <Select value={formData.default_channel} onValueChange={(value) => setFormData(prev => ({ ...prev, default_channel: value }))}>
+                <Select value={formData.default_channel} onValueChange={(value) => setFormData(prev => ({ ...prev, default_channel: value }))}>
                     <SelectTrigger className="h-9 text-sm rounded-none border-[#d4d4d4] dark:border-gray-700 bg-white dark:bg-[#2d2d2d]">
-                      <SelectValue placeholder="Selecione um canal (opcional)" />
-                    </SelectTrigger>
-                    <SelectContent className="rounded-none border-[#d4d4d4] dark:border-gray-700">
-                      {connections.map((connection) => (
-                        <SelectItem key={connection.id} value={connection.id}>
-                          {connection.instance_name || connection.phone_number || connection.id}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
+                    <SelectValue placeholder="Selecione um canal (opcional)" />
+                  </SelectTrigger>
+                  <SelectContent className="rounded-none border-[#d4d4d4] dark:border-gray-700">
+                    {connections.map((connection) => (
+                      <SelectItem key={connection.id} value={connection.id}>
+                        {connection.instance_name || connection.phone_number || connection.id}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
-            )}
+            </div>
+          )}
           </div>
 
           </div>
         </div>
-
+          
         <div className="px-6 py-4 border-t border-[#d4d4d4] dark:border-gray-700 bg-white dark:bg-[#1f1f1f] flex items-center justify-end gap-3">
-          <Button
-            variant="outline"
-            onClick={handleCancel}
-            disabled={isSubmitting}
+            <Button 
+              variant="outline" 
+              onClick={handleCancel}
+              disabled={isSubmitting}
             className="h-9 px-5 text-sm rounded-none border-[#d4d4d4] dark:border-gray-700 hover:bg-gray-100 dark:hover:bg-gray-800"
-          >
-            Cancelar
-          </Button>
+            >
+              Cancelar
+            </Button>
           <Button
             onClick={handleSubmit}
             disabled={isSubmitting || !formData.name || !formData.email || !formData.profile || (!isEditing && !formData.senha) || !selectedWorkspaceId}

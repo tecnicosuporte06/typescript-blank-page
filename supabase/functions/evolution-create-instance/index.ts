@@ -520,9 +520,9 @@ serve(async (req) => {
         receivedCallbackUrl: `${webhookBaseUrl}/zapi-webhook`,
         disconnectedCallbackUrl: `${webhookBaseUrl}/zapi-webhook`,
         connectedCallbackUrl: `${webhookBaseUrl}/zapi-webhook`,
-        messageStatusCallbackUrl: `${webhookBaseUrl}/zapi-webhook`,
+        messageStatusCallbackUrl: `${webhookBaseUrl}/zapi-webhook-status`,
         chatPresenceCallbackUrl: `${webhookBaseUrl}/zapi-webhook`,
-        isDevice: false,
+        isDevice: true,
         businessDevice: true
       };
 

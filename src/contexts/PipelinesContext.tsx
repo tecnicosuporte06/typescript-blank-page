@@ -6,6 +6,14 @@ import { useAuth } from '@/hooks/useAuth';
 import { usePipelineRealtime } from '@/hooks/usePipelineRealtime';
 import { generateRandomId } from '@/lib/generate-random-id';
 
+const IS_DEV = import.meta.env.DEV;
+const devLog = (...args: any[]) => {
+  if (IS_DEV) console.log(...args);
+};
+const devWarn = (...args: any[]) => {
+  if (IS_DEV) console.warn(...args);
+};
+
 const parseFunctionErrorBody = (error: any) => {
   const body = error?.context?.body;
 
@@ -15,7 +23,7 @@ const parseFunctionErrorBody = (error: any) => {
     try {
       return JSON.parse(body);
     } catch (parseError) {
-      console.warn('⚠️ [PipelinesContext] Falha ao analisar corpo de erro da função:', parseError, body);
+      devWarn('⚠️ [PipelinesContext] Falha ao analisar corpo de erro da função:', parseError, body);
       return null;
     }
   }
@@ -143,6 +151,9 @@ interface PipelinesContextType {
   isLoading: boolean;
   isLoadingColumns: boolean;
   isLoadingCards: boolean;
+  isLoadingInitialCardsByColumn: Record<string, boolean>;
+  hasMoreCardsByColumn: Record<string, boolean>;
+  isLoadingMoreCardsByColumn: Record<string, boolean>;
   fetchPipelines: () => Promise<void>;
   createPipeline: (name: string, type: string) => Promise<Pipeline>;
   deletePipeline: (pipelineId: string) => Promise<void>;
@@ -153,6 +164,7 @@ interface PipelinesContextType {
   updateCard: (cardId: string, updates: Partial<PipelineCard>) => Promise<void>;
   moveCard: (cardId: string, newColumnId: string) => Promise<void>;
   moveCardOptimistic: (cardId: string, newColumnId: string) => Promise<void>;
+  fetchMoreCards: (columnId: string) => Promise<void>;
   getCardsByColumn: (columnId: string) => PipelineCard[];
   reorderColumns: (newColumns: PipelineColumn[]) => Promise<void>;
   updateConversationAgentStatus: (conversationId: string, agente_ativo: boolean, agent_active_id?: string | null) => void;
@@ -168,9 +180,14 @@ export function PipelinesProvider({ children }: { children: React.ReactNode }) {
   const [isLoading, setIsLoading] = useState(true); // Start as loading
   const [isLoadingColumns, setIsLoadingColumns] = useState(false);
   const [isLoadingCards, setIsLoadingCards] = useState(false);
+  const [isLoadingInitialCardsByColumn, setIsLoadingInitialCardsByColumn] = useState<Record<string, boolean>>({});
+  const [cardsOffsetByColumn, setCardsOffsetByColumn] = useState<Record<string, number>>({});
+  const [hasMoreCardsByColumn, setHasMoreCardsByColumn] = useState<Record<string, boolean>>({});
+  const [isLoadingMoreCardsByColumn, setIsLoadingMoreCardsByColumn] = useState<Record<string, boolean>>({});
   const { selectedWorkspace } = useWorkspace();
   const { toast } = useToast();
   const { user, userRole } = useAuth();
+  const PAGE_SIZE = 10;
   
   // 🔥 Ref para armazenar timeouts pendentes de movimentação de cards
   const pendingTimeoutsRef = useRef<Map<string, NodeJS.Timeout>>(new Map());
@@ -240,10 +257,14 @@ export function PipelinesProvider({ children }: { children: React.ReactNode }) {
 
       setPipelines(sortedPipelines);
       
-      // Auto-select first pipeline if forced or if none selected and we have pipelines
-      if (sortedPipelines.length > 0 && (forceSelectFirst || !selectedPipeline)) {
-        // Auto-selecting first pipeline (que agora é a padrão se houver)
-        setSelectedPipeline(sortedPipelines[0]);
+      // Auto-select sem depender de closure (evita re-render/loop em effects que dependem de fetchPipelines)
+      if (sortedPipelines.length > 0) {
+        setSelectedPipeline((prev) => {
+          if (forceSelectFirst) return sortedPipelines[0];
+          if (!prev) return sortedPipelines[0];
+          const stillExists = sortedPipelines.some((p) => p.id === prev.id);
+          return stillExists ? prev : sortedPipelines[0];
+        });
       }
     } catch (error) {
       console.error('❌ Error fetching pipelines:', error);
@@ -255,10 +276,10 @@ export function PipelinesProvider({ children }: { children: React.ReactNode }) {
     } finally {
       setIsLoading(false);
     }
-  }, [getHeaders, toast]);
+  }, [getHeaders, toast, selectedWorkspace?.workspace_id]);
 
-  const fetchColumns = useCallback(async (pipelineId: string) => {
-    if (!getHeaders || !pipelineId) return;
+  const fetchColumns = useCallback(async (pipelineId: string): Promise<PipelineColumn[] | null> => {
+    if (!getHeaders || !pipelineId) return null;
 
     try {
       setIsLoadingColumns(true);
@@ -277,10 +298,10 @@ export function PipelinesProvider({ children }: { children: React.ReactNode }) {
         
         // Log de debug para verificar permissões carregadas
         if (permissions.length > 0) {
-          console.log('📋 [fetchColumns] Coluna com permissões:', {
+          devLog('📋 [fetchColumns] Coluna com permissões:', {
             columnId: col.id,
             columnName: col.name,
-            permissions
+            permissions,
           });
         }
         
@@ -291,6 +312,7 @@ export function PipelinesProvider({ children }: { children: React.ReactNode }) {
       });
       
       setColumns(normalizedColumns);
+      return normalizedColumns;
     } catch (error) {
       console.error('Error fetching columns:', error);
       toast({
@@ -298,96 +320,179 @@ export function PipelinesProvider({ children }: { children: React.ReactNode }) {
         description: "Erro ao carregar colunas",
         variant: "destructive",
       });
+      return null;
     } finally {
       setIsLoadingColumns(false);
     }
   }, [getHeaders, toast]);
 
-  const fetchCards = useCallback(async (pipelineId: string, retryCount = 0) => {
+  const isCardVisibleForUser = useCallback((card: any) => {
+    // Regra de produto: no pipeline, mostrar apenas negócios em ABERTO ou PERDIDO.
+    // (Ganho continua existindo no banco e aparece apenas em histórico/relatórios.)
+    const status = String(card?.status || '').toLowerCase().trim();
+    const isVisibleStatus = status === 'aberto' || status === 'perda' || status === 'perdido';
+    if (!isVisibleStatus) return false;
+
+    if (userRole !== 'user') return true;
+
+    const userData = localStorage.getItem('currentUser');
+    const currentUserData = userData ? JSON.parse(userData) : null;
+    const currentUserId = currentUserData?.id;
+    const responsibleId = card?.responsible_user_id || card?.responsible_user?.id || null;
+    const isUnassigned = !responsibleId;
+    const isAssignedToCurrentUser = responsibleId === currentUserId;
+    return isUnassigned || isAssignedToCurrentUser;
+  }, [userRole]);
+
+  const fetchCardsPage = useCallback(async (opts: {
+    pipelineId: string;
+    columnId: string;
+    offset: number;
+    append: boolean;
+  }) => {
+    if (!getHeaders) return;
+
+    const { pipelineId, columnId, offset, append } = opts;
+    const limit = PAGE_SIZE + 1; // client infers hasMore by requesting 10+1
+
+    const { data, error } = await supabase.functions.invoke(
+      `pipeline-management/cards?pipeline_id=${pipelineId}&column_id=${columnId}&limit=${limit}&offset=${offset}&lite=1`,
+      {
+        method: 'GET',
+        headers: getHeaders,
+      }
+    );
+
+    if (error) throw error;
+
+    const raw: any[] = Array.isArray(data) ? data : [];
+    const hasMore = raw.length > PAGE_SIZE;
+    const rawPage = hasMore ? raw.slice(0, PAGE_SIZE) : raw;
+    const visiblePage = rawPage.filter(isCardVisibleForUser);
+
+    // Atualizar paginação baseada no conjunto "bruto" (DB paging), não no filtrado
+    setCardsOffsetByColumn((prev) => ({
+      ...prev,
+      [columnId]: offset + rawPage.length,
+    }));
+    setHasMoreCardsByColumn((prev) => ({
+      ...prev,
+      [columnId]: hasMore,
+    }));
+
+    // Mesclar cards
+    setCards((prev) => {
+      const incomingIds = new Set(visiblePage.map((c) => c.id));
+      const base = prev.filter((c) => !incomingIds.has(c.id));
+
+      if (!append) {
+        const baseWithoutColumn = base.filter((c) => c.column_id !== columnId);
+        return [...baseWithoutColumn, ...(visiblePage as any)];
+      }
+
+      return [...base, ...(visiblePage as any)];
+    });
+
+    // Marcar coluna como "carregada" na primeira página
+    if (!append) {
+      setIsLoadingInitialCardsByColumn((prev) => ({ ...prev, [columnId]: false }));
+    }
+  }, [PAGE_SIZE, getHeaders, isCardVisibleForUser]);
+
+  const fetchCards = useCallback(async (pipelineId: string, cols: PipelineColumn[]) => {
     if (!getHeaders || !pipelineId) return;
 
+    const effectiveColumns = Array.isArray(cols) ? cols : [];
+    if (!effectiveColumns || effectiveColumns.length === 0) {
+      setCards([]);
+      setCardsOffsetByColumn({});
+      setHasMoreCardsByColumn({});
+      setIsLoadingMoreCardsByColumn({});
+      setIsLoadingCards(false);
+      return;
+    }
+
+    // Reset pagination state for current columns
+    const initOffsets: Record<string, number> = {};
+    const initHasMore: Record<string, boolean> = {};
+    const initInitialLoading: Record<string, boolean> = {};
+    effectiveColumns.forEach((c) => {
+      initOffsets[c.id] = 0;
+      initHasMore[c.id] = true;
+      initInitialLoading[c.id] = true;
+    });
+
+    setCards([]);
+    setCardsOffsetByColumn(initOffsets);
+    setHasMoreCardsByColumn(initHasMore);
+    setIsLoadingMoreCardsByColumn({});
+    setIsLoadingInitialCardsByColumn(initInitialLoading);
+
     try {
-      console.log(`🔍 [fetchCards] Buscando cards para pipeline: ${pipelineId} (tentativa ${retryCount + 1})`);
-      
-      // Só mostrar loading na primeira tentativa para não piscar no retry
-      if (retryCount === 0) {
-        setIsLoadingCards(true);
-      }
-      
-      const { data, error } = await supabase.functions.invoke(`pipeline-management/cards?pipeline_id=${pipelineId}`, {
-        method: 'GET',
-        headers: getHeaders
-      });
-
-      if (error) throw error;
-      
-      const cardsData = data || [];
-      console.log(`✅ [fetchCards] ${cardsData.length} cards carregados`);
-      
-      // ✅ VERIFICAR SE CARDS TÊM RELACIONAMENTOS COMPLETOS
-      const cardsWithFullData = cardsData.filter(c => c.contact || c.conversation);
-      const cardsWithoutData = cardsData.filter(c => !c.contact && !c.conversation && (c.contact_id || c.conversation_id));
-      
-      if (cardsWithoutData.length > 0) {
-        console.warn(`⚠️ [fetchCards] ${cardsWithoutData.length} cards sem relacionamentos detectados`);
-        
-        // Se for primeira tentativa e houver cards incompletos, tentar novamente após 2s
-        if (retryCount === 0) {
-          console.log('🔄 [fetchCards] Tentando novamente em 2 segundos...');
-          setTimeout(() => fetchCards(pipelineId, 1), 2000);
-          return; // Não atualizar ainda, aguardar retry
-        }
-      }
-      
-      const sanitizedCards = (cardsData || []).filter(card => {
-        // Regra de produto: no pipeline, mostrar apenas negócios em ABERTO ou PERDIDO.
-        // (Ganho continua existindo no banco e aparece apenas em histórico/relatórios.)
-        const status = String((card as any)?.status || '').toLowerCase().trim();
-        const isVisibleStatus = status === 'aberto' || status === 'perda' || status === 'perdido';
-        if (!isVisibleStatus) return false;
-
-        if (userRole !== 'user') return true;
-
-        const userData = localStorage.getItem('currentUser');
-        const currentUserData = userData ? JSON.parse(userData) : null;
-        const currentUserId = currentUserData?.id;
-        const responsibleId = (card as any).responsible_user_id || (card as any).responsible_user?.id || null;
-        const isUnassigned = !responsibleId;
-        const isAssignedToCurrentUser = responsibleId === currentUserId;
-
-        if (!isUnassigned && !isAssignedToCurrentUser) {
-          console.log('🚫 [fetchCards] Removendo card por permissão de usuário:', {
-            cardId: card.id,
-            responsible_user_id: (card as any).responsible_user_id,
-            responsible_user: (card as any).responsible_user,
-            currentUserId
-          });
-          return false;
-        }
-
-        return true;
-      });
-
-      setCards(sanitizedCards);
+      setIsLoadingCards(true);
+      await Promise.all(
+        effectiveColumns.map((col) =>
+          fetchCardsPage({
+            pipelineId,
+            columnId: col.id,
+            offset: 0,
+            append: false,
+          })
+        )
+      );
     } catch (error) {
-      console.error('❌ [fetchCards] Erro ao buscar cards:', error);
-      
-      // Retry em caso de erro (máximo 2 tentativas)
-      if (retryCount < 2) {
-        console.log(`🔄 [fetchCards] Tentando novamente (${retryCount + 1}/2)...`);
-        setTimeout(() => fetchCards(pipelineId, retryCount + 1), 2000);
-        return;
-      }
-      
+      const parsedError = await readFunctionErrorBodyAsync(error);
+      console.error('❌ [fetchCards] Erro ao buscar cards (paginado):', { error, parsedError });
+      console.error('❌ [fetchCards] Erro ao buscar cards (paginado):', error);
       toast({
         title: "Erro",
-        description: "Erro ao carregar cards. Tente recarregar a página.",
+        description:
+          parsedError?.message ||
+          parsedError?.error ||
+          "Erro ao carregar cards. Tente recarregar a página.",
         variant: "destructive",
       });
     } finally {
       setIsLoadingCards(false);
     }
-  }, [getHeaders, toast]);
+  }, [getHeaders, fetchCardsPage, toast]);
+
+  const fetchMoreCards = useCallback(async (columnId: string) => {
+    if (!selectedPipeline?.id || !getHeaders) return;
+
+    const hasMore = hasMoreCardsByColumn[columnId];
+    if (hasMore === false) return;
+    if (isLoadingMoreCardsByColumn[columnId]) return;
+
+    const offset = cardsOffsetByColumn[columnId] || 0;
+
+    try {
+      setIsLoadingMoreCardsByColumn((prev) => ({ ...prev, [columnId]: true }));
+      await fetchCardsPage({
+        pipelineId: selectedPipeline.id,
+        columnId,
+        offset,
+        append: true,
+      });
+    } catch (error) {
+      console.error('❌ [fetchMoreCards] Erro ao buscar mais cards:', error);
+      toast({
+        title: "Erro",
+        description: "Erro ao carregar mais cards. Tente novamente.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsLoadingMoreCardsByColumn((prev) => ({ ...prev, [columnId]: false }));
+    }
+  }, [
+    selectedPipeline?.id,
+    getHeaders,
+    hasMoreCardsByColumn,
+    isLoadingMoreCardsByColumn,
+    cardsOffsetByColumn,
+    fetchCardsPage,
+    toast,
+  ]);
 
   const createPipeline = useCallback(async (name: string, type: string) => {
     if (!getHeaders) throw new Error('Headers not available');
@@ -437,7 +542,7 @@ export function PipelinesProvider({ children }: { children: React.ReactNode }) {
       throw error;
     }
 
-    console.log('✅ Pipeline deletado com sucesso');
+    devLog('✅ Pipeline deletado com sucesso');
     
     // Atualizar lista de pipelines
     await fetchPipelines();
@@ -466,10 +571,8 @@ export function PipelinesProvider({ children }: { children: React.ReactNode }) {
   // New function to refresh the current pipeline data
   const refreshCurrentPipeline = useCallback(async () => {
     if (selectedPipeline?.id) {
-      await Promise.all([
-        fetchColumns(selectedPipeline.id),
-        fetchCards(selectedPipeline.id)
-      ]);
+      const cols = await fetchColumns(selectedPipeline.id);
+      await fetchCards(selectedPipeline.id, cols || []);
     }
   }, [selectedPipeline?.id, fetchColumns, fetchCards]);
 
@@ -536,7 +639,7 @@ export function PipelinesProvider({ children }: { children: React.ReactNode }) {
     setCards(prev => [optimisticCard, ...prev]);
 
     try {
-      console.log('🎯 Criando card no backend:', {
+      devLog('🎯 Criando card no backend:', {
         pipeline_id: selectedPipeline.id,
         cardData
       });
@@ -645,7 +748,7 @@ export function PipelinesProvider({ children }: { children: React.ReactNode }) {
     if (!getHeaders) throw new Error('Headers not available');
 
     try {
-      const { data, error } = await supabase.functions.invoke(`pipeline-management/cards?id=${cardId}`, {
+      const { data, error } = await supabase.functions.invoke(`pipeline-management/cards?id=${cardId}&lite=1`, {
         method: 'PUT',
         headers: getHeaders,
         body: updates
@@ -673,16 +776,16 @@ export function PipelinesProvider({ children }: { children: React.ReactNode }) {
           const channelName = `pipeline-${selectedPipeline.id}`;
           const existing = (supabase.getChannels?.() || []).find((c: any) => c?.topic === channelName);
           if (existing) {
-            console.log('📡 [Broadcast] updateCard: enviando pipeline-card-moved via canal existente');
+            devLog('📡 [Broadcast] updateCard: enviando pipeline-card-moved via canal existente');
             const ok = await existing.send({
               type: 'broadcast',
               event: 'pipeline-card-moved',
               payload: { cardId, newColumnId: updates.column_id }
             });
-            console.log('📡 [Broadcast] updateCard enviado:', ok);
+            devLog('📡 [Broadcast] updateCard enviado:', ok);
           }
         } catch (err) {
-          console.warn('⚠️ [Broadcast] updateCard: falha ao enviar broadcast', err);
+          devWarn('⚠️ [Broadcast] updateCard: falha ao enviar broadcast', err);
         }
       }
 
@@ -723,7 +826,7 @@ export function PipelinesProvider({ children }: { children: React.ReactNode }) {
     
     if (!cardToMove) return;
 
-    console.log('🚀 [Optimistic] Movendo card instantaneamente:', {
+    devLog('🚀 [Optimistic] Movendo card instantaneamente:', {
       cardId,
       fromColumn: cardToMove.column_id,
       toColumn: newColumnId,
@@ -745,9 +848,9 @@ export function PipelinesProvider({ children }: { children: React.ReactNode }) {
     try {
       if (!getHeaders) throw new Error('Headers not available');
 
-      console.log('📤 [Optimistic] Enviando para backend...');
+      devLog('📤 [Optimistic] Enviando para backend...');
       
-      const { data, error } = await supabase.functions.invoke(`pipeline-management/cards?id=${cardId}`, {
+      const { data, error } = await supabase.functions.invoke(`pipeline-management/cards?id=${cardId}&lite=1`, {
         method: 'PUT',
         headers: getHeaders,
         body: { column_id: newColumnId }
@@ -755,8 +858,8 @@ export function PipelinesProvider({ children }: { children: React.ReactNode }) {
 
       if (error) throw error;
 
-      console.log('✅ [Optimistic] Backend confirmou mudança');
-      console.log('⏳ [Optimistic] Aguardando evento realtime...');
+      devLog('✅ [Optimistic] Backend confirmou mudança');
+      devLog('⏳ [Optimistic] Aguardando evento realtime...');
 
       // Se a coluna de destino for etapa de oferta, marcar oferta=true
       const targetColumn = columns.find((c) => c.id === newColumnId);
@@ -781,15 +884,15 @@ export function PipelinesProvider({ children }: { children: React.ReactNode }) {
           // Tentar reutilizar canal existente (criado pelo hook usePipelineRealtime)
           const existing = (supabase.getChannels?.() || []).find((c: any) => c?.topic === channelName);
           if (existing) {
-            console.log('📡 [Broadcast] Usando canal existente para enviar pipeline-card-moved');
+            devLog('📡 [Broadcast] Usando canal existente para enviar pipeline-card-moved');
             const ok = await existing.send({
               type: 'broadcast',
               event: 'pipeline-card-moved',
               payload: { cardId, newColumnId }
             });
-            console.log('📡 [Broadcast] Enviado via canal existente:', ok);
+            devLog('📡 [Broadcast] Enviado via canal existente:', ok);
           } else {
-            console.log('📡 [Broadcast] Canal inexistente, criando e assinando para enviar...');
+            devLog('📡 [Broadcast] Canal inexistente, criando e assinando para enviar...');
             const tempChannel = supabase.channel(channelName, { config: { broadcast: { self: false } } });
             await tempChannel.subscribe();
             const ok = await tempChannel.send({
@@ -797,7 +900,7 @@ export function PipelinesProvider({ children }: { children: React.ReactNode }) {
               event: 'pipeline-card-moved',
               payload: { cardId, newColumnId }
             });
-            console.log('📡 [Broadcast] Enviado via canal temporário:', ok);
+            devLog('📡 [Broadcast] Enviado via canal temporário:', ok);
             // Remover canal temporário após tentativa
             supabase.removeChannel(tempChannel);
           }
@@ -812,13 +915,13 @@ export function PipelinesProvider({ children }: { children: React.ReactNode }) {
       // ✅ Cancelar timeout anterior se existir
       const existingTimeout = pendingTimeoutsRef.current.get(cardId);
       if (existingTimeout) {
-        console.log('🚫 [Optimistic] Cancelando timeout anterior para card:', cardId);
+        devLog('🚫 [Optimistic] Cancelando timeout anterior para card:', cardId);
         clearTimeout(existingTimeout);
       }
 
       // ✅ Timeout de segurança: se realtime não chegar em 3s, forçar atualização
       const timeoutId = setTimeout(() => {
-        console.warn('⏰ [Realtime] Timeout - forçando atualização local');
+        devWarn('⏰ [Realtime] Timeout - forçando atualização local');
         
         setCards(prev => prev.map(card => 
           card.id === cardId 
@@ -866,7 +969,7 @@ export function PipelinesProvider({ children }: { children: React.ReactNode }) {
     
     // Log de debug
     if (userRole === 'user' && column) {
-      console.log('🔍 [getCardsByColumn] Verificando permissões:', {
+      devLog('🔍 [getCardsByColumn] Verificando permissões:', {
         columnId,
         columnName: column.name,
         currentUserId,
@@ -885,7 +988,7 @@ export function PipelinesProvider({ children }: { children: React.ReactNode }) {
       if (userRole === 'user') {
         // Se o usuário tem permissão para ver todos os negócios desta coluna, permitir acesso
         if (hasColumnPermission) {
-          console.log('✅ [getCardsByColumn] Usuário tem permissão na coluna para ver todos os negócios:', {
+          devLog('✅ [getCardsByColumn] Usuário tem permissão na coluna para ver todos os negócios:', {
             cardId: card.id,
             columnId,
             columnName: column?.name,
@@ -903,7 +1006,7 @@ export function PipelinesProvider({ children }: { children: React.ReactNode }) {
         const isAssignedToCurrentUser = responsibleId === currentUserId;
         
         if (!isUnassigned && !isAssignedToCurrentUser) {
-          console.log('🚫 [getCardsByColumn] Ocultando card para usuário comum:', {
+          devLog('🚫 [getCardsByColumn] Ocultando card para usuário comum:', {
             cardId: card.id,
             columnId,
             responsible_user_id: card.responsible_user_id,
@@ -934,7 +1037,7 @@ export function PipelinesProvider({ children }: { children: React.ReactNode }) {
         if (currentCardDate > existingCardDate) {
           // Card atual é mais recente, substitui
           acc[existingCardIndex] = card;
-          console.log(`🔄 Duplicata real filtrada: mantendo versão mais recente do card ${card.id}`);
+          devLog(`🔄 Duplicata real filtrada: mantendo versão mais recente do card ${card.id}`);
         }
       }
       
@@ -944,7 +1047,7 @@ export function PipelinesProvider({ children }: { children: React.ReactNode }) {
     // Log se houve deduplicação REAL (por ID)
     const removedCount = filteredCards.length - deduplicatedCards.length;
     if (removedCount > 0) {
-      console.log(`⚠️ Atenção: ${removedCount} duplicata(s) real(is) removida(s) (mesmo ID)`);
+      devLog(`⚠️ Atenção: ${removedCount} duplicata(s) real(is) removida(s) (mesmo ID)`);
     }
 
     return deduplicatedCards;
@@ -952,7 +1055,7 @@ export function PipelinesProvider({ children }: { children: React.ReactNode }) {
 
   // Handlers para eventos realtime
   const handleCardInsert = useCallback(async (newCard: PipelineCard) => {
-    console.log('✨ [Realtime Handler] Novo card recebido:', newCard);
+    devLog('✨ [Realtime Handler] Novo card recebido:', newCard);
     
     // Atualizar timestamp de realtime
     if ((window as any).__updateRealtimeTimestamp) {
@@ -963,7 +1066,7 @@ export function PipelinesProvider({ children }: { children: React.ReactNode }) {
     setCards(prev => {
       const exists = prev.some(c => c.id === newCard.id);
       if (exists) {
-        console.log('⚠️ [Realtime] Card já existe, ignorando INSERT');
+        devLog('⚠️ [Realtime] Card já existe, ignorando INSERT');
         return prev;
       }
       return prev; // Retornar prev temporariamente enquanto busca dados completos
@@ -974,11 +1077,11 @@ export function PipelinesProvider({ children }: { children: React.ReactNode }) {
     const hasFullData = newCard.contact && newCard.conversation;
     
     if (!hasFullData && selectedPipeline?.id && getHeaders) {
-      console.log('🔄 [Realtime] Card sem relacionamentos, buscando dados completos...');
+      devLog('🔄 [Realtime] Card sem relacionamentos, buscando dados completos...');
       
       try {
         const { data: fullCard, error } = await supabase.functions.invoke(
-          `pipeline-management/cards?id=${newCard.id}`,
+          `pipeline-management/cards?id=${newCard.id}&lite=1`,
           {
             method: 'GET',
             headers: getHeaders
@@ -988,7 +1091,7 @@ export function PipelinesProvider({ children }: { children: React.ReactNode }) {
         if (error) throw error;
 
         if (fullCard) {
-          console.log('✅ [Realtime] Dados completos recebidos:', fullCard);
+          devLog('✅ [Realtime] Dados completos recebidos:', fullCard);
           
           setCards(prev => {
             const exists = prev.some(c => c.id === fullCard.id);
@@ -1013,13 +1116,13 @@ export function PipelinesProvider({ children }: { children: React.ReactNode }) {
       const exists = prev.some(c => c.id === newCard.id);
       if (exists) return prev;
       
-      console.log('📦 [Realtime] Adicionando card sem relacionamentos (será atualizado no próximo fetch)');
+      devLog('📦 [Realtime] Adicionando card sem relacionamentos (será atualizado no próximo fetch)');
       return [newCard, ...prev];
     });
   }, [selectedPipeline?.id, getHeaders]);
 
   const handleCardUpdate = useCallback(async (updatedCard: PipelineCard) => {
-    console.log('♻️ [Realtime Handler] Card atualizado:', updatedCard);
+    devLog('♻️ [Realtime Handler] Card atualizado:', updatedCard);
     
     // Atualizar timestamp de realtime
     if ((window as any).__updateRealtimeTimestamp) {
@@ -1031,10 +1134,10 @@ export function PipelinesProvider({ children }: { children: React.ReactNode }) {
     
     if (isContactRefresh) {
       const contactId = (updatedCard.id as string).replace('refresh-contact-', '');
-      console.log('🏷️ [Realtime] Refresh de tags para contato:', contactId);
+      devLog('🏷️ [Realtime] Refresh de tags para contato:', contactId);
       
       if (!getHeaders) {
-        console.warn('⚠️ [Realtime] Headers não disponíveis para refresh');
+        devWarn('⚠️ [Realtime] Headers não disponíveis para refresh');
         return;
       }
       
@@ -1042,10 +1145,10 @@ export function PipelinesProvider({ children }: { children: React.ReactNode }) {
       setCards((currentCards) => {
         // Identificar cards que precisam refresh
         const cardsToRefresh = currentCards.filter(c => c.contact_id === contactId);
-        console.log(`🔄 [Realtime] ${cardsToRefresh.length} card(s) encontrado(s) para refresh`);
+        devLog(`🔄 [Realtime] ${cardsToRefresh.length} card(s) encontrado(s) para refresh`);
         
         if (cardsToRefresh.length === 0) {
-          console.log('ℹ️ [Realtime] Nenhum card encontrado para este contato');
+          devLog('ℹ️ [Realtime] Nenhum card encontrado para este contato');
           return currentCards;
         }
         
@@ -1053,7 +1156,7 @@ export function PipelinesProvider({ children }: { children: React.ReactNode }) {
         Promise.all(
           cardsToRefresh.map(cardToRefresh =>
             supabase.functions.invoke(
-              `pipeline-management/cards?id=${cardToRefresh.id}`,
+              `pipeline-management/cards?id=${cardToRefresh.id}&lite=1`,
               { method: 'GET', headers: getHeaders }
             )
           )
@@ -1070,7 +1173,7 @@ export function PipelinesProvider({ children }: { children: React.ReactNode }) {
             .filter(Boolean) as PipelineCard[];
           
           if (updatedCards.length > 0) {
-            console.log(`✅ [Realtime] ${updatedCards.length} card(s) atualizado(s) com novas tags`);
+            devLog(`✅ [Realtime] ${updatedCards.length} card(s) atualizado(s) com novas tags`);
             
             // Atualizar estado com os cards atualizados
             setCards(current => 
@@ -1093,21 +1196,21 @@ export function PipelinesProvider({ children }: { children: React.ReactNode }) {
     
     // Se o card atualizado não tem relacionamentos e o card local tinha, preservar
     setCards(prev => {
-      console.log('🔄 [Realtime] setCards callback executado');
-      console.log('📊 [Realtime] Cards no estado anterior:', prev.length);
+      devLog('🔄 [Realtime] setCards callback executado');
+      devLog('📊 [Realtime] Cards no estado anterior:', prev.length);
       
       const index = prev.findIndex(c => c.id === updatedCard.id);
-      console.log('🔍 [Realtime] Índice do card:', index === -1 ? 'NÃO ENCONTRADO' : index);
+      devLog('🔍 [Realtime] Índice do card:', index === -1 ? 'NÃO ENCONTRADO' : index);
       
       if (index === -1) {
-        console.log('ℹ️ [Realtime] Card não encontrado localmente, buscando dados completos...');
+        devLog('ℹ️ [Realtime] Card não encontrado localmente, buscando dados completos...');
         
         // Buscar dados completos do card ausente
         if (selectedPipeline?.id && getHeaders) {
           (async () => {
             try {
               const { data: fullCard, error } = await supabase.functions.invoke(
-                `pipeline-management/cards?id=${updatedCard.id}`,
+                `pipeline-management/cards?id=${updatedCard.id}&lite=1`,
                 {
                   method: 'GET',
                   headers: getHeaders
@@ -1115,7 +1218,7 @@ export function PipelinesProvider({ children }: { children: React.ReactNode }) {
               );
 
               if (!error && fullCard) {
-                console.log('✅ [Realtime] Card completo recebido:', fullCard);
+                devLog('✅ [Realtime] Card completo recebido:', fullCard);
                 setCards(p => {
                   const exists = p.some(c => c.id === fullCard.id);
                   if (exists) {
@@ -1129,15 +1232,15 @@ export function PipelinesProvider({ children }: { children: React.ReactNode }) {
                     };
                     const newCards = [...p];
                     newCards[existingIndex] = mergedCard;
-                    console.log('✅ [Realtime] Card atualizado após busca completa');
+                    devLog('✅ [Realtime] Card atualizado após busca completa');
                     return newCards;
                   }
-                  console.log('✅ [Realtime] Card adicionado após busca completa');
+                  devLog('✅ [Realtime] Card adicionado após busca completa');
                   return [fullCard, ...p];
                 });
               } else {
                 // Fallback: adicionar card mesmo sem relacionamentos
-                console.log('⚠️ [Realtime] Adicionando card sem relacionamentos (fallback)');
+                devLog('⚠️ [Realtime] Adicionando card sem relacionamentos (fallback)');
                 setCards(p => [updatedCard, ...p]);
               }
             } catch (err) {
@@ -1152,7 +1255,7 @@ export function PipelinesProvider({ children }: { children: React.ReactNode }) {
       
       // ✅ PRESERVAR relacionamentos existentes se o update não trouxer
       const existingCard = prev[index];
-      console.log('📋 [Realtime] Card existente encontrado:', {
+      devLog('📋 [Realtime] Card existente encontrado:', {
         id: existingCard.id,
         column_id: existingCard.column_id,
         title: existingCard.title
@@ -1161,7 +1264,7 @@ export function PipelinesProvider({ children }: { children: React.ReactNode }) {
       // ✅ DETECTAR MUDANÇA DE COLUNA para logs claros
       const columnChanged = existingCard.column_id !== updatedCard.column_id;
       if (columnChanged) {
-        console.log('🔄 [Realtime] ⚠️⚠️⚠️ MUDANÇA DE COLUNA DETECTADA ⚠️⚠️⚠️:', {
+        devLog('🔄 [Realtime] ⚠️⚠️⚠️ MUDANÇA DE COLUNA DETECTADA ⚠️⚠️⚠️:', {
           cardId: updatedCard.id,
           cardTitle: updatedCard.title || existingCard.title,
           fromColumn: existingCard.column_id,
@@ -1172,49 +1275,17 @@ export function PipelinesProvider({ children }: { children: React.ReactNode }) {
         // 🔥 CANCELAR TIMEOUT PENDENTE - evento realtime chegou!
         const pendingTimeout = pendingTimeoutsRef.current.get(updatedCard.id);
         if (pendingTimeout) {
-          console.log('✅ [Realtime] Cancelando timeout pendente - evento chegou a tempo!');
+          devLog('✅ [Realtime] Cancelando timeout pendente - evento chegou a tempo!');
           clearTimeout(pendingTimeout);
           pendingTimeoutsRef.current.delete(updatedCard.id);
         }
       } else {
-        console.log('ℹ️ [Realtime] Update detectado (mesma coluna)');
+        devLog('ℹ️ [Realtime] Update detectado (mesma coluna)');
       }
       
-      // 🔥 BUSCAR DADOS COMPLETOS ATUALIZADOS sempre que houver qualquer update
-      // (automações podem modificar tags, agentes, etc sem mudar coluna)
-      if (getHeaders) {
-        console.log('🔍 [Realtime] Buscando dados completos do card atualizado:', updatedCard.id);
-        supabase.functions.invoke(
-          `pipeline-management/cards?id=${updatedCard.id}`,
-          {
-            method: 'GET',
-            headers: getHeaders
-          }
-        ).then(({ data: fullCard, error }) => {
-          if (error) {
-            console.error('❌ Erro ao buscar card completo:', error);
-            return;
-          }
-          
-          if (fullCard) {
-            console.log('✅ [Realtime] Card completo atualizado:', {
-              id: fullCard.id,
-              column_id: fullCard.column_id,
-              tags: fullCard.contact?.tags?.length || 0,
-              hasAgent: !!fullCard.conversation?.agente_ativo
-            });
-            
-            // Atualizar o card com dados completos do backend
-            setCards(current => 
-              current.map(c => 
-                c.id === fullCard.id 
-                  ? fullCard
-                  : c
-              )
-            );
-          }
-        });
-      }
+      // ✅ Evitar refetch em todo UPDATE (isso cria "pisca" e muita rede).
+      // Se algum campo realmente precisar (ex.: tags), ele será atualizado por fetch sob demanda (abrir card)
+      // ou pelos eventos específicos (ex.: refresh-contact-...).
       
       const mergedCard = {
         ...updatedCard,
@@ -1225,7 +1296,7 @@ export function PipelinesProvider({ children }: { children: React.ReactNode }) {
       };
       
       // ✅ SEMPRE APLICAR ATUALIZAÇÃO REALTIME (fonte autoritativa do servidor)
-      console.log('🔄 [Realtime] Aplicando atualização do servidor', {
+      devLog('🔄 [Realtime] Aplicando atualização do servidor', {
         cardId: mergedCard.id,
         columnChanged,
         newColumnId: mergedCard.column_id,
@@ -1235,7 +1306,7 @@ export function PipelinesProvider({ children }: { children: React.ReactNode }) {
       const newCards = [...prev];
       newCards[index] = mergedCard;
       
-      console.log('✅ [Realtime] Novo estado criado:', {
+      devLog('✅ [Realtime] Novo estado criado:', {
         totalCards: newCards.length,
         cardAtualizado: newCards[index].column_id,
         cardAnterior: existingCard.column_id
@@ -1246,13 +1317,13 @@ export function PipelinesProvider({ children }: { children: React.ReactNode }) {
   }, [selectedPipeline?.id, getHeaders]);
 
   const handleCardDelete = useCallback((cardId: string) => {
-    console.log('🗑️ [Realtime Handler] Card deletado:', cardId);
+    devLog('🗑️ [Realtime Handler] Card deletado:', cardId);
     
     setCards(prev => prev.filter(c => c.id !== cardId));
   }, []);
 
   const handleColumnInsert = useCallback((newColumn: PipelineColumn) => {
-    console.log('✨ [Realtime Handler] Nova coluna recebida:', newColumn);
+    devLog('✨ [Realtime Handler] Nova coluna recebida:', newColumn);
     
     setColumns(prev => {
       const exists = prev.some(c => c.id === newColumn.id);
@@ -1263,7 +1334,7 @@ export function PipelinesProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const handleColumnUpdate = useCallback((updatedColumn: PipelineColumn) => {
-    console.log('♻️ [Realtime Handler] Coluna atualizada:', updatedColumn);
+    devLog('♻️ [Realtime Handler] Coluna atualizada:', updatedColumn);
     
     // Atualizar timestamp de realtime
     if ((window as any).__updateRealtimeTimestamp) {
@@ -1278,7 +1349,7 @@ export function PipelinesProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const handleColumnDelete = useCallback((columnId: string) => {
-    console.log('🗑️ [Realtime Handler] Coluna deletada:', columnId);
+    devLog('🗑️ [Realtime Handler] Coluna deletada:', columnId);
     
     setColumns(prev => prev.filter(c => c.id !== columnId));
     
@@ -1288,7 +1359,7 @@ export function PipelinesProvider({ children }: { children: React.ReactNode }) {
 
   // 🤖 Handler para atualização de conversation via realtime
   const handleConversationUpdate = useCallback((conversationId: string, updates: any) => {
-    console.log('🤖 [Context] Atualizando conversation via realtime:', { conversationId, updates });
+    devLog('🤖 [Context] Atualizando conversation via realtime:', { conversationId, updates });
     
     setCards(current => 
       current.map(card => {
@@ -1321,7 +1392,7 @@ export function PipelinesProvider({ children }: { children: React.ReactNode }) {
   // Função reorderColumns como useCallback para evitar problemas com dependências
   const reorderColumns = useCallback(async (newColumns: PipelineColumn[]) => {
     try {
-      console.log('🔄 Reordenando colunas otimisticamente');
+      devLog('🔄 Reordenando colunas otimisticamente');
       
       // ✅ Atualizar estado local IMEDIATAMENTE para UX fluida
       setColumns(newColumns);
@@ -1350,7 +1421,7 @@ export function PipelinesProvider({ children }: { children: React.ReactNode }) {
       );
 
       // ✅ Não fazer re-fetch - deixar o realtime sincronizar naturalmente
-      console.log('✅ Colunas reordenadas no backend');
+      devLog('✅ Colunas reordenadas no backend');
       
       // ✅ SEM TOAST - ação é instantânea e não precisa de feedback
     } catch (error) {
@@ -1370,28 +1441,18 @@ export function PipelinesProvider({ children }: { children: React.ReactNode }) {
     }
   }, [getHeaders, selectedPipeline, fetchColumns, toast]);
 
-  // ✅ DEBUG: Monitorar mudanças nos cards para verificar se realtime está funcionando
-  useEffect(() => {
-    console.log('📊 [Cards State] Cards atualizados:', cards.length, 'total');
-    if (selectedPipeline?.id) {
-      const cardsByColumn = columns.reduce((acc, col) => {
-        acc[col.id] = cards.filter(c => c.column_id === col.id).length;
-        return acc;
-      }, {} as Record<string, number>);
-      console.log('📊 [Cards State] Distribuição por coluna:', cardsByColumn);
-    }
-  }, [cards, columns, selectedPipeline?.id]);
+  // ✅ (DEV-only) Debug removido do runtime para não degradar performance em pipelines com muitos cards.
 
   // Buscar pipelines quando o workspace mudar
   useEffect(() => {
-    console.log('🔍 [PipelinesContext] useEffect triggered:', {
+    devLog('🔍 [PipelinesContext] useEffect triggered:', {
       hasWorkspace: !!selectedWorkspace?.workspace_id,
       hasHeaders: !!getHeaders,
       workspaceId: selectedWorkspace?.workspace_id
     });
     
     if (selectedWorkspace?.workspace_id && getHeaders) {
-      console.log('✅ [PipelinesContext] Conditions met, fetching pipelines...');
+      devLog('✅ [PipelinesContext] Conditions met, fetching pipelines...');
       // Workspace changed - clearing and fetching pipelines
       // Limpar dados anteriores imediatamente para mostrar loading
       setColumns([]);
@@ -1402,7 +1463,7 @@ export function PipelinesProvider({ children }: { children: React.ReactNode }) {
       // Buscar novos pipelines e forçar seleção do primeiro
       fetchPipelines(true);
     } else {
-      console.log('⚠️ [PipelinesContext] Conditions not met, clearing pipelines');
+      devLog('⚠️ [PipelinesContext] Conditions not met, clearing pipelines');
       setPipelines([]);
       setSelectedPipeline(null);
       setColumns([]);
@@ -1413,11 +1474,16 @@ export function PipelinesProvider({ children }: { children: React.ReactNode }) {
   // Buscar colunas e cards quando o pipeline selecionado mudar
   useEffect(() => {
     if (selectedPipeline?.id) {
-      fetchColumns(selectedPipeline.id);
-      fetchCards(selectedPipeline.id);
+      (async () => {
+        const cols = await fetchColumns(selectedPipeline.id);
+        await fetchCards(selectedPipeline.id, cols || []);
+      })();
     } else {
       setColumns([]);
       setCards([]);
+      setCardsOffsetByColumn({});
+      setHasMoreCardsByColumn({});
+      setIsLoadingMoreCardsByColumn({});
     }
   }, [selectedPipeline?.id, fetchColumns, fetchCards]);
 
@@ -1453,10 +1519,9 @@ export function PipelinesProvider({ children }: { children: React.ReactNode }) {
       
       // Se há cards incompletos, refetch imediatamente
       if (hasIncompleteCards) {
-        console.log('🔄 [Refetch] Cards incompletos detectados, refazendo fetch...');
-        fetchCards(selectedPipeline.id);
-        lastFetchTime = now;
-        consecutiveEmptyFetches = 0;
+        devLog('🔄 [Refetch] Cards incompletos detectados, refazendo fetch...');
+        // Com paginação/infinite scroll, evitar resetar toda a lista.
+        // A correção de cards incompletos deve acontecer via handlers pontuais (ex.: buscar card por id).
         return;
       }
       
@@ -1468,8 +1533,9 @@ export function PipelinesProvider({ children }: { children: React.ReactNode }) {
         cards.length === 0 && 
         consecutiveEmptyFetches < 3
       ) {
-        console.log('🔄 [Refetch] Sem atualizações realtime há muito tempo, verificando...');
-        fetchCards(selectedPipeline.id);
+        devLog('🔄 [Refetch] Sem atualizações realtime há muito tempo, verificando...');
+        // Aqui é seguro refazer o refresh, pois a lista está vazia.
+        refreshCurrentPipeline();
         lastFetchTime = now;
         consecutiveEmptyFetches++;
         return;
@@ -1485,7 +1551,7 @@ export function PipelinesProvider({ children }: { children: React.ReactNode }) {
       clearInterval(interval);
       delete (window as any).__updateRealtimeTimestamp;
     };
-  }, [selectedPipeline?.id, cards, fetchCards]);
+  }, [selectedPipeline?.id, cards, fetchCards, refreshCurrentPipeline]);
 
   // Função para atualizar otimisticamente o status do agente de uma conversa
   const updateConversationAgentStatus = useCallback((
@@ -1493,7 +1559,7 @@ export function PipelinesProvider({ children }: { children: React.ReactNode }) {
     agente_ativo: boolean, 
     agent_active_id?: string | null
   ) => {
-    console.log('🤖 [Context] Update otimista agente:', { conversationId, agente_ativo, agent_active_id });
+    devLog('🤖 [Context] Update otimista agente:', { conversationId, agente_ativo, agent_active_id });
     
     setCards(current => 
       current.map(card => {
@@ -1520,6 +1586,9 @@ export function PipelinesProvider({ children }: { children: React.ReactNode }) {
     isLoading,
     isLoadingColumns,
     isLoadingCards,
+    isLoadingInitialCardsByColumn,
+    hasMoreCardsByColumn,
+    isLoadingMoreCardsByColumn,
     fetchPipelines,
     createPipeline,
     deletePipeline,
@@ -1530,6 +1599,7 @@ export function PipelinesProvider({ children }: { children: React.ReactNode }) {
     updateCard,
     moveCard,
     moveCardOptimistic,
+    fetchMoreCards,
     getCardsByColumn,
     reorderColumns,
     updateConversationAgentStatus,
@@ -1541,6 +1611,9 @@ export function PipelinesProvider({ children }: { children: React.ReactNode }) {
     isLoading,
     isLoadingColumns,
     isLoadingCards,
+    isLoadingInitialCardsByColumn,
+    hasMoreCardsByColumn,
+    isLoadingMoreCardsByColumn,
     fetchPipelines,
     createPipeline,
     deletePipeline,
@@ -1551,6 +1624,7 @@ export function PipelinesProvider({ children }: { children: React.ReactNode }) {
     updateCard,
     moveCard,
     moveCardOptimistic,
+    fetchMoreCards,
     getCardsByColumn,
     reorderColumns,
     updateConversationAgentStatus,

@@ -143,10 +143,16 @@ export function useWorkspaces() {
     fetchWorkspaces();
   }, [user]);
 
-  const createWorkspace = async (name: string, cnpj?: string, connectionLimit?: number, userLimit?: number) => {
+  const createWorkspace = async (
+    name: string,
+    cnpj?: string,
+    connectionLimit?: number,
+    userLimit?: number,
+    disparadorEnabled?: boolean,
+  ) => {
     try {
       const { data, error } = await supabase.functions.invoke('manage-workspaces', {
-        body: { action: 'create', name, cnpj, connectionLimit, userLimit },
+        body: { action: 'create', name, cnpj, connectionLimit, userLimit, disparadorEnabled },
         headers: {
           'x-system-user-id': user?.id || '',
           'x-system-user-email': user?.email || ''
@@ -199,7 +205,10 @@ export function useWorkspaces() {
     }
   };
 
-  const updateWorkspace = async (workspaceId: string, updates: { name?: string; cnpj?: string; connectionLimit?: number; userLimit?: number }) => {
+  const updateWorkspace = async (
+    workspaceId: string,
+    updates: { name?: string; cnpj?: string; connectionLimit?: number; userLimit?: number; disparadorEnabled?: boolean },
+  ) => {
     try {
       const { error } = await supabase.functions.invoke('manage-workspaces', {
         body: { action: 'update', workspaceId, ...updates },

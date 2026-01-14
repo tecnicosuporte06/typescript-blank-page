@@ -124,14 +124,15 @@ export default function MasterDashboard() {
     // Buscar connection limit e user limit para esta workspace
     const { data: limitData } = await supabase
       .from('workspace_limits')
-      .select('connection_limit, user_limit')
+      .select('connection_limit, user_limit, disparador_enabled')
       .eq('workspace_id', workspace.workspace_id)
       .single();
     
     setEditingWorkspace({
       ...workspace,
       connectionLimit: limitData?.connection_limit || 1,
-      userLimit: limitData?.user_limit || 5
+      userLimit: limitData?.user_limit || 5,
+      disparadorEnabled: limitData?.disparador_enabled ?? false
     });
     setCreateWorkspaceModalOpen(true);
   };

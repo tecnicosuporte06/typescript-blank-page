@@ -5,7 +5,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Calendar } from '@/components/ui/calendar';
 import { cn } from '@/lib/utils';
-import { format } from 'date-fns';
+import { format, subDays, startOfDay, endOfDay } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { Checkbox } from '@/components/ui/checkbox';
 import { usePipelineColumns } from '@/hooks/usePipelineColumns';
@@ -68,6 +68,23 @@ export function QueryBuilderSidebar({
     value?: { value?: string; operator?: string } | null;
   };
 
+  const getLast30Range = () => {
+    const now = new Date();
+    return { from: startOfDay(subDays(now, 29)), to: endOfDay(now) };
+  };
+
+  const normalizeDateRange = (range: any): { from?: Date; to?: Date } => {
+    if (!range || (range.from == null && range.to == null)) return {};
+    const fromRaw = range.from;
+    const toRaw = range.to;
+    const from = fromRaw instanceof Date ? fromRaw : (fromRaw ? new Date(fromRaw) : null);
+    const to = toRaw instanceof Date ? toRaw : (toRaw ? new Date(toRaw) : null);
+    return {
+      from: from && !Number.isNaN(from.getTime()) ? startOfDay(from) : undefined,
+      to: to && !Number.isNaN(to.getTime()) ? endOfDay(to) : undefined,
+    };
+  };
+
   const makeGroup = (): FilterGroup => ({
     id: `fg-${Date.now()}-${Math.random().toString(16).slice(2)}`,
     pipeline: 'all',
@@ -75,25 +92,12 @@ export function QueryBuilderSidebar({
     team: 'all',
     tags: [],
     products: [],
-    dateRange: {},
+    dateRange: getLast30Range(),
     status: 'all',
   });
 
-  const [groups, setGroups] = useState<FilterGroup[]>([makeGroup()]);
-  const [openTags, setOpenTags] = useState<Record<string, boolean>>({});
-  const [openProducts, setOpenProducts] = useState<Record<string, boolean>>({});
-
-  const { columns: pipelineColumns, isLoading: loadingColumns } = usePipelineColumns(
-    groups[0]?.pipeline && groups[0]?.pipeline !== 'all' ? groups[0]?.pipeline : null,
-    selectedWorkspaceId
-  );
-
-  const isHydratingRef = useRef(false);
-  const userTouchedRef = useRef(false);
-  const lastInitialSigRef = useRef<string | null>(null);
-  const serializeGroups = (items: FilterGroupPayload[] | undefined) => JSON.stringify(items || []);
-
-  const normalizeIncoming = (incoming?: FilterGroupPayload[] | LegacyFilterItem[]) => {
+  const didInitRef = useRef(false);
+  function normalizeIncoming(incoming?: FilterGroupPayload[] | LegacyFilterItem[]) {
     if (!incoming || !Array.isArray(incoming)) return [makeGroup()];
 
     // Novo formato: array de grupos
@@ -106,7 +110,10 @@ export function QueryBuilderSidebar({
         team: g.team ?? 'all',
         tags: Array.isArray(g.tags) ? g.tags.filter(Boolean) : [],
         products: Array.isArray(g.products) ? g.products.filter(Boolean) : [],
-        dateRange: g.dateRange || {},
+        // Se vier vazio/nulo, cair no default (last30)
+        dateRange: (g.dateRange && (g.dateRange.from || g.dateRange.to))
+          ? normalizeDateRange(g.dateRange)
+          : getLast30Range(),
         status: g.status ?? 'all',
         value: g.value ?? null,
       }));
@@ -136,7 +143,7 @@ export function QueryBuilderSidebar({
       const dFrom = from ? new Date(from) : null;
       const dTo = to ? new Date(to) : null;
       if (dFrom && !Number.isNaN(dFrom.getTime()) && dTo && !Number.isNaN(dTo.getTime())) {
-        parsedRange = { from: dFrom, to: dTo };
+        parsedRange = { from: startOfDay(dFrom), to: endOfDay(dTo) };
       }
     }
 
@@ -147,11 +154,26 @@ export function QueryBuilderSidebar({
       team,
       tags: tagsArr,
       products: productsArr,
-      dateRange: parsedRange,
+      dateRange: (parsedRange.from || parsedRange.to) ? parsedRange : getLast30Range(),
       status,
       value: valueItem ? { value: valueItem.value, operator: valueItem.operator } : null,
     }];
-  };
+  }
+
+  // ✅ Inicializa já com os filtros do pai (quando existirem) para evitar "piscar" do padrão → salvo no load.
+  const [groups, setGroups] = useState<FilterGroup[]>(() => normalizeIncoming(initialFilters));
+  const [openTags, setOpenTags] = useState<Record<string, boolean>>({});
+  const [openProducts, setOpenProducts] = useState<Record<string, boolean>>({});
+
+  const { columns: pipelineColumns, isLoading: loadingColumns } = usePipelineColumns(
+    groups[0]?.pipeline && groups[0]?.pipeline !== 'all' ? groups[0]?.pipeline : null,
+    selectedWorkspaceId
+  );
+
+  const isHydratingRef = useRef(false);
+  const userTouchedRef = useRef(false);
+  const lastInitialSigRef = useRef<string | null>(null);
+  const serializeGroups = (items: FilterGroupPayload[] | undefined) => JSON.stringify(items || []);
 
   const sanitizedGroups = useMemo(
     () =>
@@ -178,8 +200,14 @@ export function QueryBuilderSidebar({
 
   useEffect(() => {
     if (isHydratingRef.current) return;
+    if (!didInitRef.current) return;
     onFiltersChange?.(sanitizedGroups);
   }, [sanitizedGroups, onFiltersChange]);
+
+  // Libera emissão para o pai após o primeiro commit (evita empurrar "padrão" antes da hidratação).
+  useEffect(() => {
+    didInitRef.current = true;
+  }, []);
 
   // Init (presets / múltiplos funis)
   useEffect(() => {
@@ -197,7 +225,9 @@ export function QueryBuilderSidebar({
 
     isHydratingRef.current = true;
     lastInitialSigRef.current = incomingSig;
-    setGroups(normalizedGroups);
+    // 🔒 Evita oscilação/flicker: preserva IDs existentes (keys estáveis).
+    // Se o id mudar, a linha remonta e o Popover/Calendar pode "piscar" enquanto o usuário interage.
+    setGroups((prev) => normalizedGroups.map((ng, idx) => ({ ...ng, id: prev?.[idx]?.id || ng.id })));
     window.setTimeout(() => {
       isHydratingRef.current = false;
     }, 0);
@@ -231,6 +261,8 @@ export function QueryBuilderSidebar({
   const inlineBtn = "h-7 px-2 text-[10px] rounded-none bg-gray-400 dark:bg-[#606060] border-gray-300 dark:border-gray-600 w-auto min-w-0 flex-[0_1_auto] [&_*]:min-w-0";
   const panelBtn = "h-8 px-2 text-[11px] rounded-none border-gray-300 dark:border-gray-600 bg-gray-400 dark:bg-[#606060]";
   const btnClass = (extra?: string) => cn(isInline ? inlineBtn : panelBtn, extra);
+  const normalizeFrom = (d?: Date | null) => (d && !Number.isNaN(d.getTime()) ? startOfDay(d) : undefined);
+  const normalizeTo = (d?: Date | null) => (d && !Number.isNaN(d.getTime()) ? endOfDay(d) : undefined);
 
   return (
     <div
@@ -359,10 +391,20 @@ export function QueryBuilderSidebar({
                   disabled={(tags || []).length === 0}
                 >
                   <span className="flex items-center gap-1 min-w-0">
-                    <Checkbox
-                      checked={g.tags.length === (tags?.length || 0) && g.tags.length > 0}
-                      className="h-3.5 w-3.5 pointer-events-none"
-                    />
+                    {/* ⚠️ Não usar <Checkbox> aqui (renderiza <button>) porque este trigger já é um <button>. */}
+                    <span
+                      aria-hidden="true"
+                      className={cn(
+                        "h-3.5 w-3.5 border border-gray-500/50 dark:border-gray-300/40 inline-flex items-center justify-center",
+                        g.tags.length === (tags?.length || 0) && g.tags.length > 0
+                          ? "bg-gray-900/10 dark:bg-white/10"
+                          : "bg-transparent"
+                      )}
+                    >
+                      {(g.tags.length === (tags?.length || 0) && g.tags.length > 0) ? (
+                        <span className="block h-1.5 w-1.5 bg-gray-700 dark:bg-gray-200" />
+                      ) : null}
+                    </span>
                     <span className="truncate">
                       {g.tags.length > 0 ? `${g.tags.length} etiq.` : 'Etiquetas'}
                     </span>
@@ -401,7 +443,9 @@ export function QueryBuilderSidebar({
                 <Button
                   variant="outline"
                   className={cn(
-                    isInline ? "h-7 px-2 text-[10px] rounded-none bg-gray-400 dark:bg-[#606060] border-gray-300 dark:border-gray-600 min-w-[90px] w-auto flex-[0_1_auto] justify-start overflow-hidden" : "h-8 px-2 text-[11px] rounded-none border-gray-300 dark:border-gray-600 bg-gray-400 dark:bg-[#606060] min-w-[90px] justify-start",
+                    isInline
+                      ? "h-7 px-2 text-[10px] rounded-none bg-gray-400 dark:bg-[#606060] border-gray-300 dark:border-gray-600 min-w-[90px] w-auto flex-[0_1_auto] justify-start overflow-hidden"
+                      : "h-8 px-2 text-[11px] rounded-none border-gray-300 dark:border-gray-600 bg-gray-400 dark:bg-[#606060] min-w-[90px] justify-start",
                     !g.dateRange.from && 'text-gray-500 dark:text-gray-400'
                   )}
                 >
@@ -414,24 +458,11 @@ export function QueryBuilderSidebar({
                   mode="single"
                   selected={g.dateRange.from}
                   onSelect={(date) => {
-                    updateGroup(g.id, { dateRange: { ...g.dateRange, from: date || undefined } });
+                    updateGroup(g.id, { dateRange: { ...g.dateRange, from: normalizeFrom(date || null) } });
                   }}
                   numberOfMonths={1}
                   locale={ptBR}
                 />
-                <div className="flex justify-end mt-2">
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    className="h-7 px-2 text-xs rounded-none"
-                    onClick={() => {
-                      const { to } = g.dateRange || {};
-                      updateGroup(g.id, { dateRange: to ? { to } : {} });
-                    }}
-                  >
-                    Limpar
-                  </Button>
-                </div>
               </PopoverContent>
             </Popover>
 
@@ -441,7 +472,9 @@ export function QueryBuilderSidebar({
                 <Button
                   variant="outline"
                   className={cn(
-                    isInline ? "h-7 px-2 text-[10px] rounded-none bg-gray-400 dark:bg-[#606060] border-gray-300 dark:border-gray-600 min-w-[90px] w-auto flex-[0_1_auto] justify-start overflow-hidden" : "h-8 px-2 text-[11px] rounded-none border-gray-300 dark:border-gray-600 bg-gray-400 dark:bg-[#606060] min-w-[90px] justify-start",
+                    isInline
+                      ? "h-7 px-2 text-[10px] rounded-none bg-gray-400 dark:bg-[#606060] border-gray-300 dark:border-gray-600 min-w-[90px] w-auto flex-[0_1_auto] justify-start overflow-hidden"
+                      : "h-8 px-2 text-[11px] rounded-none border-gray-300 dark:border-gray-600 bg-gray-400 dark:bg-[#606060] min-w-[90px] justify-start",
                     !g.dateRange.to && 'text-gray-500 dark:text-gray-400'
                   )}
                 >
@@ -454,24 +487,11 @@ export function QueryBuilderSidebar({
                   mode="single"
                   selected={g.dateRange.to}
                   onSelect={(date) => {
-                    updateGroup(g.id, { dateRange: { ...g.dateRange, to: date || undefined } });
+                    updateGroup(g.id, { dateRange: { ...g.dateRange, to: normalizeTo(date || null) } });
                   }}
                   numberOfMonths={1}
                   locale={ptBR}
                 />
-                <div className="flex justify-end mt-2">
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    className="h-7 px-2 text-xs rounded-none"
-                    onClick={() => {
-                      const { from } = g.dateRange || {};
-                      updateGroup(g.id, { dateRange: from ? { from } : {} });
-                    }}
-                  >
-                    Limpar
-                  </Button>
-                </div>
               </PopoverContent>
             </Popover>
 
@@ -505,10 +525,20 @@ export function QueryBuilderSidebar({
                   disabled={(products || []).length === 0}
                 >
                   <span className="flex items-center gap-1 min-w-0">
-                    <Checkbox
-                      checked={g.products.length === (products?.length || 0) && g.products.length > 0}
-                      className="h-3.5 w-3.5 pointer-events-none"
-                    />
+                    {/* ⚠️ Não usar <Checkbox> aqui (renderiza <button>) porque este trigger já é um <button>. */}
+                    <span
+                      aria-hidden="true"
+                      className={cn(
+                        "h-3.5 w-3.5 border border-gray-500/50 dark:border-gray-300/40 inline-flex items-center justify-center",
+                        g.products.length === (products?.length || 0) && g.products.length > 0
+                          ? "bg-gray-900/10 dark:bg-white/10"
+                          : "bg-transparent"
+                      )}
+                    >
+                      {(g.products.length === (products?.length || 0) && g.products.length > 0) ? (
+                        <span className="block h-1.5 w-1.5 bg-gray-700 dark:bg-gray-200" />
+                      ) : null}
+                    </span>
                     <span className="truncate">
                       {g.products.length > 0 ? `${g.products.length} prod.` : 'Produtos'}
                     </span>

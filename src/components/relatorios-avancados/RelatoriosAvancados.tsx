@@ -1,11 +1,11 @@
 // @ts-nocheck
-import { useEffect, useMemo, useState, useContext } from 'react';
+import { useEffect, useMemo, useState, useContext, useRef } from 'react';
 import { useTheme } from 'next-themes';
 import { Workspace, useWorkspace } from '@/contexts/WorkspaceContext';
 import { usePipelinesContext, PipelinesContext } from '@/contexts/PipelinesContext';
 import { useAuth } from '@/hooks/useAuth';
 import { supabase } from '@/integrations/supabase/client';
-import { format, subDays, startOfDay, endOfDay } from 'date-fns';
+import { format, subDays, startOfDay, endOfDay, eachDayOfInterval, parseISO } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { Button } from '@/components/ui/button';
 import { Calendar } from '@/components/ui/calendar';
@@ -195,10 +195,10 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
   const [loadingColumnsMap, setLoadingColumnsMap] = useState<Record<string, boolean>>({});
   const [teamConversions, setTeamConversions] = useState<TeamConversion[]>([]);
 
-  // ✅ Por padrão: sem recorte (carrega tudo). Só filtra por período quando o usuário escolher.
-  const [periodPreset, setPeriodPreset] = useState<PeriodPreset>('all');
-  const [startDate, setStartDate] = useState<Date | null>(null);
-  const [endDate, setEndDate] = useState<Date | null>(null);
+  // ✅ Filtro fixo: últimos 30 dias (sem persistência para evitar oscilação)
+  const [periodPreset, setPeriodPreset] = useState<PeriodPreset>('last30');
+  const [startDate, setStartDate] = useState<Date | null>(() => startOfDay(subDays(new Date(), 29)));
+  const [endDate, setEndDate] = useState<Date | null>(() => endOfDay(new Date()));
   // Se workspaces for fornecido (master-dashboard), por padrão mostra todos os workspaces (vazio)
   // Caso contrário, usa o workspace selecionado ou o primeiro disponível
   const [selectedWorkspaceId, setSelectedWorkspaceId] = useState<string>(
@@ -223,6 +223,7 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
   const [cards, setCards] = useState<PipelineCardRecord[]>([]);
   const [tags, setTags] = useState<TagRecord[]>([]);
   const [isLoading, setIsLoading] = useState(false);
+  const [isHydrated, setIsHydrated] = useState(false);
   const [viewMode, setViewMode] = useState<'list' | 'bi' | 'kpis' | 'funnel'>('funnel');
   // Preset/draft: Funis (múltiplos) do bloco "Funil – Indicadores"
   const { savedFunnels, canEdit: canEditIndicatorFunnels, loading: loadingFunnelsPreset } =
@@ -230,12 +231,20 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
   const { settings: userSettings, saveSettings: saveUserSettings, loading: loadingUserSettings } =
     useReportUserSettings(selectedWorkspaceId);
   const [draftFunnels, setDraftFunnels] = useState<any[]>([]);
+  // Mantém sempre a versão mais recente dos filtros para evitar salvar estado "antigo"
+  // quando o usuário clica em Salvar logo após mudar um filtro.
+  const draftFunnelsRef = useRef<any[]>([]);
+  useEffect(() => {
+    draftFunnelsRef.current = draftFunnels;
+  }, [draftFunnels]);
   const [editingMetricsFunnelId, setEditingMetricsFunnelId] = useState<string | null>(null);
   const [savedSnapshot, setSavedSnapshot] = useState<any[]>([]);
   const [funnelsDirty, setFunnelsDirty] = useState(false);
   const [rehydrateNonce, setRehydrateNonce] = useState(0);
   const canSaveFilters = true;
-
+  const lastFetchKeyRef = useRef<string | null>(null);
+  const fetchDebounceRef = useRef<number | null>(null);
+  const activeFetchIdRef = useRef<string | null>(null);
   const applyPreset = (preset: PeriodPreset) => {
     setPeriodPreset(preset);
     switch (preset) {
@@ -320,10 +329,18 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
       
       if (tagsError) throw tagsError;
 
-      // 2. Busca associações para contar contatos únicos (sem filtro de data para bater com a lista)
+      // Se não houver tags, não rodar query pesada de associações.
+      if (!tagsData || tagsData.length === 0) {
+        setAvailableTags([]);
+        return;
+      }
+
+      // 2. Busca associações SOMENTE das tags deste workspace (evita scan global da tabela)
+      const tagIds = tagsData.map((t: any) => t.id).filter(Boolean);
       const { data: ctData, error: ctError } = await supabase
         .from('contact_tags')
-        .select('tag_id, contact_id');
+        .select('tag_id, contact_id')
+        .in('tag_id', tagIds);
       
       if (ctError) throw ctError;
 
@@ -399,7 +416,7 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
     }
   };
 
-  const normalizeFunnelGroups = (funnelFilters: any): any[] => {
+  function normalizeFunnelGroups(funnelFilters: any): any[] {
     if (!Array.isArray(funnelFilters)) return [];
     // Novo formato: array de grupos
     if (funnelFilters[0]?.pipeline !== undefined) {
@@ -411,8 +428,9 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
         products: Array.isArray(g.products) ? g.products.filter(Boolean) : [],
         dateRange: g.dateRange
           ? {
-              from: g.dateRange.from ? new Date(g.dateRange.from) : undefined,
-              to: g.dateRange.to ? new Date(g.dateRange.to) : undefined,
+              // Normaliza para início/fim do dia local para evitar “pular um dia” por timezone ao persistir/rehidratar
+              from: g.dateRange.from ? startOfDay(new Date(g.dateRange.from)) : undefined,
+              to: g.dateRange.to ? endOfDay(new Date(g.dateRange.to)) : undefined,
             }
           : {},
         status: g.status ?? 'all',
@@ -440,7 +458,7 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
       const dFrom = from ? new Date(from) : null;
       const dTo = to ? new Date(to) : null;
       if (dFrom && !Number.isNaN(dFrom.getTime()) && dTo && !Number.isNaN(dTo.getTime())) {
-        parsedRange = { from: dFrom, to: dTo };
+        parsedRange = { from: startOfDay(dFrom), to: endOfDay(dTo) };
       }
     }
     return [{
@@ -453,7 +471,7 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
       status,
       value: valueItem ? { value: valueItem.value, operator: valueItem.operator } : null,
     }];
-  };
+  }
 
   const sanitizeGroupsForPersist = (groups: any[]) =>
     (groups || []).map((g) => ({
@@ -464,8 +482,9 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
       products: Array.isArray(g.products) ? g.products.filter(Boolean) : [],
       dateRange: g.dateRange
         ? {
-            from: g.dateRange.from ? new Date(g.dateRange.from).toISOString() : undefined,
-            to: g.dateRange.to ? new Date(g.dateRange.to).toISOString() : undefined,
+            // Persistir datas sempre normalizadas (início/fim do dia local) evita loop de “um dia pra outro”
+            from: g.dateRange.from ? startOfDay(new Date(g.dateRange.from)).toISOString() : undefined,
+            to: g.dateRange.to ? endOfDay(new Date(g.dateRange.to)).toISOString() : undefined,
           }
         : {},
       status: g.status ?? 'all',
@@ -496,13 +515,31 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
     customConversionsFilter?: any;
     teamConversionsFilter?: any;
   }) => {
-    const funnelsToSave = buildFunnelsForDb(next?.funnels ?? draftFunnels);
+    const funnelsToSave = buildFunnelsForDb(next?.funnels ?? draftFunnelsRef.current ?? draftFunnels);
     const conversionsToSave = (next?.customConversions ?? customConversions).map((c) => ({ ...c, isEditing: false }));
     const teamToSave = (next?.teamConversions ?? teamConversions).map((c) => ({ ...c, isEditing: false }));
+
+    // ✅ Evita salvar globalFilter "nulo" antes de hidratar e causar oscilação no próximo load
+    const savedGf = (userSettings as any)?.globalFilter;
+    const gfPreset: any = periodPreset ?? savedGf?.preset ?? 'last30';
+    const gfDerived = applyPresetToRange(gfPreset);
+    const gfStartIso =
+      startDate ? startDate.toISOString() : (savedGf?.startDate ?? (gfDerived.from ? gfDerived.from.toISOString() : null));
+    const gfEndIso =
+      endDate ? endDate.toISOString() : (savedGf?.endDate ?? (gfDerived.to ? gfDerived.to.toISOString() : null));
+
     await saveUserSettings({
       funnels: funnelsToSave,
       customConversions: conversionsToSave,
       teamConversions: teamToSave,
+      globalFilter: {
+        preset: gfPreset,
+        startDate: gfStartIso,
+        endDate: gfEndIso,
+        agent: selectedAgent,
+        funnel: selectedFunnel,
+        tags: selectedTags,
+      },
       customConversionsFilter:
         next?.customConversionsFilter ?? {
           preset: customConvPeriodPreset,
@@ -694,169 +731,101 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
     });
   }, [editingMetricsFunnelId, draftFunnels, pipelineColumnsMap]);
 
-  const fetchData = async () => {
+  // ✅ Deriva o range do gráfico a partir dos filtros de cada funil.
+  const requiredDataRangeFromFunnels = useMemo(() => {
+    let minFrom: Date | null = null;
+    let maxTo: Date | null = null;
+    (draftFunnels || []).forEach((f: any) => {
+      const groups = normalizeFunnelGroups(f?.filters);
+      (groups || []).forEach((g: any) => {
+        const from = g?.dateRange?.from instanceof Date ? g.dateRange.from : (g?.dateRange?.from ? new Date(g.dateRange.from) : null);
+        const to = g?.dateRange?.to instanceof Date ? g.dateRange.to : (g?.dateRange?.to ? new Date(g.dateRange.to) : null);
+        if (from && !Number.isNaN(from.getTime())) {
+          minFrom = !minFrom || from.getTime() < minFrom.getTime() ? from : minFrom;
+        }
+        if (to && !Number.isNaN(to.getTime())) {
+          maxTo = !maxTo || to.getTime() > maxTo.getTime() ? to : maxTo;
+        }
+      });
+    });
+    return { from: minFrom, to: maxTo };
+  }, [draftFunnels, rehydrateNonce]);
+
+  const fetchData = async (fetchKey?: string) => {
     if (!user?.id) return;
+    const fetchId = crypto.randomUUID();
+    activeFetchIdRef.current = fetchId;
     setIsLoading(true);
     try {
-      const hasDateRange = !!(startDate && endDate);
-      const from = hasDateRange ? startDate!.toISOString() : null;
-      const to = hasDateRange ? endDate!.toISOString() : null;
+      // ✅ Calcula o range real necessário: união do range global (topo) com os filtros dos funis.
+      // Isso garante que se o usuário salvou 7 dias no topo mas tem um funil de 30 dias, buscamos 30 dias.
+      const getEffectiveRange = () => {
+        let fromDate = startDate;
+        let endDateObj = endDate;
 
-      // ✅ Cards (pipeline_cards) via Edge Function LITE (bypass RLS) — evita payload gigante e garante filtros
-      let cardsLite: any[] = [];
-      let productsById = new Map<string, any>();
-      try {
-        if (selectedWorkspaceId) {
-          const headers = getHeaders(selectedWorkspaceId);
-          const { data, error } = await supabase.functions.invoke("report-indicator-cards-lite", {
-            method: "POST",
-            headers,
-            body: { workspaceId: selectedWorkspaceId },
-          });
-          if (error) throw error;
-          cardsLite = Array.isArray(data?.cards) ? data.cards : [];
-          // debug removed: keep console clean in production
-        }
-      } catch (e) {
-        console.error("Erro ao buscar cards via report-indicator-cards-lite:", e);
-        cardsLite = [];
-      }
-
-      // Garantir nomes de produtos referenciados nos cards (evita exibir UUID quando o cache não contém o produto)
-      try {
-        if (selectedWorkspaceId && cardsLite.length > 0) {
-          const productIds = Array.from(
-            new Set(
-              cardsLite
-                .flatMap((c: any) => (Array.isArray(c?.product_ids) ? c.product_ids : []))
-                .filter(Boolean)
-            )
-          ) as string[];
-
-          const chunk = <T,>(arr: T[], size: number) => {
-            const out: T[][] = [];
-            for (let i = 0; i < arr.length; i += size) out.push(arr.slice(i, i + size));
-            return out;
-          };
-
-          if (productIds.length > 0) {
-            const chunks = chunk(productIds, 500);
-            const results = await Promise.all(
-              chunks.map((ids) =>
-                supabase
-                  .from("products")
-                  .select("id, name, value")
-                  .eq("workspace_id", selectedWorkspaceId)
-                  .in("id", ids)
-              )
-            );
-
-            const fetched = results
-              .flatMap((r) => (Array.isArray(r.data) ? r.data : []))
-              .filter((p: any) => p?.id);
-
-            if (fetched.length > 0) {
-              productsById = new Map<string, any>(fetched.map((p: any) => [p.id, p]));
-              setAvailableProducts((prev: any[]) => {
-                const map = new Map<string, any>();
-                (prev || []).forEach((p: any) => {
-                  if (p?.id) map.set(p.id, p);
-                });
-                fetched.forEach((p: any) => {
-                  const existing = map.get(p.id) || {};
-                  map.set(p.id, { ...existing, ...p });
-                });
-                return Array.from(map.values());
-              });
-            }
+        if (requiredDataRangeFromFunnels.from) {
+          if (!fromDate || requiredDataRangeFromFunnels.from < fromDate) {
+            fromDate = requiredDataRangeFromFunnels.from;
           }
         }
-      } catch (e) {
-        console.warn("⚠️ Não foi possível enriquecer nomes de produtos do relatório:", e);
+        if (requiredDataRangeFromFunnels.to) {
+          if (!endDateObj || requiredDataRangeFromFunnels.to > endDateObj) {
+            endDateObj = requiredDataRangeFromFunnels.to;
+          }
+        }
+        return { from: fromDate, to: endDateObj };
+      };
+
+      const effectiveRange = getEffectiveRange();
+      const from = effectiveRange.from ? effectiveRange.from.toISOString() : null;
+      const to = effectiveRange.to ? effectiveRange.to.toISOString() : null;
+
+      // Limpar dados "pesados" — fase 2 repõe
+      setContacts([]);
+      setActivities([]);
+      setTeamWorkRankingData([]);
+      setTags([]);
+
+      if (!selectedWorkspaceId) {
+        setCards([]);
+        setConversations([]);
+        return;
       }
 
-      // Contacts (leads)
-      // @ts-ignore simplificando tipagem dinâmica para evitar profundidade de generics
-      // Seleciona tudo para evitar erro 42703 em ambientes sem colunas opcionais
-      let contactsQuery = supabase
-        .from('contacts')
-        .select('*');
-      if (hasDateRange && from && to) {
-        contactsQuery = contactsQuery.gte('created_at', from).lte('created_at', to);
-      }
+          const headers = getHeaders(selectedWorkspaceId);
 
-      // Activities (ligações/mensagens/reuniões)
-      // @ts-ignore simplificando tipagem dinâmica
-      // Seleciona tudo para evitar erro 42703 em ambientes sem colunas opcionais
-      let activitiesQuery = supabase
-        .from('activities')
-        .select('*');
-      if (hasDateRange && from && to) {
-        // ✅ Atividades do período: considerar scheduled_for / completed_at (e fallback created_at)
-        // Isso evita “sumir” atividade do dia atual quando ela foi criada dias atrás.
-        activitiesQuery = activitiesQuery.or(
-          [
-            `and(scheduled_for.gte.${from},scheduled_for.lte.${to})`,
-            `and(completed_at.gte.${from},completed_at.lte.${to})`,
-            `and(created_at.gte.${from},created_at.lte.${to})`,
-          ].join(',')
-        );
-      }
+      // FASE 1 (rápida): cards core (sem tags/produtos) + conversations
+      const [cardsRes, baseRes] = await Promise.all([
+        supabase.functions.invoke("report-indicator-cards-lite", {
+            method: "POST",
+            headers,
+          body: { workspaceId: selectedWorkspaceId, from, to, includeRelations: false },
+        }),
+        supabase.functions.invoke("report-base-data-lite", {
+          method: "POST",
+          headers,
+          body: {
+            workspaceId: selectedWorkspaceId,
+            from,
+            to,
+            userRole,
+            userId: user.id,
+            includeContacts: false,
+            includeActivities: false,
+            includeConversations: true,
+          },
+        }),
+      ]);
 
-      // Conversations (assumidas)
-      let conversationsQuery = supabase
-        .from('conversations')
-        .select('id, contact_id, assigned_user_id, created_at, workspace_id');
-      if (hasDateRange && from && to) {
-        conversationsQuery = conversationsQuery.gte('created_at', from).lte('created_at', to);
-      }
+      if (activeFetchIdRef.current !== fetchId) return;
 
-      // Ranking de Trabalho (agregado por responsável e tipo) — tipos oficiais do sistema
-      // Obs: para usuários comuns, restringe ao próprio responsável (mantém mesma regra de permissão do relatório)
-      const teamWorkRankingQuery = supabase.rpc('report_team_work_ranking', {
-        // Ignora filtros: a função agora conta tudo no banco
-        p_workspace_id: null,
-        p_from: null,
-        p_to: null,
-        p_responsible_id: null,
-      });
+      if (cardsRes.error) throw cardsRes.error;
+      if (baseRes.error) throw baseRes.error;
 
-      // Workspace filter
-      if (selectedWorkspaceId) {
-        contactsQuery = contactsQuery.eq('workspace_id', selectedWorkspaceId);
-        activitiesQuery = activitiesQuery.eq('workspace_id', selectedWorkspaceId);
-        conversationsQuery = conversationsQuery.eq('workspace_id', selectedWorkspaceId);
-      }
-
-      // Permissões (somente para usuários comuns). Admin/Master enxergam tudo do workspace.
-      // Os filtros "Equipe/Tags/Pipeline/Coluna/Produtos" agora são aplicados apenas dentro de cada funil de indicadores.
-      if (userRole === 'user') {
-        contactsQuery = contactsQuery.eq('responsible_id', user.id);
-        activitiesQuery = activitiesQuery.eq('responsible_id', user.id);
-        conversationsQuery = conversationsQuery.eq('assigned_user_id', user.id);
-      }
-
-      const [
-        { data: contactsData, error: contactsError },
-        { data: activitiesData, error: activitiesError },
-        { data: conversationsData, error: conversationsError },
-        { data: workRankingData, error: workRankingError },
-      ] = await Promise.all([contactsQuery, activitiesQuery, conversationsQuery, teamWorkRankingQuery]);
-
-      if (contactsError) {
-        console.error('❌ Erro ao buscar contacts:', contactsError);
-      }
-      if (activitiesError) {
-        console.error('❌ Erro ao buscar activities:', activitiesError);
-      }
-      if (conversationsError) {
-        console.error('❌ Erro ao buscar conversations:', conversationsError);
-      }
-      if (workRankingError) {
-        console.error('❌ Erro ao buscar report_team_work_ranking:', workRankingError);
-      }
-
-      const contactsFiltered = (((contactsData as unknown) as ContactRecord[]) || []);
+      const cardsLite = Array.isArray((cardsRes.data as any)?.cards) ? (cardsRes.data as any).cards : [];
+      const conversationsData = Array.isArray((baseRes.data as any)?.conversations)
+        ? (baseRes.data as any).conversations
+        : [];
 
       // Normaliza cards vindos da Edge Function LITE para o shape usado nos indicadores
       const toNumberOrNull = (v: any) => {
@@ -878,54 +847,86 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
         updated_at: c.updated_at ?? null,
         closed_at: c.closed_at ?? null,
         won_at: c.won_at ?? null,
-        products: Array.isArray(c.product_items) && c.product_items.length > 0
-          ? c.product_items.map((pi: any) => {
-              const pid = pi.product_id ?? null;
-              const p = pid ? productsById.get(pid) : null;
-              const qty = toNumberOrNull(pi.quantity ?? 1) ?? 1;
-              const unit = toNumberOrNull(pi.unit_value ?? pi.product_value ?? p?.value ?? null);
-              const total = toNumberOrNull(pi.total_value ?? (unit !== null ? unit * qty : null));
-              return {
-                product_id: pid,
-                product_name_snapshot: pi.product_name_snapshot ?? p?.name ?? null,
-                quantity: qty,
-                unit_value: unit,
-                total_value: total,
-                product: p ? { id: p.id, name: p.name ?? null, value: toNumberOrNull(p.value) } : null,
-              };
-            })
-          : Array.isArray(c.product_ids)
-            ? c.product_ids.map((pid: string) => {
-                const p = productsById.get(pid);
-                const unit = toNumberOrNull(p?.value ?? null);
-                return {
-                  product_id: pid,
-                  product_name_snapshot: p?.name ?? null,
-                  quantity: 1,
-                  unit_value: unit,
-                  total_value: unit,
-                  product: p ? { id: p.id, name: p.name ?? null, value: toNumberOrNull(p.value) } : null,
-                };
-              })
-            : [],
+        products: [],
       }));
-
-      const finalContacts = contactsFiltered;
-
-      const activitiesFiltered = (((activitiesData as unknown) as ActivityRecord[]) || []);
 
       const conversationsFiltered = (conversationsData || []);
 
-      console.log('📊 RPC report_team_work_ranking rows:', Array.isArray(workRankingData) ? workRankingData.length : 'n/a', workRankingData);
-
-      setContacts(finalContacts);
-      setActivities(activitiesFiltered);
       setCards(cardsFiltered);
       setConversations(conversationsFiltered);
-      setTeamWorkRankingData(((workRankingData as unknown) as TeamWorkRankingRow[]) || []);
-      // Tags para gráficos: derivadas dos cards LITE (tag_ids)
+
+      // Libera a UI já na fase 1
+      setIsLoading(false);
+
+      // FASE 2 (background): relations (tags/produtos), contacts/activities e ranking
+      (async () => {
+        try {
+          const currentFetchId = fetchId;
+          const cardIds = (cardsLite || []).map((c: any) => c?.id).filter(Boolean);
+
+          const [relationsRes, baseHeavyRes, rankingRes] = await Promise.allSettled([
+            cardIds.length
+              ? supabase.functions.invoke("report-indicator-cards-lite", {
+                  method: "POST",
+                  headers,
+                  body: { workspaceId: selectedWorkspaceId, from, to, includeRelations: true, cardIds },
+                })
+              : Promise.resolve({ data: { cards: [] }, error: null } as any),
+            supabase.functions.invoke("report-base-data-lite", {
+              method: "POST",
+              headers,
+              body: {
+                workspaceId: selectedWorkspaceId,
+                from,
+                to,
+                userRole,
+                userId: user.id,
+                includeContacts: true,
+                includeActivities: true,
+                includeConversations: false,
+              },
+            }),
+            supabase.rpc("report_team_work_ranking", {
+              p_workspace_id: selectedWorkspaceId || null,
+              p_from: from,
+              p_to: to,
+              p_responsible_id: userRole === "user" ? user.id : null,
+            }),
+          ]);
+
+          if (activeFetchIdRef.current !== currentFetchId) return;
+
+          // relations (tags/produtos)
+          if (relationsRes.status === "fulfilled" && !(relationsRes.value as any)?.error) {
+            const relCards = Array.isArray(((relationsRes.value as any)?.data as any)?.cards)
+              ? (((relationsRes.value as any)?.data as any)?.cards as any[])
+              : [];
+            const relById = new Map(relCards.map((c: any) => [c.id, c]));
+
+            setCards((prev) =>
+              (prev || []).map((c: any) => {
+                const rel = relById.get(c.id);
+                if (!rel) return c;
+                return {
+                  ...c,
+                  // Mantém compatível com o resto do arquivo: repõe products via snapshots (não bloqueia nomes/valores)
+                  products:
+                    Array.isArray(rel.product_items) && rel.product_items.length > 0
+                      ? rel.product_items.map((pi: any) => ({
+                          product_id: pi.product_id ?? null,
+                          product_name_snapshot: pi.product_name_snapshot ?? null,
+                          quantity: 1,
+                          unit_value: null,
+                          total_value: null,
+                          product: null,
+                        }))
+                      : c.products,
+                };
+              })
+            );
+
       const tagRows: any[] = [];
-      (cardsLite || []).forEach((card: any) => {
+            relCards.forEach((card: any) => {
         const contactId = card.contact_id;
         const tagIds = Array.isArray(card.tag_ids) ? card.tag_ids : [];
         if (!contactId) return;
@@ -935,10 +936,31 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
         });
       });
       setTags(tagRows);
+          }
+
+          // contacts/activities
+          if (baseHeavyRes.status === "fulfilled" && !(baseHeavyRes.value as any)?.error) {
+            const d = ((baseHeavyRes.value as any)?.data as any) || {};
+            const contactsData = Array.isArray(d?.contacts) ? d.contacts : [];
+            const activitiesData = Array.isArray(d?.activities) ? d.activities : [];
+            setContacts(contactsData);
+            setActivities(activitiesData);
+          }
+
+          // ranking
+          if (rankingRes.status === "fulfilled") {
+            const rr = rankingRes.value as any;
+            if (!rr?.error) setTeamWorkRankingData(Array.isArray(rr?.data) ? rr.data : []);
+          }
+        } catch (e) {
+          console.error("❌ [Relatórios] Erro na fase 2 (background):", e);
+        }
+      })();
     } catch (error) {
       console.error('Erro ao carregar relatórios:', error);
     } finally {
-      setIsLoading(false);
+      // A fase 1 já desliga o loading; aqui é só “garantia” em caso de erro antes disso.
+      if (activeFetchIdRef.current === fetchId) setIsLoading(false);
     }
   };
 
@@ -962,6 +984,8 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
   }, [selectedWorkspace, workspaces, ctxWorkspaces, selectedWorkspaceId]);
 
   useEffect(() => {
+    setIsHydrated(false);
+    lastFetchKeyRef.current = null;
     if (selectedWorkspaceId) {
       // Pipelines: usar contexto se já carregado; caso contrário, buscar direto.
       if (ctxPipelines && ctxPipelines.length > 0) {
@@ -986,8 +1010,32 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
 
   // Inicializa o draft a partir das configurações do usuário (DB).
   // Fallback: usa o preset padrão do workspace (read-only para users comuns).
+  const normalizeSavedDate = (value?: string | null, endOfDayFlag = false) => {
+    if (!value) return null;
+    const parsed = new Date(value);
+    if (Number.isNaN(parsed.getTime())) return null;
+    return endOfDayFlag ? endOfDay(parsed) : startOfDay(parsed);
+  };
+
+  const datesEqual = (a?: Date | null, b?: Date | null) => {
+    if (!a && !b) return true;
+    if (!a || !b) return false;
+    return a.getTime() === b.getTime();
+  };
+
+  const arraysEqual = (a?: string[], b?: string[]) => {
+    if (!Array.isArray(a) && !Array.isArray(b)) return true;
+    if (!Array.isArray(a) || !Array.isArray(b)) return false;
+    if (a.length !== b.length) return false;
+    return a.every((value, index) => value === b[index]);
+  };
+
   useEffect(() => {
-    if (!user?.id) return;
+    // Bloqueia qualquer lógica se não houver usuário ou workspace selecionado
+    if (!user?.id || !selectedWorkspaceId) return;
+
+    // Enquanto estiver carregando as configurações do usuário, não faz nada
+    if (loadingUserSettings) return;
 
     const sourceFunnels = Array.isArray(userSettings?.funnels) && userSettings!.funnels!.length > 0
       ? (userSettings!.funnels as any[])
@@ -1016,7 +1064,14 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
     setFunnelsDirty(false);
     setRehydrateNonce((n) => n + 1);
 
-    // Conversões também vêm do banco (settings do usuário)
+    // Restaura outros filtros (exceto o filtro global de datas que agora é fixo em last30)
+    const gf = (userSettings as any)?.globalFilter;
+    if (gf && typeof gf === 'object') {
+      if (gf.agent) setSelectedAgent(gf.agent);
+      if (gf.funnel) setSelectedFunnel(gf.funnel);
+      if (Array.isArray(gf.tags)) setSelectedTags(gf.tags);
+    }
+
     if (Array.isArray(userSettings?.customConversions)) {
       setCustomConversions((userSettings!.customConversions as any[]).map((c: any) => ({ ...c, isEditing: false })));
     }
@@ -1024,32 +1079,69 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
       setTeamConversions((userSettings!.teamConversions as any[]).map((c: any) => ({ ...c, isEditing: false })));
     }
 
-    // Filtros globais (topo) para conversões
     const cc = (userSettings as any)?.customConversionsFilter;
     if (cc && typeof cc === 'object') {
-      const preset = (cc.preset as any) || 'all';
+      const preset = (cc.preset as any) || 'last30';
       setCustomConvPeriodPreset(preset);
-      setCustomConvStartDate(cc.startDate ? new Date(cc.startDate) : null);
-      setCustomConvEndDate(cc.endDate ? new Date(cc.endDate) : null);
+      const derived = applyPresetToRange(preset);
+      setCustomConvStartDate(cc.startDate ? new Date(cc.startDate) : derived.from);
+      setCustomConvEndDate(cc.endDate ? new Date(cc.endDate) : derived.to);
       setCustomConvAgent(cc.agent || 'all');
       setCustomConvTags(Array.isArray(cc.tags) ? cc.tags.filter(Boolean) : []);
       setCustomConvStatus((cc.status as any) || 'all');
     }
     const tc = (userSettings as any)?.teamConversionsFilter;
     if (tc && typeof tc === 'object') {
-      const preset = (tc.preset as any) || 'all';
+      const preset = (tc.preset as any) || 'last30';
       setTeamConvPeriodPreset(preset);
-      setTeamConvStartDate(tc.startDate ? new Date(tc.startDate) : null);
-      setTeamConvEndDate(tc.endDate ? new Date(tc.endDate) : null);
+      const derived = applyPresetToRange(preset);
+      setTeamConvStartDate(tc.startDate ? new Date(tc.startDate) : derived.from);
+      setTeamConvEndDate(tc.endDate ? new Date(tc.endDate) : derived.to);
       setTeamConvAgent(tc.agent || 'all');
       setTeamConvTags(Array.isArray(tc.tags) ? tc.tags.filter(Boolean) : []);
       setTeamConvStatus((tc.status as any) || 'all');
     }
-  }, [savedFunnels, user?.id, userSettings]);
+
+    // Marca como hidratado e libera a UI
+    setIsHydrated(true);
+
+    // ✅ CRÍTICO: Removido userSettings das dependências para evitar loop infinito
+  }, [savedFunnels, user?.id, loadingUserSettings, selectedWorkspaceId]);
 
   useEffect(() => {
-    fetchData();
-  }, [periodPreset, startDate, endDate, selectedAgent, userRole, selectedFunnel, selectedTags, selectedWorkspaceId, pipelines.length]);
+    // Evitar múltiplos fetches em cascata no mount / troca de filtros
+    if (!selectedWorkspaceId || !user?.id || !isHydrated) return;
+
+    const key = JSON.stringify({
+      ws: selectedWorkspaceId,
+      preset: periodPreset,
+      start: startDate ? startDate.toISOString() : null,
+      end: endDate ? endDate.toISOString() : null,
+      agent: selectedAgent,
+      role: userRole,
+      funnel: selectedFunnel,
+      tags: selectedTags,
+    });
+
+    if (lastFetchKeyRef.current === key) return;
+    lastFetchKeyRef.current = key;
+
+    if (fetchDebounceRef.current) {
+      window.clearTimeout(fetchDebounceRef.current);
+    }
+
+    fetchDebounceRef.current = window.setTimeout(() => {
+      if (import.meta.env.DEV) console.warn("📊 [Relatórios] debounced fetch");
+      fetchData(key);
+    }, 200);
+
+    return () => {
+      if (fetchDebounceRef.current) {
+        window.clearTimeout(fetchDebounceRef.current);
+        fetchDebounceRef.current = null;
+      }
+    };
+  }, [periodPreset, startDate, endDate, selectedAgent, userRole, selectedFunnel, selectedTags, selectedWorkspaceId, user?.id]);
 
   const dndSensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
@@ -1088,12 +1180,12 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
 
   // --- Filtros globais (no topo) para as seções de conversão ---
   type ConversionPeriodPreset = 'all' | 'today' | 'last7' | 'last30' | 'custom';
-  const [customConvPeriodPreset, setCustomConvPeriodPreset] = useState<ConversionPeriodPreset>('all');
-  const [customConvStartDate, setCustomConvStartDate] = useState<Date | null>(null);
-  const [customConvEndDate, setCustomConvEndDate] = useState<Date | null>(null);
-  const [teamConvPeriodPreset, setTeamConvPeriodPreset] = useState<ConversionPeriodPreset>('all');
-  const [teamConvStartDate, setTeamConvStartDate] = useState<Date | null>(null);
-  const [teamConvEndDate, setTeamConvEndDate] = useState<Date | null>(null);
+  const [customConvPeriodPreset, setCustomConvPeriodPreset] = useState<ConversionPeriodPreset>('last30');
+  const [customConvStartDate, setCustomConvStartDate] = useState<Date | null>(startOfDay(subDays(new Date(), 29)));
+  const [customConvEndDate, setCustomConvEndDate] = useState<Date | null>(endOfDay(new Date()));
+  const [teamConvPeriodPreset, setTeamConvPeriodPreset] = useState<ConversionPeriodPreset>('last30');
+  const [teamConvStartDate, setTeamConvStartDate] = useState<Date | null>(startOfDay(subDays(new Date(), 29)));
+  const [teamConvEndDate, setTeamConvEndDate] = useState<Date | null>(endOfDay(new Date()));
 
   type HumanStatusFilter = 'all' | 'open' | 'won' | 'lost';
   const [customConvAgent, setCustomConvAgent] = useState<string>('all'); // 'all' | 'ia' | userId
@@ -1104,12 +1196,12 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
   const [teamConvStatus, setTeamConvStatus] = useState<HumanStatusFilter>('all');
 
   // Ranking – Vendas/Trabalho (filtros de período locais)
-  const [salesRankingPreset, setSalesRankingPreset] = useState<ConversionPeriodPreset>('all');
-  const [salesRankingStartDate, setSalesRankingStartDate] = useState<Date | null>(null);
-  const [salesRankingEndDate, setSalesRankingEndDate] = useState<Date | null>(null);
-  const [workRankingPreset, setWorkRankingPreset] = useState<ConversionPeriodPreset>('all');
-  const [workRankingStartDate, setWorkRankingStartDate] = useState<Date | null>(null);
-  const [workRankingEndDate, setWorkRankingEndDate] = useState<Date | null>(null);
+  const [salesRankingPreset, setSalesRankingPreset] = useState<ConversionPeriodPreset>('last30');
+  const [salesRankingStartDate, setSalesRankingStartDate] = useState<Date | null>(startOfDay(subDays(new Date(), 29)));
+  const [salesRankingEndDate, setSalesRankingEndDate] = useState<Date | null>(endOfDay(new Date()));
+  const [workRankingPreset, setWorkRankingPreset] = useState<ConversionPeriodPreset>('last30');
+  const [workRankingStartDate, setWorkRankingStartDate] = useState<Date | null>(startOfDay(subDays(new Date(), 29)));
+  const [workRankingEndDate, setWorkRankingEndDate] = useState<Date | null>(endOfDay(new Date()));
 
   const applyPresetToRange = (preset: ConversionPeriodPreset) => {
     const now = new Date();
@@ -1371,10 +1463,15 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
   };
 
   const contactsScoped = useMemo(() => {
+    // ✅ Compat: alguns ambientes não possuem responsible_id em contacts (ou não está selecionado).
+    // Só aplicar filtro quando o campo existir de fato.
     if (userRole === 'user' && user?.id) {
-      return contacts.filter((c) => c.responsible_id === user.id);
+      const hasResponsible = (contacts as any[]).some((c: any) => c && ('responsible_id' in c));
+      if (hasResponsible) {
+        return (contacts as any[]).filter((c: any) => String(c.responsible_id || '') === String(user.id));
     }
-    return contacts;
+    }
+    return contacts as any[];
   }, [contacts, userRole, user?.id]);
 
   const conversationsScoped = useMemo(() => {
@@ -1399,15 +1496,32 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
   }, [cards, userRole, user?.id]);
 
   const leadsReceived = conversationsScoped.length;
-  const leadsQualified = contactsScoped.filter((c) => (c.status || '').toLowerCase() === 'qualified').length;
-  const leadsOffer = contactsScoped.filter((c) => (c.status || '').toLowerCase() === 'offer').length;
+  // ✅ Compat: alguns ambientes não possuem `contacts.status`. Se não existir, usar `pipeline_cards.qualification`.
+  const hasContactStatus = (contactsScoped as any[]).some((c: any) => c && ('status' in c));
+  const leadsQualified = hasContactStatus
+    ? (contactsScoped as any[]).filter((c: any) => String(c.status || '').toLowerCase() === 'qualified').length
+    : (cardsScoped as any[]).filter((c: any) => String(c.qualification || '').toLowerCase() === 'qualified').length;
+  const leadsOffer = hasContactStatus
+    ? (contactsScoped as any[]).filter((c: any) => String(c.status || '').toLowerCase() === 'offer').length
+    : 0;
   const leadsWon = cardsScoped.filter((c) => {
     const s = (c.status || '').toLowerCase();
     return s === 'won' || s === 'ganho' || s === 'venda' || s === 'success' || s === 'sucesso';
   }).length;
-  const leadsLost1 = contactsScoped.filter((c) => (c.status || '').toLowerCase() === 'lost_offer').length;
-  const leadsLost2 = contactsScoped.filter((c) => (c.status || '').toLowerCase() === 'lost_no_offer').length;
-  const leadsLost3 = contactsScoped.filter((c) => (c.status || '').toLowerCase() === 'lost_not_fit').length;
+  // ✅ Compat: se não houver `contacts.status`, derivar perdas por status do card (perda/perdido/lost*)
+  const isCardLost = (s?: string | null) => {
+    const v = String(s || '').toLowerCase();
+    return v.startsWith('lost') || v === 'perdido' || v === 'perda' || v === 'lost';
+  };
+  const leadsLost1 = hasContactStatus
+    ? (contactsScoped as any[]).filter((c: any) => String(c.status || '').toLowerCase() === 'lost_offer').length
+    : (cardsScoped as any[]).filter((c: any) => isCardLost(c.status)).length;
+  const leadsLost2 = hasContactStatus
+    ? (contactsScoped as any[]).filter((c: any) => String(c.status || '').toLowerCase() === 'lost_no_offer').length
+    : 0;
+  const leadsLost3 = hasContactStatus
+    ? (contactsScoped as any[]).filter((c: any) => String(c.status || '').toLowerCase() === 'lost_not_fit').length
+    : 0;
   const leadsLostTotal = leadsLost1 + leadsLost2 + leadsLost3;
 
   // Indicadores por funil (múltiplos) — aplicam somente no bloco "Funil – Indicadores"
@@ -1694,6 +1808,41 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
       .map(([date, obj]) => ({ date, received: obj.received, qualified: obj.qualified }))
       .sort((a, b) => a.date.localeCompare(b.date));
   }, [indicatorFunnels]);
+
+  // Garante que o gráfico sempre inclua "hoje" (mesmo com 0) e evita bug de timezone ao renderizar yyyy-MM-dd
+  const leadsSeriesGlobalForChart = useMemo(() => {
+    try {
+      const now = new Date();
+      // O gráfico segue o range global, mas se algum funil exigir mais dados, o gráfico se expande para mostrar tudo o que foi buscado.
+      let rangeFrom = (startDate && !Number.isNaN(startDate.getTime())) ? startOfDay(startDate) : startOfDay(subDays(now, 29));
+      let rangeTo = (endDate && !Number.isNaN(endDate.getTime())) ? endOfDay(endDate) : endOfDay(now);
+
+      if (requiredDataRangeFromFunnels.from && (!rangeFrom || requiredDataRangeFromFunnels.from < rangeFrom)) {
+        rangeFrom = startOfDay(requiredDataRangeFromFunnels.from);
+      }
+      if (requiredDataRangeFromFunnels.to && (!rangeTo || requiredDataRangeFromFunnels.to > rangeTo)) {
+        rangeTo = endOfDay(requiredDataRangeFromFunnels.to);
+      }
+
+      if (rangeFrom > rangeTo) {
+        return [];
+      }
+
+      const seriesData = leadsSeriesGlobal || [];
+      const byDate = new Map<string, { received: number; qualified: number }>(
+        seriesData.map((p: any) => [String(p.date), { received: Number(p.received || 0), qualified: Number(p.qualified || 0) }])
+      );
+
+      return eachDayOfInterval({ start: rangeFrom, end: rangeTo }).map((d) => {
+        const key = format(d, 'yyyy-MM-dd');
+        const v = byDate.get(key);
+        return { date: key, received: v?.received ?? 0, qualified: v?.qualified ?? 0 };
+      });
+    } catch (e) {
+      console.warn("📊 [Relatórios] Erro ao gerar série do gráfico:", e);
+      return [];
+    }
+  }, [leadsSeriesGlobal, startDate, endDate, requiredDataRangeFromFunnels]);
 
   const leadsByTag = useMemo(() => {
     const nameById = new Map((availableTags || []).map((t) => [t.id, t.name]));
@@ -2344,16 +2493,18 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
   }, [rankingTrabalho]);
 
   const hasDateRange = !!(startDate && endDate);
-  const periodLabel = !hasDateRange
+  const periodLabel = !hasDateRange || !periodPreset
     ? 'Todos os períodos'
     : periodPreset !== 'custom'
-      ? {
+      ? (
+        {
           all: 'Todos os períodos',
           today: 'Hoje',
           last7: 'Últimos 7 dias',
           last30: 'Últimos 30 dias',
-        }[periodPreset]
-      : `${format(startDate!, "dd/MM/yyyy", { locale: ptBR })} - ${format(endDate!, "dd/MM/yyyy", { locale: ptBR })}`;
+        }[periodPreset] || 'Personalizado'
+      )
+      : `${startDate ? format(startDate, "dd/MM/yyyy", { locale: ptBR }) : ''} - ${endDate ? format(endDate, "dd/MM/yyyy", { locale: ptBR }) : ''}`;
 
   return (
     <div className="flex-1 flex flex-col h-screen overflow-hidden">
@@ -2423,8 +2574,9 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
                 <Button
                   className="h-8 px-3 text-xs rounded-none"
                   onClick={async () => {
-                    await persistUserReportSettings({ funnels: draftFunnels });
-                    setSavedSnapshot(draftFunnels);
+                    const latest = draftFunnelsRef.current ?? draftFunnels;
+                    await persistUserReportSettings({ funnels: latest });
+                    setSavedSnapshot(latest);
                     setFunnelsDirty(false);
                   }}
                   disabled={!funnelsDirty || loadingUserSettings}
@@ -2452,12 +2604,15 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
                     agents={agents || []}
                     selectedWorkspaceId={selectedWorkspaceId || workspaces?.[0]?.workspace_id || ''}
                     onFiltersChange={(filters) => {
-                      const cleaned = sanitizeGroupsForPersist(filters || []);
-                      const sig = serializeGroups(cleaned);
                       setDraftFunnels((prev: any[]) => {
                         const current = prev.find((x) => x.id === f.id);
-                        if (serializeGroups(current?.filters || []) === sig) return prev;
-                        const next = prev.map((x) => (x.id === f.id ? { ...x, filters: cleaned } : x));
+                        // Comparar SEMPRE em formato canonizado (ISO + início/fim do dia),
+                        // para evitar loop de re-hidratação onde o mesmo range fica "trocando" por serialização/timezone.
+                        const currentCanon = sanitizeGroupsForPersist(Array.isArray(current?.filters) ? current.filters : []);
+                        const incomingCanon = sanitizeGroupsForPersist(filters || []);
+                        if (serializeGroups(currentCanon) === serializeGroups(incomingCanon)) return prev;
+
+                        const next = prev.map((x) => (x.id === f.id ? { ...x, filters: incomingCanon } : x));
                         return next;
                       });
                       setFunnelsDirty(true);
@@ -2473,8 +2628,7 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
           </div>
 
           {/* Gráfico global (agora acima dos cards de indicadores) */}
-          {leadsSeriesGlobal.length > 0 && (
-            <Card className="rounded-none border-gray-200 dark:border-gray-700 dark:bg-[#1b1b1b]">
+          <Card className="rounded-none border-gray-200 dark:border-gray-700 dark:bg-[#1b1b1b]">
               <CardHeader className="py-2 px-3">
                 <CardTitle className="text-xs text-gray-700 dark:text-gray-100">
                   Evolução de Leads — Geral
@@ -2483,13 +2637,13 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
               <CardContent className="p-3">
                 <div className="h-52">
                   <ResponsiveContainer width="100%" height="100%">
-                    <LineChart data={leadsSeriesGlobal}>
+                    <LineChart data={leadsSeriesGlobalForChart}>
                       <CartesianGrid strokeDasharray="3 3" stroke={isDark ? '#1f2937' : '#e5e7eb'} />
                       <XAxis
                         dataKey="date"
                         tick={{ fontSize: 10, fill: isDark ? '#e5e7eb' : '#4b5563' }}
                         stroke={isDark ? '#e5e7eb' : '#4b5563'}
-                        tickFormatter={(val: string) => format(new Date(val), 'dd/MM')}
+                        tickFormatter={(val: string) => format(parseISO(val), 'dd/MM')}
                       />
                       <YAxis
                         tick={{ fontSize: 10, fill: isDark ? '#e5e7eb' : '#4b5563' }}
@@ -2498,7 +2652,7 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
                       />
                       <ReTooltip
                         formatter={(value: number, name: string) => [value, (name === 'received' || name === 'Recebidos') ? 'Recebidos' : 'Qualificados']}
-                        labelFormatter={(label: string) => `Data: ${format(new Date(label), 'dd/MM/yyyy')}`}
+                        labelFormatter={(label: string) => `Data: ${format(parseISO(label), 'dd/MM/yyyy')}`}
                         contentStyle={{
                           backgroundColor: isDark ? '#1b1b1b' : '#fff',
                           borderColor: isDark ? '#374151' : '#d4d4d4',
@@ -2526,7 +2680,6 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
                 </div>
               </CardContent>
             </Card>
-          )}
 
           {/* Render: indicadores por funil */}
           <div className="space-y-3">
@@ -3908,4 +4061,3 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
     </div>
   );
 }
-

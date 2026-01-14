@@ -18,11 +18,13 @@ interface PromptEditorProps {
   onChange: (value: string) => void;
   placeholder?: string;
   className?: string;
+  resolveIdToken?: (id: string) => Promise<{ label: string; type: string; colorClass: string } | null>;
 }
 
 export interface PromptEditorRef {
   getCursorPosition: () => number;
   insertText: (text: string) => void;
+  insertBadge: (opts: { token: string; label: string; type: string; colorClass: string }) => void;
 }
 
 export const PromptEditor = forwardRef<PromptEditorRef, PromptEditorProps>(({
@@ -30,6 +32,7 @@ export const PromptEditor = forwardRef<PromptEditorRef, PromptEditorProps>(({
   onChange,
   placeholder,
   className,
+  resolveIdToken,
 }, ref) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const isInternalUpdateRef = useRef(false);
@@ -98,6 +101,50 @@ export const PromptEditor = forwardRef<PromptEditorRef, PromptEditorProps>(({
     return icons[type] || icons['salvar_informacoes'];
   };
 
+  const createBadgeElement = (opts: { token: string; label: string; type: string; colorClass: string; actionId: string }) => {
+    const badge = document.createElement('span');
+    badge.setAttribute('contentEditable', 'false');
+    // IMPORTANT: data-action is what gets serialized back to text
+    badge.setAttribute('data-action', opts.token);
+    badge.setAttribute('data-action-id', opts.actionId);
+    badge.className = cn(
+      "inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium border",
+      "select-none transition-all duration-200",
+      opts.colorClass
+    );
+    badge.style.userSelect = 'none';
+    badge.style.margin = '0 2px';
+    badge.style.display = 'inline-flex';
+    badge.style.verticalAlign = 'baseline';
+
+    const iconContainer = document.createElement('span');
+    iconContainer.className = 'flex-shrink-0';
+    iconContainer.innerHTML = getIconSVG(opts.type);
+    badge.appendChild(iconContainer);
+
+    const labelSpan = document.createElement('span');
+    labelSpan.className = 'truncate max-w-[240px]';
+    labelSpan.textContent = opts.label;
+    badge.appendChild(labelSpan);
+
+    const removeBtn = document.createElement('button');
+    removeBtn.type = 'button';
+    removeBtn.className =
+      'ml-0.5 rounded-full p-0.5 transition-colors hover:bg-black/10 dark:hover:bg-white/10 opacity-70 hover:opacity-100';
+    removeBtn.setAttribute('aria-label', 'Remover ação');
+    removeBtn.tabIndex = -1;
+    removeBtn.innerHTML =
+      '<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>';
+    removeBtn.onclick = (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      handleRemoveAction(opts.actionId);
+    };
+    badge.appendChild(removeBtn);
+
+    return badge;
+  };
+
   // Renderiza o conteúdo parseado com badges inline usando DOM
   const renderContent = (text: string) => {
     if (!containerRef.current) return;
@@ -157,72 +204,64 @@ export const PromptEditor = forwardRef<PromptEditorRef, PromptEditorProps>(({
       });
     };
 
-    // Parsear ações do texto
-    const actions = parseActionText(text);
+    // Parsear ações do texto (legado: [ADD_ACTION]) + tokens mínimos ([id: uuid])
+    const actions = parseActionText(text).map(a => ({ kind: 'add_action' as const, ...a }));
+
+    const idTokenRegex = /\[id:\s*([a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12})\]/gi;
+    const idTokens: Array<{ kind: 'id_token'; match: string; position: number; id: string }> = [];
+    let m: RegExpExecArray | null;
+    while ((m = idTokenRegex.exec(text)) !== null) {
+      idTokens.push({
+        kind: 'id_token',
+        match: m[0],
+        position: m.index,
+        id: m[1],
+      });
+    }
+
+    const items = [...actions, ...idTokens].sort((a, b) => a.position - b.position);
     let lastIndex = 0;
 
-    actions.forEach((action, idx) => {
+    items.forEach((item, idx) => {
       // Texto antes da ação
-      if (action.position > lastIndex) {
-        const textContent = text.substring(lastIndex, action.position);
+      if (item.position > lastIndex) {
+        const textContent = text.substring(lastIndex, item.position);
         if (textContent) {
           renderTextWithLineBreaks(textContent, containerRef.current!);
         }
       }
 
-      // Obter informações da ação
-      const actionInfo = getActionDisplayInfo(action.match);
-
+      if (item.kind === 'add_action') {
+        const actionInfo = getActionDisplayInfo(item.match);
       if (actionInfo) {
-        // Criar badge usando DOM
-        const badge = document.createElement('span');
-        badge.setAttribute('contentEditable', 'false');
-        badge.setAttribute('data-action', action.match);
-        badge.setAttribute('data-action-id', `action-${action.position}-${idx}`);
-        badge.className = cn(
-          "inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium border",
-          "select-none transition-all duration-200",
-          actionInfo.color
-        );
-        badge.style.userSelect = 'none';
-        badge.style.margin = '0 2px';
-        badge.style.display = 'inline-flex';
-        badge.style.verticalAlign = 'baseline';
-
-        // Ícone
-        const iconContainer = document.createElement('span');
-        iconContainer.className = 'flex-shrink-0';
-        iconContainer.innerHTML = getIconSVG(actionInfo.type);
-        badge.appendChild(iconContainer);
-
-        // Label
-        const labelSpan = document.createElement('span');
-        labelSpan.className = 'truncate max-w-[200px]';
-        labelSpan.textContent = actionInfo.label;
-        badge.appendChild(labelSpan);
-
-        // Botão remover
-        const removeBtn = document.createElement('button');
-        removeBtn.type = 'button';
-        removeBtn.className = 'ml-0.5 rounded-full p-0.5 transition-colors hover:bg-black/10 dark:hover:bg-white/10 opacity-70 hover:opacity-100';
-        removeBtn.setAttribute('aria-label', 'Remover ação');
-        removeBtn.tabIndex = -1;
-        removeBtn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>';
-        removeBtn.onclick = (e) => {
-          e.preventDefault();
-          e.stopPropagation();
-          handleRemoveAction(`action-${action.position}-${idx}`);
-        };
-        badge.appendChild(removeBtn);
-
-        containerRef.current!.appendChild(badge);
+          const badge = createBadgeElement({
+            token: item.match,
+            label: actionInfo.label,
+            type: actionInfo.type,
+            colorClass: actionInfo.color,
+            actionId: `action-${item.position}-${idx}`,
+          });
+          containerRef.current!.appendChild(badge);
+        } else {
+          const textNode = document.createTextNode(item.match);
+          containerRef.current!.appendChild(textNode);
+        }
       } else {
-        // Se não conseguir parsear, inserir como texto
-        const textNode = document.createTextNode(action.match);
-        containerRef.current!.appendChild(textNode);
+        // id_token: criar badge placeholder e resolver assíncrono para nome/ícone/cor
+        const badge = createBadgeElement({
+          token: item.match,
+          label: 'Carregando…',
+          type: 'id_token',
+          colorClass:
+            'bg-gray-100 text-gray-700 border-gray-300 dark:bg-gray-800 dark:text-gray-300 dark:border-gray-700',
+          actionId: `action-${item.position}-${idx}`,
+        });
+        badge.setAttribute('data-resolve-id', item.id);
+        badge.setAttribute('data-resolved', '0');
+        containerRef.current!.appendChild(badge);
       }
 
-      lastIndex = action.position + action.match.length;
+      lastIndex = item.position + item.match.length;
     });
 
     // Texto restante
@@ -252,6 +291,46 @@ export const PromptEditor = forwardRef<PromptEditorRef, PromptEditorProps>(({
     }
   };
 
+  const resolveIdBadges = async () => {
+    if (!containerRef.current || !resolveIdToken) return;
+    const badges = Array.from(containerRef.current.querySelectorAll('span[data-resolve-id]')) as HTMLElement[];
+
+    await Promise.all(
+      badges.map(async (badge) => {
+        const already = badge.getAttribute('data-resolved');
+        if (already === '1') return;
+        const id = badge.getAttribute('data-resolve-id') || '';
+        if (!id) return;
+
+        try {
+          const resolved = await resolveIdToken(id);
+          if (!resolved) {
+            badge.setAttribute('data-resolved', '1');
+            const labelSpan = badge.children?.[1] as HTMLElement | undefined;
+            if (labelSpan) labelSpan.textContent = `ID: ${id}`;
+            return;
+          }
+
+          // update class
+          badge.className = cn(
+            "inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium border",
+            "select-none transition-all duration-200",
+            resolved.colorClass
+          );
+
+          const iconContainer = badge.children?.[0] as HTMLElement | undefined;
+          const labelSpan = badge.children?.[1] as HTMLElement | undefined;
+          if (iconContainer) iconContainer.innerHTML = getIconSVG(resolved.type);
+          if (labelSpan) labelSpan.textContent = resolved.label;
+
+          badge.setAttribute('data-resolved', '1');
+        } catch {
+          // keep as is
+        }
+      })
+    );
+  };
+
   // Renderizar conteúdo inicial
   useEffect(() => {
     if (!containerRef.current) return;
@@ -263,6 +342,10 @@ export const PromptEditor = forwardRef<PromptEditorRef, PromptEditorProps>(({
       // Renderizar conteúdo inicial se o container estiver vazio
       if (containerRef.current.childNodes.length === 0 && value) {
         renderContent(value);
+        // Resolver tokens [id: ...] também no render inicial
+        requestAnimationFrame(() => {
+          resolveIdBadges();
+        });
       }
     });
   }, []);
@@ -289,6 +372,12 @@ export const PromptEditor = forwardRef<PromptEditorRef, PromptEditorProps>(({
       if (currentText !== newValue) {
         renderContent(newValue);
       }
+
+      // Mesmo quando o texto é igual, pode haver badges em "Carregando…"
+      // (ex.: reabriu modal com o mesmo value). Tentar resolver sempre.
+      requestAnimationFrame(() => {
+        resolveIdBadges();
+      });
     });
   }, [value]);
 
@@ -450,9 +539,34 @@ export const PromptEditor = forwardRef<PromptEditorRef, PromptEditorProps>(({
     onChange(extractTextFromDOM());
   };
 
+  const insertBadge = (opts: { token: string; label: string; type: string; colorClass: string }) => {
+    if (!containerRef.current) return;
+    const selection = window.getSelection();
+    if (!selection || selection.rangeCount === 0) {
+      containerRef.current.focus();
+      return;
+    }
+
+    const range = selection.getRangeAt(0);
+    range.deleteContents();
+
+    const actionId = `action-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+    const badge = createBadgeElement({ ...opts, actionId });
+
+    range.insertNode(badge);
+    range.setStartAfter(badge);
+    range.collapse(true);
+    selection.removeAllRanges();
+    selection.addRange(range);
+
+    isInternalUpdateRef.current = true;
+    onChange(extractTextFromDOM());
+  };
+
   useImperativeHandle(ref, () => ({
     getCursorPosition,
     insertText,
+    insertBadge,
   }));
 
   const handleInput = () => {

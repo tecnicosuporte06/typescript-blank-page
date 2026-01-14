@@ -261,15 +261,30 @@ export function EditarCampanhaModal(props: {
           <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
             <div className="space-y-1">
               <div className="text-[11px] text-gray-600 dark:text-gray-300">Variação 1</div>
-              <Textarea className="rounded-none min-h-[90px]" value={v1} onChange={(e) => setV1(e.target.value)} disabled={loading} />
+              <Textarea
+                className="rounded-none min-h-[90px] dark:bg-[#0f0f0f] dark:text-gray-100 dark:border-gray-700 focus-visible:outline-none focus-visible:ring-0 focus-visible:ring-offset-0"
+                value={v1}
+                onChange={(e) => setV1(e.target.value)}
+                disabled={loading}
+              />
             </div>
             <div className="space-y-1">
               <div className="text-[11px] text-gray-600 dark:text-gray-300">Variação 2</div>
-              <Textarea className="rounded-none min-h-[90px]" value={v2} onChange={(e) => setV2(e.target.value)} disabled={loading} />
+              <Textarea
+                className="rounded-none min-h-[90px] dark:bg-[#0f0f0f] dark:text-gray-100 dark:border-gray-700 focus-visible:outline-none focus-visible:ring-0 focus-visible:ring-offset-0"
+                value={v2}
+                onChange={(e) => setV2(e.target.value)}
+                disabled={loading}
+              />
             </div>
             <div className="space-y-1">
               <div className="text-[11px] text-gray-600 dark:text-gray-300">Variação 3</div>
-              <Textarea className="rounded-none min-h-[90px]" value={v3} onChange={(e) => setV3(e.target.value)} disabled={loading} />
+              <Textarea
+                className="rounded-none min-h-[90px] dark:bg-[#0f0f0f] dark:text-gray-100 dark:border-gray-700 focus-visible:outline-none focus-visible:ring-0 focus-visible:ring-offset-0"
+                value={v3}
+                onChange={(e) => setV3(e.target.value)}
+                disabled={loading}
+              />
             </div>
           </div>
 
@@ -277,10 +292,10 @@ export function EditarCampanhaModal(props: {
             <div className="text-[11px] text-gray-600 dark:text-gray-300">Filtrar contatos:</div>
             <Select value={filterTag} onValueChange={setFilterTag} disabled={loadingContacts}>
               <SelectTrigger className="h-8 w-[180px] rounded-none text-xs">
-                <SelectValue placeholder="Tag" />
+                <SelectValue placeholder="Etiqueta" />
               </SelectTrigger>
               <SelectContent className="rounded-none">
-                <SelectItem value="all">Todas as tags</SelectItem>
+                <SelectItem value="all">Todas as etiquetas</SelectItem>
                 {tags.map((t) => <SelectItem key={t} value={t}>{t}</SelectItem>)}
               </SelectContent>
             </Select>
@@ -309,7 +324,7 @@ export function EditarCampanhaModal(props: {
                   </TableHead>
                   <TableHead>Nome</TableHead>
                   <TableHead>Telefone</TableHead>
-                  <TableHead>Tag</TableHead>
+                  <TableHead>Etiqueta</TableHead>
                   <TableHead>Documento</TableHead>
                 </TableRow>
               </TableHeader>

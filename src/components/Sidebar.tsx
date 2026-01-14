@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import { ChevronLeft, MoreVertical, ArrowLeft, LayoutDashboard, MessageCircle, Users, FolderOpen, Settings, Zap, Link, Shield, DollarSign, Target, Package, Calendar, CheckSquare, MessageSquare, Bot, BrainCircuit, GitBranch, Bell, User, LogOut, Handshake, FileText, Building2, BarChart3, AudioLines, Moon, Sun, Key } from "lucide-react";
+import { ChevronLeft, MoreVertical, ArrowLeft, LayoutDashboard, MessageCircle, Users, FolderOpen, Settings, Zap, Link, Shield, DollarSign, Target, Package, Calendar, CheckSquare, MessageSquare, Bot, BrainCircuit, GitBranch, Bell, User, LogOut, Handshake, FileText, Building2, BarChart3, AudioLines, Moon, Sun, Key, Send } from "lucide-react";
 import logoEx from "@/assets/logo-ex.png";
 import logoEnc from "@/assets/logo-enc.png";
 import { Tooltip, TooltipContent, TooltipTrigger, TooltipProvider } from "@/components/ui/tooltip";
@@ -20,6 +20,7 @@ import { ImpersonateWorkspaceModal } from "@/components/modals/ImpersonateWorksp
 import { MeuPerfilModal } from "@/components/modals/MeuPerfilModal";
 import { useSystemCustomizationContext } from "@/contexts/SystemCustomizationContext";
 import { useCargoPermissions } from "@/hooks/useCargoPermissions";
+import { useWorkspaceLimits } from "@/hooks/useWorkspaceLimits";
 
 interface SidebarProps {
   activeModule: ModuleType;
@@ -118,6 +119,9 @@ export function Sidebar({
     workspaces,
     isLoadingWorkspaces: isLoading
   } = useWorkspace();
+  const { limits: workspaceLimits, isLoading: isLoadingWorkspaceLimits } = useWorkspaceLimits(selectedWorkspace?.workspace_id || "");
+  // Anti-flicker: enquanto carrega, NÃO mostra o Disparador (evita aparecer e sumir)
+  const isDisparadorEnabled = isLoadingWorkspaceLimits ? false : (workspaceLimits?.disparador_enabled ?? true);
   const {
     customization
   } = useSystemCustomizationContext();
@@ -158,10 +162,7 @@ export function Sidebar({
     };
   }, []);
 
-  const menuItems: (MenuItem & {
-    group?: string;
-    masterOnly?: boolean;
-  })[] = [{
+  const menuItemsBase = ([{
     id: "relatorios" as ModuleType,
     label: "Relatórios",
     icon: <LayoutDashboard className="w-5 h-5" />
@@ -179,6 +180,10 @@ export function Sidebar({
     id: "conversas" as ModuleType,
     label: "Conversas",
     icon: <MessageCircle className="w-5 h-5" />
+  }, {
+    id: "disparador" as ModuleType,
+    label: "Disparador",
+    icon: <Send className="w-5 h-5" />
   }, {
     id: "atividades" as ModuleType,
     label: "Atividades",
@@ -222,9 +227,15 @@ export function Sidebar({
     id: "empresa" as ModuleType,
     label: "Empresa",
     icon: <Building2 className="w-5 h-5" />
-  }].filter(item => {
+  }] as Array<MenuItem & { group?: string; masterOnly?: boolean }>);
+
+  const menuItems = menuItemsBase.filter((item) => {
     // Filtrar itens masterOnly se o usuário não for master
     if (item.masterOnly && userRole !== 'master') {
+      return false;
+    }
+    // Feature flag por empresa: esconder Disparador quando não habilitado
+    if (item.id === ("disparador" as ModuleType) && !isDisparadorEnabled) {
       return false;
     }
     return true;

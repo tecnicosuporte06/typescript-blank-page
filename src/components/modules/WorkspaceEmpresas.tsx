@@ -65,7 +65,7 @@ export function WorkspaceEmpresas({ onNavigateToUsers, onNavigateToConfig }: Wor
       // Buscar diretamente da tabela ao invés da edge function
       const { data: limitData, error } = await supabase
         .from('workspace_limits')
-        .select('connection_limit, user_limit')
+        .select('connection_limit, user_limit, disparador_enabled')
         .eq('workspace_id', workspace.workspace_id)
         .maybeSingle();
       
@@ -77,6 +77,7 @@ export function WorkspaceEmpresas({ onNavigateToUsers, onNavigateToConfig }: Wor
       
       const connectionLimit = limitData?.connection_limit ?? 0;
       const userLimit = limitData?.user_limit ?? 0;
+      const disparadorEnabled = limitData?.disparador_enabled ?? false;
       
       console.log('🔍 Final values - connectionLimit:', connectionLimit, 'userLimit:', userLimit);
       
@@ -85,7 +86,8 @@ export function WorkspaceEmpresas({ onNavigateToUsers, onNavigateToConfig }: Wor
         name: workspace.name,
         cnpj: workspace.cnpj,
         connectionLimit: connectionLimit,
-        userLimit: userLimit
+        userLimit: userLimit,
+        disparadorEnabled
       };
       
       console.log('✅ Setting workspace data:', workspaceData);

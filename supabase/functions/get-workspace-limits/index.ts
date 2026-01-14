@@ -30,7 +30,7 @@ serve(async (req) => {
     // Get workspace limits configuration
     const { data: limitsData, error: limitsError } = await supabase
       .from('workspace_limits')
-      .select('connection_limit, user_limit')
+      .select('connection_limit, user_limit, disparador_enabled')
       .eq('workspace_id', workspaceId)
       .maybeSingle();
 
@@ -72,6 +72,7 @@ serve(async (req) => {
       JSON.stringify({
         connectionLimit: limitsData?.connection_limit ?? 0,
         userLimit: limitsData?.user_limit ?? 0,
+        disparadorEnabled: limitsData?.disparador_enabled ?? true,
         connectionsCount: connectionsCount || 0,
         usersCount: usersCount || 0,
       }),

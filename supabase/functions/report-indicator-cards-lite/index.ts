@@ -22,6 +22,11 @@ serve(async (req) => {
     const body = await req.json().catch(() => ({}));
 
     const workspaceId = body.workspaceId || workspaceIdHeader;
+    const includeRelations = body?.includeRelations !== false; // default true
+    const from = body?.from ?? null;
+    const to = body?.to ?? null;
+    const hasRange = !!(from && to);
+    const cardIdsInput = Array.isArray(body?.cardIds) ? body.cardIds.filter(Boolean) : [];
     if (!userId) {
       return new Response(JSON.stringify({ error: "missing x-system-user-id" }), {
         status: 401,
@@ -51,7 +56,7 @@ serve(async (req) => {
       });
     }
 
-    // Get pipeline ids for workspace
+    // Get pipeline ids for workspace (used to scope cards, even when cardIds is provided)
     const { data: pipelines, error: pipelinesError } = await supabase
       .from("pipelines")
       .select("id")
@@ -65,18 +70,46 @@ serve(async (req) => {
       });
     }
 
-    // Cards (minimal fields)
-    const { data: cards, error: cardsError } = await supabase
+    // Cards (minimal fields) — optionally scoped by cardIds for 2-phase loading
+    let cardsQuery = supabase
       .from("pipeline_cards")
       .select("id, pipeline_id, column_id, responsible_user_id, contact_id, status, qualification, created_at")
       .in("pipeline_id", pipelineIds);
+    if (cardIdsInput.length > 0) {
+      cardsQuery = cardsQuery.in("id", cardIdsInput);
+    }
+    if (hasRange) {
+      cardsQuery = cardsQuery.gte("created_at", from).lte("created_at", to);
+    }
+
+    const { data: cardsRaw, error: cardsError } = await cardsQuery;
 
     if (cardsError) throw cardsError;
+    // Extra safe: ensure returned cards are within workspace pipeline ids
+    const pipelineIdSet = new Set(pipelineIds);
+    const cards = (cardsRaw || []).filter((c: any) => c?.pipeline_id && pipelineIdSet.has(c.pipeline_id));
 
-    const cardIds = (cards || []).map((c) => c.id);
-    const contactIds = Array.from(
-      new Set((cards || []).map((c) => (c as any).contact_id).filter(Boolean))
-    ) as string[];
+    if (!includeRelations) {
+      const outNoRelations = (cards || []).map((c: any) => ({
+        id: c.id,
+        pipeline_id: c.pipeline_id,
+        column_id: c.column_id,
+        responsible_user_id: c.responsible_user_id,
+        contact_id: c.contact_id,
+        status: c.status,
+        qualification: c.qualification,
+        created_at: c.created_at,
+        product_ids: [],
+        product_items: [],
+        tag_ids: [],
+      }));
+      return new Response(JSON.stringify({ cards: outNoRelations }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    const cardIds = (cards || []).map((c: any) => c.id).filter(Boolean);
+    const contactIds = Array.from(new Set((cards || []).map((c: any) => c?.contact_id).filter(Boolean))) as string[];
 
     // Products mapping
     const [{ data: pcp, error: pcpError }, { data: ctags, error: ctagsError }] = await Promise.all([

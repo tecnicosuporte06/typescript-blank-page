@@ -97,15 +97,14 @@ export function getActionDisplayInfo(actionText: string): ActionDisplayInfo | nu
     };
   }
 
-  // Adicionar Tag
-  const tagMatch = actionText.match(/\[ADD_ACTION\]:\s*\[tag_name:\s*(.*?)\]\s*,\s*\[tag_id:\s*(.*?)\]\s*,\s*\[contact_id:\s*CONTACT_ID\]/);
-  if (tagMatch) {
+  // Adicionar Tag (agora só exige tag_id)
+  if (values.tag_id) {
     return {
       type: 'adicionar_tag',
-      label: `Adicionar Tag: ${tagMatch[1]}`,
+      label: 'Adicionar Tag',
       icon: <Tag className="w-3.5 h-3.5" />,
       color: 'bg-purple-100 text-purple-700 border-purple-300 dark:bg-purple-900/30 dark:text-purple-300 dark:border-purple-700',
-      values: { tag_name: tagMatch[1], tag_id: tagMatch[2] }
+      values: { ...values, tag_id: values.tag_id }
     };
   }
 
@@ -121,63 +120,38 @@ export function getActionDisplayInfo(actionText: string): ActionDisplayInfo | nu
     };
   }
 
-  // Transferir Conexão
-  const conexaoMatch = actionText.match(/\[ADD_ACTION\]:\s*\[conection_name:\s*(.*?)\]\s*,\s*\[conection_id:\s*(.*?)\]\s*,\s*\[contact_id:\s*CONTACT_ID\](?:\s*,\s*\[instabce_phone:\s*INSTANCE_PHONE\])?/);
-  if (conexaoMatch) {
+  // Transferir Conexão (agora só exige conection_id)
+  if (values.conection_id) {
     return {
       type: 'transferir_conexao',
-      label: `Transferir Conexão: ${conexaoMatch[1]}`,
+      label: 'Transferir Conexão',
       icon: <Shuffle className="w-3.5 h-3.5" />,
       color: 'bg-blue-100 text-blue-700 border-blue-300 dark:bg-blue-900/30 dark:text-blue-300 dark:border-blue-700',
-      values: { conection_name: conexaoMatch[1], conection_id: conexaoMatch[2] }
+      values: { ...values, conection_id: values.conection_id }
     };
   }
 
-  // Transferir Fila
-  const filaMatch = actionText.match(/\[ADD_ACTION\]:\s*\[fila_id:\s*(.*?)\]\s*,\s*\[contact_id:\s*CONTACT_ID\]\s*,\s*\[conversation_id:\s*CONVERSATION_ID\](?:\s*,\s*\[instabce_phone:\s*INSTANCE_PHONE\])?/);
-  if (filaMatch) {
+  // Transferir Fila (fila_id já é somente ID)
+  if (values.fila_id) {
     return {
       type: 'transferir_fila',
       label: 'Transferir Fila',
       icon: <ArrowRightLeft className="w-3.5 h-3.5" />,
       color: 'bg-orange-100 text-orange-700 border-orange-300 dark:bg-orange-900/30 dark:text-orange-300 dark:border-orange-700',
-      values: { fila_id: filaMatch[1] }
+      values: { ...values, fila_id: values.fila_id }
     };
   }
 
-  // Criar Card CRM
-  const criarCardMatch = actionText.match(/\[ADD_ACTION\]:\s*\[pipeline_id:\s*(.*?)\]\s*,\s*\[coluna_id:\s*(.*?)\]\s*,\s*\[contact_id:\s*CONTACT_ID\]\s*,\s*\[conversation_id:\s*CONVERSATION_ID\](?:\s*,\s*\[instabce_phone:\s*INSTANCE_PHONE\])?/);
-  if (criarCardMatch) {
-    return {
-      type: 'criar_card',
-      label: 'Criar Card no CRM',
-      icon: <FolderKanban className="w-3.5 h-3.5" />,
-      color: 'bg-green-100 text-green-700 border-green-300 dark:bg-green-900/30 dark:text-green-300 dark:border-green-700',
-      values: { pipeline_id: criarCardMatch[1], coluna_id: criarCardMatch[2] }
-    };
-  }
+  // Removidos do menu: Criar Card CRM, Salvar Informações Adicionais
 
-  // Salvar Informações Adicionais
-  const salvarInfoMatch = actionText.match(/\[ADD_ACTION\]:\s*\[workspace_id:\s*WORKSPACE_ID\]\s*,\s*\[contact_id:\s*CONTACT_ID\]\s*,\s*\[field_name:\s*(.*?)\]\s*,\s*\[field_value:\s*(.*?)\]/);
-  if (salvarInfoMatch) {
-    return {
-      type: 'salvar_informacoes',
-      label: `Salvar campo ${salvarInfoMatch[1]}`,
-      icon: <Database className="w-3.5 h-3.5" />,
-      color: 'bg-pink-100 text-pink-700 border-pink-300 dark:bg-pink-900/30 dark:text-pink-300 dark:border-pink-700',
-      values: { field_name: salvarInfoMatch[1], field_value: salvarInfoMatch[2] }
-    };
-  }
-
-  // Enviar Funil
-  const funnelMatch = actionText.match(/\[ADD_ACTION\]:\s*\[funnel_id:\s*(.*?)\]\s*,\s*\[funnel_title:\s*(.*?)\]\s*,\s*\[contact_id:\s*CONTACT_ID\]\s*,\s*\[conversation_id:\s*CONVERSATION_ID\](?:\s*,\s*\[instabce_phone:\s*INSTANCE_PHONE\])?/);
-  if (funnelMatch) {
+  // Enviar Funil (agora só exige funnel_id)
+  if (values.funnel_id) {
     return {
       type: 'enviar_funil',
-      label: `Enviar Funil: ${funnelMatch[2]}`,
+      label: 'Enviar Funil',
       icon: <ListFilter className="w-3.5 h-3.5" />,
       color: 'bg-indigo-100 text-indigo-700 border-indigo-300 dark:bg-indigo-900/30 dark:text-indigo-300 dark:border-indigo-700',
-      values: { funnel_id: funnelMatch[1], funnel_title: funnelMatch[2] }
+      values: { ...values, funnel_id: values.funnel_id }
     };
   }
 

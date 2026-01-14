@@ -39,10 +39,12 @@ import { WorkspaceUsersPage } from "./modules/WorkspaceUsersPage";
 import { WorkspaceApiKeys } from "./modules/WorkspaceApiKeys";
 import { DealDetailsPage } from "@/pages/DealDetailsPage";
 import { RelatoriosAvancados } from "@/components/relatorios-avancados/RelatoriosAvancados";
+import { Disparador } from "./modules/Disparador";
 
 export type ModuleType = 
   | "relatorios"
   | "conversas"
+  | "disparador"
   | "mensagens-rapidas"
   | "pipeline"
   | "panorama"
@@ -137,6 +139,7 @@ export function TezeusCRM() {
     if (cleanPath === "crm-tags" || cleanPath === "etiquetas") return "etiquetas";
     if (cleanPath === "crm-produtos" || cleanPath === "produtos") return "produtos";
     if (cleanPath === "ds-voice" || cleanPath === "mensagens-rapidas") return "mensagens-rapidas";
+    if (cleanPath === "disparador") return "disparador";
     if (cleanPath === "workspace-empresas" || cleanPath === "empresa") return "empresa";
     if (cleanPath === "automacoes-filas" || cleanPath === "filas") return "filas";
     if (cleanPath === "administracao-acoes" || cleanPath === "configuracao-acoes") return "configuracao-acoes";
@@ -184,6 +187,8 @@ export function TezeusCRM() {
         return <Dashboard />;
       case "conversas":
         return <Conversas selectedConversationId={selectedConversationId} />;
+      case "disparador":
+        return <Disparador />;
       case "mensagens-rapidas":
         return <DSVoice />;
       case "pipeline":

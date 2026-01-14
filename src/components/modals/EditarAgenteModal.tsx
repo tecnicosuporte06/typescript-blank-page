@@ -19,6 +19,7 @@ import { useWorkspaces } from "@/hooks/useWorkspaces";
 import { PromptEditorModal } from "./PromptEditorModal";
 import { ActionPreviewDisplay } from "@/components/ui/action-preview-display";
 import { useQueryClient } from '@tanstack/react-query';
+import { generateRandomId } from "@/lib/generate-random-id";
 
 interface EditarAgenteModalProps {
   open: boolean;
@@ -307,9 +308,11 @@ Exemplo: [ENVIE PARA O TOOL \`qualificar-cliente\` (METODO POST) o workspace_id:
         if (uploadError) throw uploadError;
 
         // Salvar na tabela ai_agent_knowledge_files com texto extraído
+        const knowledgeFileId = generateRandomId();
         const { error: fileError } = await supabase
           .from('ai_agent_knowledge_files')
           .insert([{
+            id: knowledgeFileId,
             agent_id: agentId,
             file_name: knowledgeFile.name,
             file_path: filePath,
@@ -320,6 +323,28 @@ Exemplo: [ENVIE PARA O TOOL \`qualificar-cliente\` (METODO POST) o workspace_id:
           }]);
 
         if (fileError) throw fileError;
+
+        // Criar registro na documents_base (RAG) e disparar webhook via Edge Function (com logs no Supabase)
+        try {
+          const { data: ragData, error: ragError } = await supabase.functions.invoke('rag-webhook', {
+            body: {
+              workspace_id: formData.workspace_id,
+              agent_id: agentId,
+              knowledge_file_id: knowledgeFileId,
+              text: extractedText,
+              file_name: knowledgeFile.name,
+              file_path: filePath,
+            },
+          });
+
+          if (ragError) throw ragError;
+          if (!ragData?.success) {
+            throw new Error(ragData?.error || 'Falha ao processar RAG');
+          }
+        } catch (ragError) {
+          console.error('Falha ao processar RAG (Edge Function):', ragError);
+          // Não bloquear a edição do agente se o RAG falhar
+        }
       }
 
       // 2. Atualizar agente no banco

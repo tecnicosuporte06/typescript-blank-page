@@ -13,9 +13,7 @@ import {
   ArrowRightLeft, 
   Clock, 
   Phone, 
-  FolderKanban, 
   ArrowRight, 
-  Database, 
   Link2, 
   Shuffle,
   ListFilter,
@@ -33,6 +31,7 @@ import { PipelineColumnSelectorModal } from "./PipelineColumnSelectorModal";
 import { QueueSelectorModal } from "./QueueSelectorModal";
 import { ConnectionSelectorModal } from "./ConnectionSelectorModal";
 import { FunnelSelectorModal } from "./FunnelSelectorModal";
+import { supabase } from "@/integrations/supabase/client";
 
 interface PromptEditorModalProps {
   open: boolean;
@@ -52,45 +51,33 @@ interface ActionButton {
 const actionButtons: ActionButton[] = [
   {
     id: "add-tag",
-    label: "Adicionar Tag",
+    label: "Escolher Etiqueta",
     icon: <Tag className="w-4 h-4" />,
-    tag: '[Adicionar Tag: NOME_DA_TAG]',
+    tag: '[id: ID_DA_TAG]',
   },
   {
     id: "transfer-queue",
-    label: "Transferir Fila",
+    label: "Escolher Fila",
     icon: <ArrowRightLeft className="w-4 h-4" />,
-    tag: '[Transferir Fila: NOME_DA_FILA]',
+    tag: '[id: ID_DA_FILA]',
   },
   {
     id: "transfer-connection",
-    label: "Transferir Conexão",
+    label: "Escolher Conexão",
     icon: <Shuffle className="w-4 h-4" />,
-    tag: '[Transferir Conexão: NOME_DA_CONEXÃO]',
-  },
-  {
-    id: "create-crm-card",
-    label: "Criar card no CRM",
-    icon: <FolderKanban className="w-4 h-4" />,
-    tag: '[Criar Card CRM: TÍTULO | Pipeline: NOME_PIPELINE | Coluna: NOME_COLUNA]',
+    tag: '[id: ID_DA_CONEXAO]',
   },
   {
     id: "transfer-crm-column",
-    label: "Transferir coluna CRM",
+    label: "Escolher Coluna",
     icon: <ArrowRight className="w-4 h-4" />,
-    tag: '[Transferir para Coluna: NOME_COLUNA | Pipeline: NOME_PIPELINE]',
-  },
-  {
-    id: "save-info",
-    label: "Salvar informações adicionais",
-    icon: <Database className="w-4 h-4" />,
-    tag: '[ADD_ACTION]: [workspace_id: WORKSPACE_ID], [contact_id: CONTACT_ID], [field_name: FIELD_NAME], [field_value: FIELD_VALUE]',
+    tag: '[id: ID_DA_COLUNA]',
   },
   {
     id: "send-funnel",
-    label: "Enviar Funil",
+    label: "Escolher Funil",
     icon: <ListFilter className="w-4 h-4" />,
-    tag: '[Enviar Funil: NOME_DO_FUNIL]',
+    tag: '[id: ID_DO_FUNIL]',
   },
   {
     id: "qualify-deal",
@@ -195,9 +182,102 @@ export function PromptEditorModal({
   const [showPipelineColumnSelector, setShowPipelineColumnSelector] = useState(false);
   const [showFunnelSelector, setShowFunnelSelector] = useState(false);
   const [showQualificationSelector, setShowQualificationSelector] = useState(false);
-  const [qualificationSelection, setQualificationSelection] = useState<'qualified' | 'disqualified'>('qualified');
+  const [qualificationSelection, setQualificationSelection] = useState<'qualified' | 'unqualified'>('qualified');
   const [pendingActionType, setPendingActionType] = useState<string | null>(null);
   const editorRef = useRef<PromptEditorRef>(null);
+
+  const resolveIdToken = async (id: string) => {
+    // Resolver o "tipo" do id pelo banco para reconstruir a badge (nome + cor + ícone)
+    try {
+      // 1) Tag
+      const { data: tag } = await supabase
+        .from('tags')
+        .select('id, name')
+        .eq('id', id)
+        .maybeSingle();
+
+      if (tag?.id) {
+        return {
+          label: `Etiqueta: ${tag.name}`,
+          type: 'adicionar_tag',
+          colorClass: 'bg-purple-100 text-purple-700 border-purple-300 dark:bg-purple-900/30 dark:text-purple-300 dark:border-purple-700',
+        };
+      }
+
+      // 2) Fila
+      const { data: queue } = await supabase
+        .from('queues')
+        .select('id, name')
+        .eq('id', id)
+        .maybeSingle();
+
+      if (queue?.id) {
+        return {
+          label: `Fila: ${queue.name}`,
+          type: 'transferir_fila',
+          colorClass: 'bg-orange-100 text-orange-700 border-orange-300 dark:bg-orange-900/30 dark:text-orange-300 dark:border-orange-700',
+        };
+      }
+
+      // 3) Conexão
+      const { data: conn } = await supabase
+        .from('connections')
+        .select('id, instance_name')
+        .eq('id', id)
+        .maybeSingle();
+
+      if (conn?.id) {
+        return {
+          label: `Conexão: ${conn.instance_name}`,
+          type: 'transferir_conexao',
+          colorClass: 'bg-blue-100 text-blue-700 border-blue-300 dark:bg-blue-900/30 dark:text-blue-300 dark:border-blue-700',
+        };
+      }
+
+      // 4) Coluna (inclui pipeline)
+      const { data: col } = await (supabase as any)
+        .from('pipeline_columns')
+        .select('id, name, pipeline_id, pipelines(name)')
+        .eq('id', id)
+        .maybeSingle();
+
+      if (col?.id) {
+        const pipelineName = Array.isArray(col?.pipelines) ? col.pipelines?.[0]?.name : col?.pipelines?.name;
+        return {
+          label: `Coluna: ${col.name}${pipelineName ? ` (${pipelineName})` : ''}`,
+          type: 'transferir_coluna_crm',
+          colorClass: 'bg-yellow-100 text-yellow-700 border-yellow-300 dark:bg-yellow-900/30 dark:text-yellow-300 dark:border-yellow-700',
+        };
+      }
+
+      // 5) Funil (quick_funnels)
+      const { data: funnel } = await (supabase as any)
+        .from('quick_funnels')
+        .select('id, title')
+        .eq('id', id)
+        .maybeSingle();
+
+      if (funnel?.id) {
+        return {
+          label: `Funil: ${funnel.title}`,
+          type: 'enviar_funil',
+          colorClass: 'bg-indigo-100 text-indigo-700 border-indigo-300 dark:bg-indigo-900/30 dark:text-indigo-300 dark:border-indigo-700',
+        };
+      }
+
+      return {
+        label: `ID: ${id}`,
+        type: 'id_token',
+        colorClass: 'bg-gray-100 text-gray-700 border-gray-300 dark:bg-gray-800 dark:text-gray-300 dark:border-gray-700',
+      };
+    } catch {
+      return {
+        label: `ID: ${id}`,
+        type: 'id_token',
+        colorClass: 'bg-gray-100 text-gray-700 border-gray-300 dark:bg-gray-800 dark:text-gray-300 dark:border-gray-700',
+      };
+    }
+  };
 
   // Sincronizar com o value quando o modal abre
   useEffect(() => {
@@ -226,7 +306,7 @@ export function PromptEditorModal({
       return;
     }
 
-    if (action.id === "transfer-crm-column" || action.id === "create-crm-card") {
+    if (action.id === "transfer-crm-column") {
       setPendingActionType(action.id);
       setShowPipelineColumnSelector(true);
       return;
@@ -249,22 +329,34 @@ export function PromptEditorModal({
   };
 
   const handleTagSelected = (tagId: string, tagName: string) => {
-    const actionText = `\n[ADD_ACTION]: [tag_name: ${tagName}], [tag_id: ${tagId}], [contact_id: CONTACT_ID]\n`;
-    editorRef.current?.insertText(actionText);
+    editorRef.current?.insertBadge({
+      token: `[id: ${tagId}]`,
+      label: `Etiqueta: ${tagName}`,
+      type: 'adicionar_tag',
+      colorClass: 'bg-purple-100 text-purple-700 border-purple-300 dark:bg-purple-900/30 dark:text-purple-300 dark:border-purple-700',
+    });
     setShowTagSelector(false);
     setPendingActionType(null);
   };
 
   const handleQueueSelected = (queueId: string, queueName: string) => {
-    const actionText = `\n[ADD_ACTION]: [fila_id: ${queueId}], [contact_id: CONTACT_ID], [conversation_id: CONVERSATION_ID], [instabce_phone: INSTANCE_PHONE]\n`;
-    editorRef.current?.insertText(actionText);
+    editorRef.current?.insertBadge({
+      token: `[id: ${queueId}]`,
+      label: `Fila: ${queueName}`,
+      type: 'transferir_fila',
+      colorClass: 'bg-orange-100 text-orange-700 border-orange-300 dark:bg-orange-900/30 dark:text-orange-300 dark:border-orange-700',
+    });
     setShowQueueSelector(false);
     setPendingActionType(null);
   };
 
   const handleConnectionSelected = (connectionId: string, connectionName: string) => {
-    const actionText = `\n[ADD_ACTION]: [conection_name: ${connectionName}], [conection_id: ${connectionId}], [contact_id: CONTACT_ID], [instabce_phone: INSTANCE_PHONE]\n`;
-    editorRef.current?.insertText(actionText);
+    editorRef.current?.insertBadge({
+      token: `[id: ${connectionId}]`,
+      label: `Conexão: ${connectionName}`,
+      type: 'transferir_conexao',
+      colorClass: 'bg-blue-100 text-blue-700 border-blue-300 dark:bg-blue-900/30 dark:text-blue-300 dark:border-blue-700',
+    });
     setShowConnectionSelector(false);
     setPendingActionType(null);
   };
@@ -275,32 +367,30 @@ export function PromptEditorModal({
     columnId: string, 
     columnName: string
   ) => {
-    const actionType = pendingActionType || "transfer-crm-column";
-    
-    let actionText = "";
-    if (actionType === "create-crm-card") {
-      actionText = `\n[ADD_ACTION]: [pipeline_id: ${pipelineId}], [coluna_id: ${columnId}], [contact_id: CONTACT_ID], [conversation_id: CONVERSATION_ID], [instabce_phone: INSTANCE_PHONE]\n`;
-    } else {
-      actionText = `\n[ADD_ACTION]: [pipeline_id: ${pipelineId}], [coluna_id: ${columnId}], [card_id: ID_DO_CARD], [contact_id: CONTACT_ID]\n`;
-    }
-    
-    editorRef.current?.insertText(actionText);
+    editorRef.current?.insertBadge({
+      token: `[id: ${columnId}]`,
+      label: `Coluna: ${columnName}${pipelineName ? ` (${pipelineName})` : ''}`,
+      type: 'transferir_coluna_crm',
+      colorClass: 'bg-yellow-100 text-yellow-700 border-yellow-300 dark:bg-yellow-900/30 dark:text-yellow-300 dark:border-yellow-700',
+    });
     setShowPipelineColumnSelector(false);
     setPendingActionType(null);
   };
 
   const handleFunnelSelected = (funnelId: string, funnelTitle: string) => {
-    const actionText = `\n[ADD_ACTION]: [funnel_id: ${funnelId}], [funnel_title: ${funnelTitle}], [contact_id: CONTACT_ID], [conversation_id: CONVERSATION_ID], [instabce_phone: INSTANCE_PHONE]\n`;
-    editorRef.current?.insertText(actionText);
+    editorRef.current?.insertBadge({
+      token: `[id: ${funnelId}]`,
+      label: `Funil: ${funnelTitle}`,
+      type: 'enviar_funil',
+      colorClass: 'bg-indigo-100 text-indigo-700 border-indigo-300 dark:bg-indigo-900/30 dark:text-indigo-300 dark:border-indigo-700',
+    });
     setShowFunnelSelector(false);
     setPendingActionType(null);
   };
 
   const handleConfirmQualification = () => {
-    const title = qualificationSelection === 'qualified' ? 'Qualificado' : 'Desqualificado';
-    const actionText =
-      `\n[ADD_ACTION]: [workspace_id: WORKSPACE_ID], [card_id: ID_DO_CARD], ` +
-      `[qualification: ${qualificationSelection}], [qualification_title: ${title}]\n`;
+    // Agora deve inserir apenas o token de qualificação
+    const actionText = `\n[${qualificationSelection}]\n`;
     editorRef.current?.insertText(actionText);
     setShowQualificationSelector(false);
   };
@@ -333,6 +423,7 @@ export function PromptEditorModal({
                   ref={editorRef}
                   value={localValue}
                   onChange={setLocalValue}
+                  resolveIdToken={resolveIdToken}
                   placeholder="Digite o prompt do agente aqui... Clique com o botão direito para adicionar ações."
                   className="min-h-[400px]"
                 />
@@ -433,11 +524,11 @@ export function PromptEditorModal({
 
               <Button
                 type="button"
-                variant={qualificationSelection === 'disqualified' ? 'default' : 'outline'}
-                onClick={() => setQualificationSelection('disqualified')}
+                variant={qualificationSelection === 'unqualified' ? 'default' : 'outline'}
+                onClick={() => setQualificationSelection('unqualified')}
                 className="rounded-none"
               >
-                Desqualificado
+                Não qualificado
               </Button>
             </div>
 

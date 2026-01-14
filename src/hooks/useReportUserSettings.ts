@@ -9,16 +9,18 @@ export type ReportUserSettingsPayload = {
   teamConversions?: any[];
   customConversionsFilter?: any;
   teamConversionsFilter?: any;
+  globalFilter?: any;
 };
 
 export function useReportUserSettings(workspaceId?: string) {
   const { user } = useAuth();
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [settings, setSettings] = useState<ReportUserSettingsPayload | null>(null);
 
   const fetchSettings = useCallback(async () => {
     if (!workspaceId || !user?.id) {
       setSettings(null);
+      setLoading(false);
       return;
     }
     try {

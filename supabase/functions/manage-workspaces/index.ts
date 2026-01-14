@@ -13,8 +13,8 @@ Deno.serve(async (req) => {
   }
 
   try {
-    const { action, workspaceId, name, cnpj, connectionLimit, userLimit, isActive, defaultPipelineId } = await req.json();
-    console.log('Request received:', { action, workspaceId, name, cnpj, connectionLimit, userLimit, isActive, defaultPipelineId });
+    const { action, workspaceId, name, cnpj, connectionLimit, userLimit, disparadorEnabled, isActive, defaultPipelineId } = await req.json();
+    console.log('Request received:', { action, workspaceId, name, cnpj, connectionLimit, userLimit, disparadorEnabled, isActive, defaultPipelineId });
 
     const supabase = createClient(
       Deno.env.get('SUPABASE_URL') ?? '',
@@ -140,7 +140,8 @@ Deno.serve(async (req) => {
         .insert({ 
           workspace_id: data.id, 
           connection_limit: connectionLimit || 1,
-          user_limit: userLimit || 5
+          user_limit: userLimit || 5,
+          disparador_enabled: disparadorEnabled ?? false
         });
 
       if (limitsError) {
@@ -183,9 +184,9 @@ Deno.serve(async (req) => {
         );
       }
 
-      // Update connection limit and/or user limit if provided
-      if (connectionLimit !== undefined || userLimit !== undefined) {
-        console.log('Updating limits for workspace:', workspaceId, 'connectionLimit:', connectionLimit, 'userLimit:', userLimit);
+      // Update connection limit and/or user limit and/or feature flags if provided
+      if (connectionLimit !== undefined || userLimit !== undefined || disparadorEnabled !== undefined) {
+        console.log('Updating limits for workspace:', workspaceId, 'connectionLimit:', connectionLimit, 'userLimit:', userLimit, 'disparadorEnabled:', disparadorEnabled);
         
         // Use service role to bypass RLS for workspace_limits operations
         const { data: existingLimit, error: checkError } = await supabase
@@ -209,6 +210,7 @@ Deno.serve(async (req) => {
           const updateObj: any = { updated_at: new Date().toISOString() };
           if (connectionLimit !== undefined) updateObj.connection_limit = connectionLimit;
           if (userLimit !== undefined) updateObj.user_limit = userLimit;
+          if (disparadorEnabled !== undefined) updateObj.disparador_enabled = !!disparadorEnabled;
           
           // Update existing limit
           const { error } = await supabase
@@ -224,7 +226,8 @@ Deno.serve(async (req) => {
             .insert({ 
               workspace_id: workspaceId, 
               connection_limit: connectionLimit || 1,
-              user_limit: userLimit || 5
+              user_limit: userLimit || 5,
+              disparador_enabled: disparadorEnabled ?? false
             });
           limitError = error;
         }
