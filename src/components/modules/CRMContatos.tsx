@@ -93,6 +93,7 @@ export function CRMContatos() {
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [isBulkDeleteOpen, setIsBulkDeleteOpen] = useState(false);
   const [isCreateMode, setIsCreateMode] = useState(false);
+  const [selectedDDI, setSelectedDDI] = useState("55");
   const [showDebugModal, setShowDebugModal] = useState(false);
   const [debugContact, setDebugContact] = useState<Contact | null>(null);
   const [isTagModalOpen, setIsTagModalOpen] = useState(false);
@@ -910,6 +911,7 @@ export function CRMContatos() {
   };
   const handleAddContact = () => {
     setIsCreateMode(true);
+    setSelectedDDI("55"); // Reset DDI para Brasil
     setEditingContact({
       id: "",
       name: "",
@@ -989,10 +991,10 @@ export function CRMContatos() {
 
     // Validar se telefone já existe (apenas no modo criação)
     if (isCreateMode && editingContact.phone.trim()) {
-      // Sanitizar telefone para validação (adicionar 55 se não tiver)
-      let sanitizedPhone = editingContact.phone.trim();
-      if (sanitizedPhone && !sanitizedPhone.startsWith("55")) {
-        sanitizedPhone = "55" + sanitizedPhone;
+      // Sanitizar telefone para validação (adicionar DDI selecionado se não tiver)
+      let sanitizedPhone = editingContact.phone.trim().replace(/\D/g, '');
+      if (sanitizedPhone && !sanitizedPhone.startsWith(selectedDDI)) {
+        sanitizedPhone = selectedDDI + sanitizedPhone;
       }
 
       const { data: existingContact } = await supabase
@@ -1017,10 +1019,10 @@ export function CRMContatos() {
       const extraInfoObject = buildExtraInfoObject(customFields);
 
       if (isCreateMode) {
-        // Sanitizar telefone adicionando 55 na frente se não tiver
-        let sanitizedPhone = editingContact.phone.trim();
-        if (sanitizedPhone && !sanitizedPhone.startsWith("55")) {
-          sanitizedPhone = "55" + sanitizedPhone;
+        // Sanitizar telefone adicionando DDI selecionado na frente se não tiver
+        let sanitizedPhone = editingContact.phone.trim().replace(/\D/g, '');
+        if (sanitizedPhone && !sanitizedPhone.startsWith(selectedDDI)) {
+          sanitizedPhone = selectedDDI + sanitizedPhone;
         }
 
         // Create new contact
@@ -2351,7 +2353,43 @@ export function CRMContatos() {
             <div>
               <Label className="text-gray-700 dark:text-gray-200">Telefone</Label>
               <div className="flex gap-2">
-                <Input value="+55" disabled className="w-20 dark:bg-[#1a1a1a] dark:border-gray-700 dark:text-gray-300" />
+                <Select 
+                  value={selectedDDI} 
+                  onValueChange={setSelectedDDI}
+                  disabled={!isCreateMode}
+                >
+                  <SelectTrigger className={`w-24 dark:bg-[#1a1a1a] dark:border-gray-700 dark:text-gray-300 ${!isCreateMode ? "bg-muted cursor-not-allowed" : ""}`}>
+                    <SelectValue placeholder="+55" />
+                  </SelectTrigger>
+                  <SelectContent className="max-h-48 dark:bg-[#1a1a1a] dark:border-gray-700">
+                    {[
+                      { code: "55", country: "Brasil" },
+                      { code: "1", country: "EUA/Canadá" },
+                      { code: "351", country: "Portugal" },
+                      { code: "44", country: "Reino Unido" },
+                      { code: "33", country: "França" },
+                      { code: "49", country: "Alemanha" },
+                      { code: "34", country: "Espanha" },
+                      { code: "39", country: "Itália" },
+                      { code: "81", country: "Japão" },
+                      { code: "82", country: "Coreia do Sul" },
+                      { code: "86", country: "China" },
+                      { code: "54", country: "Argentina" },
+                      { code: "52", country: "México" },
+                      { code: "57", country: "Colômbia" },
+                      { code: "56", country: "Chile" },
+                      { code: "591", country: "Bolívia" },
+                      { code: "595", country: "Paraguai" },
+                      { code: "598", country: "Uruguai" },
+                      { code: "51", country: "Peru" },
+                      { code: "593", country: "Equador" },
+                    ].map((item) => (
+                      <SelectItem key={item.code} value={item.code} className="dark:text-gray-200 dark:focus:bg-gray-700">
+                        +{item.code} ({item.country})
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
                 <Input
                   value={editingContact?.phone || ""}
                   onChange={
