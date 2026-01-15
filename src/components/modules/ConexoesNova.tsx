@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
-import { getRandomConnectionColor, getConnectionColor } from '@/lib/utils';
+import { getRandomConnectionColor } from '@/lib/utils';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -9,7 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Badge } from '@/components/ui/badge';
 import { Switch } from '@/components/ui/switch';
-import { Trash2, Wifi, QrCode, Plus, MoreVertical, Edit3, RefreshCw, Webhook, Star, Bug, ArrowRight, Zap, Cloud, Settings, Search, Download, Upload, Filter, Smartphone, Power, PowerOff } from 'lucide-react';
+import { Trash2, Wifi, QrCode, Plus, MoreVertical, Edit3, RefreshCw, Webhook, Star, Bug, ArrowRight, Zap, Cloud, Settings, Search, Download, Upload, Filter, Smartphone, Power, PowerOff, History } from 'lucide-react';
 import { TestWebhookReceptionModal } from "@/components/modals/TestWebhookReceptionModal";
 import { ConfigureZapiWebhookModal } from "@/components/modals/ConfigureZapiWebhookModal";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
@@ -192,6 +192,12 @@ export function ConexoesNova({ workspaceId }: ConexoesNovaProps) {
   // Estado para modal de configuração de webhooks Z-API
   const [isConfigureWebhookModalOpen, setIsConfigureWebhookModalOpen] = useState(false);
   const [connectionToConfigureWebhook, setConnectionToConfigureWebhook] = useState<Connection | null>(null);
+  
+  // Estado para modal de histórico de conexões
+  const [isHistoryModalOpen, setIsHistoryModalOpen] = useState(false);
+  const [historyConnection, setHistoryConnection] = useState<Connection | null>(null);
+  const [connectionHistory, setConnectionHistory] = useState<any[]>([]);
+  const [isLoadingHistory, setIsLoadingHistory] = useState(false);
   
   // Hook para gerenciar providers
   const { providers, isLoading: loadingProvider, fetchProviders } = useWhatsAppProviders(workspaceId);
@@ -1226,6 +1232,50 @@ export function ConexoesNova({ workspaceId }: ConexoesNovaProps) {
     }
   };
 
+  const openHistoryModal = async (connection: Connection) => {
+    setHistoryConnection(connection);
+    setIsHistoryModalOpen(true);
+    setIsLoadingHistory(true);
+    
+    console.log('🔍 Buscando histórico para conexão:', {
+      id: connection.id,
+      instance_name: connection.instance_name,
+      workspace_id: workspaceId
+    });
+    
+    try {
+      // Usar Edge Function para bypassar RLS
+      const { data, error } = await supabase.functions.invoke('get-connection-history', {
+        body: {
+          connectionId: connection.id,
+          workspaceId: workspaceId
+        }
+      });
+
+      console.log('📋 Resultado da Edge Function:', { data, error });
+
+      if (error) throw error;
+      
+      if (!data?.success) {
+        throw new Error(data?.error || 'Erro ao buscar histórico');
+      }
+
+      console.log('✅ Encontrados', data.history?.length || 0, 'registros');
+      setConnectionHistory(data.history || []);
+      
+    } catch (error) {
+      console.error('Erro ao buscar histórico:', error);
+      toast({
+        title: 'Erro',
+        description: 'Não foi possível carregar o histórico de conexões',
+        variant: 'destructive',
+      });
+      setConnectionHistory([]);
+    } finally {
+      setIsLoadingHistory(false);
+    }
+  };
+
   const getStatusBadge = (status: string) => {
     switch (status) {
       case 'connected':
@@ -1541,10 +1591,7 @@ export function ConexoesNova({ workspaceId }: ConexoesNovaProps) {
                 filteredConnections.map((connection) => (
                   <tr key={connection.id} className="hover:bg-blue-50 group h-[40px] dark:hover:bg-[#1f2937]">
                     <td className="border border-[#e0e0e0] px-2 py-0 font-medium align-middle dark:border-gray-700">
-                      <div className="flex items-center gap-2">
-                        <div className="w-2 h-2 rounded-full" style={{ backgroundColor: getConnectionColor(connection.id, connection.metadata) }} />
-                        {connection.instance_name}
-                      </div>
+                      {connection.instance_name}
                     </td>
                     <td className="border border-[#e0e0e0] px-2 py-0 align-middle dark:border-gray-700">
                       {formatPhoneNumberDisplay(connection.phone_number || '')}
@@ -1633,6 +1680,16 @@ export function ConexoesNova({ workspaceId }: ConexoesNovaProps) {
                           title="Editar"
                         >
                           <Edit3 className="h-3.5 w-3.5" />
+                        </Button>
+
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => openHistoryModal(connection)}
+                          className="h-6 w-6 rounded-sm hover:bg-purple-100 text-purple-600"
+                          title="Histórico de Conexões"
+                        >
+                          <History className="h-3.5 w-3.5" />
                         </Button>
                         
                         {userRole === 'master' && (
@@ -1792,6 +1849,77 @@ export function ConexoesNova({ workspaceId }: ConexoesNovaProps) {
           instanceName={connectionToConfigureWebhook.instance_name}
         />
       )}
+
+      {/* Modal de Histórico de Conexões */}
+      <Dialog open={isHistoryModalOpen} onOpenChange={(open) => {
+        if (!open) {
+          setHistoryConnection(null);
+          setConnectionHistory([]);
+        }
+        setIsHistoryModalOpen(open);
+      }}>
+        <DialogContent className="max-w-3xl max-h-[80vh] bg-white text-gray-900 dark:bg-[#0b0b0b] dark:text-gray-100 dark:border-gray-700 sm:rounded-none">
+          <DialogHeader className="px-4 py-2 bg-primary text-primary-foreground dark:text-white border-b border-[#d4d4d4] rounded-t-none dark:border-gray-700">
+            <DialogTitle className="text-primary-foreground dark:text-white flex items-center gap-2">
+              <History className="h-4 w-4" />
+              Histórico de Conexão/Desconexão
+            </DialogTitle>
+            <div className="text-sm text-primary-foreground/90 dark:text-white/90">
+              {historyConnection?.instance_name} - Auditoria de status
+            </div>
+          </DialogHeader>
+
+          <div className="overflow-auto max-h-[60vh] p-4">
+            {isLoadingHistory ? (
+              <div className="flex items-center justify-center py-12">
+                <div className="w-8 h-8 border-4 border-primary border-t-transparent rounded-full animate-spin"></div>
+              </div>
+            ) : connectionHistory.length === 0 ? (
+              <div className="text-center py-12 text-muted-foreground">
+                Nenhum registro de histórico encontrado para esta conexão.
+              </div>
+            ) : (
+              <table className="min-w-full border-collapse text-xs">
+                <thead className="bg-[#f3f3f3] sticky top-0 dark:bg-[#1f1f1f]">
+                  <tr>
+                    <th className="border border-[#d4d4d4] px-3 py-2 text-left font-semibold dark:border-gray-700">Data/Hora</th>
+                    <th className="border border-[#d4d4d4] px-3 py-2 text-left font-semibold dark:border-gray-700">Status</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {connectionHistory.map((record, index) => (
+                    <tr key={record.id || index} className="hover:bg-blue-50 dark:hover:bg-[#1f2937]">
+                      <td className="border border-[#e0e0e0] px-3 py-2 dark:border-gray-700 whitespace-nowrap">
+                        {record.created_at ? new Date(record.created_at).toLocaleString('pt-BR', {
+                          day: '2-digit',
+                          month: '2-digit',
+                          year: 'numeric',
+                          hour: '2-digit',
+                          minute: '2-digit',
+                          second: '2-digit'
+                        }) : '-'}
+                      </td>
+                      <td className="border border-[#e0e0e0] px-3 py-2 dark:border-gray-700">
+                        {record.status === 'connected' ? 'Conectado' : record.status === 'disconnected' ? 'Desconectado' : record.status || '-'}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </div>
+
+          <DialogFooter className="pt-2 border-t border-[#d4d4d4] dark:border-gray-700 bg-[#f7f7f7] dark:bg-[#111111]">
+            <Button 
+              variant="outline" 
+              onClick={() => setIsHistoryModalOpen(false)} 
+              className="rounded-none border border-[#d4d4d4] text-gray-800 bg-white hover:bg-gray-100 dark:border-gray-600 dark:text-gray-200 dark:bg-transparent dark:hover:bg-[#1f1f1f]"
+            >
+              Fechar
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

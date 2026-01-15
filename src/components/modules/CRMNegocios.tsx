@@ -173,7 +173,7 @@ function DroppableColumn({
   } = useDroppable({
     id: id
   });
-  return <div ref={setNodeRef} className={`h-full transition-colors duration-200 ${isOver ? 'bg-primary/5' : ''}`}>
+  return <div ref={setNodeRef} className="h-full">
       {children}
     </div>;
 }
@@ -397,14 +397,16 @@ function DraggableDeal({
     setNodeRef,
     transform,
     transition,
-    isDragging
+    isDragging,
+    isSorting
   } = useSortable({
     id: `card-${deal.id}`
   });
-  const style = {
+  const style: React.CSSProperties = {
     transform: CSS.Transform.toString(transform),
-    transition,
-    opacity: isDragging ? 0 : 1
+    transition: transition || 'transform 200ms ease',
+    opacity: isDragging ? 0.5 : 1,
+    zIndex: isDragging ? 1000 : 'auto',
   };
   const formatCurrency = (value: number) => {
     return new Intl.NumberFormat('pt-BR', {
@@ -807,9 +809,10 @@ function DraggableDeal({
 interface SortableColumnWrapperProps {
   id: string;
   children: React.ReactNode;
+  canReorder?: boolean;
 }
 
-function SortableColumnWrapper({ id, children }: SortableColumnWrapperProps) {
+function SortableColumnWrapper({ id, children, canReorder = true }: SortableColumnWrapperProps) {
   const {
     attributes,
     listeners,
@@ -839,12 +842,14 @@ function SortableColumnWrapper({ id, children }: SortableColumnWrapperProps) {
   return (
     <div ref={setNodeRef} style={style} {...attributes} className="relative group">
       {children}
-      <div 
-        {...listeners} 
-        className="cursor-grab active:cursor-grabbing absolute top-3 right-12 z-10 p-1.5 opacity-0 group-hover:opacity-100 transition-opacity duration-200 bg-background/80 backdrop-blur-sm rounded hover:bg-background shadow-sm border border-border/50 dark:bg-[#1f1f1f]/80 dark:hover:bg-[#2a2a2a] dark:border-gray-700/50"
-      >
-        <GripVertical className="h-4 w-4 text-muted-foreground dark:text-gray-400" />
-      </div>
+      {canReorder && (
+        <div 
+          {...listeners} 
+          className="cursor-grab active:cursor-grabbing absolute top-3 right-12 z-10 p-1.5 opacity-0 group-hover:opacity-100 transition-opacity duration-200 bg-background/80 backdrop-blur-sm rounded hover:bg-background shadow-sm border border-border/50 dark:bg-[#1f1f1f]/80 dark:hover:bg-[#2a2a2a] dark:border-gray-700/50"
+        >
+          <GripVertical className="h-4 w-4 text-muted-foreground dark:text-gray-400" />
+        </div>
+      )}
     </div>
   );
 }
@@ -1423,12 +1428,36 @@ const [selectedCardForProduct, setSelectedCardForProduct] = useState<{
     setActiveId(activeId);
   }, []);
   const handleDragOver = useCallback((event: DragOverEvent) => {
-    const { over } = event;
-    const next =
-      over && over.id.toString().startsWith('column-') ? over.id.toString().replace('column-', '') : null;
+    const { over, active } = event;
+    
+    if (!over || !active) {
+      setDragOverColumn(null);
+      return;
+    }
+
+    const overId = over.id.toString();
+    let targetColumnId: string | null = null;
+
+    // Se está sobre uma coluna diretamente
+    if (overId.startsWith('column-')) {
+      targetColumnId = overId.replace('column-', '');
+    } 
+    // Se está sobre um card, descobrir a qual coluna ele pertence
+    else if (overId.startsWith('card-')) {
+      const cardId = overId.replace('card-', '');
+      // Encontrar a coluna que contém este card
+      for (const column of columns) {
+        const columnCards = getFilteredCards(column.id);
+        if (columnCards.some(c => c.id === cardId)) {
+          targetColumnId = column.id;
+          break;
+        }
+      }
+    }
+
     // ✅ Evita setState redundante (reduz re-render durante drag)
-    setDragOverColumn((prev) => (prev === next ? prev : next));
-  }, []);
+    setDragOverColumn((prev) => (prev === targetColumnId ? prev : targetColumnId));
+  }, [columns, getFilteredCards]);
   const handleDragEnd = useCallback(async (event: DragEndEvent) => {
     const {
       active,
@@ -2213,6 +2242,22 @@ const [selectedCardForProduct, setSelectedCardForProduct] = useState<{
                                       </div>
                                     )}
                                      <SortableContext items={columnCards.map(card => `card-${card.id}`)} strategy={verticalListSortingStrategy}>
+                                       {/* Placeholder animado quando card está sendo arrastado sobre esta coluna */}
+                                       <div 
+                                         className={`border-2 border-dashed rounded-sm overflow-hidden transition-all duration-150 ease-out ${
+                                           activeId && !draggedColumn && dragOverColumn === column.id 
+                                             ? 'border-primary/50 bg-primary/5 dark:bg-primary/10 opacity-100' 
+                                             : 'border-transparent bg-transparent opacity-0 pointer-events-none'
+                                         }`}
+                                         style={{ 
+                                           height: activeId && !draggedColumn && dragOverColumn === column.id ? '85px' : '0px',
+                                           marginBottom: activeId && !draggedColumn && dragOverColumn === column.id ? '8px' : '0px',
+                                         }}
+                                       >
+                                         <div className="h-full flex items-center justify-center text-xs text-primary/60 dark:text-primary/50">
+                                           Solte aqui
+                                         </div>
+                                       </div>
                                        {isLoadingInitialCardsByColumn?.[column.id] ? (
                                          <div className="h-24" />
                                        ) : columnCards.length > 0 ? columnCards.map((card, idx) => {
@@ -2260,12 +2305,8 @@ const [selectedCardForProduct, setSelectedCardForProduct] = useState<{
                                          };
 
                                         return (
-                                          <div
-                                            key={card.id}
-                                            className="pipeline-card-enter"
-                                            style={{ animationDelay: `${Math.min(idx * 20, 200)}ms` }}
-                                          >
                                             <DraggableDeal
+                                              key={card.id}
                                               deal={deal}
                                               isDarkMode={isDarkMode}
                                               onClick={() => !isSelectionMode && openCardDetails(card)}
@@ -2327,7 +2368,6 @@ const [selectedCardForProduct, setSelectedCardForProduct] = useState<{
                                                 setAgentModalOpen(true);
                                               }}
                                             />
-                                          </div>
                                         );
                                       }) : (
                                          <div className={`text-center text-muted-foreground dark:text-gray-400 text-sm py-8`}>
@@ -2370,14 +2410,13 @@ const [selectedCardForProduct, setSelectedCardForProduct] = useState<{
             const isColumnBeingDragged = draggedColumn === column.id;
             const isColumnDropTarget = !!draggedColumn && dragOverColumn === column.id;
             return (
-              <SortableColumnWrapper key={column.id} id={`column-${column.id}`}>
+              <SortableColumnWrapper key={column.id} id={`column-${column.id}`} canReorder={userRole !== 'user'}>
                 <DroppableColumn id={`column-${column.id}`}>
                     {/* Coluna individual - responsiva */}
                     <div
                       className={cn(
                         "flex-shrink-0 h-full min-h-0 flex flex-col pb-2 transition-all duration-200",
-                        isColumnBeingDragged && "scale-[1.02] ring-2 ring-primary/50 shadow-2xl",
-                        isColumnDropTarget && "ring-2 ring-primary/40 bg-primary/5"
+                        isColumnBeingDragged && "scale-[1.02] ring-2 ring-primary/50 shadow-2xl"
                       )}
                       style={
                         !isMobile
@@ -2502,10 +2541,7 @@ const [selectedCardForProduct, setSelectedCardForProduct] = useState<{
                         
                         {/* Corpo da coluna - fundo colorido */}
                         <div
-                          className={cn(
-                          "flex-1 p-2 overflow-y-auto min-h-0 bg-[#f9f9f9] dark:bg-[#0a0a0a] transition-all duration-200 scrollbar-thin scrollbar-thumb-gray-column scrollbar-track-transparent relative",
-                          !draggedColumn && dragOverColumn === column.id && "ring-1 ring-primary/10 bg-primary/5 dark:bg-primary/10"
-                          )}
+                          className="flex-1 p-2 overflow-y-auto min-h-0 bg-[#f9f9f9] dark:bg-[#0a0a0a] transition-all duration-200 scrollbar-thin scrollbar-thumb-gray-column scrollbar-track-transparent relative"
                           onScroll={(e) => {
                             const el = e.currentTarget;
                             const nearBottom = el.scrollTop + el.clientHeight >= el.scrollHeight - 120;
@@ -2537,6 +2573,22 @@ const [selectedCardForProduct, setSelectedCardForProduct] = useState<{
                               items={columnCards.map(card => `card-${card.id}`)}
                               strategy={verticalListSortingStrategy}
                             >
+                                {/* Placeholder animado quando card está sendo arrastado sobre esta coluna */}
+                                <div 
+                                  className={`border-2 border-dashed rounded-sm overflow-hidden transition-all duration-150 ease-out ${
+                                    activeId && !draggedColumn && dragOverColumn === column.id 
+                                      ? 'border-primary/50 bg-primary/5 dark:bg-primary/10 opacity-100' 
+                                      : 'border-transparent bg-transparent opacity-0 pointer-events-none'
+                                  }`}
+                                  style={{ 
+                                    height: activeId && !draggedColumn && dragOverColumn === column.id ? '85px' : '0px',
+                                    marginBottom: activeId && !draggedColumn && dragOverColumn === column.id ? '8px' : '0px',
+                                  }}
+                                >
+                                  <div className="h-full flex items-center justify-center text-xs text-primary/60 dark:text-primary/50">
+                                    Solte aqui
+                                  </div>
+                                </div>
                                 {columnCards.map((card, idx) => {
                           const productRelations = Array.isArray((card as any).products) ? (card as any).products : [];
                           const primaryProduct = productRelations.length > 0 ? productRelations[0] : null;
@@ -2568,12 +2620,7 @@ const [selectedCardForProduct, setSelectedCardForProduct] = useState<{
                             hasProduct: !!productId
                           };
                           return (
-                            <div
-                              key={card.id}
-                              className="pipeline-card-enter"
-                              style={{ animationDelay: `${Math.min(idx * 20, 200)}ms` }}
-                            >
-                              <DraggableDeal deal={deal} isDarkMode={isDarkMode} onClick={() => !isSelectionMode && openCardDetails(card)} onEditPendingTask={(activityId) => openCardDetails(card, { openActivityEditId: activityId })} columnColor={column.color} workspaceId={effectiveWorkspaceId} onOpenTransferModal={handleOpenTransferModal} onVincularResponsavel={handleVincularResponsavel} onChatClick={dealData => {
+                              <DraggableDeal key={card.id} deal={deal} isDarkMode={isDarkMode} onClick={() => !isSelectionMode && openCardDetails(card)} onEditPendingTask={(activityId) => openCardDetails(card, { openActivityEditId: activityId })} columnColor={column.color} workspaceId={effectiveWorkspaceId} onOpenTransferModal={handleOpenTransferModal} onVincularResponsavel={handleVincularResponsavel} onChatClick={dealData => {
                             console.log('🎯 CRM: Abrindo chat para deal:', dealData);
                             console.log('🆔 CRM: Deal ID:', dealData.id);
                             console.log('🗣️ CRM: Deal conversation:', dealData.conversation);
@@ -2616,7 +2663,6 @@ const [selectedCardForProduct, setSelectedCardForProduct] = useState<{
                             });
                             setIsDeleteDealModalOpen(true);
                           }} />
-                            </div>
                           );
                         })}
                                 
@@ -2713,7 +2759,7 @@ const [selectedCardForProduct, setSelectedCardForProduct] = useState<{
                 product_value: productValue ?? null,
                 hasProduct: !!productId
               };
-              return <div className="w-[300px]">
+              return <div style={{ width: `${columnWidth ?? 240}px`, maxWidth: `${columnWidth ?? 240}px` }}>
                 <DraggableDeal deal={deal} isDarkMode={isDarkMode} onClick={() => {}} onEditPendingTask={(activityId) => openCardDetails(activeCard, { openActivityEditId: activityId })} columnColor={activeColumn?.color} workspaceId={effectiveWorkspaceId} onChatClick={dealData => {
                 console.log('🎯 CRM DragOverlay: Abrindo chat para deal:', dealData);
                 setSelectedChatCard(dealData);

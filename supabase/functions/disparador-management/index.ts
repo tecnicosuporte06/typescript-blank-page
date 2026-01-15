@@ -337,9 +337,19 @@ serve(async (req) => {
           if (msgErr) throw msgErr;
         }
 
+        // Buscar os dados dos contatos para obter o número de telefone
+        const { data: contactsData } = await supabase
+          .from("disparador_contacts_imported")
+          .select("id, phone")
+          .eq("workspace_id", payload.workspaceId)
+          .in("id", contactIds);
+
+        const contactsMap = new Map((contactsData || []).map((c: any) => [c.id, c.phone]));
+
         const linkRows = contactIds.map((cid) => ({
           campaign_id: campaignId,
           contact_id: cid,
+          contact_number: contactsMap.get(cid) || null,
           created_by: systemUserId,
         }));
 
@@ -434,7 +444,22 @@ serve(async (req) => {
 
         // contatos: recria vínculos
         await supabase.from("disparador_campaign_contacts").delete().eq("campaign_id", campaignId);
-        const linkRows = contactIds.map((cid) => ({ campaign_id: campaignId, contact_id: cid, created_by: systemUserId }));
+        
+        // Buscar os dados dos contatos para obter o número de telefone
+        const { data: contactsData } = await supabase
+          .from("disparador_contacts_imported")
+          .select("id, phone")
+          .eq("workspace_id", payload.workspaceId)
+          .in("id", contactIds);
+
+        const contactsMap = new Map((contactsData || []).map((c: any) => [c.id, c.phone]));
+
+        const linkRows = contactIds.map((cid) => ({
+          campaign_id: campaignId,
+          contact_id: cid,
+          contact_number: contactsMap.get(cid) || null,
+          created_by: systemUserId,
+        }));
         const { error: linkErr } = await supabase.from("disparador_campaign_contacts").insert(linkRows);
         if (linkErr) throw linkErr;
 

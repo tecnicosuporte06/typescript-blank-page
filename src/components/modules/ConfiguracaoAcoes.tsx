@@ -36,10 +36,11 @@ export const ConfiguracaoAcoes: React.FC<ConfiguracaoAcoesProps> = ({ hideTitle 
   const MIN_PAGE_SIZE = 10;
   const { selectedWorkspace } = useWorkspace();
   const { workspaceId: urlWorkspaceId } = useParams<{ workspaceId: string }>();
-  const { hasRole } = useAuth();
+  const { hasRole, userRole } = useAuth();
 
   // Priorizar workspaceId da URL, depois selectedWorkspace
   const isMaster = hasRole(['master']);
+  const canManage = userRole === 'master' || userRole === 'admin'; // Usuários "user" não podem gerenciar
   const effectiveWorkspaceId = (isMaster && urlWorkspaceId) ? urlWorkspaceId : (selectedWorkspace?.workspace_id || null);
 
   const {
@@ -154,18 +155,20 @@ export const ConfiguracaoAcoes: React.FC<ConfiguracaoAcoesProps> = ({ hideTitle 
             </div>
           </div>
 
-          {/* Actions Group */}
-          <div className="flex items-center gap-1">
-            <Button
-              size="sm"
-              variant="ghost"
-              className="h-8 px-2 hover:bg-gray-200 rounded-sm flex flex-col items-center justify-center gap-0.5 text-gray-700 dark:text-gray-200 dark:hover:bg-[#2a2a2a]"
-              onClick={() => setIsAddModalOpen(true)}
-            >
-              <Plus className="h-4 w-4" />
-              <span className="text-[9px]">Novo Motivo</span>
-            </Button>
-          </div>
+          {/* Actions Group - apenas para admin/master */}
+          {canManage && (
+            <div className="flex items-center gap-1">
+              <Button
+                size="sm"
+                variant="ghost"
+                className="h-8 px-2 hover:bg-gray-200 rounded-sm flex flex-col items-center justify-center gap-0.5 text-gray-700 dark:text-gray-200 dark:hover:bg-[#2a2a2a]"
+                onClick={() => setIsAddModalOpen(true)}
+              >
+                <Plus className="h-4 w-4" />
+                <span className="text-[9px]">Novo Motivo</span>
+              </Button>
+            </div>
+          )}
         </div>
       </div>
 
@@ -187,24 +190,26 @@ export const ConfiguracaoAcoes: React.FC<ConfiguracaoAcoesProps> = ({ hideTitle 
                     <div className="w-[1px] h-3 bg-gray-400 mx-1" />
                   </div>
                 </th>
-                <th className="border border-[#d4d4d4] px-2 py-1 text-center font-semibold text-gray-700 w-[80px] dark:border-gray-700 dark:text-gray-200">
-                  <div className="flex items-center justify-between">
-                    <span>Ações</span>
-                    <div className="w-[1px] h-3 bg-gray-400 mx-1" />
-                  </div>
-                </th>
+                {canManage && (
+                  <th className="border border-[#d4d4d4] px-2 py-1 text-center font-semibold text-gray-700 w-[80px] dark:border-gray-700 dark:text-gray-200">
+                    <div className="flex items-center justify-between">
+                      <span>Ações</span>
+                      <div className="w-[1px] h-3 bg-gray-400 mx-1" />
+                    </div>
+                  </th>
+                )}
               </tr>
             </thead>
             <tbody>
               {isLoading ? (
                 <tr>
-                  <td colSpan={3} className="border border-[#e0e0e0] text-center py-12 bg-gray-50 text-muted-foreground dark:border-gray-700 dark:bg-[#1a1a1a] dark:text-gray-400">
+                  <td colSpan={canManage ? 3 : 2} className="border border-[#e0e0e0] text-center py-12 bg-gray-50 text-muted-foreground dark:border-gray-700 dark:bg-[#1a1a1a] dark:text-gray-400">
                     Carregando motivos...
                   </td>
                 </tr>
               ) : filteredLossReasons.length === 0 ? (
                 <tr>
-                  <td colSpan={3} className="border border-[#e0e0e0] text-center py-12 bg-gray-50 text-muted-foreground dark:border-gray-700 dark:bg-[#1a1a1a] dark:text-gray-400">
+                  <td colSpan={canManage ? 3 : 2} className="border border-[#e0e0e0] text-center py-12 bg-gray-50 text-muted-foreground dark:border-gray-700 dark:bg-[#1a1a1a] dark:text-gray-400">
                     {searchTerm ? `Nenhum motivo encontrado para "${searchTerm}"` : 'Nenhuma motivo encontrada.'}
                   </td>
                 </tr>
@@ -213,7 +218,7 @@ export const ConfiguracaoAcoes: React.FC<ConfiguracaoAcoesProps> = ({ hideTitle 
                   .slice((page - 1) * pageSize, (page - 1) * pageSize + pageSize)
                   .map((reason) => (
                   <tr key={reason.id} className="hover:bg-blue-50 group h-[32px] dark:hover:bg-[#1f2937]">
-                    {editingId === reason.id ? (
+                    {editingId === reason.id && canManage ? (
                       <>
                         <td className="border border-[#e0e0e0] px-2 py-0 align-middle dark:border-gray-700">
                           <Input
@@ -262,37 +267,39 @@ export const ConfiguracaoAcoes: React.FC<ConfiguracaoAcoesProps> = ({ hideTitle 
                         </td>
                         <td className="border border-[#e0e0e0] px-2 py-0 align-middle dark:border-gray-700">
                           <Badge
-                            onClick={() => handleToggleStatus(reason.id, reason.is_active ?? true)}
-                            className={`rounded-none text-[10px] cursor-pointer transition-colors px-2 py-0.5 ${
+                            onClick={canManage ? () => handleToggleStatus(reason.id, reason.is_active ?? true) : undefined}
+                            className={`rounded-none text-[10px] transition-colors px-2 py-0.5 ${canManage ? 'cursor-pointer' : 'cursor-default'} ${
                               reason.is_active !== false
-                                ? 'bg-green-100 text-black border border-green-300 dark:bg-green-900/30 dark:text-white dark:border-green-500/40 hover:bg-green-200 dark:hover:bg-green-900/50'
-                                : 'bg-gray-100 text-gray-700 border border-gray-300 dark:bg-gray-800/30 dark:text-gray-400 dark:border-gray-600/40 hover:bg-gray-200 dark:hover:bg-gray-800/50'
+                                ? 'bg-green-100 text-black border border-green-300 dark:bg-green-900/30 dark:text-white dark:border-green-500/40' + (canManage ? ' hover:bg-green-200 dark:hover:bg-green-900/50' : '')
+                                : 'bg-gray-100 text-gray-700 border border-gray-300 dark:bg-gray-800/30 dark:text-gray-400 dark:border-gray-600/40' + (canManage ? ' hover:bg-gray-200 dark:hover:bg-gray-800/50' : '')
                             }`}
-                            title="Clique para alterar o status"
+                            title={canManage ? "Clique para alterar o status" : undefined}
                           >
                             {reason.is_active !== false ? 'Motivo ativo' : 'Motivo inativo'}
                           </Badge>
                         </td>
-                        <td className="border border-[#e0e0e0] px-1 py-0 text-center align-middle dark:border-gray-700">
-                          <div className="flex items-center justify-center gap-1 h-full">
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              onClick={() => handleStartEdit(reason.id, reason.name)}
-                              className="h-6 w-6 rounded-sm hover:bg-blue-100 text-gray-600 dark:text-gray-200 dark:hover:bg-[#243447]"
-                            >
-                              <Edit2 className="h-3.5 w-3.5" />
-                            </Button>
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              onClick={() => setDeleteReasonId(reason.id)}
-                              className="h-6 w-6 rounded-sm hover:bg-red-100 text-red-600 dark:hover:bg-[#2a1f1f]"
-                            >
-                              <Trash2 className="h-3.5 w-3.5" />
-                            </Button>
-                          </div>
-                        </td>
+                        {canManage && (
+                          <td className="border border-[#e0e0e0] px-1 py-0 text-center align-middle dark:border-gray-700">
+                            <div className="flex items-center justify-center gap-1 h-full">
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                onClick={() => handleStartEdit(reason.id, reason.name)}
+                                className="h-6 w-6 rounded-sm hover:bg-blue-100 text-gray-600 dark:text-gray-200 dark:hover:bg-[#243447]"
+                              >
+                                <Edit2 className="h-3.5 w-3.5" />
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                onClick={() => setDeleteReasonId(reason.id)}
+                                className="h-6 w-6 rounded-sm hover:bg-red-100 text-red-600 dark:hover:bg-[#2a1f1f]"
+                              >
+                                <Trash2 className="h-3.5 w-3.5" />
+                              </Button>
+                            </div>
+                          </td>
+                        )}
                       </>
                     )}
                   </tr>
@@ -395,7 +402,7 @@ export const ConfiguracaoAcoes: React.FC<ConfiguracaoAcoesProps> = ({ hideTitle 
       <AlertDialog open={!!deleteReasonId} onOpenChange={() => setDeleteReasonId(null)}>
         <AlertDialogContent className="rounded-none">
           <AlertDialogHeader>
-            <AlertDialogTitle className="text-lg dark:text-black">Confirmar exclusão</AlertDialogTitle>
+            <AlertDialogTitle className="text-lg dark:text-gray-100">Confirmar exclusão</AlertDialogTitle>
           </AlertDialogHeader>
           <div className="flex items-center justify-center py-6">
             <AlertDialogDescription className="text-xs text-muted-foreground dark:text-gray-200 text-center">

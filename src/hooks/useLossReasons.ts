@@ -83,7 +83,17 @@ export const useLossReasons = (workspaceId: string | null) => {
   };
 
   const createLossReason = async (name: string) => {
-    if (!workspaceId) return null;
+    if (!workspaceId) {
+      console.error('❌ createLossReason: workspaceId não definido');
+      toast({
+        title: 'Erro',
+        description: 'Workspace não identificado. Por favor, recarregue a página.',
+        variant: 'destructive',
+      });
+      return null;
+    }
+
+    console.log('🔵 createLossReason: Criando motivo de perda:', { name, workspaceId });
 
     try {
       const { data, error } = await supabase
@@ -96,8 +106,17 @@ export const useLossReasons = (workspaceId: string | null) => {
         .select()
         .single();
 
-      if (error) throw error;
+      if (error) {
+        console.error('❌ createLossReason: Erro do Supabase:', {
+          code: error.code,
+          message: error.message,
+          details: error.details,
+          hint: error.hint
+        });
+        throw error;
+      }
       
+      console.log('✅ createLossReason: Motivo criado com sucesso:', data);
       await fetchLossReasons();
       toast({
         title: 'Sucesso',
@@ -106,10 +125,24 @@ export const useLossReasons = (workspaceId: string | null) => {
       
       return data;
     } catch (error: any) {
-      console.error('Erro ao criar motivo de perda:', error);
+      console.error('❌ createLossReason: Exceção:', error);
+      
+      // Mensagem de erro mais detalhada
+      let errorMessage = 'Não foi possível criar o motivo de perda.';
+      
+      if (error?.code === '23505') {
+        errorMessage = 'Já existe um motivo de perda com este nome.';
+      } else if (error?.code === '42501' || error?.message?.includes('permission denied') || error?.message?.includes('policy')) {
+        errorMessage = 'Você não tem permissão para criar motivos de perda. Verifique suas permissões com o administrador.';
+      } else if (error?.code === '23503') {
+        errorMessage = 'Workspace inválido. Por favor, recarregue a página.';
+      } else if (error?.message) {
+        errorMessage = `Erro: ${error.message}`;
+      }
+      
       toast({
-        title: 'Erro',
-        description: 'Não foi possível criar o motivo de perda',
+        title: 'Erro ao criar motivo de perda',
+        description: errorMessage,
         variant: 'destructive',
       });
       return null;
