@@ -195,6 +195,7 @@ interface DraggableDealProps {
   onVincularResponsavel?: (cardId: string, conversationId?: string, currentResponsibleId?: string, contactId?: string) => void;
   onConfigureAgent?: (conversationId: string) => void;
   workspaceId?: string | null;
+  onProductValueLoaded?: (cardId: string, value: number) => void;
 }
 function DraggableDeal({
   deal,
@@ -213,7 +214,8 @@ function DraggableDeal({
   onOpenTransferModal,
   onVincularResponsavel,
   onConfigureAgent,
-  workspaceId
+  workspaceId,
+  onProductValueLoaded
 }: DraggableDealProps) {
   const {
     selectedWorkspace
@@ -225,87 +227,78 @@ function DraggableDeal({
   const [isTagPopoverOpen, setIsTagPopoverOpen] = React.useState(false);
   const [searchTerm, setSearchTerm] = React.useState("");
   const [productPrice, setProductPrice] = useState<number | null>(null);
+  const [productCount, setProductCount] = useState<number>(0);
+  const [fetchedProductName, setFetchedProductName] = useState<string | null>(null);
   
-  // Buscar preço do produto se houver produto vinculado mas valor zerado
+  // Buscar preço TOTAL dos produtos vinculados via Edge Function (bypass RLS)
   useEffect(() => {
-    const fetchProductPrice = async () => {
-      if (!resolvedWorkspaceId || !deal.id) return;
+    const fetchProductsTotal = async () => {
+      if (!deal.id) return;
       
-      console.log('🔍 [DraggableDeal] Buscando preço do produto:', {
+      console.log('🔍 [DraggableDeal] Buscando produtos via Edge Function:', {
         cardId: deal.id,
         productId: deal.product_id,
         productName: deal.product_name,
-        currentValue: deal.value,
-        workspaceId: resolvedWorkspaceId
+        currentValue: deal.value
       });
       
       try {
-        // Primeiro, tentar buscar através de pipeline_cards_products
-        const { data: cardProduct, error: cardProductError } = await supabase
-          .from('pipeline_cards_products')
-          .select(`
-            product_id,
-            total_value,
-            unit_value,
-            products!inner(id, value)
-          `)
-          .eq('pipeline_card_id', deal.id)
-          .eq('workspace_id', resolvedWorkspaceId)
-          .limit(1)
-          .maybeSingle();
-        
-        console.log('📦 [DraggableDeal] Resultado pipeline_cards_products:', {
-          cardProduct,
-          error: cardProductError
+        // Usar Edge Function para bypass de RLS
+        const { data, error } = await supabase.functions.invoke('get-card-products', {
+          body: { cardId: deal.id }
         });
         
-        if (!cardProductError && cardProduct) {
-          const price = cardProduct.total_value ?? cardProduct.unit_value ?? (cardProduct.products as any)?.value ?? null;
-          console.log('💰 [DraggableDeal] Preço encontrado via pipeline_cards_products:', price);
-          if (price) {
-            setProductPrice(price);
-            return;
-          }
+        console.log('📦 [DraggableDeal] Resposta da Edge Function:', data, 'Erro:', error);
+        
+        if (error) {
+          console.error('❌ [DraggableDeal] Erro na Edge Function:', error);
+          setProductPrice(null);
+          setProductCount(0);
+          setFetchedProductName(null);
+          return;
         }
         
-        // Se não encontrou via pipeline_cards_products, tentar diretamente pelo product_id do deal
-        if (deal.product_id) {
-          console.log('🔍 [DraggableDeal] Buscando produto diretamente:', deal.product_id);
-          const { data: product, error: productError } = await supabase
-            .from('products')
-            .select('value')
-            .eq('id', deal.product_id)
-            .eq('workspace_id', resolvedWorkspaceId)
-            .maybeSingle();
-          
-          console.log('📦 [DraggableDeal] Resultado products:', {
-            product,
-            error: productError
+        if (data?.success && data.count > 0) {
+          console.log('💰 [DraggableDeal] Produtos encontrados:', {
+            count: data.count,
+            totalValue: data.totalValue,
+            products: data.products
           });
           
-          if (!productError && product?.value) {
-            console.log('💰 [DraggableDeal] Preço encontrado via products:', product.value);
-            setProductPrice(product.value);
-            return;
+          const totalValue = data.totalValue ?? 0;
+          setProductCount(data.count);
+          setProductPrice(totalValue);
+          
+          // Reportar valor para o componente pai (para cálculo de totais)
+          onProductValueLoaded?.(deal.id, totalValue);
+          
+          // Nome do primeiro produto se houver apenas 1
+          if (data.count === 1 && data.products[0]?.name) {
+            setFetchedProductName(data.products[0].name);
+          } else if (data.count > 1) {
+            setFetchedProductName(null); // Vai mostrar "X produtos vinculados"
+          } else {
+            setFetchedProductName(null);
           }
+        } else {
+          console.log('⚠️ [DraggableDeal] Nenhum produto encontrado via Edge Function:', data);
+          setProductPrice(null);
+          setProductCount(0);
+          setFetchedProductName(null);
+          // Reportar valor 0 para o componente pai
+          onProductValueLoaded?.(deal.id, deal.value || 0);
         }
-        
-        // Se não encontrou nada, limpar o estado
-        console.log('⚠️ [DraggableDeal] Nenhum preço encontrado');
-        setProductPrice(null);
       } catch (error) {
-        console.error('❌ [DraggableDeal] Erro ao buscar preço do produto:', error);
+        console.error('❌ [DraggableDeal] Exception ao buscar produtos:', error);
         setProductPrice(null);
+        setProductCount(0);
+        setFetchedProductName(null);
       }
     };
     
-    // Só buscar se o valor estiver zerado e houver produto vinculado
-    if ((!deal.value || deal.value === 0) && (deal.product_id || deal.product_name)) {
-      fetchProductPrice();
-    } else {
-      setProductPrice(null);
-    }
-  }, [deal.id, deal.product_id, deal.product_name, deal.value, resolvedWorkspaceId]);
+    // Sempre buscar produtos vinculados para este card
+    fetchProductsTotal();
+  }, [deal.id, deal.product_id, deal.product_name, deal.value, onProductValueLoaded]);
   
   const {
     contactTags,
@@ -498,9 +491,9 @@ function DraggableDeal({
 
         {/* Footer com valor e ícones */}
         <div className={`flex flex-col items-start gap-1 pt-[1rem] border-t border-border/50 dark:border-gray-700/50`}>
-          {deal.product_name && (
-            <span className="text-[10px] text-gray-500 dark:text-gray-400 truncate w-full" title={deal.product_name}>
-              {deal.product_name}
+          {(deal.product_name || fetchedProductName || productCount > 0) && (
+            <span className="text-[10px] text-gray-500 dark:text-gray-400 truncate w-full" title={productCount > 1 ? `${productCount} produtos vinculados` : (fetchedProductName || deal.product_name || '')}>
+              {productCount > 1 ? `${productCount} produtos vinculados` : (fetchedProductName || deal.product_name)}
             </span>
           )}
           <span className="text-[11px] font-semibold text-black dark:text-white flex-shrink-0">
@@ -941,6 +934,8 @@ function CRMNegociosContent({
   const [activeId, setActiveId] = useState<string | null>(null);
   const [dragOverColumn, setDragOverColumn] = useState<string | null>(null);
   const [draggedColumn, setDraggedColumn] = useState<string | null>(null);
+  // Mapa de valores de produtos por cardId (para cálculo de totais)
+  const [cardProductValues, setCardProductValues] = useState<Record<string, number>>({});
   const [appliedFilters, setAppliedFilters] = useState<{
     tags: string[];
     queues: string[];
@@ -1242,8 +1237,23 @@ const [selectedCardForProduct, setSelectedCardForProduct] = useState<{
     return Number.isFinite(parsed) ? parsed : null;
   };
 
+  // Callback para quando o valor do produto é carregado no DraggableDeal
+  const handleProductValueLoaded = useCallback((cardId: string, value: number) => {
+    setCardProductValues(prev => {
+      if (prev[cardId] === value) return prev; // Evitar re-render desnecessário
+      return { ...prev, [cardId]: value };
+    });
+  }, []);
+
   // Função auxiliar para calcular o valor efetivo de um card (considerando produtos)
-  const getCardEffectiveValue = (card: any): number => {
+  const getCardEffectiveValue = useCallback((card: any): number => {
+    // Primeiro, verificar se temos o valor do produto carregado via Edge Function
+    const productValueFromMap = cardProductValues[card.id];
+    if (productValueFromMap !== undefined && productValueFromMap > 0) {
+      return productValueFromMap;
+    }
+
+    // Fallback para valores do card
     const cardValue = parseNumericValue(card.value);
     const productRelations = Array.isArray(card.products) ? card.products : [];
     const primaryProduct = productRelations.length > 0 ? productRelations[0] : null;
@@ -1257,7 +1267,7 @@ const [selectedCardForProduct, setSelectedCardForProduct] = useState<{
     );
 
     return cardValue ?? productValue ?? 0;
-  };
+  }, [cardProductValues]);
 
   // Função para filtrar cards por coluna
   const getFilteredCards = (columnId: string) => {
@@ -2363,6 +2373,7 @@ const [selectedCardForProduct, setSelectedCardForProduct] = useState<{
                                                 setSelectedCardForResponsavel({ cardId, conversationId, currentResponsibleId, contactId });
                                                 setIsVincularResponsavelModalOpen(true);
                                               }}
+                                              onProductValueLoaded={handleProductValueLoaded}
                                               onConfigureAgent={(conversationId) => {
                                                 setSelectedConversationForAgent(conversationId);
                                                 setAgentModalOpen(true);
@@ -2662,7 +2673,7 @@ const [selectedCardForProduct, setSelectedCardForProduct] = useState<{
                               name: card?.title || 'este negócio'
                             });
                             setIsDeleteDealModalOpen(true);
-                          }} />
+                          }} onProductValueLoaded={handleProductValueLoaded} />
                           );
                         })}
                                 

@@ -2871,21 +2871,31 @@ const normalizeFieldKey = (label: string) => {
 
   // Adicionar produto ou valor ao card
   const handleAddProductToCard = useCallback(async () => {
-    if (!cardId) return;
+    if (!cardId || !effectiveWorkspaceId) return;
     
     // Se tem produto selecionado, adicionar produto
     if (selectedProductId) {
       try {
         const selectedProduct = (availableProducts || []).find((p: any) => p.id === selectedProductId);
+        const productValue = selectedProduct?.value || 0;
+        
         const { error } = await supabase
           .from('pipeline_cards_products')
           .insert({
             pipeline_card_id: cardId,
             product_id: selectedProductId,
             product_name_snapshot: selectedProduct?.name || null,
+            workspace_id: effectiveWorkspaceId,
+            quantity: 1,
+            unit_value: productValue,
+            total_value: productValue,
+            is_recurring: false,
           });
 
-        if (error) throw error;
+        if (error) {
+          console.error('Erro ao inserir produto:', error);
+          throw error;
+        }
 
         toast({
           title: "Produto adicionado",
@@ -2898,6 +2908,8 @@ const normalizeFieldKey = (label: string) => {
           .select(`
             id,
             product_id,
+            total_value,
+            unit_value,
             product:products(id, name, value)
           `)
           .eq('pipeline_card_id', cardId);
@@ -2912,8 +2924,8 @@ const normalizeFieldKey = (label: string) => {
       } catch (error: any) {
         console.error('Erro ao adicionar produto:', error);
         toast({
-          title: "Erro",
-          description: error.message || "Não foi possível adicionar o produto.",
+          title: "Erro ao adicionar produto",
+          description: error.message || "Não foi possível adicionar o produto. Verifique suas permissões.",
           variant: "destructive",
         });
       }
@@ -2958,7 +2970,7 @@ const normalizeFieldKey = (label: string) => {
         });
       }
     }
-  }, [cardId, selectedProductId, manualValue, toast, availableProducts]);
+  }, [cardId, selectedProductId, manualValue, toast, availableProducts, effectiveWorkspaceId]);
 
   // Remover produto do card
   const handleRemoveProduct = useCallback(async (productRelationId: string) => {
@@ -3586,26 +3598,67 @@ const normalizeFieldKey = (label: string) => {
                   </>
                 )}
 
-                {/* Valor */}
-                <div className="flex items-center gap-2 text-sm">
-                  <DollarSign className="h-4 w-4 text-gray-400" />
-                  <div className="flex-1">
-                    {cardProducts.length > 0 && cardProducts[0]?.product?.name ? (
+                {/* Valor/Produtos */}
+                <div className="flex items-start gap-2 text-sm">
+                  <DollarSign className="h-4 w-4 text-gray-400 mt-0.5" />
+                  <div className="flex-1 space-y-2">
+                    {cardProducts.length > 0 ? (
                       <>
-                        <div className="font-medium text-gray-900 dark:text-gray-100">
-                          {cardProducts[0].product.name}
-                        </div>
-                        <div className="text-gray-500 dark:text-gray-400 text-xs">
-                          R$ {cardProducts[0].total_value 
-                            ? cardProducts[0].total_value.toFixed(2).replace('.', ',')
-                            : cardProducts[0].product.value 
-                            ? cardProducts[0].product.value.toFixed(2).replace('.', ',')
-                            : cardData.value?.toFixed(2).replace('.', ',') || '0,00'}
-                        </div>
+                        {/* Lista de todos os produtos vinculados */}
+                        {cardProducts.map((cp, index) => {
+                          const productValue = cp.total_value || cp.unit_value || cp.product?.value || 0;
+                          const productName = cp.product?.name || cp.product_name_snapshot || 'Produto sem nome';
+                          return (
+                            <div key={cp.id} className="flex items-center justify-between group">
+                              <div className="flex-1">
+                                <div className="font-medium text-gray-900 dark:text-gray-100">
+                                  {productName}
+                                </div>
+                                <div className="text-gray-500 dark:text-gray-400 text-xs">
+                                  R$ {productValue ? Number(productValue).toFixed(2).replace('.', ',') : '0,00'}
+                                </div>
+                              </div>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity"
+                                onClick={() => handleRemoveProduct(cp.id)}
+                                title="Remover produto"
+                              >
+                                <X className="h-3 w-3" />
+                              </Button>
+                            </div>
+                          );
+                        })}
+                        {/* Total se houver mais de 1 produto */}
+                        {cardProducts.length > 1 && (
+                          <div className="pt-2 border-t border-gray-200 dark:border-gray-700">
+                            <div className="flex items-center justify-between">
+                              <span className="text-xs font-medium text-gray-600 dark:text-gray-400">Total:</span>
+                              <span className="font-semibold text-gray-900 dark:text-gray-100">
+                                R$ {cardProducts.reduce((sum, cp) => {
+                                  const val = cp.total_value || cp.unit_value || cp.product?.value || 0;
+                                  return sum + Number(val);
+                                }, 0).toFixed(2).replace('.', ',')}
+                              </span>
+                            </div>
+                          </div>
+                        )}
                       </>
                     ) : cardData.value && cardData.value > 0 ? (
-                      <div className="font-medium">
-                        R$ {cardData.value.toFixed(2).replace('.', ',')}
+                      <div className="flex items-center justify-between group">
+                        <div className="font-medium">
+                          R$ {cardData.value.toFixed(2).replace('.', ',')}
+                        </div>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity"
+                          onClick={handleRemoveValue}
+                          title="Remover valor"
+                        >
+                          <X className="h-3 w-3" />
+                        </Button>
                       </div>
                     ) : (
                       <div className="text-gray-500 dark:text-gray-400">
@@ -3613,34 +3666,15 @@ const normalizeFieldKey = (label: string) => {
                       </div>
                     )}
                   </div>
-                  <div className="flex items-center gap-1">
-                    {(cardProducts.length > 0 || (cardData.value && cardData.value > 0)) && (
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-6 w-6"
-                        onClick={() => {
-                          if (cardProducts.length > 0) {
-                            handleRemoveProduct(cardProducts[0].id);
-                          } else {
-                            handleRemoveValue();
-                          }
-                        }}
-                        title="Remover produto/valor"
-                      >
-                        <X className="h-3 w-3" />
-                      </Button>
-                    )}
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="h-6 text-xs"
-                      onClick={() => setIsProductModalOpen(true)}
-                    >
-                      <Plus className="h-3 w-3 mr-1" />
-                      Produtos
-                    </Button>
-                  </div>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-6 text-xs shrink-0"
+                    onClick={() => setIsProductModalOpen(true)}
+                  >
+                    <Plus className="h-3 w-3 mr-1" />
+                    Produtos
+                  </Button>
                 </div>
 
                 {/* Empresa */}
