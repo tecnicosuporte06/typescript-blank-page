@@ -22,6 +22,8 @@ serve(async (req) => {
     const body = await req.json().catch(() => ({}));
 
     const workspaceId = body.workspaceId || workspaceIdHeader;
+    const userRole = String(body?.userRole || "").toLowerCase();
+    const isPrivileged = userRole === "master" || userRole === "admin";
     const includeRelations = body?.includeRelations !== false; // default true
     const from = body?.from ?? null;
     const to = body?.to ?? null;
@@ -41,19 +43,29 @@ serve(async (req) => {
     }
 
     // Membership check (read allowed for any member)
-    const { data: wm, error: wmError } = await supabase
-      .from("workspace_members")
-      .select("user_id, workspace_id")
-      .eq("workspace_id", workspaceId)
-      .eq("user_id", userId)
-      .maybeSingle();
+    // Admin/Master podem acessar qualquer workspace
+    if (!isPrivileged) {
+      console.log(`🔍 [report-indicator-cards-lite] Verificando membership: userId=${userId}, workspaceId=${workspaceId}`);
+      
+      const { data: wm, error: wmError } = await supabase
+        .from("workspace_members")
+        .select("user_id, workspace_id")
+        .eq("workspace_id", workspaceId)
+        .eq("user_id", userId)
+        .maybeSingle();
 
-    if (wmError) throw wmError;
-    if (!wm) {
-      return new Response(JSON.stringify({ error: "forbidden" }), {
-        status: 403,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+      console.log(`🔍 [report-indicator-cards-lite] Membership result:`, { wm, wmError });
+
+      if (wmError) throw wmError;
+      if (!wm) {
+        console.error(`❌ [report-indicator-cards-lite] Usuário ${userId} não é membro do workspace ${workspaceId}`);
+        return new Response(JSON.stringify({ error: "forbidden", details: `User ${userId} is not a member of workspace ${workspaceId}` }), {
+          status: 403,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+    } else {
+      console.log(`✅ [report-indicator-cards-lite] Acesso privilegiado para role=${userRole}`);
     }
 
     // Get pipeline ids for workspace (used to scope cards, even when cardIds is provided)

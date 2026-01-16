@@ -34,6 +34,8 @@ serve(async (req) => {
 
     const workspaceId = body.workspaceId || workspaceIdHeader;
     const userId = body.userId || headerUserId;
+    const userRole = String(body.userRole || "").toLowerCase();
+    const isPrivileged = userRole === "master" || userRole === "admin";
 
     if (!userId) {
       return new Response(JSON.stringify({ error: "missing x-system-user-id" }), {
@@ -49,19 +51,29 @@ serve(async (req) => {
     }
 
     // Membership check (read allowed for any member)
-    const { data: wm, error: wmError } = await supabase
-      .from("workspace_members")
-      .select("user_id, workspace_id")
-      .eq("workspace_id", workspaceId)
-      .eq("user_id", userId)
-      .maybeSingle();
+    // Admin/Master podem acessar qualquer workspace
+    if (!isPrivileged) {
+      console.log(`🔍 [report-base-data-lite] Verificando membership: userId=${userId}, workspaceId=${workspaceId}`);
+      
+      const { data: wm, error: wmError } = await supabase
+        .from("workspace_members")
+        .select("user_id, workspace_id")
+        .eq("workspace_id", workspaceId)
+        .eq("user_id", userId)
+        .maybeSingle();
 
-    if (wmError) throw wmError;
-    if (!wm) {
-      return new Response(JSON.stringify({ error: "forbidden" }), {
-        status: 403,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+      console.log(`🔍 [report-base-data-lite] Membership result:`, { wm, wmError });
+
+      if (wmError) throw wmError;
+      if (!wm) {
+        console.error(`❌ [report-base-data-lite] Usuário ${userId} não é membro do workspace ${workspaceId}`);
+        return new Response(JSON.stringify({ error: "forbidden", details: `User ${userId} is not a member of workspace ${workspaceId}` }), {
+          status: 403,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+    } else {
+      console.log(`✅ [report-base-data-lite] Acesso privilegiado para role=${userRole}`);
     }
 
     const from = body.from ?? null;

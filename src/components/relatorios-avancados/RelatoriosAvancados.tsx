@@ -180,7 +180,7 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
   const isDark =
     (typeof document !== 'undefined' && document.documentElement.classList.contains('dark')) ||
     (resolvedTheme ?? theme) === 'dark';
-  const { selectedWorkspace, workspaces: ctxWorkspaces } = useWorkspace();
+  const { selectedWorkspace, setSelectedWorkspace, workspaces: ctxWorkspaces } = useWorkspace();
   const { user, userRole } = useAuth();
   
   // Tentar usar o contexto de pipelines, mas não falhar se não estiver disponível (master-dashboard)
@@ -786,26 +786,42 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
       setTeamWorkRankingData([]);
       setTags([]);
 
-      if (!selectedWorkspaceId) {
+    const effectiveWorkspaceId =
+      selectedWorkspaceId ||
+      selectedWorkspace?.workspace_id ||
+      workspaces?.[0]?.workspace_id ||
+      ctxWorkspaces?.[0]?.workspace_id ||
+      '';
+
+    if (!effectiveWorkspaceId) {
+      console.log('⚠️ [Relatórios] Nenhum workspace selecionado, abortando fetch');
         setCards([]);
         setConversations([]);
         return;
       }
 
-          const headers = getHeaders(selectedWorkspaceId);
+    console.log('🚀 [Relatórios] Iniciando fetch para workspace:', effectiveWorkspaceId, {
+        from: from,
+        to: to,
+        userRole,
+        userId: user?.id
+      });
+
+    const headers = getHeaders(effectiveWorkspaceId);
+      console.log('📤 [Relatórios] Headers:', headers);
 
       // FASE 1 (rápida): cards core (sem tags/produtos) + conversations
       const [cardsRes, baseRes] = await Promise.all([
         supabase.functions.invoke("report-indicator-cards-lite", {
             method: "POST",
             headers,
-          body: { workspaceId: selectedWorkspaceId, from, to, includeRelations: false },
+          body: { workspaceId: effectiveWorkspaceId, from, to, includeRelations: false, userRole },
         }),
         supabase.functions.invoke("report-base-data-lite", {
           method: "POST",
           headers,
           body: {
-            workspaceId: selectedWorkspaceId,
+            workspaceId: effectiveWorkspaceId,
             from,
             to,
             userRole,
@@ -819,8 +835,26 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
 
       if (activeFetchIdRef.current !== fetchId) return;
 
-      if (cardsRes.error) throw cardsRes.error;
-      if (baseRes.error) throw baseRes.error;
+      // Debug logs para identificar problemas de dados
+      console.log('🔍 [Relatórios] Resposta cards:', { 
+        error: cardsRes.error, 
+        dataKeys: Object.keys(cardsRes.data || {}),
+        cardsCount: (cardsRes.data as any)?.cards?.length || 0 
+      });
+      console.log('🔍 [Relatórios] Resposta base:', { 
+        error: baseRes.error, 
+        dataKeys: Object.keys(baseRes.data || {}),
+        conversationsCount: (baseRes.data as any)?.conversations?.length || 0 
+      });
+
+      if (cardsRes.error) {
+        console.error('❌ [Relatórios] Erro ao buscar cards:', cardsRes.error);
+        throw cardsRes.error;
+      }
+      if (baseRes.error) {
+        console.error('❌ [Relatórios] Erro ao buscar base:', baseRes.error);
+        throw baseRes.error;
+      }
 
       const cardsLite = Array.isArray((cardsRes.data as any)?.cards) ? (cardsRes.data as any).cards : [];
       const conversationsData = Array.isArray((baseRes.data as any)?.conversations)
@@ -869,14 +903,14 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
               ? supabase.functions.invoke("report-indicator-cards-lite", {
                   method: "POST",
                   headers,
-                  body: { workspaceId: selectedWorkspaceId, from, to, includeRelations: true, cardIds },
+                  body: { workspaceId: effectiveWorkspaceId, from, to, includeRelations: true, cardIds, userRole },
                 })
               : Promise.resolve({ data: { cards: [] }, error: null } as any),
             supabase.functions.invoke("report-base-data-lite", {
               method: "POST",
               headers,
               body: {
-                workspaceId: selectedWorkspaceId,
+                workspaceId: effectiveWorkspaceId,
                 from,
                 to,
                 userRole,
@@ -887,7 +921,7 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
               },
             }),
             supabase.rpc("report_team_work_ranking", {
-              p_workspace_id: selectedWorkspaceId || null,
+              p_workspace_id: effectiveWorkspaceId || null,
               p_from: from,
               p_to: to,
               p_responsible_id: userRole === "user" ? user.id : null,
@@ -2498,7 +2532,16 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
               <div className="flex items-center gap-2">
                 <Select
                   value={selectedWorkspaceId || 'all'}
-                  onValueChange={(value) => setSelectedWorkspaceId(value === 'all' ? '' : value)}
+                  onValueChange={(value) => {
+                    const nextId = value === 'all' ? '' : value;
+                    setSelectedWorkspaceId(nextId);
+                    if (value === 'all') {
+                      setSelectedWorkspace(null);
+                      return;
+                    }
+                    const nextWorkspace = workspaces.find((w) => w.workspace_id === value) || null;
+                    setSelectedWorkspace(nextWorkspace);
+                  }}
                 >
                   <SelectTrigger className="w-[250px] h-8 text-xs rounded-none border-[#d4d4d4] dark:border-gray-700 !bg-white dark:!bg-[#2d2d2d] !text-gray-900 dark:!text-gray-200">
                     <SelectValue placeholder="Selecione a empresa" />

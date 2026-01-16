@@ -34,8 +34,10 @@ const mapProfileToRole = (profile: string): 'master' | 'admin' | 'user' => {
   const p = (profile || '').toLowerCase();
   switch (p) {
     case 'master':
+    case 'mentor_master':
       return 'master';
     case 'admin':
+    case 'gestor':
       return 'admin';
     default:
       return 'user';
