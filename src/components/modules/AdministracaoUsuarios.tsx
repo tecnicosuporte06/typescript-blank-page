@@ -1,11 +1,10 @@
 import { useState, useEffect, useImperativeHandle, forwardRef } from "react";
-import { Search, Edit, Pause, Trash2, Plus, Loader2, UserCircle, Settings } from "lucide-react";
+import { Search, Edit, Trash2, Plus, Loader2, UserCircle, Settings } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { AdicionarEditarUsuarioModal } from "@/components/modals/AdicionarEditarUsuarioModal";
-import { PausarUsuarioModal } from "@/components/modals/PausarUsuarioModal";
 import { DeletarUsuarioModal } from "@/components/modals/DeletarUsuarioModal";
 import { AdministracaoCargos } from "./AdministracaoCargos";
 import { useSystemUsers, type SystemUser } from "@/hooks/useSystemUsers";
@@ -24,7 +23,6 @@ export const AdministracaoUsuarios = forwardRef<AdministracaoUsuariosRef>((props
   const [searchTerm, setSearchTerm] = useState("");
   const [isAddEditModalOpen, setIsAddEditModalOpen] = useState(false);
   const [editingUser, setEditingUser] = useState<SystemUser | null>(null);
-  const [isPauseModalOpen, setIsPauseModalOpen] = useState(false);
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
   const [selectedUser, setSelectedUser] = useState<SystemUser | undefined>(undefined);
   const [showCargos, setShowCargos] = useState(false);
@@ -46,22 +44,6 @@ export const AdministracaoUsuarios = forwardRef<AdministracaoUsuariosRef>((props
       setEditingUser(user);
       setIsAddEditModalOpen(true);
     }
-  };
-  const handlePauseUser = (userId: string) => {
-    const user = users.find(u => u.id === userId);
-    if (user) {
-      setSelectedUser(user);
-      setIsPauseModalOpen(true);
-    }
-  };
-  const handleConfirmPause = (pauseOptions: {
-    pauseConversations: boolean;
-    pauseCalls: boolean;
-  }) => {
-    console.log("Pausar usuário com opções:", pauseOptions, selectedUser?.id);
-    // TODO: Implementar lógica de pausa
-    setIsPauseModalOpen(false);
-    setSelectedUser(undefined);
   };
   const handleDeleteUser = (userId: string) => {
     const user = users.find(u => u.id === userId);
@@ -221,15 +203,6 @@ export const AdministracaoUsuarios = forwardRef<AdministracaoUsuariosRef>((props
                   <Button
                     variant="ghost"
                     size="sm"
-                    onClick={() => handlePauseUser(user.id)}
-                    className="h-6 px-2 text-[10px] hover:bg-gray-200"
-                    title="Pausar"
-                  >
-                    <Pause className="h-3 w-3" />
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="sm"
                     onClick={() => handleDeleteUser(user.id)}
                     className="h-6 px-2 text-[10px] hover:bg-gray-200 hover:text-red-600"
                     title="Excluir"
@@ -251,11 +224,6 @@ export const AdministracaoUsuarios = forwardRef<AdministracaoUsuariosRef>((props
         onSuccess={handleModalSuccess}
       />
 
-      {/* Modal de pausar usuário */}
-      <PausarUsuarioModal isOpen={isPauseModalOpen} onClose={() => {
-      setIsPauseModalOpen(false);
-      setSelectedUser(undefined);
-    }} onPauseUser={handleConfirmPause} userName={selectedUser?.name || ""} />
 
       {/* Modal de deletar usuário */}
       <DeletarUsuarioModal isOpen={isDeleteModalOpen} onClose={() => {

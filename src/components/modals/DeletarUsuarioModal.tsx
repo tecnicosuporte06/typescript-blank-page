@@ -35,12 +35,14 @@ export function DeletarUsuarioModal({
         "max-w-md",
         isDarkMode 
           ? "bg-gray-800 border-gray-600 text-white" 
-          : "bg-white border-gray-200 text-gray-900"
+          : "bg-white border-gray-200 text-gray-900",
+        "dark:bg-[#111111] dark:border-gray-700 dark:text-gray-100"
       )}>
         <DialogHeader>
           <DialogTitle className={cn(
             "text-lg font-semibold flex items-center gap-2",
-            isDarkMode ? "text-white" : "text-gray-900"
+            isDarkMode ? "text-white" : "text-gray-900",
+            "dark:text-gray-100"
           )}>
             <AlertTriangle className="w-5 h-5 text-red-500" />
             Excluir {userName}?
@@ -50,7 +52,8 @@ export function DeletarUsuarioModal({
         <div className="py-4">
           <p className={cn(
             "text-sm",
-            isDarkMode ? "text-gray-300" : "text-gray-600"
+            isDarkMode ? "text-gray-300" : "text-gray-600",
+            "dark:text-gray-300"
           )}>
             <strong>Atenção!</strong> Todos os dados do usuário serão perdidos. Os atendimentos abertos deste usuário serão movidos para a fila.
           </p>
@@ -64,7 +67,8 @@ export function DeletarUsuarioModal({
             className={cn(
               isDarkMode 
                 ? "border-gray-600 text-gray-300 hover:bg-gray-700" 
-                : "border-gray-300 text-gray-700 hover:bg-gray-100"
+                : "border-gray-300 text-gray-700 hover:bg-gray-100",
+              "dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-700"
             )}
           >
             Cancelar

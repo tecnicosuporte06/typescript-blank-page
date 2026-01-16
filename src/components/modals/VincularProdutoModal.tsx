@@ -38,6 +38,7 @@ export function VincularProdutoModal({
   const [products, setProducts] = useState<Product[]>([]);
   const [selectedOption, setSelectedOption] = useState<string>("manual");
   const [manualValue, setManualValue] = useState<string>("");
+  const [quantity, setQuantity] = useState<number>(1);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -46,6 +47,7 @@ export function VincularProdutoModal({
     setSelectedOption(initialOption);
     setManualValue(initialOption === "manual" ? currentValue.toString() : "");
     setIsRemoving(false);
+    setQuantity(1);
 
     if (selectedWorkspace) {
       loadProducts();
@@ -123,14 +125,17 @@ export function VincularProdutoModal({
       } else if (selectedProduct) {
         await supabase.from("pipeline_cards_products").delete().eq("pipeline_card_id", cardId);
 
+        const qty = quantity || 1;
+        const totalValue = selectedProduct.value * qty;
+
         const { error: insertError } = await supabase.from("pipeline_cards_products").insert({
           pipeline_card_id: cardId,
           product_id: selectedProduct.id,
           product_name_snapshot: selectedProduct.name,
           workspace_id: selectedWorkspace.workspace_id,
-          quantity: 1,
+          quantity: qty,
           unit_value: selectedProduct.value,
-          total_value: selectedProduct.value,
+          total_value: totalValue,
           is_recurring: false,
         });
 
@@ -138,14 +143,14 @@ export function VincularProdutoModal({
 
         const { error: updateError } = await supabase
           .from("pipeline_cards")
-          .update({ value: selectedProduct.value })
+          .update({ value: totalValue })
           .eq("id", cardId);
 
         if (updateError) throw updateError;
 
         toast({
           title: "Produto vinculado",
-          description: "Produto vinculado ao negócio com sucesso.",
+          description: `${qty}x ${selectedProduct.name} vinculado ao negócio.`,
         });
       }
 
@@ -233,6 +238,25 @@ export function VincularProdutoModal({
                 ))}
             </RadioGroup>
           </div>
+
+          {!isManualMode && selectedProduct && (
+            <div className="space-y-2">
+              <Label htmlFor="quantity">Quantidade</Label>
+              <Input
+                id="quantity"
+                type="number"
+                min="1"
+                value={quantity}
+                onChange={(e) => setQuantity(Math.max(1, parseInt(e.target.value) || 1))}
+                className="dark:bg-[#2d2d2d] dark:border-gray-600 dark:text-white"
+              />
+              {quantity > 1 && (
+                <p className="text-xs text-muted-foreground">
+                  Total: {formatCurrency(selectedProduct.value * quantity)} ({quantity}x {formatCurrency(selectedProduct.value)})
+                </p>
+              )}
+            </div>
+          )}
 
           <div className="space-y-2">
             <Label htmlFor="manualValue">Preço manual</Label>

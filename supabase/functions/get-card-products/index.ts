@@ -76,10 +76,12 @@ serve(async (req) => {
     let totalValue = 0;
     const products = (cardProducts || []).map((cp: any) => {
       const directProduct = productsMap[cp.product_id];
+      const quantity = cp.quantity || 1;
       
       console.log(`[get-card-products] Processando produto:`, {
         id: cp.id,
         product_id: cp.product_id,
+        quantity: quantity,
         total_value: cp.total_value,
         unit_value: cp.unit_value,
         product_value: cp.product?.value,
@@ -89,20 +91,33 @@ serve(async (req) => {
         product_name_snapshot: cp.product_name_snapshot
       });
       
-      // Prioridade: total_value > unit_value > product.value > directProduct.value
-      // Usar || em vez de ?? para tratar 0 como falsy
-      const value = cp.total_value || cp.unit_value || cp.product?.value || directProduct?.value || 0;
+      // Calcular valor: prioridade total_value, senão unit_value * quantity, senão product.value * quantity
+      let value = 0;
+      if (cp.total_value && cp.total_value > 0) {
+        // Se tem total_value salvo, usar diretamente
+        value = Number(cp.total_value);
+      } else if (cp.unit_value && cp.unit_value > 0) {
+        // Se tem unit_value, multiplicar pela quantidade
+        value = Number(cp.unit_value) * quantity;
+      } else if (cp.product?.value && cp.product.value > 0) {
+        // Se tem valor do produto via join, multiplicar pela quantidade
+        value = Number(cp.product.value) * quantity;
+      } else if (directProduct?.value && directProduct.value > 0) {
+        // Se tem valor do produto via lookup direto, multiplicar pela quantidade
+        value = Number(directProduct.value) * quantity;
+      }
+      
       const name = cp.product?.name || directProduct?.name || cp.product_name_snapshot || null;
       
-      console.log(`[get-card-products] Valor calculado para produto ${cp.product_id}: ${value}, Nome: ${name}`);
+      console.log(`[get-card-products] Valor calculado para produto ${cp.product_id}: ${value} (qty: ${quantity}), Nome: ${name}`);
       
-      totalValue += Number(value) || 0;
+      totalValue += value;
       return {
         id: cp.id,
         product_id: cp.product_id,
         name: name,
-        value: Number(value) || 0,
-        quantity: cp.quantity || 1
+        value: value,
+        quantity: quantity
       };
     });
 

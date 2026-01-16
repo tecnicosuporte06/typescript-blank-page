@@ -95,6 +95,7 @@ const [isProductModalOpen, setIsProductModalOpen] = useState(false);
 const [availableProducts, setAvailableProducts] = useState<any[]>([]);
 const [selectedProductId, setSelectedProductId] = useState<string>("");
 const [manualValue, setManualValue] = useState<string>("");
+const [productQuantity, setProductQuantity] = useState<number>(1);
   const [isEditingContactName, setIsEditingContactName] = useState(false);
   const [tempContactName, setTempContactName] = useState("");
   const [isUploadingFile, setIsUploadingFile] = useState(false);
@@ -2878,6 +2879,8 @@ const normalizeFieldKey = (label: string) => {
       try {
         const selectedProduct = (availableProducts || []).find((p: any) => p.id === selectedProductId);
         const productValue = selectedProduct?.value || 0;
+        const qty = productQuantity || 1;
+        const totalValue = productValue * qty;
         
         const { error } = await supabase
           .from('pipeline_cards_products')
@@ -2886,9 +2889,9 @@ const normalizeFieldKey = (label: string) => {
             product_id: selectedProductId,
             product_name_snapshot: selectedProduct?.name || null,
             workspace_id: effectiveWorkspaceId,
-            quantity: 1,
+            quantity: qty,
             unit_value: productValue,
-            total_value: productValue,
+            total_value: totalValue,
             is_recurring: false,
           });
 
@@ -2899,7 +2902,7 @@ const normalizeFieldKey = (label: string) => {
 
         toast({
           title: "Produto adicionado",
-          description: "O produto foi vinculado ao negócio.",
+          description: `${qty}x ${selectedProduct?.name || 'Produto'} vinculado ao negócio.`,
         });
 
         // Recarregar produtos do card
@@ -2910,6 +2913,7 @@ const normalizeFieldKey = (label: string) => {
             product_id,
             total_value,
             unit_value,
+            quantity,
             product:products(id, name, value)
           `)
           .eq('pipeline_card_id', cardId);
@@ -2921,6 +2925,7 @@ const normalizeFieldKey = (label: string) => {
         setIsProductModalOpen(false);
         setSelectedProductId("");
         setManualValue("");
+        setProductQuantity(1);
       } catch (error: any) {
         console.error('Erro ao adicionar produto:', error);
         toast({
@@ -2970,7 +2975,7 @@ const normalizeFieldKey = (label: string) => {
         });
       }
     }
-  }, [cardId, selectedProductId, manualValue, toast, availableProducts, effectiveWorkspaceId]);
+  }, [cardId, selectedProductId, manualValue, toast, availableProducts, effectiveWorkspaceId, productQuantity]);
 
   // Remover produto do card
   const handleRemoveProduct = useCallback(async (productRelationId: string) => {
@@ -2989,6 +2994,9 @@ const normalizeFieldKey = (label: string) => {
         .select(`
           id,
           product_id,
+          total_value,
+          unit_value,
+          quantity,
           product:products(id, name, value)
         `)
         .eq('pipeline_card_id', cardId);
@@ -3608,11 +3616,12 @@ const normalizeFieldKey = (label: string) => {
                         {cardProducts.map((cp, index) => {
                           const productValue = cp.total_value || cp.unit_value || cp.product?.value || 0;
                           const productName = cp.product?.name || cp.product_name_snapshot || 'Produto sem nome';
+                          const quantity = cp.quantity || 1;
                           return (
                             <div key={cp.id} className="flex items-center justify-between group">
                               <div className="flex-1">
                                 <div className="font-medium text-gray-900 dark:text-gray-100">
-                                  {productName}
+                                  {productName} {quantity > 1 && <span className="text-gray-500 dark:text-gray-400 font-normal">({quantity}x)</span>}
                                 </div>
                                 <div className="text-gray-500 dark:text-gray-400 text-xs">
                                   R$ {productValue ? Number(productValue).toFixed(2).replace('.', ',') : '0,00'}
@@ -6198,6 +6207,7 @@ const normalizeFieldKey = (label: string) => {
         if (!open) {
           setSelectedProductId("");
           setManualValue("");
+          setProductQuantity(1);
         }
       }}>
         <DialogContent className="max-w-md">
@@ -6212,25 +6222,46 @@ const normalizeFieldKey = (label: string) => {
                 // Preencher o preço automaticamente ao selecionar um produto
                 const product = availableProducts.find(p => p.id === v);
                 if (product && product.value) {
-                  setManualValue(product.value.toFixed(2).replace('.', ','));
+                  const qty = productQuantity || 1;
+                  setManualValue((product.value * qty).toFixed(2).replace('.', ','));
                 } else {
                   setManualValue("");
                 }
               }}>
                 <SelectTrigger>
-                  <SelectValue placeholder="Selecione um produto (opcional)" />
+                  <SelectValue placeholder="Selecione um produto" />
                 </SelectTrigger>
                 <SelectContent>
                   {availableProducts.map((p) => (
                     <SelectItem key={p.id} value={p.id}>
-                      {p.name}
+                      {p.name} - {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(p.value || 0)}
                     </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
             </div>
             <div className="space-y-2">
-              <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Preço</label>
+              <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Quantidade</label>
+              <Input
+                type="number"
+                min="1"
+                value={productQuantity}
+                onChange={(e) => {
+                  const qty = Math.max(1, parseInt(e.target.value) || 1);
+                  setProductQuantity(qty);
+                  // Recalcular o preço total se tiver produto selecionado
+                  if (selectedProductId) {
+                    const product = availableProducts.find(p => p.id === selectedProductId);
+                    if (product && product.value) {
+                      setManualValue((product.value * qty).toFixed(2).replace('.', ','));
+                    }
+                  }
+                }}
+                className="dark:bg-[#1a1a1a] dark:border-gray-700 dark:text-gray-100"
+              />
+            </div>
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Preço Total</label>
               <Input
                 type="text"
                 placeholder="R$ 0,00"
@@ -6238,7 +6269,7 @@ const normalizeFieldKey = (label: string) => {
                 onChange={(e) => {
                   const value = e.target.value.replace(/[^\d,]/g, '').replace(',', '.');
                   setManualValue(value);
-                  setSelectedProductId(""); // Limpar produto quando digita valor
+                  setSelectedProductId(""); // Limpar produto quando digita valor manual
                 }}
                 onBlur={(e) => {
                   const value = e.target.value.replace(',', '.');
@@ -6246,7 +6277,13 @@ const normalizeFieldKey = (label: string) => {
                     setManualValue(parseFloat(value).toFixed(2).replace('.', ','));
                   }
                 }}
+                className="dark:bg-[#1a1a1a] dark:border-gray-700 dark:text-gray-100"
               />
+              {selectedProductId && productQuantity > 1 && (
+                <p className="text-xs text-muted-foreground">
+                  {productQuantity}x unidades
+                </p>
+              )}
             </div>
           </div>
           <DialogFooter className="mt-0 mx-0 mb-0 border-t border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-[#1a1a1a] px-6 py-4">

@@ -3151,55 +3151,79 @@ export function WhatsAppChat({
                   </button>
                 </PopoverTrigger>
                 <PopoverContent
-                  className="w-64 p-2 rounded-none border-[#d4d4d4] bg-white dark:bg-[#1b1b1b] dark:border-gray-700"
+                  className="w-64 p-0 rounded-none border-[#d4d4d4] bg-white dark:bg-[#1b1b1b] dark:border-gray-700"
                   align="start"
                   side="top"
                   sideOffset={8}
                   onOpenAutoFocus={(e) => e.preventDefault()}
                 >
-                  <Command>
-                    <CommandInput
-                      placeholder="Buscar DDI (ex: 55, 1, 351)"
-                      value={countryCodeSearch}
-                      onValueChange={setCountryCodeSearch}
-                    />
-                    <CommandList className="max-h-56 overflow-y-auto">
-                      <CommandEmpty>Nenhum DDI encontrado</CommandEmpty>
-                      <CommandGroup heading="Sugestões">
-                        {["55", "1", "351", "44", "33", "49", "34", "39", "81", "82", "86", "54", "52", "57", "56"].map((code) => (
-                          <CommandItem
-                            key={code}
-                            value={code}
-                            onSelect={() => {
-                              setQuickCountryCode(code);
+                  <div className="flex flex-col">
+                    {/* Campo para digitar manualmente */}
+                    <div className="p-2 border-b border-gray-200 dark:border-gray-700">
+                      <input
+                        type="text"
+                        placeholder="Escolha abaixo ou digite aqui"
+                        value={countryCodeSearch}
+                        onChange={(e) => setCountryCodeSearch(e.target.value.replace(/\D/g, ''))}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter' && countryCodeSearch) {
+                            setQuickCountryCode(countryCodeSearch);
+                            setCountryCodeSearch("");
+                            setIsCountryCodeOpen(false);
+                          }
+                        }}
+                        className="w-full px-2 py-1.5 text-sm border border-gray-200 rounded dark:bg-[#2d2d2d] dark:border-gray-600 dark:text-gray-100 outline-none focus:border-primary"
+                        maxLength={4}
+                      />
+                      {countryCodeSearch && (
+                        <p className="text-xs text-gray-500 mt-1 dark:text-gray-400">
+                          Pressione Enter para usar +{countryCodeSearch}
+                        </p>
+                      )}
+                    </div>
+                    
+                    {/* Lista de sugestões - só mostra se não estiver digitando */}
+                    {!countryCodeSearch && (
+                      <div className="max-h-48 overflow-y-auto">
+                        <p className="px-2 py-1.5 text-xs font-medium text-gray-500 dark:text-gray-400">Sugestões</p>
+                        {[
+                          { code: "55", country: "Brasil" },
+                          { code: "1", country: "EUA/Canadá" },
+                          { code: "351", country: "Portugal" },
+                          { code: "44", country: "Reino Unido" },
+                          { code: "33", country: "França" },
+                          { code: "49", country: "Alemanha" },
+                          { code: "34", country: "Espanha" },
+                          { code: "39", country: "Itália" },
+                          { code: "81", country: "Japão" },
+                          { code: "82", country: "Coreia do Sul" },
+                          { code: "86", country: "China" },
+                          { code: "54", country: "Argentina" },
+                          { code: "52", country: "México" },
+                          { code: "57", country: "Colômbia" },
+                          { code: "56", country: "Chile" },
+                          { code: "591", country: "Bolívia" },
+                          { code: "595", country: "Paraguai" },
+                          { code: "598", country: "Uruguai" },
+                          { code: "51", country: "Peru" },
+                          { code: "593", country: "Equador" },
+                        ].map((item) => (
+                          <button
+                            key={item.code}
+                            type="button"
+                            onClick={() => {
+                              setQuickCountryCode(item.code);
                               setCountryCodeSearch("");
                               setIsCountryCodeOpen(false);
                             }}
+                            className="w-full px-2 py-1.5 text-sm text-left hover:bg-accent dark:hover:bg-gray-700 dark:text-gray-200"
                           >
-                            +{code}
-                          </CommandItem>
+                            +{item.code} ({item.country})
+                          </button>
                         ))}
-                      </CommandGroup>
-                      <CommandGroup heading="Usar digitado">
-                        {(() => {
-                          const digits = (countryCodeSearch || "").replace(/\D/g, "");
-                          if (!digits) return null;
-                          return (
-                            <CommandItem
-                              value={digits}
-                              onSelect={() => {
-                                setQuickCountryCode(digits);
-                                setCountryCodeSearch("");
-                                setIsCountryCodeOpen(false);
-                              }}
-                            >
-                              +{digits}
-                            </CommandItem>
-                          );
-                        })()}
-                      </CommandGroup>
-                    </CommandList>
-                  </Command>
+                      </div>
+                    )}
+                  </div>
                 </PopoverContent>
               </Popover>
               

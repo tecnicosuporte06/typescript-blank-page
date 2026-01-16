@@ -24,6 +24,7 @@ import {
   Upload,
   Filter,
   FileSpreadsheet,
+  ChevronDown,
 } from "lucide-react";
 import { ContactTags } from "@/components/chat/ContactTags";
 import { useContactTags } from "@/hooks/useContactTags";
@@ -94,6 +95,8 @@ export function CRMContatos() {
   const [isBulkDeleteOpen, setIsBulkDeleteOpen] = useState(false);
   const [isCreateMode, setIsCreateMode] = useState(false);
   const [selectedDDI, setSelectedDDI] = useState("55");
+  const [isDDIPopoverOpen, setIsDDIPopoverOpen] = useState(false);
+  const [ddiSearch, setDdiSearch] = useState("");
   const [showDebugModal, setShowDebugModal] = useState(false);
   const [debugContact, setDebugContact] = useState<Contact | null>(null);
   const [isTagModalOpen, setIsTagModalOpen] = useState(false);
@@ -2325,7 +2328,7 @@ export function CRMContatos() {
       >
         <DialogContent className="max-w-md bg-white text-gray-900 dark:bg-[#0b0b0b] dark:text-gray-100 dark:border-gray-700">
           <DialogHeader className="px-4 py-2 bg-primary text-primary-foreground border-b border-[#d4d4d4] rounded-t-none dark:border-gray-700">
-            <DialogTitle className="text-primary-foreground">{isCreateMode ? "Adicionar contato" : "Editar contato"}</DialogTitle>
+            <DialogTitle className="text-primary-foreground dark:text-gray-100">{isCreateMode ? "Adicionar contato" : "Editar contato"}</DialogTitle>
           </DialogHeader>
 
           <div className="space-y-4">
@@ -2353,43 +2356,87 @@ export function CRMContatos() {
             <div>
               <Label className="text-gray-700 dark:text-gray-200">Telefone</Label>
               <div className="flex gap-2">
-                <Select 
-                  value={selectedDDI} 
-                  onValueChange={setSelectedDDI}
-                  disabled={!isCreateMode}
-                >
-                  <SelectTrigger className={`w-24 dark:bg-[#1a1a1a] dark:border-gray-700 dark:text-gray-300 ${!isCreateMode ? "bg-muted cursor-not-allowed" : ""}`}>
-                    <SelectValue placeholder="+55" />
-                  </SelectTrigger>
-                  <SelectContent className="max-h-48 dark:bg-[#1a1a1a] dark:border-gray-700">
-                    {[
-                      { code: "55", country: "Brasil" },
-                      { code: "1", country: "EUA/Canadá" },
-                      { code: "351", country: "Portugal" },
-                      { code: "44", country: "Reino Unido" },
-                      { code: "33", country: "França" },
-                      { code: "49", country: "Alemanha" },
-                      { code: "34", country: "Espanha" },
-                      { code: "39", country: "Itália" },
-                      { code: "81", country: "Japão" },
-                      { code: "82", country: "Coreia do Sul" },
-                      { code: "86", country: "China" },
-                      { code: "54", country: "Argentina" },
-                      { code: "52", country: "México" },
-                      { code: "57", country: "Colômbia" },
-                      { code: "56", country: "Chile" },
-                      { code: "591", country: "Bolívia" },
-                      { code: "595", country: "Paraguai" },
-                      { code: "598", country: "Uruguai" },
-                      { code: "51", country: "Peru" },
-                      { code: "593", country: "Equador" },
-                    ].map((item) => (
-                      <SelectItem key={item.code} value={item.code} className="dark:text-gray-200 dark:focus:bg-gray-700">
-                        +{item.code} ({item.country})
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <Popover open={isDDIPopoverOpen} onOpenChange={setIsDDIPopoverOpen}>
+                  <PopoverTrigger asChild>
+                    <button
+                      type="button"
+                      disabled={!isCreateMode}
+                      className={`flex h-10 w-24 items-center justify-between rounded-md border border-input bg-background px-3 py-2 text-sm dark:bg-[#1a1a1a] dark:border-gray-700 dark:text-gray-300 ${!isCreateMode ? "bg-muted cursor-not-allowed opacity-50" : "hover:bg-accent"}`}
+                    >
+                      <span>+{selectedDDI}</span>
+                      <ChevronDown className="h-4 w-4 opacity-50" />
+                    </button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-64 p-0 dark:bg-[#1a1a1a] dark:border-gray-700" align="start">
+                    <div className="flex flex-col">
+                      {/* Campo para digitar manualmente */}
+                      <div className="p-2 border-b border-gray-200 dark:border-gray-700">
+                        <input
+                          type="text"
+                          placeholder="Escolha abaixo ou digite aqui"
+                          value={ddiSearch}
+                          onChange={(e) => setDdiSearch(e.target.value.replace(/\D/g, ''))}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter' && ddiSearch) {
+                              setSelectedDDI(ddiSearch);
+                              setDdiSearch("");
+                              setIsDDIPopoverOpen(false);
+                            }
+                          }}
+                          className="w-full px-2 py-1.5 text-sm border border-gray-200 rounded dark:bg-[#2d2d2d] dark:border-gray-600 dark:text-gray-100 outline-none focus:border-primary"
+                          maxLength={4}
+                        />
+                        {ddiSearch && (
+                          <p className="text-xs text-gray-500 mt-1 dark:text-gray-400">
+                            Pressione Enter para usar +{ddiSearch}
+                          </p>
+                        )}
+                      </div>
+                      
+                      {/* Lista de sugestões - só mostra se não estiver digitando */}
+                      {!ddiSearch && (
+                        <div className="max-h-48 overflow-y-auto">
+                          <p className="px-2 py-1.5 text-xs font-medium text-gray-500 dark:text-gray-400">Sugestões</p>
+                          {[
+                            { code: "55", country: "Brasil" },
+                            { code: "1", country: "EUA/Canadá" },
+                            { code: "351", country: "Portugal" },
+                            { code: "44", country: "Reino Unido" },
+                            { code: "33", country: "França" },
+                            { code: "49", country: "Alemanha" },
+                            { code: "34", country: "Espanha" },
+                            { code: "39", country: "Itália" },
+                            { code: "81", country: "Japão" },
+                            { code: "82", country: "Coreia do Sul" },
+                            { code: "86", country: "China" },
+                            { code: "54", country: "Argentina" },
+                            { code: "52", country: "México" },
+                            { code: "57", country: "Colômbia" },
+                            { code: "56", country: "Chile" },
+                            { code: "591", country: "Bolívia" },
+                            { code: "595", country: "Paraguai" },
+                            { code: "598", country: "Uruguai" },
+                            { code: "51", country: "Peru" },
+                            { code: "593", country: "Equador" },
+                          ].map((item) => (
+                            <button
+                              key={item.code}
+                              type="button"
+                              onClick={() => {
+                                setSelectedDDI(item.code);
+                                setDdiSearch("");
+                                setIsDDIPopoverOpen(false);
+                              }}
+                              className="w-full px-2 py-1.5 text-sm text-left hover:bg-accent dark:hover:bg-gray-700 dark:text-gray-200"
+                            >
+                              +{item.code} ({item.country})
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  </PopoverContent>
+                </Popover>
                 <Input
                   value={editingContact?.phone || ""}
                   onChange={

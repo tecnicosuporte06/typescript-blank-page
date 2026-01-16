@@ -143,7 +143,7 @@ export function CreateWorkspaceModal({ open, onOpenChange, workspace }: CreateWo
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-[425px] bg-white text-gray-900 dark:bg-[#0b0b0b] dark:text-gray-100 dark:border-gray-700">
         <DialogHeader className="px-4 py-2 bg-primary text-primary-foreground border-b border-[#d4d4d4] rounded-t-none dark:border-gray-700">
-          <DialogTitle className="text-primary-foreground">{isEditing ? "Editar Empresa" : "Nova Empresa"}</DialogTitle>
+          <DialogTitle className="text-primary-foreground dark:text-gray-100">{isEditing ? "Editar Empresa" : "Nova Empresa"}</DialogTitle>
         </DialogHeader>
         
         <form onSubmit={handleSubmit} className="space-y-4">
