@@ -1202,6 +1202,10 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
   const [workRankingPreset, setWorkRankingPreset] = useState<ConversionPeriodPreset>('last30');
   const [workRankingStartDate, setWorkRankingStartDate] = useState<Date | null>(startOfDay(subDays(new Date(), 29)));
   const [workRankingEndDate, setWorkRankingEndDate] = useState<Date | null>(endOfDay(new Date()));
+  
+  // Estado separado para dados do ranking de trabalho (busca específica por período)
+  const [workRankingData, setWorkRankingData] = useState<TeamWorkRankingRow[]>([]);
+  const [workRankingLoading, setWorkRankingLoading] = useState(false);
 
   const applyPresetToRange = (preset: ConversionPeriodPreset) => {
     const now = new Date();
@@ -1244,6 +1248,35 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
     if (preset === 'all') return { from: null, to: null };
     return applyPresetToRange(preset);
   };
+
+  // useEffect para buscar dados do ranking de trabalho quando os filtros específicos mudarem
+  useEffect(() => {
+    const fetchWorkRankingData = async () => {
+      if (!selectedWorkspaceId || !user?.id) return;
+      
+      setWorkRankingLoading(true);
+      try {
+        const { from, to } = getEffectiveRange(workRankingPreset, workRankingStartDate, workRankingEndDate);
+        
+        const { data, error } = await supabase.rpc("report_team_work_ranking", {
+          p_workspace_id: selectedWorkspaceId,
+          p_from: from ? from.toISOString() : null,
+          p_to: to ? to.toISOString() : null,
+          p_responsible_id: userRole === "user" ? user.id : null,
+        });
+        
+        if (!error && data) {
+          setWorkRankingData(Array.isArray(data) ? data : []);
+        }
+      } catch (e) {
+        console.error("[Relatórios] Erro ao buscar ranking de trabalho:", e);
+      } finally {
+        setWorkRankingLoading(false);
+      }
+    };
+    
+    fetchWorkRankingData();
+  }, [selectedWorkspaceId, user?.id, userRole, workRankingPreset, workRankingStartDate, workRankingEndDate]);
 
   const getTeamMetricCountForRange = (metricKey: TeamMetricKey, rangeFrom?: Date | null, rangeTo?: Date | null) => {
     if (metricKey === 'leads') {
@@ -2292,9 +2325,6 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
   ]);
 
   const rankingTrabalho = useMemo<any[]>(() => {
-    const { from, to } = getEffectiveRange(workRankingPreset, workRankingStartDate, workRankingEndDate);
-    const isAllTime = workRankingPreset === 'all';
-
     // Base: todos os agentes do workspace com contagem 0 (para aparecerem mesmo sem atividades)
     const agg: Record<string, any> = {};
     const agentIdSet = new Set((agents || []).map((a) => a.id));
@@ -2361,69 +2391,22 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
       return agg[key];
     };
 
-    if (isAllTime) {
-      (teamWorkRankingData || []).forEach((r) => {
-        const t = ensure((r as any).responsible_id);
-        if (!t) return;
-        t.mensagem = Number((r as any).mensagem || 0);
-        t.ligacao_nao_atendida = Number((r as any).ligacao_nao_atendida || 0);
-        t.ligacao_atendida = Number((r as any).ligacao_atendida || 0);
-        t.ligacao_abordada = Number((r as any).ligacao_abordada || 0);
-        t.ligacao_agendada = Number((r as any).ligacao_agendada || 0);
-        t.ligacao_follow_up = Number((r as any).ligacao_follow_up || 0);
-        t.reuniao_agendada = Number((r as any).reuniao_agendada || 0);
-        t.reuniao_realizada = Number((r as any).reuniao_realizada || 0);
-        t.reuniao_nao_realizada = Number((r as any).reuniao_nao_realizada || 0);
-        t.reuniao_reagendada = Number((r as any).reuniao_reagendada || 0);
-        t.whatsapp_enviado = Number((r as any).whatsapp_enviado || 0);
-      });
-    } else {
-      const n = (v?: string | null) => (v || '').toLowerCase().trim();
-      (activities || []).forEach((a: any) => {
-        if (!withinRange(getActivityDateIso(a), from, to)) return;
-        const t = ensure(a?.responsible_id);
-        if (!t) return;
-
-        const type = n(a?.type);
-        const status = n(a?.status);
-
-        if (type.includes('mensagem')) t.mensagem += 1;
-
-        const isCall = type.includes('ligação') || type.includes('ligacao') || type.includes('chamada');
-        if (isCall) {
-          if (
-            type.includes('não atendida') ||
-            type.includes('nao atendida') ||
-            status.includes('não atendida') ||
-            status.includes('nao atendida')
-          ) {
-            t.ligacao_nao_atendida += 1;
-          }
-          if (type.includes('atendida') || status.includes('atendida')) t.ligacao_atendida += 1;
-          if (type.includes('abordada') || status.includes('abordada')) t.ligacao_abordada += 1;
-          if (type.includes('agendada') || status.includes('agendada')) t.ligacao_agendada += 1;
-          if (type.includes('follow') || status.includes('follow')) t.ligacao_follow_up += 1;
-        }
-
-        const isMeeting = type.includes('reunião') || type.includes('reuniao');
-        if (isMeeting) {
-          if (type.includes('agendada') || status.includes('agendada')) t.reuniao_agendada += 1;
-          if (
-            type.includes('não realizada') ||
-            type.includes('nao realizada') ||
-            status.includes('não realizada') ||
-            status.includes('nao realizada')
-          ) {
-            t.reuniao_nao_realizada += 1;
-          } else if (type.includes('realizada') || status.includes('realizada')) {
-            t.reuniao_realizada += 1;
-          }
-          if (type.includes('reagendada') || type.includes('reagenda') || status.includes('reagendada')) t.reuniao_reagendada += 1;
-        }
-
-        if (type.includes('whatsapp') || status.includes('whatsapp')) t.whatsapp_enviado += 1;
-      });
-    }
+    // Usar sempre os dados da RPC (workRankingData) que já está filtrado pelo período específico
+    (workRankingData || []).forEach((r) => {
+      const t = ensure((r as any).responsible_id);
+      if (!t) return;
+      t.mensagem = Number((r as any).mensagem || 0);
+      t.ligacao_nao_atendida = Number((r as any).ligacao_nao_atendida || 0);
+      t.ligacao_atendida = Number((r as any).ligacao_atendida || 0);
+      t.ligacao_abordada = Number((r as any).ligacao_abordada || 0);
+      t.ligacao_agendada = Number((r as any).ligacao_agendada || 0);
+      t.ligacao_follow_up = Number((r as any).ligacao_follow_up || 0);
+      t.reuniao_agendada = Number((r as any).reuniao_agendada || 0);
+      t.reuniao_realizada = Number((r as any).reuniao_realizada || 0);
+      t.reuniao_nao_realizada = Number((r as any).reuniao_nao_realizada || 0);
+      t.reuniao_reagendada = Number((r as any).reuniao_reagendada || 0);
+      t.whatsapp_enviado = Number((r as any).whatsapp_enviado || 0);
+    });
 
     const list = Object.values(agg).map((row: any) => {
       const total =
@@ -2443,14 +2426,9 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
 
     return list.sort((a: any, b: any) => (b.total || 0) - (a.total || 0));
   }, [
-    activities,
     agents,
     agentMap,
-    teamWorkRankingData,
-    withinRange,
-    workRankingPreset,
-    workRankingStartDate,
-    workRankingEndDate,
+    workRankingData,
   ]);
 
   const rankingVendasTotals = useMemo(() => {
