@@ -224,11 +224,14 @@ export function ConexoesNova({ workspaceId }: ConexoesNovaProps) {
 
   // Monitor selected connection status and close modal when connected
   useEffect(() => {
+    console.log('[ConexoesNova] useEffect status monitor - selectedConnection:', selectedConnection?.instance_name, 'status:', selectedConnection?.status, 'isQRModalOpen:', isQRModalOpen);
+    
     if (!selectedConnection) {
       return;
     }
 
     const normalizedStatus = normalizeConnectionStatus(selectedConnection.status);
+    console.log('[ConexoesNova] normalizedStatus:', normalizedStatus);
 
     if (normalizedStatus === 'connected' && isQRModalOpen) {
       console.log('✅ Conexão estabelecida, fechando modal automaticamente');
@@ -248,7 +251,67 @@ export function ConexoesNova({ workspaceId }: ConexoesNovaProps) {
           'WhatsApp conectado com sucesso!',
       });
     }
-  }, [selectedConnection?.status, selectedConnection?.phone_number, isQRModalOpen]);
+  }, [selectedConnection, isQRModalOpen]);
+
+  // Realtime listener para detectar mudanças no status da conexão selecionada
+  useEffect(() => {
+    if (!selectedConnection?.id || !isQRModalOpen) {
+      return;
+    }
+
+    console.log('[ConexoesNova] Configurando realtime para conexão selecionada:', selectedConnection.id);
+
+    const channel = supabase
+      .channel(`selected-connection-${selectedConnection.id}`)
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'connections',
+          filter: `id=eq.${selectedConnection.id}`
+        },
+        (payload) => {
+          console.log('[ConexoesNova] Mudança detectada na conexão selecionada:', payload);
+          const newStatus = payload.new?.status;
+          const newPhoneNumber = payload.new?.phone_number;
+          
+          console.log('[ConexoesNova] Novo status da conexão:', newStatus);
+          
+          if (newStatus) {
+            const normalizedStatus = normalizeConnectionStatus(newStatus);
+            
+            // Atualizar o selectedConnection com o novo status
+            setSelectedConnection(prev => prev ? {
+              ...prev,
+              status: normalizedStatus,
+              phone_number: newPhoneNumber || prev.phone_number
+            } : null);
+            
+            // Se conectou, fechar modal
+            if (normalizedStatus === 'connected') {
+              console.log('✅ [Realtime] Conexão estabelecida! Fechando modal...');
+              setIsQRModalOpen(false);
+              setSelectedConnection(null);
+              loadConnections();
+              
+              toast({
+                title: '✅ Conectado!',
+                description: newPhoneNumber ? 
+                  `WhatsApp conectado como ${newPhoneNumber}!` : 
+                  'WhatsApp conectado com sucesso!',
+              });
+            }
+          }
+        }
+      )
+      .subscribe();
+
+    return () => {
+      console.log('[ConexoesNova] Removendo channel da conexão selecionada');
+      supabase.removeChannel(channel);
+    };
+  }, [selectedConnection?.id, isQRModalOpen]);
 
   // Carregar pipelines e providers quando o modal for aberto
   useEffect(() => {
@@ -448,7 +511,7 @@ export function ConexoesNova({ workspaceId }: ConexoesNovaProps) {
         } else {
           toast({
             title: 'Status atualizados',
-            description: 'Consultamos todas as instâncias em tempo real.',
+            description: 'Consultamos todas as conexões em tempo real.',
           });
         }
       }
@@ -564,7 +627,7 @@ export function ConexoesNova({ workspaceId }: ConexoesNovaProps) {
     if (existingConnection) {
       toast({
         title: 'Erro',
-        description: 'Já existe uma instância com este nome',
+        description: 'Já existe uma conexão com este nome',
         variant: 'destructive',
       });
       return;
@@ -609,7 +672,7 @@ export function ConexoesNova({ workspaceId }: ConexoesNovaProps) {
 
       toast({
         title: 'Sucesso',
-        description: 'Instância criada com sucesso!',
+        description: 'Conexão criada com sucesso!',
       });
       
       // Reset form and close modal
@@ -709,7 +772,7 @@ export function ConexoesNova({ workspaceId }: ConexoesNovaProps) {
         title: 'Erro',
         description: retryCount > 0 
           ? `Erro após ${retryCount + 1} tentativas: ${errorMessage}`
-          : `Erro ao criar instância: ${errorMessage}`,
+          : `Erro ao criar conexão: ${errorMessage}`,
         variant: 'destructive',
       });
     } finally {
@@ -741,7 +804,7 @@ export function ConexoesNova({ workspaceId }: ConexoesNovaProps) {
       if (duplicateName) {
         toast({
           title: 'Nome duplicado',
-          description: 'Já existe outra instância com este nome. Escolha um nome diferente.',
+          description: 'Já existe outra conexão com este nome. Escolha um nome diferente.',
           variant: 'destructive',
         });
         return;
@@ -830,7 +893,7 @@ export function ConexoesNova({ workspaceId }: ConexoesNovaProps) {
     if (userRole !== 'master') {
       toast({
         title: "Permissão negada",
-        description: "Apenas usuários master podem excluir instâncias.",
+        description: "Apenas usuários master podem excluir conexões.",
         variant: "destructive",
       });
       return;
@@ -845,7 +908,7 @@ export function ConexoesNova({ workspaceId }: ConexoesNovaProps) {
     if (userRole !== 'master') {
       toast({
         title: "Permissão negada",
-        description: "Apenas usuários master podem excluir instâncias.",
+        description: "Apenas usuários master podem excluir conexões.",
         variant: "destructive",
       });
       setIsDeleteModalOpen(false);
@@ -869,7 +932,7 @@ export function ConexoesNova({ workspaceId }: ConexoesNovaProps) {
       } else {
         toast({
           title: "Erro",
-          description: "Erro ao excluir instância",
+          description: "Erro ao excluir conexão",
           variant: "destructive",
         });
       }
@@ -985,7 +1048,7 @@ export function ConexoesNova({ workspaceId }: ConexoesNovaProps) {
       console.error('Error connecting instance:', error);
       toast({
         title: 'Erro',
-        description: `Erro ao conectar instância: ${error instanceof Error ? error.message : 'Erro desconhecido'}`,
+        description: `Erro ao conectar conexão: ${error instanceof Error ? error.message : 'Erro desconhecido'}`,
         variant: 'destructive',
       });
     } finally {
@@ -1124,7 +1187,7 @@ export function ConexoesNova({ workspaceId }: ConexoesNovaProps) {
           
           toast({
             title: "Erro",
-            description: "Conexão não encontrada. A instância pode ter sido deletada.",
+            description: "Conexão não encontrada. A conexão pode ter sido deletada.",
             variant: "destructive"
           });
           
@@ -1157,7 +1220,7 @@ export function ConexoesNova({ workspaceId }: ConexoesNovaProps) {
 
         toast({
           title: 'Sucesso',
-          description: data.message || 'Instância Z-API desconectada com sucesso!',
+          description: data.message || 'Conexão Z-API desconectada com sucesso!',
         });
       } else {
         await evolutionProvider.pauseInstance(connection.id);
@@ -1174,7 +1237,7 @@ export function ConexoesNova({ workspaceId }: ConexoesNovaProps) {
       console.error('Error disconnecting instance:', error);
       toast({
         title: 'Erro',
-        description: error instanceof Error ? error.message : 'Erro ao desconectar instância',
+        description: error instanceof Error ? error.message : 'Erro ao desconectar conexão',
         variant: 'destructive',
       });
       loadConnections();
@@ -1390,7 +1453,7 @@ export function ConexoesNova({ workspaceId }: ConexoesNovaProps) {
                     )}
 
                     <div className="space-y-2">
-                      <Label htmlFor="instanceName" className="text-gray-700 dark:text-gray-200">Nome da Instância *</Label>
+                      <Label htmlFor="instanceName" className="text-gray-700 dark:text-gray-200">Nome da Conexão *</Label>
                       <Input
                         id="instanceName"
                         value={instanceName}
@@ -1516,7 +1579,7 @@ export function ConexoesNova({ workspaceId }: ConexoesNovaProps) {
                   </Button>
                 </TooltipTrigger>
                 <TooltipContent className="rounded-none bg-white text-gray-900 border border-gray-200 dark:bg-[#0b0b0b] dark:text-gray-100 dark:border-gray-700">
-                  <p className="text-xs">Consulta o status diretamente nas instâncias</p>
+                  <p className="text-xs">Consulta o status diretamente nas conexões</p>
                 </TooltipContent>
               </Tooltip>
             </TooltipProvider>
@@ -1542,7 +1605,7 @@ export function ConexoesNova({ workspaceId }: ConexoesNovaProps) {
               <tr>
                 <th className="border border-[#d4d4d4] px-2 py-1 text-left font-semibold text-gray-700 min-w-[200px] group hover:bg-[#e1e1e1] cursor-pointer dark:border-gray-700 dark:text-gray-200 dark:hover:bg-[#2a2a2a]">
                   <div className="flex items-center justify-between">
-                    <span>Nome da Instância</span>
+                    <span>Nome da Conexão</span>
                     <div className="w-[1px] h-3 bg-gray-400 mx-1" />
                   </div>
                 </th>
@@ -1720,7 +1783,7 @@ export function ConexoesNova({ workspaceId }: ConexoesNovaProps) {
       }}>
          <DialogContent className="max-w-4xl bg-white text-gray-900 dark:bg-[#0b0b0b] dark:text-gray-100 dark:border-gray-700">
           <DialogHeader className="px-4 py-2 bg-primary text-primary-foreground border-b border-[#d4d4d4] rounded-t-none dark:border-gray-700">
-            <DialogTitle className="text-xl font-semibold text-primary-foreground mb-2">
+            <DialogTitle className="text-xl font-semibold text-primary-foreground dark:text-gray-100 mb-2">
               Passos para conectar
             </DialogTitle>
           </DialogHeader>
@@ -1799,7 +1862,7 @@ export function ConexoesNova({ workspaceId }: ConexoesNovaProps) {
             </AlertDialogTitle>
           </AlertDialogHeader>
           <div className="bg-red-50 text-red-800 dark:bg-[#161616] dark:text-gray-100 border-b border-[#d4d4d4] dark:border-gray-800 px-6 py-4 text-sm text-center leading-relaxed">
-            A exclusão desta instância é permanente e resultará na inativação imediata da conexão.<br />
+            A exclusão desta conexão é permanente e resultará na inativação imediata.<br />
             <span className="font-semibold">Importante:</span> mesmo após excluir, a assinatura Z-API continuará válida até o fim do ciclo atual.
           </div>
           <AlertDialogDescription className="space-y-4 px-6 py-4 text-gray-700 dark:text-gray-200">
@@ -1811,7 +1874,7 @@ export function ConexoesNova({ workspaceId }: ConexoesNovaProps) {
                 </p>
               </div>
               <div className="space-y-2">
-                <Label htmlFor="confirm-instance" className="text-sm font-medium text-gray-900 dark:text-gray-100">Digite o nome da instância para confirmar:</Label>
+                <Label htmlFor="confirm-instance" className="text-sm font-medium text-gray-900 dark:text-gray-100">Digite o nome da conexão para confirmar:</Label>
                 <div className="p-2 bg-muted rounded border bg-gray-50 border-[#d4d4d4] dark:bg-[#131313] dark:border-gray-700">
                   <code className="text-sm font-mono">{connectionToDelete?.instance_name}</code>
                 </div>
@@ -1831,7 +1894,7 @@ export function ConexoesNova({ workspaceId }: ConexoesNovaProps) {
               disabled={userRole !== 'master' || isDisconnecting || confirmInstanceName !== connectionToDelete?.instance_name}
               className="h-9 px-5 rounded-none bg-red-600 hover:bg-red-700 text-white disabled:opacity-50 dark:bg-red-600 dark:hover:bg-red-700"
             >
-              {isDisconnecting ? 'Excluindo...' : 'Excluir Instância'}
+              {isDisconnecting ? 'Excluindo...' : 'Excluir Conexão'}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

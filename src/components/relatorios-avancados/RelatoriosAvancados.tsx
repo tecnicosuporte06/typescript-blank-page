@@ -1118,8 +1118,9 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
       const preset = (cc.preset as any) || 'last30';
       setCustomConvPeriodPreset(preset);
       const derived = applyPresetToRange(preset);
-      setCustomConvStartDate(cc.startDate ? new Date(cc.startDate) : derived.from);
-      setCustomConvEndDate(cc.endDate ? new Date(cc.endDate) : derived.to);
+      const useSavedRange = preset === 'custom';
+      setCustomConvStartDate(useSavedRange && cc.startDate ? new Date(cc.startDate) : derived.from);
+      setCustomConvEndDate(useSavedRange && cc.endDate ? new Date(cc.endDate) : derived.to);
       setCustomConvAgent(cc.agent || 'all');
       setCustomConvTags(Array.isArray(cc.tags) ? cc.tags.filter(Boolean) : []);
       setCustomConvStatus((cc.status as any) || 'all');
@@ -1129,8 +1130,9 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
       const preset = (tc.preset as any) || 'last30';
       setTeamConvPeriodPreset(preset);
       const derived = applyPresetToRange(preset);
-      setTeamConvStartDate(tc.startDate ? new Date(tc.startDate) : derived.from);
-      setTeamConvEndDate(tc.endDate ? new Date(tc.endDate) : derived.to);
+      const useSavedRange = preset === 'custom';
+      setTeamConvStartDate(useSavedRange && tc.startDate ? new Date(tc.startDate) : derived.from);
+      setTeamConvEndDate(useSavedRange && tc.endDate ? new Date(tc.endDate) : derived.to);
       setTeamConvAgent(tc.agent || 'all');
       setTeamConvTags(Array.isArray(tc.tags) ? tc.tags.filter(Boolean) : []);
       setTeamConvStatus((tc.status as any) || 'all');

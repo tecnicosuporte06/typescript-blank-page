@@ -72,7 +72,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Search, Send, Bot, Phone, MoreVertical, Circle, MessageCircle, ArrowRight, Settings, Users, Trash2, ChevronDown, Filter, Eye, RefreshCw, Mic, Square, X, Check, PanelLeft, UserCircle, UserX, UsersRound, Tag, Plus, Loader2, Workflow, Clock, Music, Briefcase } from "lucide-react";
+import { Search, Send, Bot, Phone, MoreVertical, Circle, MessageCircle, ArrowRight, Settings, Users, Trash2, ChevronDown, Filter, Eye, RefreshCw, Mic, Square, X, Check, PanelLeft, UserCircle, UserX, UsersRound, Tag, Plus, Loader2, Workflow, Clock, Music, Briefcase, Smile } from "lucide-react";
 import { WhatsAppChatSkeleton } from "@/components/chat/WhatsAppChatSkeleton";
 import { Switch } from "@/components/ui/switch";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -306,6 +306,7 @@ export function WhatsAppChat({
   const [slashOpen, setSlashOpen] = useState(false);
   const [slashQuery, setSlashQuery] = useState("");
   const slashReplaceRangeRef = useRef<{ start: number; end: number } | null>(null);
+  const [emojiPickerOpen, setEmojiPickerOpen] = useState(false);
   
   // ✅ Estado para controlar quantas mensagens mostrar (Infinite Scroll com dados em memória)
   const [visibleMessagesCount, setVisibleMessagesCount] = useState(10);
@@ -409,6 +410,58 @@ export function WhatsAppChat({
       }
     });
   }, [selectedConversation?.id, updateMessageDraft]);
+
+  // 😊 Inserir emoji na posição do cursor
+  const insertEmojiAtCursor = useCallback((emoji: string) => {
+    if (!selectedConversation) return;
+    const el = composerTextareaRef.current;
+    const currentText = messageDrafts[selectedConversation.id] || "";
+    const cursorPos = el?.selectionStart ?? currentText.length;
+    const newText = currentText.slice(0, cursorPos) + emoji + currentText.slice(cursorPos);
+    updateMessageDraft(selectedConversation.id, newText);
+    requestAnimationFrame(() => {
+      if (!el) return;
+      el.focus();
+      const newCursorPos = cursorPos + emoji.length;
+      try {
+        el.setSelectionRange(newCursorPos, newCursorPos);
+      } catch {
+        // ignore
+      }
+    });
+  }, [selectedConversation?.id, messageDrafts, updateMessageDraft]);
+
+  // 😊 Lista de emojis organizados por categoria
+  const emojiCategories = useMemo(() => [
+    {
+      name: "Vendas",
+      emojis: ["🚀", "💰", "💵", "💸", "🤑", "📈", "📊", "🏆", "🥇", "🎯", "✅", "🔥", "💪", "🤝", "👏", "🙌", "💎", "⭐", "🌟", "✨", "💯", "🎉", "🎊", "👑", "🏅", "🥂", "🍾", "📞", "📱", "💼"]
+    },
+    {
+      name: "Sorrisos",
+      emojis: ["😀", "😃", "😄", "😁", "😆", "😅", "🤣", "😂", "🙂", "😊", "😇", "🥰", "😍", "🤩", "😘", "😗", "😚", "😋", "😛", "😜", "🤪", "😝", "🤑", "🤗", "🤭", "🤫", "🤔", "🤐", "🤨", "😐", "😑", "😶", "😏", "😒", "🙄", "😬", "🤥"]
+    },
+    {
+      name: "Gestos",
+      emojis: ["👍", "👎", "👌", "🤌", "🤏", "✌️", "🤞", "🤟", "🤘", "🤙", "👈", "👉", "👆", "👇", "☝️", "👋", "🤚", "🖐️", "✋", "🖖", "👏", "🙌", "🤲", "🤝", "🙏", "✍️", "💪", "🦾"]
+    },
+    {
+      name: "Corações",
+      emojis: ["❤️", "🧡", "💛", "💚", "💙", "💜", "🖤", "🤍", "🤎", "💔", "❣️", "💕", "💞", "💓", "💗", "💖", "💘", "💝", "💟"]
+    },
+    {
+      name: "Objetos",
+      emojis: ["📱", "💻", "⌨️", "🖥️", "🖨️", "📞", "📧", "📩", "📨", "📦", "📝", "📋", "📌", "📎", "🔗", "📅", "📆", "🗓️", "💰", "💵", "💳", "🛒", "🎁", "🏆", "🥇", "🎯", "✅", "❌", "⭐", "🌟", "💡", "🔔", "🔒", "🔓", "🔑", "🚀"]
+    },
+    {
+      name: "Símbolos",
+      emojis: ["✔️", "✅", "❌", "❓", "❗", "‼️", "⁉️", "💯", "🔴", "🟠", "🟡", "🟢", "🔵", "🟣", "⚫", "⚪", "🔶", "🔷", "🔸", "🔹", "▪️", "▫️", "◾", "◽", "⬛", "⬜", "🔺", "🔻", "➡️", "⬅️", "⬆️", "⬇️", "↗️", "↘️", "↙️", "↖️"]
+    },
+    {
+      name: "Natureza",
+      emojis: ["🌞", "🌙", "⭐", "🌟", "✨", "⚡", "🔥", "💧", "🌊", "🌈", "☀️", "🌤️", "⛅", "🌥️", "☁️", "🌧️", "⛈️", "🌩️", "❄️", "💨", "🌸", "🌺", "🌻", "🌹", "🌷", "🌱", "🌿", "🍀", "🌳", "🌴"]
+    }
+  ], []);
 
   const clearMessageDraft = useCallback((conversationId: string) => {
     setMessageDrafts(prev => {
@@ -2710,7 +2763,7 @@ export function WhatsAppChat({
                         </>}
                     </button>
                   </TooltipTrigger>
-                  <TooltipContent side="right" className="text-xs rounded-none border-[#d4d4d4]">Todos</TooltipContent>
+                  <TooltipContent side="right" className="text-xs rounded-none border-[#d4d4d4] bg-white text-gray-900 shadow-md dark:bg-[#0f0f0f] dark:text-gray-100 dark:border-gray-700">Todos</TooltipContent>
                 </Tooltip>
               </TooltipProvider>
             ) : (
@@ -2738,7 +2791,7 @@ export function WhatsAppChat({
                         </>}
                     </button>
                   </TooltipTrigger>
-                  <TooltipContent side="right" className="text-xs rounded-none border-[#d4d4d4]">Minhas conversas</TooltipContent>
+                  <TooltipContent side="right" className="text-xs rounded-none border-[#d4d4d4] bg-white text-gray-900 shadow-md dark:bg-[#0f0f0f] dark:text-gray-100 dark:border-gray-700">Minhas conversas</TooltipContent>
                 </Tooltip>
               </TooltipProvider>
             ) : (
@@ -2766,7 +2819,7 @@ export function WhatsAppChat({
                         </>}
                     </button>
                   </TooltipTrigger>
-                  <TooltipContent side="right" className="text-xs rounded-none border-[#d4d4d4]">Não atribuídas</TooltipContent>
+                  <TooltipContent side="right" className="text-xs rounded-none border-[#d4d4d4] bg-white text-gray-900 shadow-md dark:bg-[#0f0f0f] dark:text-gray-100 dark:border-gray-700">Não atribuídas</TooltipContent>
                 </Tooltip>
               </TooltipProvider>
             ) : (
@@ -2794,7 +2847,7 @@ export function WhatsAppChat({
                         </>}
                     </button>
                   </TooltipTrigger>
-                  <TooltipContent side="right" className="text-xs rounded-none border-[#d4d4d4]">Não lidas</TooltipContent>
+                  <TooltipContent side="right" className="text-xs rounded-none border-[#d4d4d4] bg-white text-gray-900 shadow-md dark:bg-[#0f0f0f] dark:text-gray-100 dark:border-gray-700">Não lidas</TooltipContent>
                 </Tooltip>
               </TooltipProvider>
             ) : (
@@ -3268,7 +3321,7 @@ export function WhatsAppChat({
                           <ArrowRight className="h-4 w-4 rotate-180 text-gray-600 dark:text-gray-400" />
                         </Button>
                       </TooltipTrigger>
-                      <TooltipContent className="rounded-none border-[#d4d4d4]">
+                      <TooltipContent className="rounded-none border-[#d4d4d4] bg-white text-gray-900 shadow-md dark:bg-[#0f0f0f] dark:text-gray-100 dark:border-gray-700">
                         <p>Voltar à lista (ESC)</p>
                       </TooltipContent>
                     </Tooltip>
@@ -3899,6 +3952,60 @@ export function WhatsAppChat({
                       </TooltipContent>
                     </Tooltip>
                   </TooltipProvider>
+                  
+                  {/* Botão de Emojis */}
+                  <Popover open={emojiPickerOpen} onOpenChange={setEmojiPickerOpen}>
+                    <TooltipProvider delayDuration={0}>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <PopoverTrigger asChild>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="h-9 w-9 p-0 rounded-none border border-[#d4d4d4] hover:bg-gray-200 bg-white dark:bg-[#2d2d2d] dark:border-gray-600 dark:hover:bg-gray-700"
+                            >
+                              <Smile className="w-4 h-4 text-gray-600 dark:text-gray-400" />
+                            </Button>
+                          </PopoverTrigger>
+                        </TooltipTrigger>
+                        <TooltipContent className="rounded-none border-[#d4d4d4] bg-white text-gray-900 shadow-md dark:bg-[#0f0f0f] dark:text-gray-100 dark:border-gray-700">
+                          <p className="text-xs">Emojis</p>
+                        </TooltipContent>
+                      </Tooltip>
+                    </TooltipProvider>
+                    <PopoverContent
+                      side="top"
+                      align="start"
+                      className="w-80 p-0 rounded-none border border-[#d4d4d4] bg-white shadow-lg dark:bg-[#0f0f0f] dark:border-gray-700"
+                    >
+                      <div className="max-h-72 overflow-y-auto p-2">
+                        {emojiCategories.map((category) => (
+                          <div key={category.name} className="mb-3">
+                            <p className="text-[10px] font-medium text-gray-500 dark:text-gray-400 mb-1.5 px-1">
+                              {category.name}
+                            </p>
+                            <div className="grid grid-cols-9 gap-0.5">
+                              {category.emojis.map((emoji, idx) => (
+                                <button
+                                  key={`${category.name}-${idx}`}
+                                  type="button"
+                                  onClick={() => {
+                                    insertEmojiAtCursor(emoji);
+                                    // Mantém o popover aberto para permitir múltiplos emojis
+                                  }}
+                                  className="w-7 h-7 flex items-center justify-center text-lg hover:bg-gray-100 dark:hover:bg-gray-800 rounded transition-colors"
+                                  title={emoji}
+                                >
+                                  {emoji}
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </PopoverContent>
+                  </Popover>
+
                   <Popover
                     open={slashOpen}
                     onOpenChange={(open) => {

@@ -59,12 +59,12 @@ export function CriarAgenteModal({
     workspace_id: '',
     name: '',
     api_key: '',
-    model: 'gpt-4o-mini',
+    model: 'gpt-4o',
     system_instructions: '',
-    temperature: 0.7,
+    temperature: 0.3,
     max_tokens: 2000,
     max_messages: 300,
-    response_delay: 3,
+    response_delay: 15,
     ignore_interval: 0,
     assign_responsible: false,
     split_responses: true,
@@ -292,12 +292,12 @@ Exemplo: [ENVIE PARA O TOOL \`qualificar-cliente\` (METODO POST) o workspace_id:
         workspace_id: '',
         name: '',
         api_key: '',
-        model: 'gpt-4o-mini',
+        model: 'gpt-4o',
         system_instructions: '',
-        temperature: 0.7,
+        temperature: 0.3,
         max_tokens: 2000,
         max_messages: 300,
-        response_delay: 3,
+        response_delay: 15,
         ignore_interval: 0,
         assign_responsible: false,
         split_responses: true,
@@ -576,7 +576,7 @@ Exemplo: [ENVIE PARA O TOOL \`qualificar-cliente\` (METODO POST) o workspace_id:
                 value={[formData.temperature]}
                 onValueChange={([value]) => setFormData({ ...formData, temperature: value })}
                 min={0}
-                max={2}
+                max={1}
                 step={0.1}
               />
             </div>

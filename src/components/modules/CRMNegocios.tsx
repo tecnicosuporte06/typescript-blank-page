@@ -96,7 +96,7 @@ function AgentBadge({ conversationId, isDarkMode }: { conversationId: string; is
           <span className="text-[10px] font-medium">{displayName}</span>
         </div>
       </TooltipTrigger>
-      <TooltipContent side="bottom" className="z-[9999]">
+      <TooltipContent side="bottom" className="z-[9999] bg-white dark:bg-[#1b1b1b] text-gray-900 dark:text-gray-100 border border-gray-200 dark:border-gray-700 shadow-md">
         <p className="text-xs">Agente IA ativo: {agent.name}</p>
       </TooltipContent>
     </Tooltip>
@@ -899,6 +899,7 @@ function CRMNegociosContent({
     isLoadingInitialCardsByColumn,
     hasMoreCardsByColumn,
     isLoadingMoreCardsByColumn,
+    totalCardsByColumn,
     createPipeline,
     selectPipeline,
     createColumn,
@@ -2172,7 +2173,7 @@ const [selectedCardForProduct, setSelectedCardForProduct] = useState<{
                     <div className="flex items-center justify-center h-full w-full">
                       <div className="flex flex-col items-center gap-2">
                         <Loader2 className="h-7 w-7 animate-spin text-muted-foreground dark:text-gray-400" />
-                        <span className="text-xs text-muted-foreground dark:text-gray-400">Carregando colunas...</span>
+                        <span className="text-xs text-muted-foreground dark:text-gray-400">Carregando etapas...</span>
                       </div>
                     </div>
                   ) : (
@@ -2225,7 +2226,7 @@ const [selectedCardForProduct, setSelectedCardForProduct] = useState<{
                                             Total: {formatCurrency(calculateColumnTotal())}
                                           </div>
                                           <div>
-                                            {columnCards.length} {columnCards.length === 1 ? 'oportunidade' : 'oportunidades'}
+                                            {totalCardsByColumn[column.id] || 0} {(totalCardsByColumn[column.id] || 0) === 1 ? 'oportunidade' : 'oportunidades'}
                                           </div>
                                         </div>
                                       </div>
@@ -2382,7 +2383,7 @@ const [selectedCardForProduct, setSelectedCardForProduct] = useState<{
                                         );
                                       }) : (
                                          <div className={`text-center text-muted-foreground dark:text-gray-400 text-sm py-8`}>
-                                           Nenhum negócio nesta coluna
+                                           Nenhuma oportunidade nesta etapa
                                          </div>
                                        )}
                                       {!isLoadingCards && hasMoreCardsByColumn?.[column.id] && (
@@ -2481,7 +2482,7 @@ const [selectedCardForProduct, setSelectedCardForProduct] = useState<{
                                 </div>
                                 <div className="flex items-center gap-2">
                                   <span>
-                                    {columnCards.length} {columnCards.length === 1 ? 'oportunidade' : 'oportunidades'}
+                                    {totalCardsByColumn[column.id] || 0} {(totalCardsByColumn[column.id] || 0) === 1 ? 'oportunidade' : 'oportunidades'}
                                   </span>
                                   {columnAutomationCounts[column.id] > 0 && (
                                      <TooltipProvider>
@@ -2496,8 +2497,8 @@ const [selectedCardForProduct, setSelectedCardForProduct] = useState<{
                                             </span>
                                           </div>
                                         </TooltipTrigger>
-                                        <TooltipContent>
-                                          <p>
+                                        <TooltipContent className="bg-white dark:bg-[#1b1b1b] text-gray-900 dark:text-gray-100 border border-gray-200 dark:border-gray-700 shadow-md">
+                                          <p className="text-xs">
                                             {columnAutomationCounts[column.id]} {columnAutomationCounts[column.id] === 1 ? 'automação ativa' : 'automações ativas'}
                                           </p>
                                         </TooltipContent>
@@ -2524,7 +2525,7 @@ const [selectedCardForProduct, setSelectedCardForProduct] = useState<{
                                     setIsEditarColunaModalOpen(true);
                                   }}>
                                     <Edit className="mr-2 h-4 w-4" />
-                                    Editar coluna
+                                    Editar etapa
                                   </DropdownMenuItem>
                                 )}
                                 <DropdownMenuSeparator />

@@ -31,6 +31,10 @@ Deno.serve(async (req) => {
 
     const supabase = createClient(supabaseUrl, supabaseKey);
 
+    // Capturar o ID do usuário que está fazendo a requisição (para created_by)
+    const createdByUserId = req.headers.get('x-system-user-id');
+    console.log('Created by user ID from header:', createdByUserId);
+
     // For operations that need permission checks, get current user
     let currentUserProfile = null;
     let currentUserWorkspaces: string[] = [];
@@ -167,16 +171,24 @@ Deno.serve(async (req) => {
 
         // Insert user directly (let database handle unique constraints)
         console.log('Attempting to insert user...');
+        const insertData: Record<string, any> = {
+          name: name.trim(),
+          email: normalizedEmail,
+          profile: profile.trim(),
+          status: status || 'active',
+          senha: senha,
+          default_channel: default_channel || null
+        };
+        
+        // Adicionar created_by se disponível
+        if (createdByUserId) {
+          insertData.created_by = createdByUserId;
+          console.log('Setting created_by:', createdByUserId);
+        }
+        
         const { data, error } = await supabase
           .from('system_users')
-          .insert({
-            name: name.trim(),
-            email: normalizedEmail,
-            profile: profile.trim(),
-            status: status || 'active',
-            senha: senha,
-            default_channel: default_channel || null
-          })
+          .insert(insertData)
           .select()
           .single();
 

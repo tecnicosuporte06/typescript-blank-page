@@ -154,6 +154,7 @@ interface PipelinesContextType {
   isLoadingInitialCardsByColumn: Record<string, boolean>;
   hasMoreCardsByColumn: Record<string, boolean>;
   isLoadingMoreCardsByColumn: Record<string, boolean>;
+  totalCardsByColumn: Record<string, number>;
   fetchPipelines: () => Promise<void>;
   createPipeline: (name: string, type: string) => Promise<Pipeline>;
   deletePipeline: (pipelineId: string) => Promise<void>;
@@ -184,6 +185,7 @@ export function PipelinesProvider({ children }: { children: React.ReactNode }) {
   const [cardsOffsetByColumn, setCardsOffsetByColumn] = useState<Record<string, number>>({});
   const [hasMoreCardsByColumn, setHasMoreCardsByColumn] = useState<Record<string, boolean>>({});
   const [isLoadingMoreCardsByColumn, setIsLoadingMoreCardsByColumn] = useState<Record<string, boolean>>({});
+  const [totalCardsByColumn, setTotalCardsByColumn] = useState<Record<string, number>>({});
   const { selectedWorkspace } = useWorkspace();
   const { toast } = useToast();
   const { user, userRole } = useAuth();
@@ -399,6 +401,46 @@ export function PipelinesProvider({ children }: { children: React.ReactNode }) {
     }
   }, [PAGE_SIZE, getHeaders, isCardVisibleForUser]);
 
+  // Função para buscar a contagem total de cards por coluna (sem paginação)
+  const fetchTotalCardsCounts = useCallback(async (pipelineId: string, cols: PipelineColumn[]) => {
+    if (!pipelineId || cols.length === 0) {
+      setTotalCardsByColumn({});
+      return;
+    }
+
+    try {
+      // Buscar contagem de cards por coluna usando query direta
+      const { data, error } = await supabase
+        .from('pipeline_cards')
+        .select('column_id', { count: 'exact', head: false })
+        .eq('pipeline_id', pipelineId);
+
+      if (error) {
+        console.error('❌ Erro ao buscar contagem de cards:', error);
+        return;
+      }
+
+      // Contar cards por coluna
+      const counts: Record<string, number> = {};
+      cols.forEach(col => {
+        counts[col.id] = 0;
+      });
+      
+      if (data) {
+        data.forEach((card: any) => {
+          if (card.column_id && counts[card.column_id] !== undefined) {
+            counts[card.column_id]++;
+          }
+        });
+      }
+
+      setTotalCardsByColumn(counts);
+      devLog('📊 [fetchTotalCardsCounts] Contagem total por coluna:', counts);
+    } catch (err) {
+      console.error('❌ Erro ao buscar contagem total de cards:', err);
+    }
+  }, []);
+
   const fetchCards = useCallback(async (pipelineId: string, cols: PipelineColumn[]) => {
     if (!getHeaders || !pipelineId) return;
 
@@ -430,16 +472,20 @@ export function PipelinesProvider({ children }: { children: React.ReactNode }) {
 
     try {
       setIsLoadingCards(true);
-      await Promise.all(
-        effectiveColumns.map((col) =>
+      // Buscar cards paginados e contagem total em paralelo
+      await Promise.all([
+        // Buscar primeira página de cada coluna
+        ...effectiveColumns.map((col) =>
           fetchCardsPage({
             pipelineId,
             columnId: col.id,
             offset: 0,
             append: false,
           })
-        )
-      );
+        ),
+        // Buscar contagem total de cards por coluna
+        fetchTotalCardsCounts(pipelineId, effectiveColumns)
+      ]);
     } catch (error) {
       const parsedError = await readFunctionErrorBodyAsync(error);
       console.error('❌ [fetchCards] Erro ao buscar cards (paginado):', { error, parsedError });
@@ -455,7 +501,7 @@ export function PipelinesProvider({ children }: { children: React.ReactNode }) {
     } finally {
       setIsLoadingCards(false);
     }
-  }, [getHeaders, fetchCardsPage, toast]);
+  }, [getHeaders, fetchCardsPage, fetchTotalCardsCounts, toast]);
 
   const fetchMoreCards = useCallback(async (columnId: string) => {
     if (!selectedPipeline?.id || !getHeaders) return;
@@ -1072,6 +1118,14 @@ export function PipelinesProvider({ children }: { children: React.ReactNode }) {
       return prev; // Retornar prev temporariamente enquanto busca dados completos
     });
 
+    // ✅ Incrementar contagem total da coluna
+    if (newCard.column_id) {
+      setTotalCardsByColumn(prev => ({
+        ...prev,
+        [newCard.column_id]: (prev[newCard.column_id] || 0) + 1
+      }));
+    }
+
     // ✅ BUSCAR DADOS COMPLETOS do card (contact, conversation) se não vierem no realtime
     // O realtime do Supabase não envia relacionamentos por padrão
     const hasFullData = newCard.contact && newCard.conversation;
@@ -1272,6 +1326,13 @@ export function PipelinesProvider({ children }: { children: React.ReactNode }) {
           timestamp: new Date().toISOString()
         });
         
+        // ✅ Atualizar contagem total: decrementar coluna antiga, incrementar nova
+        setTotalCardsByColumn(counts => ({
+          ...counts,
+          [existingCard.column_id]: Math.max(0, (counts[existingCard.column_id] || 0) - 1),
+          [updatedCard.column_id]: (counts[updatedCard.column_id] || 0) + 1
+        }));
+        
         // 🔥 CANCELAR TIMEOUT PENDENTE - evento realtime chegou!
         const pendingTimeout = pendingTimeoutsRef.current.get(updatedCard.id);
         if (pendingTimeout) {
@@ -1319,7 +1380,17 @@ export function PipelinesProvider({ children }: { children: React.ReactNode }) {
   const handleCardDelete = useCallback((cardId: string) => {
     devLog('🗑️ [Realtime Handler] Card deletado:', cardId);
     
-    setCards(prev => prev.filter(c => c.id !== cardId));
+    // Decrementar contagem da coluna do card antes de remover
+    setCards(prev => {
+      const cardToDelete = prev.find(c => c.id === cardId);
+      if (cardToDelete?.column_id) {
+        setTotalCardsByColumn(counts => ({
+          ...counts,
+          [cardToDelete.column_id]: Math.max(0, (counts[cardToDelete.column_id] || 0) - 1)
+        }));
+      }
+      return prev.filter(c => c.id !== cardId);
+    });
   }, []);
 
   const handleColumnInsert = useCallback((newColumn: PipelineColumn) => {
@@ -1589,6 +1660,7 @@ export function PipelinesProvider({ children }: { children: React.ReactNode }) {
     isLoadingInitialCardsByColumn,
     hasMoreCardsByColumn,
     isLoadingMoreCardsByColumn,
+    totalCardsByColumn,
     fetchPipelines,
     createPipeline,
     deletePipeline,
@@ -1614,6 +1686,7 @@ export function PipelinesProvider({ children }: { children: React.ReactNode }) {
     isLoadingInitialCardsByColumn,
     hasMoreCardsByColumn,
     isLoadingMoreCardsByColumn,
+    totalCardsByColumn,
     fetchPipelines,
     createPipeline,
     deletePipeline,

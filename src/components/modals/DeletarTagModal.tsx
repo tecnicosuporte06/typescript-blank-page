@@ -51,17 +51,17 @@ export function DeletarTagModal({ isOpen, onClose, onTagDeleted, tag }: DeletarT
       if (tagError) throw tagError;
 
       toast({
-        title: "Tag deletada",
-        description: `A tag "${tag.name}" foi deletada com sucesso.`,
+        title: "Etiqueta deletada",
+        description: `A etiqueta "${tag.name}" foi deletada com sucesso.`,
       });
 
       onTagDeleted();
       onClose();
     } catch (error: any) {
-      console.error('Erro ao deletar tag:', error);
+      console.error('Erro ao deletar etiqueta:', error);
       toast({
         title: "Erro",
-        description: "Não foi possível deletar a tag. Tente novamente.",
+        description: "Não foi possível deletar a etiqueta. Tente novamente.",
         variant: "destructive",
       });
     } finally {
@@ -73,9 +73,9 @@ export function DeletarTagModal({ isOpen, onClose, onTagDeleted, tag }: DeletarT
     <AlertDialog open={isOpen} onOpenChange={onClose}>
       <AlertDialogContent className="max-w-md bg-white text-gray-900 border border-[#d4d4d4] rounded-none shadow-lg dark:bg-[#0b0b0b] dark:text-gray-100 dark:border-gray-700">
         <AlertDialogHeader className="px-4 py-2 bg-primary text-primary-foreground border-b border-[#d4d4d4] rounded-t-none dark:border-gray-700">
-          <AlertDialogTitle className="text-lg font-semibold flex items-center gap-2 text-primary-foreground">
+          <AlertDialogTitle className="text-lg font-semibold flex items-center gap-2 text-primary-foreground dark:text-gray-100">
             <AlertTriangle className="w-5 h-5 text-red-500" />
-            Deletar Tag
+            Deletar Etiqueta
           </AlertDialogTitle>
         </AlertDialogHeader>
 

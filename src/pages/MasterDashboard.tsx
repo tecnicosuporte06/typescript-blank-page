@@ -224,12 +224,12 @@ export default function MasterDashboard() {
               {/* Nova Empresa Button */}
               <Button
                 variant="ghost"
-                size="icon"
                 onClick={() => setCreateWorkspaceModalOpen(true)}
-                className="h-7 w-7 rounded-none hover:bg-gray-200 text-gray-700 border border-transparent hover:border-gray-300 dark:text-gray-200 dark:hover:bg-gray-800 dark:hover:border-gray-600"
+                className="h-7 px-2 rounded-none hover:bg-gray-200 text-gray-700 border border-transparent hover:border-gray-300 dark:text-gray-200 dark:hover:bg-gray-800 dark:hover:border-gray-600 text-xs"
                 title="Nova Empresa"
               >
-                <Plus className="h-3.5 w-3.5" />
+                <Plus className="h-3.5 w-3.5 mr-1" />
+                Criar Empresa
               </Button>
 
               <div className="h-4 w-px bg-gray-300 mx-1" />
@@ -263,12 +263,12 @@ export default function MasterDashboard() {
               {/* Adicionar Usuário Button */}
               <Button
                 variant="ghost"
-                size="icon"
                 onClick={() => usuariosRef.current?.handleAddUser()}
-                className="h-7 w-7 rounded-none hover:bg-gray-200 text-gray-700 border border-transparent hover:border-gray-300"
+                className="h-7 px-2 rounded-none hover:bg-gray-200 text-gray-700 border border-transparent hover:border-gray-300 dark:text-gray-200 dark:hover:bg-gray-800 dark:hover:border-gray-600 text-xs"
                 title="Adicionar usuário"
               >
-                <Plus className="h-3.5 w-3.5" />
+                <Plus className="h-3.5 w-3.5 mr-1" />
+                Criar Usuário
               </Button>
 
               <div className="h-4 w-px bg-gray-300 mx-1" />
@@ -319,12 +319,12 @@ export default function MasterDashboard() {
               {/* Adicionar Fila Button */}
               <Button
                 variant="ghost"
-                size="icon"
                 onClick={() => filasRef.current?.handleAddFila()}
-                className="h-7 w-7 rounded-none hover:bg-gray-200 text-gray-700 border border-transparent hover:border-gray-300"
+                className="h-7 px-2 rounded-none hover:bg-gray-200 text-gray-700 border border-transparent hover:border-gray-300 dark:text-gray-200 dark:hover:bg-gray-800 dark:hover:border-gray-600 text-xs"
                 title="Adicionar fila"
               >
-                <Plus className="h-3.5 w-3.5" />
+                <Plus className="h-3.5 w-3.5 mr-1" />
+                Criar Fila
               </Button>
 
               <div className="flex-1" />

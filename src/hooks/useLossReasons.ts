@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 
@@ -11,33 +11,73 @@ export interface LossReason {
   updated_at: string | null;
 }
 
+// 📸 Cache/Snapshot global para manter dados estáveis entre re-renders
+const globalSnapshot: Map<string, { data: LossReason[]; timestamp: number }> = new Map();
+const SNAPSHOT_TTL = 5 * 60 * 1000; // 5 minutos
+
 export const useLossReasons = (workspaceId: string | null) => {
-  const [lossReasons, setLossReasons] = useState<LossReason[]>([]);
+  // Inicializar com snapshot existente se disponível
+  const getInitialData = (): LossReason[] => {
+    if (!workspaceId) return [];
+    const cached = globalSnapshot.get(workspaceId);
+    if (cached) return cached.data;
+    return [];
+  };
+
+  const [lossReasons, setLossReasons] = useState<LossReason[]>(getInitialData);
   const [isLoading, setIsLoading] = useState(false);
   const { toast } = useToast();
   const fetchSeqRef = useRef(0);
   const lastToastAtRef = useRef(0);
+  const isFetchingRef = useRef(false);
+  const hasLoadedOnceRef = useRef(false);
 
   const canToastNow = useMemo(() => {
-    // debounce de erro para não “piscar” o toast em falhas transitórias
+    // debounce de erro para não "piscar" o toast em falhas transitórias
     return () => {
       const now = Date.now();
-      if (now - lastToastAtRef.current < 2000) return false;
+      if (now - lastToastAtRef.current < 5000) return false;
       lastToastAtRef.current = now;
       return true;
     };
   }, []);
 
-  const fetchLossReasons = async () => {
+  const fetchLossReasons = useCallback(async (forceRefresh = false) => {
     if (!workspaceId) {
       console.log('⚠️ useLossReasons: workspaceId não fornecido, pulando busca');
-      // não zera a lista aqui para evitar “sumir” com dados por timing
+      return;
+    }
+
+    // Verificar cache válido (a menos que forçar refresh)
+    if (!forceRefresh) {
+      const cached = globalSnapshot.get(workspaceId);
+      const now = Date.now();
+      if (cached && (now - cached.timestamp) < SNAPSHOT_TTL) {
+        console.log('💾 useLossReasons: Usando snapshot em cache:', cached.data.length, 'motivos');
+        if (lossReasons.length === 0 || lossReasons !== cached.data) {
+          setLossReasons(cached.data);
+        }
+        hasLoadedOnceRef.current = true;
+        return;
+      }
+    }
+
+    // Evitar fetch duplicado
+    if (isFetchingRef.current) {
+      console.log('⏸️ useLossReasons: Fetch já em andamento, ignorando...');
       return;
     }
     
     console.log('🔍 useLossReasons: Buscando motivos de perda para workspace:', workspaceId);
-    setIsLoading(true);
+    isFetchingRef.current = true;
+    
+    // Só mostrar loading se ainda não carregou uma vez (evita piscar)
+    if (!hasLoadedOnceRef.current) {
+      setIsLoading(true);
+    }
+    
     const seq = ++fetchSeqRef.current;
+    
     try {
       let lastError: any = null;
       let data: any[] | null = null;
@@ -56,7 +96,7 @@ export const useLossReasons = (workspaceId: string | null) => {
           break;
         } catch (e: any) {
           lastError = e;
-          await new Promise((r) => setTimeout(r, 250 + attempt * 450));
+          await new Promise((r) => setTimeout(r, 300 + attempt * 500));
         }
       }
 
@@ -64,23 +104,42 @@ export const useLossReasons = (workspaceId: string | null) => {
       
       // Evitar race: só aplica se for a requisição mais recente
       if (seq === fetchSeqRef.current) {
-        console.log('✅ useLossReasons: Motivos de perda carregados:', data?.length || 0, data);
-        setLossReasons((data as any[]) || []);
+        console.log('✅ useLossReasons: Motivos de perda carregados:', data?.length || 0);
+        
+        // 📸 Salvar no snapshot global
+        globalSnapshot.set(workspaceId, {
+          data: data as LossReason[],
+          timestamp: Date.now()
+        });
+        
+        setLossReasons(data as LossReason[]);
+        hasLoadedOnceRef.current = true;
       }
     } catch (error: any) {
       console.error('❌ useLossReasons: Erro ao carregar motivos de perda:', error);
-      if (seq === fetchSeqRef.current && canToastNow()) {
+      
+      // 📸 Em caso de erro, usar snapshot existente se disponível
+      const cached = globalSnapshot.get(workspaceId);
+      if (cached && seq === fetchSeqRef.current) {
+        console.log('📸 useLossReasons: Usando snapshot após erro:', cached.data.length, 'motivos');
+        setLossReasons(cached.data);
+        hasLoadedOnceRef.current = true;
+      }
+      
+      if (seq === fetchSeqRef.current && canToastNow() && !hasLoadedOnceRef.current) {
         toast({
           title: 'Erro',
           description: 'Não foi possível carregar os motivos de perda. Tentaremos novamente.',
           variant: 'destructive',
         });
       }
-      // não zera lossReasons em erro para não “piscar” a tabela
     } finally {
-      if (seq === fetchSeqRef.current) setIsLoading(false);
+      if (seq === fetchSeqRef.current) {
+        setIsLoading(false);
+      }
+      isFetchingRef.current = false;
     }
-  };
+  }, [workspaceId, canToastNow, toast, lossReasons]);
 
   const createLossReason = async (name: string) => {
     if (!workspaceId) {
@@ -117,7 +176,18 @@ export const useLossReasons = (workspaceId: string | null) => {
       }
       
       console.log('✅ createLossReason: Motivo criado com sucesso:', data);
-      await fetchLossReasons();
+      
+      // Atualizar snapshot e estado local imediatamente
+      const newReason = data as LossReason;
+      const updatedReasons = [...lossReasons, newReason].sort((a, b) => a.name.localeCompare(b.name));
+      
+      globalSnapshot.set(workspaceId, {
+        data: updatedReasons,
+        timestamp: Date.now()
+      });
+      
+      setLossReasons(updatedReasons);
+      
       toast({
         title: 'Sucesso',
         description: 'Motivo de perda criado com sucesso',
@@ -170,7 +240,20 @@ export const useLossReasons = (workspaceId: string | null) => {
 
       if (error) throw error;
       
-      await fetchLossReasons();
+      // Atualizar snapshot e estado local imediatamente
+      if (workspaceId) {
+        const updatedReasons = lossReasons.map(r => 
+          r.id === id ? { ...r, ...updateData } : r
+        ).sort((a, b) => a.name.localeCompare(b.name));
+        
+        globalSnapshot.set(workspaceId, {
+          data: updatedReasons,
+          timestamp: Date.now()
+        });
+        
+        setLossReasons(updatedReasons);
+      }
+      
       toast({
         title: 'Sucesso',
         description: 'Motivo de perda atualizado com sucesso',
@@ -194,7 +277,18 @@ export const useLossReasons = (workspaceId: string | null) => {
 
       if (error) throw error;
       
-      await fetchLossReasons();
+      // Atualizar snapshot e estado local imediatamente
+      if (workspaceId) {
+        const updatedReasons = lossReasons.filter(r => r.id !== id);
+        
+        globalSnapshot.set(workspaceId, {
+          data: updatedReasons,
+          timestamp: Date.now()
+        });
+        
+        setLossReasons(updatedReasons);
+      }
+      
       toast({
         title: 'Sucesso',
         description: 'Motivo de perda excluído com sucesso',
@@ -209,19 +303,36 @@ export const useLossReasons = (workspaceId: string | null) => {
     }
   };
 
+  // Carregar dados quando workspaceId mudar
   useEffect(() => {
     if (workspaceId) {
+      // Primeiro, verificar se tem dados no snapshot para mostrar imediatamente
+      const cached = globalSnapshot.get(workspaceId);
+      if (cached) {
+        setLossReasons(cached.data);
+        hasLoadedOnceRef.current = true;
+      }
+      // Depois buscar dados atualizados
       fetchLossReasons();
     } else {
       setIsLoading(false);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [workspaceId]);
 
+  // Retornar dados do snapshot se o estado estiver vazio mas o snapshot tiver dados
+  const stableLossReasons = useMemo(() => {
+    if (lossReasons.length > 0) return lossReasons;
+    if (workspaceId) {
+      const cached = globalSnapshot.get(workspaceId);
+      if (cached) return cached.data;
+    }
+    return lossReasons;
+  }, [lossReasons, workspaceId]);
+
   return {
-    lossReasons,
+    lossReasons: stableLossReasons,
     isLoading,
-    fetchLossReasons,
+    fetchLossReasons: () => fetchLossReasons(true), // Força refresh quando chamado manualmente
     createLossReason,
     updateLossReason,
     deleteLossReason,

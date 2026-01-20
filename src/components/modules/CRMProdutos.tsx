@@ -306,7 +306,7 @@ export function CRMProdutos() {
       <Dialog open={isCreateModalOpen} onOpenChange={setIsCreateModalOpen}>
         <DialogContent className="max-w-md bg-white text-gray-900 dark:bg-[#0b0b0b] dark:text-gray-100 dark:border-gray-700">
           <DialogHeader className="px-4 py-2 bg-primary text-primary-foreground border-b border-[#d4d4d4] rounded-t-none dark:border-gray-700">
-            <DialogTitle className="text-lg font-semibold text-primary-foreground">
+            <DialogTitle className="text-lg font-semibold text-primary-foreground dark:text-gray-100">
               Novo Produto
             </DialogTitle>
           </DialogHeader>

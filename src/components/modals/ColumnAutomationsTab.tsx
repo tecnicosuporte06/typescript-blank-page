@@ -472,7 +472,7 @@ export function ColumnAutomationsTab({
     <div className="space-y-4">
       <div className={`flex items-center justify-between bg-gray-50 dark:bg-[#1a1a1a] border border-[#d4d4d4] dark:border-gray-700 p-3 rounded-none`}>
         <div>
-          <h3 className={`text-sm font-bold text-gray-800 dark:text-gray-100`}>Automações desta coluna</h3>
+          <h3 className={`text-sm font-bold text-gray-800 dark:text-gray-100`}>Automações desta etapa</h3>
           <p className={`text-xs text-muted-foreground dark:text-gray-400`}>
             Configure automações que disparam ações quando cards entram, saem ou ficam nesta coluna
           </p>

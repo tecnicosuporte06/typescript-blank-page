@@ -15,6 +15,8 @@ export interface SystemUser {
   default_channel?: string;
   created_at: string;
   updated_at: string;
+  created_by?: string;
+  created_by_name?: string;
   workspaces?: { id: string; name: string; role: string }[];
   empresa?: string;
 }

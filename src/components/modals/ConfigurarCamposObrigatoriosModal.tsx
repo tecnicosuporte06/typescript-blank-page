@@ -99,8 +99,8 @@ export function ConfigurarCamposObrigatoriosModal({
     <Dialog open={open} onOpenChange={onClose}>
       <DialogContent className="max-w-md bg-white text-gray-900 dark:bg-[#0b0b0b] dark:text-gray-100 dark:border-gray-700">
         <DialogHeader className="px-4 py-2 bg-primary text-primary-foreground border-b border-[#d4d4d4] rounded-t-none dark:border-gray-700">
-          <DialogTitle className="text-primary-foreground">Configurar Campo Padrão</DialogTitle>
-          <DialogDescription className="text-primary-foreground/90">Defina campos que aparecerão para TODOS os contatos da Empresa</DialogDescription>
+          <DialogTitle className="text-primary-foreground dark:text-gray-100">Configurar Campo Padrão</DialogTitle>
+          <DialogDescription className="text-primary-foreground/90 dark:text-gray-300">Defina campos que aparecerão para TODOS os contatos da Empresa</DialogDescription>
         </DialogHeader>
 
         <div className="space-y-4 mt-4">

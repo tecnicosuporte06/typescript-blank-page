@@ -3,7 +3,6 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Trash2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { usePipelinesContext } from "@/contexts/PipelinesContext";
@@ -438,30 +437,11 @@ export default function PipelineConfiguracao({
   };
 
   return (
-    <Tabs
-      value="geral"
-      onValueChange={() => {}}
+    <div
       className="flex flex-col h-full bg-white border border-gray-300 m-2 shadow-sm font-sans text-sm dark:bg-[#0f0f0f] dark:border-gray-700 dark:text-gray-100"
     >
-      <div className="flex flex-col border-b border-gray-300 bg-[#f8f9fa] dark:border-gray-700 dark:bg-[#141414]">
-        <div className="flex items-center justify-between px-4 pt-3 pb-2 h-auto">
-          <div className="flex items-center gap-2">
-            <span className="font-semibold text-sm tracking-tight text-gray-900 dark:text-gray-100">Configuração de Pipeline</span>
-          </div>
-          <span className="text-[10px] opacity-80 text-gray-700 dark:text-gray-300">
-            {selectedPipeline ? selectedPipeline.name : "Selecione um pipeline"}
-          </span>
-        </div>
-        <TabsList className="grid w-full grid-cols-1 rounded-none bg-gray-100 dark:bg-[#1a1a1a]">
-          <TabsTrigger value="geral" className="rounded-none data-[state=active]:bg-white data-[state=active]:text-primary dark:data-[state=active]:bg-[#111111] dark:data-[state=active]:text-gray-100">
-            Configurações Gerais
-          </TabsTrigger>
-        </TabsList>
-      </div>
-
       <div className="flex-1 overflow-auto bg-[#f3f3f3] dark:bg-[#050505] p-4">
         <div className="w-full space-y-4">
-          <TabsContent value="geral" className="space-y-4">
             <div className="bg-white border border-gray-200 shadow-sm dark:bg-[#111111] dark:border-gray-700">
               <div className="px-4 py-3 border-b border-gray-200 flex items-center justify-between dark:border-gray-700">
                 <div>
@@ -565,7 +545,7 @@ export default function PipelineConfiguracao({
             <div className="bg-white border border-red-200 shadow-sm dark:bg-[#181111] dark:border-red-900/50">
               <div className="px-4 py-3 border-b border-red-200 bg-red-50 dark:bg-[#2a1212] dark:border-red-900/40">
                 <p className="text-xs font-semibold text-red-900 dark:text-red-200">Zona de perigo</p>
-                <span className="text-[11px] text-red-700 dark:text-red-300">Excluir o pipeline remove colunas e negócios.</span>
+                <span className="text-[11px] text-red-700 dark:text-red-300">Excluir o pipeline remove etapas e oportunidades.</span>
               </div>
               <div className="p-4">
                 <Button
@@ -579,7 +559,6 @@ export default function PipelineConfiguracao({
                 </Button>
               </div>
             </div>
-          </TabsContent>
 
           {/* Aba "Ações" removida: botões (Ganho/Perdido/Reabrir) são fixos no detalhe da oportunidade */}
 
@@ -593,6 +572,6 @@ export default function PipelineConfiguracao({
         pipelineName={selectedPipeline?.name || ""}
         isDeleting={isDeletingPipeline}
       />
-    </Tabs>
+    </div>
   );
 }

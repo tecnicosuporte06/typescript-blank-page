@@ -978,7 +978,7 @@ export function AutomationModal({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className={`sm:max-w-[800px] max-h-[90vh] overflow-y-auto p-0 gap-0 border border-[#d4d4d4] dark:border-gray-700 bg-white dark:bg-[#0f0f0f] shadow-sm rounded-none ${isDarkMode ? 'dark' : ''}`}>
         <DialogHeader className="bg-primary p-4 rounded-none m-0">
-          <DialogTitle className="text-primary-foreground text-base font-bold">
+          <DialogTitle className="text-primary-foreground dark:text-gray-100 text-base font-bold">
             {automation ? 'Editar Automação' : 'Nova Automação'}
           </DialogTitle>
         </DialogHeader>

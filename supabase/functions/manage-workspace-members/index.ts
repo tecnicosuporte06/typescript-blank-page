@@ -364,6 +364,24 @@ serve(async (req) => {
           )
         }
 
+        // 1. Obter o user_id do membro antes de deletar
+        const { data: memberToRemove, error: memberFetchError } = await supabase
+          .from('workspace_members')
+          .select('user_id')
+          .eq('id', memberId)
+          .single()
+
+        if (memberFetchError || !memberToRemove) {
+          console.error('Error fetching member data:', memberFetchError)
+          return new Response(
+            JSON.stringify({ success: false, error: 'Membro não encontrado' }),
+            { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          )
+        }
+
+        const userIdToCheck = memberToRemove.user_id
+
+        // 2. Deletar o membro do workspace
         const { error: removeError } = await supabase
           .from('workspace_members')
           .delete()
@@ -374,6 +392,42 @@ serve(async (req) => {
             JSON.stringify({ success: false, error: removeError.message }),
             { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
           )
+        }
+
+        // 3. Verificar se o usuário tem outras empresas vinculadas
+        const { data: remainingMemberships, error: checkError } = await supabase
+          .from('workspace_members')
+          .select('id')
+          .eq('user_id', userIdToCheck)
+          .limit(1)
+
+        if (checkError) {
+          console.error('Error checking remaining memberships:', checkError)
+          // Continua mesmo com erro, pois o membro já foi removido
+        }
+
+        // 4. Se não tiver mais nenhuma empresa, deletar o usuário completamente
+        if (!remainingMemberships || remainingMemberships.length === 0) {
+          console.log(`🗑️ Usuário ${userIdToCheck} não tem mais empresas vinculadas. Removendo do sistema...`)
+          
+          // Deletar cargos do usuário
+          await supabase
+            .from('system_user_cargos')
+            .delete()
+            .eq('user_id', userIdToCheck)
+
+          // Deletar o usuário da system_users
+          const { error: deleteUserError } = await supabase
+            .from('system_users')
+            .delete()
+            .eq('id', userIdToCheck)
+
+          if (deleteUserError) {
+            console.error('Error deleting user from system_users:', deleteUserError)
+            // Não retorna erro pois o membro já foi removido do workspace
+          } else {
+            console.log(`✅ Usuário ${userIdToCheck} removido completamente do sistema`)
+          }
         }
 
         return new Response(

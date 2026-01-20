@@ -33,7 +33,7 @@ export function DeletarColunaModal({ isOpen, onClose, onConfirm, columnName, isD
             "dark:text-white"
           )}>
             <AlertTriangle className="w-5 h-5 text-red-500" />
-            Excluir Coluna "{columnName}"?
+            Excluir Etapa "{columnName}"?
           </DialogTitle>
         </DialogHeader>
 
@@ -50,7 +50,7 @@ export function DeletarColunaModal({ isOpen, onClose, onConfirm, columnName, isD
             isDarkMode ? "text-gray-300" : "text-gray-600",
             "dark:text-gray-300"
           )}>
-            Se esta coluna contém negócios, você precisa movê-los para outra coluna antes de excluí-la.
+            Se esta etapa contém oportunidades, você precisa movê-las para outra etapa antes de excluí-la.
           </p>
         </div>
 

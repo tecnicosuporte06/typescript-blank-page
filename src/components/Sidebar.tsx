@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
-import { ChevronLeft, MoreVertical, ArrowLeft, LayoutDashboard, MessageCircle, Users, FolderOpen, Settings, Zap, Link, Shield, DollarSign, Target, Package, Calendar, CheckSquare, MessageSquare, Bot, BrainCircuit, GitBranch, Bell, User, LogOut, Handshake, FileText, Building2, BarChart3, AudioLines, Moon, Sun, Key, Send, AlertTriangle, WifiOff } from "lucide-react";
+import { ChevronLeft, MoreVertical, ArrowLeft, LayoutDashboard, MessageCircle, Users, FolderOpen, Settings, Zap, Link, Shield, DollarSign, Target, Package, Calendar, CheckSquare, MessageSquare, Bot, BrainCircuit, GitBranch, Bell, User, LogOut, Handshake, FileText, Building2, BarChart3, AudioLines, Moon, Sun, Key, Send, AlertTriangle, WifiOff, X } from "lucide-react";
 import logoEx from "@/assets/logo-ex.png";
 import logoEnc from "@/assets/logo-enc.png";
 import { Tooltip, TooltipContent, TooltipTrigger, TooltipProvider } from "@/components/ui/tooltip";
@@ -54,7 +54,6 @@ export function Sidebar({
   const [isDarkMode, setIsDarkMode] = useState(false);
   const [isDisconnectedAlertOpen, setIsDisconnectedAlertOpen] = useState(false);
   const [isConfigModalOpen, setIsConfigModalOpen] = useState(false);
-  const prevHasDisconnected = useRef(false);
 
   const temporarilyDisableThemeTransitions = () => {
     const root = document.documentElement;
@@ -131,23 +130,19 @@ export function Sidebar({
   // Hook para monitorar conexões desconectadas
   const { disconnectedConnections, hasDisconnected, disconnectedCount } = useDisconnectedConnections(selectedWorkspace?.workspace_id || "");
 
-  // Abrir/fechar popover automaticamente quando detectar mudança de conexão (em tempo real)
+  // Abrir alerta automaticamente quando detectar conexões offline
   useEffect(() => {
-    console.log('[Sidebar] useEffect disparado - hasDisconnected:', hasDisconnected, 'disconnectedCount:', disconnectedCount, 'prevHasDisconnected:', prevHasDisconnected.current);
+    console.log('[Sidebar] useEffect disparado - hasDisconnected:', hasDisconnected, 'disconnectedCount:', disconnectedCount);
     
     if (hasDisconnected && disconnectedCount > 0) {
-      // Há conexões offline - abrir alerta se mudou de estado ou se é o carregamento inicial
-      if (!prevHasDisconnected.current || !isDisconnectedAlertOpen) {
-        console.log('[Sidebar] Conexão offline detectada! Abrindo alerta...');
-        setIsDisconnectedAlertOpen(true);
-      }
-    } else if (!hasDisconnected && prevHasDisconnected.current) {
-      // Não há mais conexões offline e havia antes - fechar alerta
+      // Há conexões offline - abrir alerta automaticamente
+      console.log('[Sidebar] Conexão offline detectada! Abrindo alerta...');
+      setIsDisconnectedAlertOpen(true);
+    } else if (!hasDisconnected && disconnectedCount === 0) {
+      // Não há mais conexões offline - fechar alerta
       console.log('[Sidebar] Todas as conexões reconectadas! Fechando alerta...');
       setIsDisconnectedAlertOpen(false);
     }
-    
-    prevHasDisconnected.current = hasDisconnected;
   }, [hasDisconnected, disconnectedCount]);
 
   const {
@@ -274,7 +269,6 @@ export function Sidebar({
     masterOnly?: boolean;
   }) => {
     const isActive = activeModule === item.id;
-    const showDisconnectedAlert = item.id === 'empresa' && hasDisconnected;
 
     const menuButton = (
       <button
@@ -297,80 +291,8 @@ export function Sidebar({
           )
         })}
         {!isCollapsed && <span className="truncate">{item.label}</span>}
-        {/* Indicador de conexão offline */}
-        {showDisconnectedAlert && (
-          <span className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center">
-            <span className="relative flex h-2.5 w-2.5">
-              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
-              <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-red-500"></span>
-            </span>
-          </span>
-        )}
       </button>
     );
-
-    // Se tem alerta de desconexão, envolve com Popover controlado
-    if (showDisconnectedAlert) {
-      return (
-        <Popover key={item.id} open={isDisconnectedAlertOpen} onOpenChange={setIsDisconnectedAlertOpen}>
-          <PopoverTrigger asChild>
-            {menuButton}
-          </PopoverTrigger>
-          <PopoverContent 
-            side="right" 
-            align="start" 
-            className="w-72 p-0 bg-white dark:bg-[#1b1b1b] border-red-300 dark:border-red-700 shadow-lg"
-          >
-            <div className="p-3 border-b border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-900/30">
-              <div className="flex items-center gap-2 text-red-700 dark:text-red-400">
-                <WifiOff className="w-4 h-4" />
-                <span className="font-semibold text-sm">Conexão Offline</span>
-              </div>
-            </div>
-            <div className="p-3">
-              <p className="text-xs text-gray-600 dark:text-gray-400 mb-3">
-                {disconnectedCount === 1 
-                  ? 'Uma conexão está desconectada. Impossível seguir com o atendimento até o restabelecimento.'
-                  : `${disconnectedCount} conexões estão desconectadas. Impossível seguir com o atendimento até o restabelecimento.`
-                }
-              </p>
-              <div className="space-y-2">
-                {disconnectedConnections.map((conn) => (
-                  <div 
-                    key={conn.id} 
-                    className="flex items-center gap-2 p-2 bg-red-50 dark:bg-red-900/20 rounded border border-red-200 dark:border-red-800"
-                  >
-                    <WifiOff className="w-3.5 h-3.5 text-red-500 flex-shrink-0" />
-                    <div className="flex-1 min-w-0">
-                      <p className="text-xs font-medium text-gray-900 dark:text-gray-100 truncate">
-                        {conn.instance_name}
-                      </p>
-                      {conn.phone_number && (
-                        <p className="text-[10px] text-gray-500 dark:text-gray-400 truncate">
-                          {conn.phone_number}
-                        </p>
-                      )}
-                    </div>
-                    <Badge variant="destructive" className="text-[9px] px-1.5 py-0">
-                      Offline
-                    </Badge>
-                  </div>
-                ))}
-              </div>
-              <button
-                onClick={() => {
-                  setIsDisconnectedAlertOpen(false);
-                  setIsConfigModalOpen(true);
-                }}
-                className="w-full mt-3 px-3 py-1.5 text-xs font-medium text-white bg-red-600 hover:bg-red-700 rounded transition-colors"
-              >
-                Verificar Conexões
-              </button>
-            </div>
-          </PopoverContent>
-        </Popover>
-      );
-    }
 
     if (isCollapsed) {
       return (
@@ -643,6 +565,67 @@ export function Sidebar({
           workspaceId={selectedWorkspace.workspace_id}
           workspaceName={selectedWorkspace.name}
         />
+      )}
+
+      {/* Alerta de Conexão Offline - Canto Superior Direito */}
+      {isDisconnectedAlertOpen && hasDisconnected && (
+        <div className="fixed top-4 right-4 z-[9999] w-80 bg-white dark:bg-[#1b1b1b] border border-red-300 dark:border-red-700 shadow-lg rounded-lg overflow-hidden animate-in slide-in-from-right-5 duration-300">
+          <div className="p-3 border-b border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-900/30 flex items-center justify-between">
+            <div className="flex items-center gap-2 text-red-700 dark:text-red-400">
+              <WifiOff className="w-4 h-4" />
+              <span className="font-semibold text-sm">Conexão Offline</span>
+            </div>
+            <button
+              onClick={() => setIsDisconnectedAlertOpen(false)}
+              className="p-1 hover:bg-red-100 dark:hover:bg-red-800/50 rounded transition-colors"
+            >
+              <X className="w-4 h-4 text-red-600 dark:text-red-400" />
+            </button>
+          </div>
+          <div className="p-3">
+            <p className="text-xs text-gray-600 dark:text-gray-400 mb-3">
+              {disconnectedCount === 1 
+                ? 'Uma conexão está desconectada. Impossível seguir com o atendimento até o restabelecimento.'
+                : `${disconnectedCount} conexões estão desconectadas. Impossível seguir com o atendimento até o restabelecimento.`
+              }
+            </p>
+            <div className="space-y-2 max-h-40 overflow-y-auto">
+              {disconnectedConnections.map((conn) => (
+                <div 
+                  key={conn.id} 
+                  className="flex items-center gap-2 p-2 bg-red-50 dark:bg-red-900/20 rounded border border-red-200 dark:border-red-800"
+                >
+                  <WifiOff className="w-3.5 h-3.5 text-red-500 flex-shrink-0" />
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xs font-medium text-gray-900 dark:text-gray-100 truncate">
+                      {conn.instance_name}
+                    </p>
+                    {conn.phone_number && (
+                      <p className="text-[10px] text-gray-500 dark:text-gray-400 truncate">
+                        {conn.phone_number}
+                      </p>
+                    )}
+                  </div>
+                  <Badge variant="destructive" className="text-[9px] px-1.5 py-0">
+                    Offline
+                  </Badge>
+                </div>
+              ))}
+            </div>
+            {/* Botão "Verificar Conexões" só aparece para master e admin */}
+            {(userRole === 'master' || userRole === 'admin') && (
+              <button
+                onClick={() => {
+                  setIsDisconnectedAlertOpen(false);
+                  setIsConfigModalOpen(true);
+                }}
+                className="w-full mt-3 px-3 py-1.5 text-xs font-medium text-white bg-red-600 hover:bg-red-700 rounded transition-colors"
+              >
+                Verificar Conexões
+              </button>
+            )}
+          </div>
+        </div>
       )}
     </div>
   );

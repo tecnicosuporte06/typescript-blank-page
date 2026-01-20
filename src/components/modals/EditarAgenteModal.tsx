@@ -62,12 +62,12 @@ export function EditarAgenteModal({
     workspace_id: '',
     name: '',
     api_key: '',
-    model: 'gpt-4o-mini',
+    model: 'gpt-4o',
     system_instructions: '',
-    temperature: 0.7,
+    temperature: 0.3,
     max_tokens: 2000,
     max_messages: 300,
-    response_delay: 3,
+    response_delay: 15,
     ignore_interval: 0,
     assign_responsible: false,
     split_responses: true,
@@ -189,12 +189,12 @@ Exemplo: [ENVIE PARA O TOOL \`qualificar-cliente\` (METODO POST) o workspace_id:
         workspace_id: data.workspace_id || '',
         name: data.name || '',
         api_key: data.api_key_encrypted || '',
-        model: data.model || 'gpt-4o-mini',
+        model: data.model || 'gpt-4o',
         system_instructions: data.system_instructions || '',
-        temperature: data.temperature || 0.7,
+        temperature: data.temperature ?? 0.3,
         max_tokens: data.max_tokens || 2000,
         max_messages: data.max_messages || 300,
-        response_delay: (data.response_delay_ms || 3000) / 1000,
+        response_delay: (data.response_delay_ms || 15000) / 1000,
         ignore_interval: data.ignore_interval || 0,
         assign_responsible: data.assign_responsible || false,
         split_responses: data.split_responses ?? true,
@@ -615,7 +615,7 @@ Exemplo: [ENVIE PARA O TOOL \`qualificar-cliente\` (METODO POST) o workspace_id:
                 value={[formData.temperature]}
                 onValueChange={([value]) => setFormData({ ...formData, temperature: value })}
                 min={0}
-                max={2}
+                max={1}
                 step={0.1}
               />
             </div>

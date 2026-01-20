@@ -258,7 +258,7 @@ export function CRMTags() {
                 </th>
                 <th className="border border-[#d4d4d4] px-2 py-1 text-center font-semibold text-gray-700 min-w-[150px] group hover:bg-[#e1e1e1] cursor-pointer dark:border-gray-700 dark:text-gray-200 dark:hover:bg-[#2a2a2a]">
                    <div className="flex items-center justify-between">
-                    <span>Contatos Tageados</span>
+                    <span>Contatos Etiquetados</span>
                     <div className="w-[1px] h-3 bg-gray-400 mx-1" />
                   </div>
                 </th>
@@ -307,7 +307,7 @@ export function CRMTags() {
                         onClick={() => setIsCreateModalOpen(true)}
                       >
                         <Plus className="h-3 w-3 mr-1" />
-                        Criar primeira tag
+                        Criar primeira etiqueta
                       </Button>
                     </div>
                   </td>

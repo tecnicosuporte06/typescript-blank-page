@@ -88,7 +88,7 @@ export function EditarColunaModal({
     if (!name.trim()) {
       toast({
         title: "Erro",
-        description: "O nome da coluna não pode estar vazio",
+        description: "O nome da etapa não pode estar vazio",
         variant: "destructive",
       });
       return;
@@ -139,7 +139,7 @@ export function EditarColunaModal({
       console.error('Erro ao atualizar coluna:', error);
       toast({
         title: "Erro",
-        description: "Erro ao atualizar coluna",
+        description: "Erro ao atualizar etapa",
         variant: "destructive",
       });
     } finally {
@@ -161,7 +161,7 @@ export function EditarColunaModal({
 
       toast({
         title: "Sucesso",
-        description: "Coluna excluída com sucesso",
+        description: "Etapa excluída com sucesso",
       });
 
       onUpdate();
@@ -172,14 +172,14 @@ export function EditarColunaModal({
       
       if (error.message?.includes('existing cards')) {
         toast({
-          title: "Erro ao excluir coluna",
-          description: "Não é possível excluir uma coluna que contém negócios. Mova os negócios para outra coluna primeiro.",
+          title: "Erro ao excluir etapa",
+          description: "Não é possível excluir uma etapa que contém oportunidades. Mova as oportunidades para outra etapa primeiro.",
           variant: "destructive",
         });
       } else {
         toast({
-          title: "Erro ao excluir coluna",
-          description: "Erro ao excluir coluna",
+          title: "Erro ao excluir etapa",
+          description: "Erro ao excluir etapa",
           variant: "destructive",
         });
       }
@@ -221,7 +221,7 @@ export function EditarColunaModal({
       <Dialog open={open} onOpenChange={onOpenChange}>
         <DialogContent className={`sm:max-w-[700px] max-h-[90vh] overflow-y-auto p-0 gap-0 border border-[#d4d4d4] dark:border-gray-700 bg-white dark:bg-[#0f0f0f] shadow-sm rounded-none ${isDarkMode ? 'dark' : ''}`}>
           <DialogHeader className="bg-primary dark:bg-transparent p-4 rounded-none m-0 border-b border-transparent dark:border-gray-700">
-            <DialogTitle className="text-primary-foreground dark:text-white">Editar Coluna</DialogTitle>
+            <DialogTitle className="text-primary-foreground dark:text-white">Editar Etapa</DialogTitle>
           </DialogHeader>
 
           <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
@@ -233,7 +233,7 @@ export function EditarColunaModal({
 
             <TabsContent value="settings" className="space-y-4 p-6 m-0">
               <div className="space-y-2">
-                <Label htmlFor="column-name" className={`text-xs font-bold text-gray-700 dark:text-gray-200`}>Nome da Coluna</Label>
+                <Label htmlFor="column-name" className={`text-xs font-bold text-gray-700 dark:text-gray-200`}>Nome da Etapa</Label>
                 <Input
                   id="column-name"
                   value={name}
@@ -263,7 +263,7 @@ export function EditarColunaModal({
                     className="gap-2 h-8 text-xs rounded-none"
                   >
                     <Trash2 className="h-3.5 w-3.5" />
-                    Excluir Coluna
+                    Excluir Etapa
                   </Button>
                 </div>
                 <div className="flex gap-2">
@@ -280,9 +280,9 @@ export function EditarColunaModal({
             <TabsContent value="permissions" className="space-y-6 p-6 m-0">
               <div className="space-y-4">
                 <div>
-                  <h3 className={`text-sm font-bold mb-3 text-gray-800 dark:text-gray-200`}>Usuários que podem ver todos os negócios</h3>
+                  <h3 className={`text-sm font-bold mb-3 text-gray-800 dark:text-gray-200`}>Usuários que podem ver todas as oportunidades</h3>
                   <p className={`text-xs text-muted-foreground dark:text-gray-400 mb-3`}>
-                    Usuários selecionados verão todos os negócios desta coluna independentemente do responsável.
+                    Usuários selecionados verão todas as oportunidades desta etapa independentemente do responsável.
                   </p>
                   <p className={`text-xs text-muted-foreground dark:text-gray-400 mb-3`}>
                     {viewAllDealsUsers.length} usuário{viewAllDealsUsers.length !== 1 ? 's' : ''} selecionado{viewAllDealsUsers.length !== 1 ? 's' : ''}
@@ -322,7 +322,7 @@ export function EditarColunaModal({
                     className="w-full mt-3 h-8 text-xs rounded-none bg-primary hover:bg-primary/90" 
                     onClick={handleUpdateViewAllDealsPermissions}
                   >
-                    Salvar Permissões de Todos os Negócios
+                    Salvar Permissões de Todas as Oportunidades
                   </Button>
                 </div>
               </div>
@@ -339,7 +339,7 @@ export function EditarColunaModal({
                 />
               ) : (
                 <div className={`text-center py-8 text-muted-foreground dark:text-gray-400 text-xs`}>
-                  Selecione uma coluna para gerenciar automações
+                  Selecione uma etapa para gerenciar automações
                 </div>
               )}
             </TabsContent>

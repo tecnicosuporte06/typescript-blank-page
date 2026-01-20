@@ -94,16 +94,16 @@ export const AdministracaoUsuarios = forwardRef<AdministracaoUsuariosRef>((props
       <div className="flex-1 overflow-auto p-4 bg-white dark:bg-[#050505]">
         {loading ? (
           <div className="bg-white border border-[#d4d4d4] shadow-sm dark:bg-[#111111] dark:border-gray-700">
-            <div className="grid grid-cols-6 bg-[#f3f3f3] border-b border-[#d4d4d4] dark:bg-[#161616] dark:border-gray-700">
-              {['Nome', 'Email', 'Perfil', 'Empresa', 'Status', 'Ações'].map((header) => (
+            <div className="grid grid-cols-7 bg-[#f3f3f3] border-b border-[#d4d4d4] dark:bg-[#161616] dark:border-gray-700">
+              {['Nome', 'Email', 'Perfil', 'Empresa', 'Criado por', 'Status', 'Ações'].map((header) => (
                 <div key={header} className="px-3 py-2 text-xs font-semibold text-gray-700 border-r border-[#d4d4d4] last:border-r-0 dark:text-gray-200 dark:border-gray-700">
                   {header}
                 </div>
               ))}
             </div>
             {[...Array(6)].map((_, i) => (
-              <div key={i} className="grid grid-cols-6 border-b border-[#d4d4d4] animate-pulse dark:border-gray-700">
-                {[...Array(6)].map((_, j) => (
+              <div key={i} className="grid grid-cols-7 border-b border-[#d4d4d4] animate-pulse dark:border-gray-700">
+                {[...Array(7)].map((_, j) => (
                   <div key={j} className="px-3 py-2.5 border-r border-[#d4d4d4] last:border-r-0 dark:border-gray-700">
                     <div className="h-4 bg-gray-200 rounded dark:bg-gray-800" />
                   </div>
@@ -131,7 +131,7 @@ export const AdministracaoUsuarios = forwardRef<AdministracaoUsuariosRef>((props
         ) : (
           <div className="bg-white border border-[#d4d4d4] shadow-sm dark:bg-[#111111] dark:border-gray-700">
             {/* Table Header */}
-            <div className="grid grid-cols-6 bg-[#f3f3f3] border-b border-[#d4d4d4] sticky top-0 z-10 dark:bg-[#161616] dark:border-gray-700">
+            <div className="grid grid-cols-7 bg-[#f3f3f3] border-b border-[#d4d4d4] sticky top-0 z-10 dark:bg-[#161616] dark:border-gray-700">
               <div className="px-3 py-2 text-xs font-semibold text-gray-700 border-r border-[#d4d4d4] dark:text-gray-200 dark:border-gray-700">
                 Nome
               </div>
@@ -145,6 +145,9 @@ export const AdministracaoUsuarios = forwardRef<AdministracaoUsuariosRef>((props
                 Empresa
               </div>
               <div className="px-3 py-2 text-xs font-semibold text-gray-700 border-r border-[#d4d4d4] dark:text-gray-200 dark:border-gray-700">
+                Criado por
+              </div>
+              <div className="px-3 py-2 text-xs font-semibold text-gray-700 border-r border-[#d4d4d4] dark:text-gray-200 dark:border-gray-700">
                 Status
               </div>
               <div className="px-3 py-2 text-xs font-semibold text-gray-700 dark:text-gray-200">
@@ -156,7 +159,7 @@ export const AdministracaoUsuarios = forwardRef<AdministracaoUsuariosRef>((props
             {filteredUsers.map((user) => (
               <div
                 key={user.id}
-                className="grid grid-cols-6 border-b border-[#d4d4d4] hover:bg-gray-50 transition-colors dark:border-gray-700 dark:hover:bg-gray-900/60"
+                className="grid grid-cols-7 border-b border-[#d4d4d4] hover:bg-gray-50 transition-colors dark:border-gray-700 dark:hover:bg-gray-900/60"
               >
                 {/* Nome */}
                 <div className="px-3 py-2.5 text-xs border-r border-[#d4d4d4] flex items-center gap-2 dark:border-gray-700 dark:text-gray-100">
@@ -177,6 +180,11 @@ export const AdministracaoUsuarios = forwardRef<AdministracaoUsuariosRef>((props
                 {/* Empresa */}
                 <div className="px-3 py-2.5 text-xs border-r border-[#d4d4d4] dark:border-gray-700 dark:text-gray-200">
                   {user.profile === 'master' ? 'Todas' : (user.empresa || (user.workspaces?.map(w => w.name).join(", ") || "-"))}
+                </div>
+
+                {/* Criado por */}
+                <div className="px-3 py-2.5 text-xs border-r border-[#d4d4d4] text-gray-600 dark:text-gray-300 dark:border-gray-700">
+                  {user.created_by_name || "-"}
                 </div>
 
                 {/* Status */}

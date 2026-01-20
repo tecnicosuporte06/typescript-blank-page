@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 
 interface DisconnectedConnection {
@@ -11,9 +11,10 @@ interface DisconnectedConnection {
 export function useDisconnectedConnections(workspaceId: string) {
   const [disconnectedConnections, setDisconnectedConnections] = useState<DisconnectedConnection[]>([]);
   const [isLoading, setIsLoading] = useState(false);
+  const lastWorkspaceIdRef = useRef<string>('');
 
-  const fetchDisconnectedConnections = useCallback(async () => {
-    console.log('[useDisconnectedConnections] fetchDisconnectedConnections chamado - workspaceId:', workspaceId);
+  const fetchDisconnectedConnections = useCallback(async (forceRefresh = false) => {
+    console.log('[useDisconnectedConnections] fetchDisconnectedConnections chamado - workspaceId:', workspaceId, 'forceRefresh:', forceRefresh);
     
     if (!workspaceId) {
       console.log('[useDisconnectedConnections] workspaceId vazio, retornando');
@@ -23,20 +24,32 @@ export function useDisconnectedConnections(workspaceId: string) {
 
     setIsLoading(true);
     try {
-      console.log('[useDisconnectedConnections] Buscando conexões desconectadas...');
-      const { data, error } = await supabase
+      // Adicionar timestamp para evitar cache
+      const timestamp = Date.now();
+      
+      // Buscar TODAS as conexões do workspace
+      const { data: allConnections, error: allError } = await supabase
         .from('connections')
         .select('id, instance_name, phone_number, status')
-        .eq('workspace_id', workspaceId)
-        .eq('status', 'disconnected');
-
-      if (error) {
-        console.error('[useDisconnectedConnections] Erro ao buscar conexões:', error);
+        .eq('workspace_id', workspaceId);
+      
+      if (allError) {
+        console.error('[useDisconnectedConnections] Erro ao buscar conexões:', allError);
         return;
       }
+      
+      console.log('[useDisconnectedConnections] TODAS as conexões do workspace:', allConnections);
+      console.log('[useDisconnectedConnections] Status de cada conexão:', allConnections?.map(c => ({ name: c.instance_name, status: c.status })));
 
-      console.log('[useDisconnectedConnections] Conexões desconectadas encontradas:', data?.length || 0, data);
-      setDisconnectedConnections(data || []);
+      // Filtrar conexões desconectadas (aceita múltiplos formatos de status)
+      const disconnectedStatuses = ['disconnected', 'desconectado', 'offline', 'error', 'erro'];
+      const disconnected = allConnections?.filter(conn => {
+        const status = conn.status?.toLowerCase()?.trim();
+        return disconnectedStatuses.includes(status || '');
+      }) || [];
+
+      console.log('[useDisconnectedConnections] Conexões desconectadas filtradas:', disconnected.length, disconnected);
+      setDisconnectedConnections(disconnected);
     } catch (error) {
       console.error('[useDisconnectedConnections] Exception:', error);
     } finally {
@@ -44,10 +57,16 @@ export function useDisconnectedConnections(workspaceId: string) {
     }
   }, [workspaceId]);
 
-  // Busca inicial
+  // Busca inicial e quando workspace mudar
   useEffect(() => {
-    fetchDisconnectedConnections();
-  }, [fetchDisconnectedConnections]);
+    if (workspaceId && workspaceId !== lastWorkspaceIdRef.current) {
+      console.log('[useDisconnectedConnections] Workspace mudou, buscando conexões...');
+      lastWorkspaceIdRef.current = workspaceId;
+      fetchDisconnectedConnections(true);
+    } else if (workspaceId) {
+      fetchDisconnectedConnections();
+    }
+  }, [workspaceId, fetchDisconnectedConnections]);
 
   // Subscribe para mudanças em tempo real
   useEffect(() => {
