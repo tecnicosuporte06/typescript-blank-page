@@ -276,6 +276,7 @@ export function WhatsAppChat({
   const { messages: quickTextMessages } = useQuickMessages();
   
   const [selectedConversation, setSelectedConversation] = useState<WhatsAppConversation | null>(null);
+  const [agentsMap, setAgentsMap] = useState<Map<string, string>>(new Map()); // Mapeamento de agentes
   const [isHeaderContactResolved, setIsHeaderContactResolved] = useState(false);
   const [messageDrafts, setMessageDrafts] = useState<Record<string, string>>({});
   const [searchTerm, setSearchTerm] = useState("");
@@ -343,6 +344,26 @@ export function WhatsAppChat({
 
     return () => window.clearTimeout(handle);
   }, [searchTerm, fetchConversations]);
+
+  // Carregar lista de agentes para mapeamento de nomes
+  useEffect(() => {
+    if (!selectedWorkspace?.workspace_id) return;
+
+    const fetchAgents = async () => {
+      const { data } = await supabase
+        .from('ai_agents')
+        .select('id, name')
+        .eq('workspace_id', selectedWorkspace.workspace_id);
+      
+      if (data) {
+        const map = new Map<string, string>();
+        data.forEach(agent => map.set(agent.id, agent.name));
+        setAgentsMap(map);
+      }
+    };
+
+    fetchAgents();
+  }, [selectedWorkspace?.workspace_id]);
 
   // ♾️ Scroll infinito na lista de conversas (listener no viewport real do ScrollArea)
   useEffect(() => {
@@ -3653,6 +3674,24 @@ export function WhatsAppChat({
                           selectedConversation.contact?.name || ''
                         );
 
+                        // Lógica para exibir nome do remetente (apenas master/admin)
+                        const canSeeSenderName = hasRole(['master', 'admin']);
+                        let realSenderName = '';
+
+                        // Verifica se é mensagem de IA (origem automática ou tipo system/ia)
+                        const isIAMessage = message.origem_resposta === 'automatica';
+
+                        if (canSeeSenderName && !isContactMessage) {
+                          if (isIAMessage) {
+                            // Se tiver ID do agente, busca o nome, senão usa genérico
+                            realSenderName = (message.sender_id ? agentsMap.get(message.sender_id) : null) || 'Agente IA';
+                          } else if (message.sender_id) {
+                            // Se for usuário humano
+                            const senderUser = assignedUsersMap.get(message.sender_id);
+                            realSenderName = senderUser?.name?.split(' ')[0] || '';
+                          }
+                        }
+
                         return (
                           <div 
                             key={message.id} 
@@ -3700,6 +3739,13 @@ export function WhatsAppChat({
                          // Padding base
                          message.message_type !== 'audio' && !(message.message_type === 'image' || message.message_type === 'video') && "px-3 py-2"
                      )}>
+                      {/* Nome do remetente (apenas master/admin) */}
+                      {canSeeSenderName && !isContactMessage && realSenderName && (
+                        <div className="text-[10px] font-bold text-primary/70 mb-0.5 px-1 pt-1 leading-none select-none">
+                          {realSenderName}
+                        </div>
+                      )}
+
                       {/* Menu de contexto */}
                       {!selectionMode && <div className="opacity-0 group-hover/message:opacity-100 transition-opacity absolute top-0 right-0 z-10">
                         <MessageContextMenu 
