@@ -371,7 +371,7 @@ export function CRMProdutos() {
       <Dialog open={isEditModalOpen} onOpenChange={setIsEditModalOpen}>
         <DialogContent className="max-w-md bg-white text-gray-900 dark:bg-[#0b0b0b] dark:text-gray-100 dark:border-gray-700">
           <DialogHeader className="px-4 py-2 bg-primary text-primary-foreground border-b border-[#d4d4d4] rounded-t-none dark:border-gray-700">
-            <DialogTitle className="text-lg font-semibold text-primary-foreground">
+            <DialogTitle className="text-lg font-semibold text-primary-foreground dark:text-white">
               Editar Produto
             </DialogTitle>
           </DialogHeader>
@@ -437,7 +437,7 @@ export function CRMProdutos() {
       <Dialog open={isDeleteModalOpen} onOpenChange={setIsDeleteModalOpen}>
         <DialogContent className="max-w-md bg-white text-gray-900 dark:bg-[#0b0b0b] dark:text-gray-100 dark:border-gray-700">
           <DialogHeader className="px-4 py-2 bg-primary text-primary-foreground border-b border-[#d4d4d4] rounded-t-none dark:border-gray-700">
-            <DialogTitle className="text-lg font-semibold text-primary-foreground">
+            <DialogTitle className="text-lg font-semibold text-primary-foreground dark:text-white">
               Confirmar Exclusão
             </DialogTitle>
           </DialogHeader>

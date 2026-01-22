@@ -908,6 +908,7 @@ function CRMNegociosContent({
   const [selectedCardForValue, setSelectedCardForValue] = useState<any>(null);
   const [isSelectionMode, setIsSelectionMode] = useState(false);
   const [selectedCardsForTransfer, setSelectedCardsForTransfer] = useState<Set<string>>(new Set());
+  const [isLoadingAllCardIds, setIsLoadingAllCardIds] = useState(false);
   const [isEditarContatoModalOpen, setIsEditarContatoModalOpen] = useState(false);
   const [selectedContactId, setSelectedContactId] = useState<string | null>(null);
   const [isVincularProdutoModalOpen, setIsVincularProdutoModalOpen] = useState(false);
@@ -1221,6 +1222,31 @@ const [selectedCardForProduct, setSelectedCardForProduct] = useState<{
 
     return cardValue ?? productValue ?? 0;
   }, [cardProductValues]);
+
+  // Função para buscar todos os IDs dos cards de uma coluna (sem paginação)
+  const fetchAllCardIdsForColumn = useCallback(async (columnId: string): Promise<string[]> => {
+    if (!selectedPipeline?.id) return [];
+    
+    try {
+      // Buscar apenas os IDs dos cards da coluna (status aberto ou perda)
+      const { data, error } = await supabase
+        .from('pipeline_cards')
+        .select('id')
+        .eq('pipeline_id', selectedPipeline.id)
+        .eq('column_id', columnId)
+        .or('status.eq.aberto,status.eq.perda,status.eq.perdido,status.is.null');
+      
+      if (error) {
+        console.error('Erro ao buscar IDs dos cards:', error);
+        return [];
+      }
+      
+      return (data || []).map(card => card.id);
+    } catch (error) {
+      console.error('Erro ao buscar IDs dos cards:', error);
+      return [];
+    }
+  }, [selectedPipeline?.id]);
 
   // Função para filtrar cards por coluna
   const getFilteredCards = (columnId: string) => {
@@ -2335,18 +2361,31 @@ const [selectedCardForProduct, setSelectedCardForProduct] = useState<{
                           {isSelectionMode && selectedColumnForAction === column.id ? <div className="mb-3 space-y-2">
                                 <div className="flex items-center justify-between">
                                   <label className="flex items-center gap-2 text-sm cursor-pointer">
-                                    <input type="checkbox" checked={columnCards.length > 0 && columnCards.every(card => selectedCardsForTransfer.has(card.id))} onChange={e => {
-                            const newSet = new Set(selectedCardsForTransfer);
-                            columnCards.forEach(card => {
-                              if (e.target.checked) {
-                                newSet.add(card.id);
-                              } else {
-                                newSet.delete(card.id);
-                              }
-                            });
-                            setSelectedCardsForTransfer(newSet);
-                          }} className="w-4 h-4 cursor-pointer" />
-                                    <span className="font-medium">Selecionar todos</span>
+                                    <input 
+                                      type="checkbox" 
+                                      checked={selectedCardsForTransfer.size > 0 && selectedCardsForTransfer.size >= (totalCardsByColumn[column.id] || 0)} 
+                                      disabled={isLoadingAllCardIds}
+                                      onChange={async (e) => {
+                                        if (e.target.checked) {
+                                          // Buscar TODOS os IDs dos cards da coluna
+                                          setIsLoadingAllCardIds(true);
+                                          try {
+                                            const allCardIds = await fetchAllCardIdsForColumn(column.id);
+                                            const newSet = new Set(allCardIds);
+                                            setSelectedCardsForTransfer(newSet);
+                                          } finally {
+                                            setIsLoadingAllCardIds(false);
+                                          }
+                                        } else {
+                                          // Desmarcar todos
+                                          setSelectedCardsForTransfer(new Set());
+                                        }
+                                      }} 
+                                      className="w-4 h-4 cursor-pointer" 
+                                    />
+                                    <span className="font-medium">
+                                      {isLoadingAllCardIds ? 'Carregando...' : `Selecionar todos (${totalCardsByColumn[column.id] || 0})`}
+                                    </span>
                                   </label>
                                   <Button size="sm" variant="ghost" onClick={() => {
                           setIsSelectionMode(false);
