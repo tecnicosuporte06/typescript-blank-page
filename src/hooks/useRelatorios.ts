@@ -23,8 +23,6 @@ async function fetchRelatorios(
     throw new Error("Usuário não autenticado");
   }
 
-  console.log('📊 Relatórios: Iniciando fetch', { userId, userEmail, isMaster, selectedWorkspaceId });
-
   // Buscar stats usando a edge function que usa service role
   const { data: response, error } = await supabase.functions.invoke('get-workspace-stats', {
     headers: {
@@ -41,11 +39,8 @@ async function fetchRelatorios(
   const stats = response?.stats || [];
   
   if (stats.length === 0) {
-    console.log('⚠️ Relatórios: Nenhum workspace encontrado');
     return [];
   }
-
-  console.log('✅ Relatórios: Stats carregados com sucesso', { count: stats.length });
 
   // Filtrar workspace se não for master e tiver um selecionado
   if (!isMaster && selectedWorkspaceId) {

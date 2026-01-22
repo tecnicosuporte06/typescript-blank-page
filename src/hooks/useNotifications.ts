@@ -31,7 +31,6 @@ export function useNotifications() {
   // Buscar notificações
   const fetchNotifications = useCallback(async () => {
     if (!selectedWorkspace?.workspace_id || !user?.id) {
-      console.log('⚠️ [useNotifications] Workspace ou user não disponível');
       return;
     }
 
@@ -169,11 +168,6 @@ export function useNotifications() {
       // Ordena por mais recente
       grouped.sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime());
 
-      console.log('✅ [useNotifications] Notificações agrupadas:', {
-        conversations: grouped.length,
-        unreadMessages: grouped.reduce((acc, n) => acc + (n.unreadCount || 0), 0),
-      });
-
       setNotifications(grouped);
     } catch (err) {
       console.error('❌ [useNotifications] Erro ao buscar notificações:', err);
@@ -248,17 +242,11 @@ export function useNotifications() {
   // Real-time subscription com filtros nativos do Supabase
   useEffect(() => {
     if (!selectedWorkspace?.workspace_id || !user?.id) {
-      console.log('⏭️ [useNotifications] Aguardando workspace ou user');
       return;
     }
 
     const workspaceId = selectedWorkspace.workspace_id;
     const userId = user.id;
-    
-    console.log('🔔 [useNotifications] Criando subscription:', {
-      workspaceId,
-      userId
-    });
     
     const channel = supabase
       .channel(`notifications-${workspaceId}-${userId}`) // ✅ Canal único por user+workspace
@@ -280,11 +268,6 @@ export function useNotifications() {
             newUserId === null;
 
           if (shouldFetch) {
-            console.log('🔔✅ Nova notificação recebida via Realtime:', {
-              id: payload.new.id,
-              contactName: payload.new.title,
-              user_id: payload.new.user_id
-            });
             playNotificationSound();
             fetchNotifications();
           }
@@ -309,30 +292,17 @@ export function useNotifications() {
             oldUserId === null;
 
           if (shouldFetch) {
-            console.log('🔔✅ Notificação atualizada via Realtime:', {
-              id: payload.new.id,
-              status: payload.new.status,
-              user_id: payload.new.user_id
-            });
             fetchNotifications();
           }
         }
       )
       .subscribe((status) => {
-        console.log('🔔 [useNotifications Realtime] Status:', status);
-        
-        if (status === 'SUBSCRIBED') {
-          console.log('✅ [useNotifications] Canal de notificações ATIVO');
-        } else if (status === 'CHANNEL_ERROR') {
+        if (status === 'CHANNEL_ERROR') {
           console.error('❌ [useNotifications] ERRO no canal de notificações');
         }
       });
 
     return () => {
-      console.log('🔕 [useNotifications] Removendo subscription:', {
-        workspaceId,
-        userId
-      });
       supabase.removeChannel(channel);
     };
   }, [selectedWorkspace?.workspace_id, user?.id, canViewAllNotifications, fetchNotifications]);
@@ -340,9 +310,6 @@ export function useNotifications() {
   // Marcar conversa como lida
   const markContactAsRead = async (conversationId: string) => {
     if (!user?.id || !selectedWorkspace?.workspace_id || isMaster) {
-      if (isMaster) {
-        console.log('🔒 [useNotifications] Usuário master não altera notificações');
-      }
       return;
     }
 
@@ -372,7 +339,6 @@ export function useNotifications() {
 
       if (error) throw error;
       
-      console.log('✅ [useNotifications] Notificações marcadas como lidas:', conversationId);
       // Refetch para sincronizar com o backend (em background)
       fetchNotifications();
     } catch (err) {
@@ -385,9 +351,6 @@ export function useNotifications() {
   // Marcar todas como lidas
   const markAllAsRead = async () => {
     if (!user?.id || !selectedWorkspace?.workspace_id || isMaster) {
-      if (isMaster) {
-        console.log('🔒 [useNotifications] Usuário master não limpa notificações');
-      }
       return;
     }
 
@@ -419,7 +382,6 @@ export function useNotifications() {
 
       if (error) throw error;
 
-      console.log('✅ [useNotifications] Todas as notificações marcadas como lidas');
       await fetchNotifications();
     } catch (err) {
       console.error('❌ [useNotifications] Erro ao marcar todas como lidas:', err);

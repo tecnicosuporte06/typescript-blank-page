@@ -34,8 +34,6 @@ export function useContactPipelineCards(contactId: string | null) {
       setIsLoading(true);
       const headers = getHeaders();
       
-      console.log('[useContactPipelineCards] Buscando cards para contactId:', contactId, 'workspace:', selectedWorkspace.workspace_id);
-      
       // Tentativa 1: Query com joins (ideal)
 
       const { data: joinData, error: joinError } = await supabase
@@ -86,8 +84,6 @@ export function useContactPipelineCards(contactId: string | null) {
             pipelines: pipelines?.find(p => p.id === card.pipeline_id) || null,
             pipeline_columns: columns?.find(c => c.id === card.column_id) || null
           }));
-          
-          console.log('[useContactPipelineCards] Fallback concluído:', cardsData);
         }
       }
 
@@ -110,8 +106,6 @@ export function useContactPipelineCards(contactId: string | null) {
         value: card.value,
         description: card.description,
       }));
-
-      console.log('[useContactPipelineCards] Cards formatados:', formattedCards);
 
       setCards(formattedCards);
       

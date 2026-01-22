@@ -24,12 +24,6 @@ export const MessageStatusIndicator = ({ status, className }: MessageStatusIndic
     }
   };
 
-  // 📊 LOG DE RENDER
-  console.log('📊 [RENDER] MessageStatusIndicator:', {
-    displayStatus: status,
-    timestamp: new Date().toISOString()
-  });
-
   return (
     <div className={cn("flex items-center justify-end", className)}>
       {getStatusIcon()}

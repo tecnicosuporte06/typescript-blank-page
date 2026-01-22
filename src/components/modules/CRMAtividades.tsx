@@ -115,9 +115,7 @@ export function CRMAtividades() {
   }, [userRole, user?.id]);
 
   const handleOpenDealDetails = (activity: ActivityData) => {
-    console.log("🎯 Abrindo detalhes do negócio para a atividade:", activity.id, "Card ID:", activity.pipeline_card_id);
     if (!activity.pipeline_card_id) {
-      console.warn("⚠️ Atividade sem pipeline_card_id");
       return;
     }
     setSelectedDealDetails({
@@ -222,7 +220,6 @@ export function CRMAtividades() {
     try {
       setIsLoading(true);
       setIsDataReady(false);
-      console.log("🔄 Buscando atividades...");
 
       const hasAnyFilter =
         !!searchTerm.trim() ||
@@ -335,8 +332,6 @@ export function CRMAtividades() {
             phone: contact.phone || "-",
           });
         });
-
-        console.log(`📞 Contatos buscados: ${directContactsData?.length || 0} de ${allContactIds.size} contact_ids`);
       }
 
       if (pipelineCardIds.length > 0) {
@@ -350,8 +345,6 @@ export function CRMAtividades() {
         }
 
         if (cardsPositions && cardsPositions.length > 0) {
-          console.log(`📋 Posições de cards encontradas: ${cardsPositions.length}`);
-          
           cardsPositions.forEach((card: any) => {
             pipelineCardsMap.set(card.card_id, {
               description: card.description || card.contact_name,

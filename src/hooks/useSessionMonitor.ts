@@ -38,8 +38,6 @@ export const useSessionMonitor = () => {
 
       hasNotifiedRef.current = true;
       
-      console.log('🔐 [SessionMonitor] Deslogando usuário devido a novo login');
-      
       // Limpar localStorage IMEDIATAMENTE para garantir logout
       localStorage.removeItem('currentUser');
       localStorage.removeItem('selectedWorkspace');
@@ -59,7 +57,7 @@ export const useSessionMonitor = () => {
       try {
         await supabase.auth.signOut();
       } catch (e) {
-        console.log('🔐 [SessionMonitor] Erro ao fazer signOut (ignorado):', e);
+        // Erro ignorado silenciosamente
       }
       
       // Mostrar notificação
@@ -87,21 +85,16 @@ export const useSessionMonitor = () => {
         // Se a sessão não existe ou não está ativa, não iniciar monitoramento
         // (pode ser que o login ainda não foi completado)
         if (error) {
-          console.log('🔐 [SessionMonitor] Erro ao verificar sessão inicial:', error);
           // Se erro 406 (not found), tentar novamente depois
           if (error.code === 'PGRST116' || error.message?.includes('No rows')) {
-            console.log('🔐 [SessionMonitor] Sessão ainda não criada, tentando novamente em 3 segundos...');
             setTimeout(() => verifyAndStartMonitoring(), 3000);
           }
           return;
         }
         
         if (!data || !data.is_active) {
-          console.log('🔐 [SessionMonitor] Sessão não encontrada ou inativa, aguardando...');
           return;
         }
-
-        console.log('🔐 [SessionMonitor] Sessão válida encontrada, iniciando monitoramento para usuário:', user.id);
 
         // Verificar periodicamente se a sessão ainda está ativa
         const checkSessionStatus = async () => {
@@ -113,21 +106,12 @@ export const useSessionMonitor = () => {
               .eq('user_id', user.id)
               .single() as any) as { data: { is_active: boolean; session_token: string } | null; error: any };
 
-            console.log('🔐 [SessionMonitor] Verificação periódica:', {
-              hasData: !!data,
-              isActive: data?.is_active,
-              error: error?.message
-            });
-
             if (error) {
-              console.log('🔐 [SessionMonitor] Erro ao buscar sessão:', error);
               // Se erro 406 (not found), a sessão foi deletada
               if (error.code === 'PGRST116' || error.message?.includes('No rows')) {
-                console.log('🔐 [SessionMonitor] Sessão não encontrada - invalidada');
                 handleSessionInvalidated();
               }
             } else if (!data || !data.is_active) {
-              console.log('🔐 [SessionMonitor] Sessão invalidada detectada na verificação periódica');
               handleSessionInvalidated();
             }
           } catch (error) {
@@ -142,7 +126,6 @@ export const useSessionMonitor = () => {
         // Listener Realtime para mudanças na sessão
         // Usar um nome de canal único mas estável
         const channelName = `user-session-monitor-${user.id}`;
-        console.log('🔐 [SessionMonitor] Criando canal Realtime:', channelName);
         
         const channel = supabase
           .channel(channelName)
@@ -157,14 +140,6 @@ export const useSessionMonitor = () => {
             (payload: any) => {
               const currentSessionToken = localStorage.getItem('sessionToken');
               
-              console.log('🔐 [SessionMonitor] ⚡ Realtime UPDATE recebido:', {
-                session_token: payload.new.session_token,
-                current_token: currentSessionToken,
-                is_active: payload.new.is_active,
-                was_active: payload.old?.is_active,
-                tokens_match: payload.new.session_token === currentSessionToken
-              });
-              
               // Verificar se a sessão atual foi invalidada
               // IMPORTANTE: Verificar se o token corresponde E se foi desativado
               if (
@@ -172,21 +147,13 @@ export const useSessionMonitor = () => {
                 payload.new.is_active === false &&
                 (payload.old?.is_active === true || payload.old?.is_active === undefined)
               ) {
-                console.log('🔐 [SessionMonitor] ✅ Sessão invalidada via Realtime - DESLOGANDO');
                 handleSessionInvalidated();
-              } else {
-                console.log('🔐 [SessionMonitor] ⏭️ Update não corresponde à sessão atual, ignorando');
               }
             }
           )
           .subscribe((status) => {
-            console.log('🔐 [SessionMonitor] Status da subscription Realtime:', status);
-            if (status === 'SUBSCRIBED') {
-              console.log('🔐 [SessionMonitor] ✅ Subscription Realtime ATIVA para usuário:', user.id);
-            } else if (status === 'CHANNEL_ERROR') {
+            if (status === 'CHANNEL_ERROR') {
               console.error('🔐 [SessionMonitor] ❌ Erro na subscription Realtime');
-            } else if (status === 'TIMED_OUT') {
-              console.warn('🔐 [SessionMonitor] ⚠️ Timeout na subscription Realtime');
             }
           });
 

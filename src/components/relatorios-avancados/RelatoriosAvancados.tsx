@@ -310,7 +310,6 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
       setPipelines([]);
       return;
     }
-    console.log('📊 Pipelines carregados:', data?.length || 0, data);
     setPipelines(data || []);
   };
 
@@ -356,7 +355,6 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
         contact_count: countsMap.get(t.id)?.size || 0
       }));
 
-      console.log('📊 Tags com contagem real:', processed);
       setAvailableTags(processed);
     } catch (err) {
       console.error('Erro ao buscar tags com contagem real:', err);
@@ -408,7 +406,6 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
         contact_count: countsMap.get(p.id)?.size || 0
       }));
 
-      console.log('📊 Produtos processados (all-time):', processed);
       setAvailableProducts(processed);
     } catch (err) {
       console.error('Erro ao buscar produtos:', err);
@@ -684,7 +681,6 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
     
     setLoadingColumnsMap(prev => ({ ...prev, [pipelineId]: true }));
     try {
-      console.log(`🔍 Buscando colunas para o pipeline: ${pipelineId}`);
       const { data, error } = await supabase
         .from('pipeline_columns')
         .select('id, name')
@@ -697,7 +693,6 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
         throw error;
       }
       
-      console.log(`✅ ${data?.length || 0} colunas encontradas para ${pipelineId}`);
       setPipelineColumnsMap(prev => ({ ...prev, [pipelineId]: data || [] }));
     } catch (e) {
       console.error(`❌ Falha na busca de colunas:`, e);
@@ -794,21 +789,12 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
       '';
 
     if (!effectiveWorkspaceId) {
-      console.log('⚠️ [Relatórios] Nenhum workspace selecionado, abortando fetch');
         setCards([]);
         setConversations([]);
         return;
       }
 
-    console.log('🚀 [Relatórios] Iniciando fetch para workspace:', effectiveWorkspaceId, {
-        from: from,
-        to: to,
-        userRole,
-        userId: user?.id
-      });
-
     const headers = getHeaders(effectiveWorkspaceId);
-      console.log('📤 [Relatórios] Headers:', headers);
 
       // FASE 1 (rápida): cards core (sem tags/produtos) + conversations
       const [cardsRes, baseRes] = await Promise.all([
@@ -834,18 +820,6 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
       ]);
 
       if (activeFetchIdRef.current !== fetchId) return;
-
-      // Debug logs para identificar problemas de dados
-      console.log('🔍 [Relatórios] Resposta cards:', { 
-        error: cardsRes.error, 
-        dataKeys: Object.keys(cardsRes.data || {}),
-        cardsCount: (cardsRes.data as any)?.cards?.length || 0 
-      });
-      console.log('🔍 [Relatórios] Resposta base:', { 
-        error: baseRes.error, 
-        dataKeys: Object.keys(baseRes.data || {}),
-        conversationsCount: (baseRes.data as any)?.conversations?.length || 0 
-      });
 
       if (cardsRes.error) {
         console.error('❌ [Relatórios] Erro ao buscar cards:', cardsRes.error);
@@ -1167,7 +1141,6 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
     }
 
     fetchDebounceRef.current = window.setTimeout(() => {
-      if (import.meta.env.DEV) console.warn("📊 [Relatórios] debounced fetch");
       fetchData(key);
     }, 200);
 

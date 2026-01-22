@@ -157,11 +157,8 @@ Exemplo: [ENVIE PARA O TOOL \`qualificar-cliente\` (METODO POST) o workspace_id:
 
   const loadAgentData = async () => {
     if (!agentId) {
-      console.log('⚠️ Nenhum agentId fornecido');
       return;
     }
-
-    console.log('🔍 Carregando agente:', agentId);
 
     try {
       const { data, error } = await supabase
@@ -169,9 +166,6 @@ Exemplo: [ENVIE PARA O TOOL \`qualificar-cliente\` (METODO POST) o workspace_id:
         .select('*')
         .eq('id', agentId)
         .maybeSingle();
-
-      console.log('📦 Dados recebidos:', data);
-      console.log('❌ Erro:', error);
 
       if (error) {
         console.error('Erro ao carregar agente:', error);
@@ -204,9 +198,8 @@ Exemplo: [ENVIE PARA O TOOL \`qualificar-cliente\` (METODO POST) o workspace_id:
       };
 
       setFormData(loadedFormData);
-      console.log('✅ FormData preenchido:', loadedFormData);
     } catch (error: any) {
-      console.error('💥 Exceção ao carregar agente:', error);
+      console.error('Exceção ao carregar agente:', error);
       toast.error('Erro ao carregar dados do agente');
     }
   };
@@ -223,7 +216,7 @@ Exemplo: [ENVIE PARA O TOOL \`qualificar-cliente\` (METODO POST) o workspace_id:
       if (error) throw error;
       setKnowledgeFiles(data || []);
     } catch (error) {
-      console.error('❌ Erro ao carregar arquivos:', error);
+      console.error('Erro ao carregar arquivos:', error);
     }
   };
 
@@ -258,7 +251,7 @@ Exemplo: [ENVIE PARA O TOOL \`qualificar-cliente\` (METODO POST) o workspace_id:
       toast.success('Arquivo excluído com sucesso');
       loadKnowledgeFiles();
     } catch (error) {
-      console.error('❌ Erro ao deletar arquivo:', error);
+      console.error('Erro ao deletar arquivo:', error);
       toast.error('Erro ao excluir arquivo');
     }
   };

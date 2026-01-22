@@ -105,8 +105,6 @@ export function TezeusCRM() {
 
   // Convert URL path to module type
   const getModuleFromPath = (pathname: string): ModuleType => {
-    console.log('📍 [TezeusCRM] Identificando módulo para:', pathname);
-    
     // Remover prefixo /workspace/:workspaceId se existir
     let path = pathname;
     const workspaceMatch = pathname.match(/^\/workspace\/[^/]+\/(.+)/);
@@ -121,7 +119,6 @@ export function TezeusCRM() {
     // 1. Verificar se é a página de detalhes do negócio (prioridade alta)
     // Suporta /pipeline/:id ou /crm-negocios/:id
     if ((pathParts[0] === "pipeline" || pathParts[0] === "crm-negocios") && pathParts.length > 1 && pathParts[1]) {
-      console.log('📑 [TezeusCRM] Módulo identificado: pipeline-detail');
       return "pipeline-detail";
     }
     
@@ -144,7 +141,6 @@ export function TezeusCRM() {
     if (cleanPath === "automacoes-filas" || cleanPath === "filas") return "filas";
     if (cleanPath === "administracao-acoes" || cleanPath === "configuracao-acoes") return "configuracao-acoes";
     
-    console.log('🧩 [TezeusCRM] Módulo identificado via fallback:', cleanPath);
     return cleanPath as ModuleType;
   };
 
@@ -156,7 +152,6 @@ export function TezeusCRM() {
     const conversationIdFromState = (location.state as any)?.selectedConversationId;
     
     if (conversationIdFromState && conversationIdFromState !== selectedConversationId) {
-      console.log('📍 TezeusCRM: Recebeu conversa via state:', conversationIdFromState);
       setSelectedConversationId(conversationIdFromState);
       
       // ✅ Limpar o state após processar para permitir navegação livre
@@ -262,7 +257,6 @@ export function TezeusCRM() {
           isCollapsed={isCollapsed}
           onToggleCollapse={() => setIsCollapsed(!isCollapsed)}
           onNavigateToConversation={(conversationId) => {
-            console.log('🚀 TezeusCRM: Navegando para conversa:', conversationId);
             setSelectedConversationId(conversationId);
             
             // ✅ Usar rota correta baseada no role

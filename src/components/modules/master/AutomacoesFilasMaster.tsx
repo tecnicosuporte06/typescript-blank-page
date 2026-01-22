@@ -57,7 +57,6 @@ export const AutomacoesFilasMaster = forwardRef<AutomacoesFilasMasterRef>((props
         return;
       }
 
-      console.log('📊 Filas retornadas:', data);
       setFilas(data || []);
     } catch (error) {
       console.error('Erro ao carregar filas:', error);

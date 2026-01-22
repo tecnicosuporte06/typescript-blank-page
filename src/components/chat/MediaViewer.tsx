@@ -43,19 +43,6 @@ export const MediaViewer: React.FC<MediaViewerProps> = ({
   const [isVideoModalOpen, setIsVideoModalOpen] = useState(false);
   const [imageError, setImageError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
-  
-  // Log para debug
-  console.log('🟡 MediaViewer render:', { 
-    fileUrl, 
-    fileName, 
-    messageType,
-    detectionsAfterPriority: {
-      isAudioFile: messageType === 'audio' || /\.(mp3|wav|ogg|aac|flac|webm|m4a|opus)$/i.test(fileName || fileUrl || ''),
-      isPdfFile: messageType === 'document' || /\.pdf$/i.test(fileName || fileUrl || ''),
-      isImageFile: messageType === 'image',
-      isVideoFile: messageType === 'video'
-    }
-  });
 
   // Detectar tipos de arquivos - PRIORIZAR messageType e extensões específicas
   const isAudioFile = messageType === 'audio' ||
@@ -88,20 +75,6 @@ export const MediaViewer: React.FC<MediaViewerProps> = ({
       </div>
     </div>
   );
-
-  // Log específico para detecções
-  console.log('🔍 DETECÇÃO FINAL:', {
-    fileName,
-    fileUrl,
-    messageType,
-    finalDetections: {
-      isAudioFile,
-      isPdfFile,
-      isImageFile,
-      isVideoFile
-    },
-    priorityUsed: 'messageType tem prioridade sobre extensão'
-  });
 
   const handleDownload = () => {
     const link = document.createElement('a');
@@ -225,7 +198,6 @@ export const MediaViewer: React.FC<MediaViewerProps> = ({
 
   // QUARTA VERIFICAÇÃO: PDF (genérico para documentos) e outros documentos
   if (isPdfFile || isOfficeFile) {
-    console.log('🔴 RENDERIZANDO DOC/PDF:', { fileName, fileUrl, messageType, extension: fileName?.split('.').pop()?.toLowerCase() });
     const label = (fileName?.split('.').pop() || 'file').slice(0,4).toUpperCase();
     return (
       <div className={className}>
@@ -270,8 +242,6 @@ export const MediaViewer: React.FC<MediaViewerProps> = ({
 
   // QUINTA VERIFICAÇÃO: IMAGEM
   if (isImageFile || messageType === 'image') {
-    console.log('📸 Renderizando imagem:', { fileName, fileUrl, isLoading });
-    
     return (
       <div className={className}>
         <div className="relative inline-block rounded-lg overflow-hidden">
@@ -290,7 +260,6 @@ export const MediaViewer: React.FC<MediaViewerProps> = ({
                 onClick={() => setIsImageModalOpen(true)}
                 onError={handleImageError}
                 onLoad={() => {
-                  console.log('✅ Imagem carregada:', { fileName, fileUrl });
                   setImageError(null);
                   setIsLoading(false);
                 }}

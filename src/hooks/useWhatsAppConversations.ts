@@ -300,13 +300,11 @@ export const useWhatsAppConversations = (options?: { enabled?: boolean }) => {
         return false;
       }
       setLoading(true);
-      console.log('🔄 Carregando conversas (primeira página)...');
 
       const userData = localStorage.getItem('currentUser');
       const currentUserData = userData ? JSON.parse(userData) : null;
 
       if (!currentUserData?.id || !selectedWorkspace?.workspace_id) {
-        console.log('❌ Dados ausentes');
         setLoading(false);
         return false;
       }
@@ -528,7 +526,6 @@ export const useWhatsAppConversations = (options?: { enabled?: boolean }) => {
   ) => {
     // ✅ MUTEX: Prevenir duplo envio
     if (sendingRef.current.get(conversationId)) {
-      console.log('⚠️ Mensagem já sendo enviada, ignorando...');
       return;
     }
     
@@ -547,13 +544,11 @@ export const useWhatsAppConversations = (options?: { enabled?: boolean }) => {
       let workspaceId = selectedWorkspace?.workspace_id;
       
       if (!workspaceId) {
-        console.warn('⚠️ Nenhum workspace selecionado');
         return;
       }
 
       // ✅ GERAR clientMessageId ÚNICO
       const clientMessageId = `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-      console.log('📤 Enviando mensagem com clientMessageId:', clientMessageId);
 
       // Montar payload com clientMessageId
       const payload = {
@@ -578,7 +573,6 @@ export const useWhatsAppConversations = (options?: { enabled?: boolean }) => {
         headers['x-workspace-id'] = selectedWorkspace.workspace_id;
       }
 
-      console.log('🚀 Chamando test-send-msg com payload:', payload);
       const { data: sendResult, error: apiError } = await supabase.functions.invoke('test-send-msg', {
         body: payload,
         headers
@@ -595,8 +589,6 @@ export const useWhatsAppConversations = (options?: { enabled?: boolean }) => {
         const errorMessage = sendResult?.message || sendResult?.error || 'Falha no envio da mensagem';
         throw new Error(errorMessage);
       }
-
-      console.log('✅ Mensagem enviada com sucesso, aguardando webhook/realtime');
       
     } catch (error) {
       console.error('❌ Erro ao enviar mensagem:', error);
@@ -617,8 +609,6 @@ export const useWhatsAppConversations = (options?: { enabled?: boolean }) => {
   // Assumir atendimento (desativar IA)
   const assumirAtendimento = useCallback(async (conversationId: string) => {
     try {
-      console.log('🚫 Desativando IA para conversa:', conversationId);
-      
       const { error } = await supabase
         .from('conversations')
         .update({ 
@@ -634,8 +624,6 @@ export const useWhatsAppConversations = (options?: { enabled?: boolean }) => {
           ? { ...conv, agente_ativo: false, agent_active_id: null, _updated_at: Date.now() }
           : conv
       ));
-
-      console.log('✅ IA desativada com sucesso');
 
       toast({
         title: "Agente Desativado",
@@ -654,8 +642,6 @@ export const useWhatsAppConversations = (options?: { enabled?: boolean }) => {
   // Reativar IA
   const reativarIA = useCallback(async (conversationId: string) => {
     try {
-      console.log('🤖 Ativando IA para conversa:', conversationId);
-      
       // Buscar conversa para obter agent_active_id ou queue_id
       const { data: conversation } = await supabase
         .from('conversations')
@@ -692,8 +678,6 @@ export const useWhatsAppConversations = (options?: { enabled?: boolean }) => {
           : conv
       ));
 
-      console.log('✅ IA ativada com sucesso');
-
       toast({
         title: "IA reativada",
         description: "A IA voltou a responder automaticamente nesta conversa",
@@ -710,12 +694,7 @@ export const useWhatsAppConversations = (options?: { enabled?: boolean }) => {
 
   // Marcar como lida
   const markAsRead = useCallback(async (conversationId: string) => {
-    const DEBUG_CONVERSATIONS = false; // Logs condicionais
     try {
-      if (DEBUG_CONVERSATIONS) {
-        console.log('📖 Marcando conversa como lida:', conversationId);
-      }
-      
       // Get current user data
       const userData = localStorage.getItem('currentUser');
       const currentUserData = userData ? JSON.parse(userData) : null;
@@ -733,7 +712,6 @@ export const useWhatsAppConversations = (options?: { enabled?: boolean }) => {
       }
 
       // Atualizar contador de não lidas na conversa
-      console.log('🔄 Zerando unread_count no backend para:', conversationId);
       const { error: conversationError } = await supabase
         .from('conversations')
         .update({ unread_count: 0 })
@@ -741,8 +719,6 @@ export const useWhatsAppConversations = (options?: { enabled?: boolean }) => {
 
       if (conversationError) {
         console.error('❌ Erro ao atualizar contador da conversa:', conversationError);
-      } else {
-        console.log('✅ unread_count zerado no backend com sucesso');
       }
 
       // ✅ CORREÇÃO 7: Atualizar estado local imediatamente
@@ -759,10 +735,6 @@ export const useWhatsAppConversations = (options?: { enabled?: boolean }) => {
             }
           : conv
       ));
-
-      if (DEBUG_CONVERSATIONS) {
-        // Conversation marked as read
-      }
     } catch (error) {
       console.error('❌ Erro ao marcar como lida:', error);
     }
@@ -805,33 +777,19 @@ export const useWhatsAppConversations = (options?: { enabled?: boolean }) => {
       return;
     }
 
-    console.log('🔄 Workspace mudou, carregando conversas');
     fetchConversations();
   }, [selectedWorkspace?.workspace_id]);
 
   // ===== REALTIME SUBSCRIPTION =====
   useEffect(() => {
     const startTime = Date.now();
-    console.log('🔍 [Realtime Conversations] useEffect EXECUTADO:', {
-      hasSelectedWorkspace: !!selectedWorkspace,
-      workspaceId: selectedWorkspace?.workspace_id,
-      timestamp: new Date().toISOString(),
-      startTime
-    });
 
     if (!selectedWorkspace?.workspace_id) {
-      console.log('⚠️ [Realtime Conversations] Subscription NÃO iniciada - falta workspace');
       return;
     }
 
     const workspaceId = selectedWorkspace.workspace_id;
     const channelName = `conversations-${workspaceId}-${startTime}`;
-    
-    console.log('🔌 [Realtime Conversations] INICIANDO subscription:', {
-      channelName,
-      workspaceId,
-      timestamp: new Date().toISOString()
-    });
 
     const channel = supabase
       .channel(channelName)
@@ -844,11 +802,6 @@ export const useWhatsAppConversations = (options?: { enabled?: boolean }) => {
           filter: `workspace_id=eq.${workspaceId}`
         },
         async (payload) => {
-          console.log('📨 [REALTIME Conversations] ✅ NOVA CONVERSA:', {
-            conversationId: payload.new.id,
-            timestamp: new Date().toISOString()
-          });
-          
           const newConv = payload.new as any;
           
           if (newConv.canal !== 'whatsapp') {
@@ -857,12 +810,10 @@ export const useWhatsAppConversations = (options?: { enabled?: boolean }) => {
           
           // Buscar dados completos
           if (!selectedWorkspace?.workspace_id) {
-            console.warn('⚠️ [REALTIME Conversations] Workspace não definido ao buscar conversa atualizada');
             return;
           }
 
           if (!selectedWorkspace?.workspace_id) {
-            console.warn('⚠️ [REALTIME Conversations] Workspace não definido ao buscar nova conversa');
             return;
           }
 
@@ -876,10 +827,8 @@ export const useWhatsAppConversations = (options?: { enabled?: boolean }) => {
           setConversations(prev => {
             const exists = prev.some(c => c.id === conversationData.id);
             if (exists) {
-              console.log('⚠️ Conversa duplicada ignorada');
               return prev;
             }
-            console.log('✅ Adicionando nova conversa');
             const formattedConv = formatConversationRecord(conversationData);
             return sortConversationsByActivity([formattedConv, ...prev]);
           });
@@ -894,11 +843,6 @@ export const useWhatsAppConversations = (options?: { enabled?: boolean }) => {
           filter: `workspace_id=eq.${workspaceId}`
         },
         async (payload) => {
-          console.log('🔄 [REALTIME Conversations] ✅ CONVERSA ATUALIZADA:', {
-            conversationId: payload.new.id,
-            timestamp: new Date().toISOString()
-          });
-
           const updatedConv = payload.new as any;
 
           if (updatedConv.canal !== 'whatsapp') {
@@ -916,7 +860,6 @@ export const useWhatsAppConversations = (options?: { enabled?: boolean }) => {
             const index = prev.findIndex(c => c.id === conversationData.id);
             const formattedConv = formatConversationRecord(conversationData, index !== -1 ? prev[index] : undefined);
             if (index === -1) {
-              console.log('⚠️ Conversa não encontrada, adicionando');
               return sortConversationsByActivity([formattedConv, ...prev]);
             }
             const updated = [...prev];
@@ -934,12 +877,6 @@ export const useWhatsAppConversations = (options?: { enabled?: boolean }) => {
           filter: `workspace_id=eq.${workspaceId}`
         },
         async (payload) => {
-          console.log('💬 [REALTIME Messages] ✅ NOVA MENSAGEM:', {
-            messageId: payload.new.id,
-            conversationId: payload.new.conversation_id,
-            timestamp: new Date().toISOString()
-          });
-
           const newMessage = payload.new as any;
 
           // Atualizar a conversa com a nova mensagem
@@ -947,7 +884,6 @@ export const useWhatsAppConversations = (options?: { enabled?: boolean }) => {
             const index = prev.findIndex(c => c.id === newMessage.conversation_id);
             
             if (index === -1) {
-              console.log('⚠️ Conversa não encontrada para a mensagem');
               return prev;
             }
 
@@ -970,15 +906,7 @@ export const useWhatsAppConversations = (options?: { enabled?: boolean }) => {
         }
       )
       .subscribe((status) => {
-        console.log('📡 [REALTIME Conversations] STATUS:', {
-          status,
-          channelName,
-          timestamp: new Date().toISOString()
-        });
-        
-        if (status === 'SUBSCRIBED') {
-          console.log('✅ [REALTIME Conversations] SUBSCRIPTION ATIVA!');
-        } else if (status === 'CHANNEL_ERROR') {
+        if (status === 'CHANNEL_ERROR') {
           console.error('❌ [REALTIME Conversations] ERRO NO CANAL!');
         } else if (status === 'TIMED_OUT') {
           console.error('⏱️ [REALTIME Conversations] TIMEOUT!');
@@ -986,10 +914,6 @@ export const useWhatsAppConversations = (options?: { enabled?: boolean }) => {
       });
 
     return () => {
-      console.log('🔌 [Realtime Conversations] 🔴 REMOVENDO subscription:', {
-        channelName,
-        timestamp: new Date().toISOString()
-      });
       supabase.removeChannel(channel);
     };
   }, [selectedWorkspace?.workspace_id]);

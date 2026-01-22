@@ -116,8 +116,6 @@ export function usePipelines(workspaceId?: string) {
            error.message?.includes('Failed to fetch') ||
            error.message?.includes('workspace'))) {
         
-        console.log(`🔄 Retrying pipelines fetch in ${retryDelay}ms (attempt ${retryCount + 1}/${maxRetries})`);
-        
         setTimeout(() => {
           fetchPipelines(retryCount + 1);
         }, retryDelay);

@@ -97,6 +97,7 @@ export const PromptEditor = forwardRef<PromptEditorRef, PromptEditorProps>(({
       'transferir_coluna_crm': '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>',
       'salvar_informacoes': '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/><path d="M3 12c0 1.66 4 3 9 3s9-1.34 9-3"/></svg>',
       'enviar_funil': '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/></svg>',
+      'status_oportunidade': '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></svg>',
     };
     return icons[type] || icons['salvar_informacoes'];
   };
@@ -219,7 +220,20 @@ export const PromptEditor = forwardRef<PromptEditorRef, PromptEditorProps>(({
       });
     }
 
-    const items = [...actions, ...idTokens].sort((a, b) => a.position - b.position);
+    // Parsear tokens de status [status:aberto], [status:ganho], [status:perda]
+    const statusTokenRegex = /\[status:(aberto|ganho|perda)\]/gi;
+    const statusTokens: Array<{ kind: 'status_token'; match: string; position: number; status: string }> = [];
+    let statusMatch: RegExpExecArray | null;
+    while ((statusMatch = statusTokenRegex.exec(text)) !== null) {
+      statusTokens.push({
+        kind: 'status_token',
+        match: statusMatch[0],
+        position: statusMatch.index,
+        status: statusMatch[1].toLowerCase(),
+      });
+    }
+
+    const items = [...actions, ...idTokens, ...statusTokens].sort((a, b) => a.position - b.position);
     let lastIndex = 0;
 
     items.forEach((item, idx) => {
@@ -246,17 +260,39 @@ export const PromptEditor = forwardRef<PromptEditorRef, PromptEditorProps>(({
           const textNode = document.createTextNode(item.match);
           containerRef.current!.appendChild(textNode);
         }
+      } else if (item.kind === 'status_token') {
+        // status_token: criar badge com cor baseada no status
+        const statusItem = item as { kind: 'status_token'; match: string; position: number; status: string };
+        const statusLabels: Record<string, string> = {
+          'aberto': 'Status: Aberto',
+          'ganho': 'Status: Ganho',
+          'perda': 'Status: Perdido',
+        };
+        const statusColors: Record<string, string> = {
+          'aberto': 'bg-blue-100 text-blue-700 border-blue-300 dark:bg-blue-900/30 dark:text-blue-300 dark:border-blue-700',
+          'ganho': 'bg-green-100 text-green-700 border-green-300 dark:bg-green-900/30 dark:text-green-300 dark:border-green-700',
+          'perda': 'bg-red-100 text-red-700 border-red-300 dark:bg-red-900/30 dark:text-red-300 dark:border-red-700',
+        };
+        const badge = createBadgeElement({
+          token: statusItem.match,
+          label: statusLabels[statusItem.status] || `Status: ${statusItem.status}`,
+          type: 'status_oportunidade',
+          colorClass: statusColors[statusItem.status] || statusColors['aberto'],
+          actionId: `action-${item.position}-${idx}`,
+        });
+        containerRef.current!.appendChild(badge);
       } else {
         // id_token: criar badge placeholder e resolver assíncrono para nome/ícone/cor
+        const idItem = item as { kind: 'id_token'; match: string; position: number; id: string };
         const badge = createBadgeElement({
-          token: item.match,
+          token: idItem.match,
           label: 'Carregando…',
           type: 'id_token',
           colorClass:
             'bg-gray-100 text-gray-700 border-gray-300 dark:bg-gray-800 dark:text-gray-300 dark:border-gray-700',
           actionId: `action-${item.position}-${idx}`,
         });
-        badge.setAttribute('data-resolve-id', item.id);
+        badge.setAttribute('data-resolve-id', idItem.id);
         badge.setAttribute('data-resolved', '0');
         containerRef.current!.appendChild(badge);
       }

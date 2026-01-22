@@ -17,19 +17,15 @@ export function useWorkspaces() {
 
   const fetchWorkspaces = async () => {
     if (!user) {
-      console.log('❌ useWorkspaces: No user found, skipping workspace fetch');
       setWorkspaces([]);
       setContextWorkspaces([]);
       setIsLoadingWorkspaces(false);
       return;
     }
 
-    console.log('🔄 useWorkspaces: Fetching workspaces for user:', user.email);
-
     // Check cache first
     const cached = getCache();
     if (cached && !isExpired()) {
-      console.log('💾 useWorkspaces: Using cached workspaces:', cached.map(w => w.name));
       setWorkspaces(cached);
       setContextWorkspaces(cached);
       setIsLoadingWorkspaces(false);
@@ -39,8 +35,6 @@ export function useWorkspaces() {
     setIsLoading(true);
     setIsLoadingWorkspaces(true);
     try {
-      console.log('📡 useWorkspaces: Calling list-user-workspaces...');
-      
       const data = await retry(async () => {
         const { data, error } = await supabase.functions.invoke('list-user-workspaces', {
           headers: {
@@ -50,10 +44,6 @@ export function useWorkspaces() {
         });
         if (error) throw error;
         return data;
-      });
-
-      console.log('📡 useWorkspaces: Response received:', { 
-        workspacesCount: data?.workspaces?.length || 0 
       });
 
       // Transform the data to match expected format
@@ -68,14 +58,10 @@ export function useWorkspaces() {
         is_active: w.is_active !== false
       })) || [];
 
-      console.log('📦 useWorkspaces: Transformed workspaces:', workspaceData.map(w => w.name));
-
       // Workspaces fetched
       setWorkspaces(workspaceData);
       setContextWorkspaces(workspaceData);
       setCache(workspaceData);
-      
-      console.log('✅ useWorkspaces: Workspaces loaded successfully');
 
       // Buscar estatísticas (negócios e conexões) via VIEW consolidada
       if (workspaceData.length > 0) {
@@ -103,8 +89,6 @@ export function useWorkspaces() {
             setWorkspaces(updatedWorkspaces);
             setContextWorkspaces(updatedWorkspaces);
             setCache(updatedWorkspaces);
-            
-            console.log('✅ useWorkspaces: Estatísticas atualizadas via VIEW');
           }
         } catch (error) {
           console.error('❌ useWorkspaces: Erro ao buscar estatísticas via VIEW:', error);
@@ -116,7 +100,6 @@ export function useWorkspaces() {
       // Use expired cache if available
       const cached = getCache();
       if (cached) {
-        console.log('⚠️ Usando cache expirado devido ao erro');
         setWorkspaces(cached);
         setContextWorkspaces(cached);
       } else if (!workspaces.length) {

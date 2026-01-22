@@ -46,13 +46,6 @@ export default function MasterDashboard() {
   const { setSelectedWorkspace } = useWorkspace();
   const { userRole, logout, user } = useAuth();
   
-  // Debug workspaces
-  console.log('🔍 [MasterDashboard] workspaces data:', {
-    count: workspaces.length,
-    workspaces: workspaces,
-    isLoading,
-    firstWorkspace: workspaces[0]
-  });
   const [searchQuery, setSearchQuery] = useState('');
   const [activePage, setActivePage] = useState<MasterPage>('workspaces');
   const [usersModalOpen, setUsersModalOpen] = useState(false);

@@ -15,12 +15,6 @@ export const useWorkspaceHeaders = () => {
     const userData = localStorage.getItem('currentUser');
     const currentUserData = userData ? JSON.parse(userData) : null;
     
-    console.log('🔍 [workspaceHeaders] Lendo dados do usuário:', {
-      hasUserData: !!currentUserData,
-      userId: currentUserData?.id,
-      email: currentUserData?.email
-    });
-    
     if (!currentUserData?.id) {
       console.error('❌ [workspaceHeaders] Usuário não autenticado - localStorage vazio');
       throw new Error('Usuário não autenticado');
@@ -33,14 +27,6 @@ export const useWorkspaceHeaders = () => {
       console.error('❌ [workspaceHeaders] Nenhum workspace selecionado');
       throw new Error('Nenhum workspace selecionado');
     }
-
-    console.log('🔍 [workspaceHeaders] Headers gerados:', {
-      userId: currentUserData.id,
-      urlWorkspaceId,
-      selectedWorkspaceId: selectedWorkspace?.workspace_id,
-      overrideWorkspaceId,
-      finalWorkspaceId: workspaceId
-    });
 
     return {
       'x-system-user-id': currentUserData.id,

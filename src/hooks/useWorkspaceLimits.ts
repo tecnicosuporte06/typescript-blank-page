@@ -33,12 +33,10 @@ export function useWorkspaceLimits(workspaceId: string) {
 
   const fetchLimits = useCallback(async () => {
     if (!workspaceId) {
-      console.log('🔴 useWorkspaceLimits: workspaceId is null/undefined');
       setIsLoading(false);
       return;
     }
     
-    console.log('🔵 useWorkspaceLimits: Fetching limits for workspace:', workspaceId);
     setIsLoading(true);
     try {
       // Usar edge function para bypass RLS
@@ -51,15 +49,11 @@ export function useWorkspaceLimits(workspaceId: string) {
         throw error;
       }
 
-      console.log('📊 useWorkspaceLimits: Received from edge function:', data);
-
       const connectionLimit = data?.connectionLimit || 1;
       const userLimit = data?.userLimit || 5;
       const disparadorEnabled = data?.disparadorEnabled ?? true;
       const currentConnections = data?.connectionsCount || 0;
       const currentUsers = data?.usersCount || 0;
-
-      console.log('✅ useWorkspaceLimits: Final values - connections:', currentConnections, '/', connectionLimit, 'users:', currentUsers, '/', userLimit);
 
       setLimits({
         id: '',
@@ -104,8 +98,6 @@ export function useWorkspaceLimits(workspaceId: string) {
   useEffect(() => {
     if (!workspaceId) return;
 
-    console.log('🔔 useWorkspaceLimits: Setting up realtime subscription for workspace:', workspaceId);
-
     const channel = supabase
       .channel(`workspace-connections-${workspaceId}`)
       .on(
@@ -116,8 +108,7 @@ export function useWorkspaceLimits(workspaceId: string) {
           table: 'connections',
           filter: `workspace_id=eq.${workspaceId}`
         },
-        (payload) => {
-          console.log('🔔 Connection change detected:', payload);
+        () => {
           // Refresh limits whenever a connection is added, updated, or deleted
           fetchLimits();
         }
@@ -130,8 +121,7 @@ export function useWorkspaceLimits(workspaceId: string) {
           table: 'workspace_members',
           filter: `workspace_id=eq.${workspaceId}`
         },
-        (payload) => {
-          console.log('🔔 Workspace member change detected:', payload);
+        () => {
           // Refresh when users are added or removed
           fetchLimits();
         }
@@ -144,8 +134,7 @@ export function useWorkspaceLimits(workspaceId: string) {
           table: 'workspace_limits',
           filter: `workspace_id=eq.${workspaceId}`
         },
-        (payload) => {
-          console.log('🔔 Workspace limit change detected:', payload);
+        () => {
           // Refresh when the limit itself changes
           fetchLimits();
         }
@@ -153,7 +142,6 @@ export function useWorkspaceLimits(workspaceId: string) {
       .subscribe();
 
     return () => {
-      console.log('🔕 useWorkspaceLimits: Cleaning up realtime subscription');
       supabase.removeChannel(channel);
     };
   }, [workspaceId, fetchLimits]);

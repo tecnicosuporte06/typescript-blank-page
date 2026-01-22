@@ -33,7 +33,6 @@ export const useContactObservations = (contactId: string) => {
         .order('created_at', { ascending: false });
 
       if (error) throw error;
-      console.log('📥 Observações carregadas no hook:', data?.length || 0);
       setObservations(data || []);
     } catch (error) {
       console.error('Erro ao buscar observações:', error);
@@ -324,8 +323,7 @@ export const useContactObservations = (contactId: string) => {
           table: 'contact_observations',
           filter: `contact_id=eq.${contactId}`
         },
-        (payload) => {
-          console.log('🔄 Observação atualizada em tempo real:', payload);
+        () => {
           fetchObservations();
         }
       )

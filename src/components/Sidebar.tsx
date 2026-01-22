@@ -98,17 +98,6 @@ export function Sidebar({
     formatTimestamp,
   } = useRealtimeNotifications();
   
-  useEffect(() => {
-    console.log('🔔 [Sidebar] Dados de notificação ATUALIZADOS:', {
-      totalUnread,
-      num_notifications: notifications.length,
-      timestamp: new Date().toISOString(),
-      notifications: notifications.map((n: any) => ({
-        contact: n.contactName,
-        content: n.content
-      }))
-    });
-  }, [notifications, totalUnread]);
   const {
     user,
     userRole,
@@ -132,15 +121,11 @@ export function Sidebar({
 
   // Abrir alerta automaticamente quando detectar conexões offline
   useEffect(() => {
-    console.log('[Sidebar] useEffect disparado - hasDisconnected:', hasDisconnected, 'disconnectedCount:', disconnectedCount);
-    
     if (hasDisconnected && disconnectedCount > 0) {
       // Há conexões offline - abrir alerta automaticamente
-      console.log('[Sidebar] Conexão offline detectada! Abrindo alerta...');
       setIsDisconnectedAlertOpen(true);
     } else if (!hasDisconnected && disconnectedCount === 0) {
       // Não há mais conexões offline - fechar alerta
-      console.log('[Sidebar] Todas as conexões reconectadas! Fechando alerta...');
       setIsDisconnectedAlertOpen(false);
     }
   }, [hasDisconnected, disconnectedCount]);
@@ -167,12 +152,10 @@ export function Sidebar({
   // ✅ CORREÇÃO: Listener para forçar atualização das notificações em tempo real
   useEffect(() => {
     const handleConversationRead = () => {
-      console.log('🔔 Sidebar: Detectada leitura de conversa, forçando atualização');
       // O hook useNotifications já vai reagir automaticamente
     };
 
     const handleNewMessage = () => {
-      console.log('🔔 Sidebar: Nova mensagem detectada, forçando atualização');
       // O hook useNotifications já vai reagir automaticamente
     };
 
@@ -312,7 +295,6 @@ export function Sidebar({
   };
 
   const handleNotificationClick = (conversationId: string) => {
-    console.log('🔔 Sidebar - Clique na notificação:', conversationId);
     setIsNotificationOpen(false);
 
     if (onNavigateToConversation) {
@@ -389,8 +371,8 @@ export function Sidebar({
         <ChevronLeft className="w-4 h-4 text-white group-hover:scale-110 transition-all" />
       </button>
 
-      {/* Workspace Info */}
-      {selectedWorkspace && (
+      {/* Workspace Info - apenas para master */}
+      {selectedWorkspace && hasRole(['master']) && (
         <div className={cn(
           "flex-shrink-0 bg-primary transition-all duration-300",
           isCollapsed ? 'p-1 flex justify-center' : 'px-3 py-2.5'

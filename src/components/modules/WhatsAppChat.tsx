@@ -498,53 +498,23 @@ export function WhatsAppChat({
 
   // Log do estado do agente após selectedConversation estar disponível
   useEffect(() => {
-    if (selectedConversation) {
-      console.log('🎯 WhatsAppChat - Estado do Agente:', { 
-        hasAgent, 
-        agentLoading, 
-        agentName: agent?.name,
-        conversationId: selectedConversation.id,
-        conversationActive: selectedConversation.agente_ativo,
-        contactName: selectedConversation.contact.name
-      });
-    }
+    // Sync agent state when conversation changes
   }, [hasAgent, agentLoading, agent, selectedConversation?.agente_ativo, selectedConversation?.id]);
 
   // ✅ CRÍTICO: Sincronizar selectedConversation quando conversations mudar
   useEffect(() => {
     if (!selectedConversation) return;
     
-    console.log('🔍 Verificando sincronização:', {
-      selectedConvId: selectedConversation.id,
-      totalConversations: conversations.length,
-      selectedAgenteAtivo: selectedConversation.agente_ativo
-    });
-    
     const updatedConversation = conversations.find(c => c.id === selectedConversation.id);
     
     if (!updatedConversation) {
-      console.log('⚠️ Conversa não encontrada no array');
       return;
     }
-    
-    console.log('🔍 Conversa encontrada no array:', {
-      found: true,
-      updatedAgenteAtivo: updatedConversation.agente_ativo,
-      currentAgenteAtivo: selectedConversation.agente_ativo,
-      needsUpdate: updatedConversation.agente_ativo !== selectedConversation.agente_ativo
-    });
     
     // ✅ SEMPRE atualizar para garantir que temos a versão mais recente
     if (updatedConversation.agente_ativo !== selectedConversation.agente_ativo || 
         updatedConversation.agent_active_id !== selectedConversation.agent_active_id ||
         updatedConversation._updated_at !== selectedConversation._updated_at) {
-      console.log('🔄 Atualizando selectedConversation:', {
-        oldAgenteAtivo: selectedConversation.agente_ativo,
-        newAgenteAtivo: updatedConversation.agente_ativo,
-        oldAgentId: selectedConversation.agent_active_id,
-        newAgentId: updatedConversation.agent_active_id,
-        timestamp: updatedConversation._updated_at
-      });
       setSelectedConversation(updatedConversation);
     }
   }, [conversations, selectedConversation]);
@@ -552,8 +522,6 @@ export function WhatsAppChat({
   // 🔄 Listener realtime para atualizações de conversas
   useEffect(() => {
     if (!selectedConversation?.id) return;
-
-    console.log('👂 Configurando listener realtime para conversa:', selectedConversation.id);
 
     const channel = supabase
       .channel(`conversation-${selectedConversation.id}`)
@@ -566,8 +534,6 @@ export function WhatsAppChat({
           filter: `id=eq.${selectedConversation.id}`
         },
         (payload) => {
-          console.log('🔔 Atualização realtime recebida:', payload);
-          
           // Atualizar imediatamente o estado local
           setSelectedConversation(prev => {
             if (!prev) return prev;
@@ -583,7 +549,6 @@ export function WhatsAppChat({
       .subscribe();
 
     return () => {
-      console.log('🔌 Desconectando listener realtime');
       supabase.removeChannel(channel);
     };
   }, [selectedConversation?.id]);
@@ -683,14 +648,6 @@ export function WhatsAppChat({
   const filteredConversations = useMemo(() => {
     let filtered = [];
 
-    console.log('🔍 [Filter] Recalculando conversas filtradas:', {
-      totalConversations: conversations.length,
-      activeTab,
-      selectedTags,
-      userId: user?.id,
-      timestamp: new Date().toISOString()
-    });
-
     // Filtrar por aba
     switch (activeTab) {
       case 'all':
@@ -710,11 +667,6 @@ export function WhatsAppChat({
       default:
         filtered = conversations.filter(c => c.status !== 'closed');
     }
-
-    console.log('🔍 [Filter] Após filtro de aba:', {
-      filtered: filtered.length,
-      activeTab
-    });
 
     // Filtrar por tags se selecionadas
     if (selectedTags.length > 0) {
@@ -747,7 +699,6 @@ export function WhatsAppChat({
 
     // 🔎 Busca por texto é feita no banco (ver useEffect de debounce).
 
-    console.log('✅ [Filter] Conversas filtradas finais:', filtered.length);
     return filtered;
   }, [conversations, activeTab, selectedTags, selectedConnection, user?.id, conversationNotifications, tags]);
   const [peekModalOpen, setPeekModalOpen] = useState(false);
@@ -986,7 +937,6 @@ export function WhatsAppChat({
   useEffect(() => {
     if (isMasterUser) return;
     if (selectedConversation && conversationNotifications.has(selectedConversation.id)) {
-      console.log('📖 Marcando conversa como lida:', selectedConversation.contact.name);
       // ✅ Sino/notificações (tabela notifications)
       markContactAsRead(selectedConversation.id);
       // ✅ Contadores reais (messages.read_at + conversations.unread_count)
@@ -1273,7 +1223,6 @@ export function WhatsAppChat({
     // ✅ MUTEX: Prevenir duplicação (SEM Date.now())
     const messageKey = `audio-${selectedConversation.id}-${file.url}`;
     if (sendingRef.current.has(messageKey)) {
-      console.log('⏭️ Ignorando envio duplicado de áudio');
       return;
     }
     sendingRef.current.add(messageKey);
@@ -1454,7 +1403,6 @@ export function WhatsAppChat({
     // ✅ MUTEX: Prevenir duplicação (SEM Date.now())
     const messageKey = `media-${selectedConversation.id}-${file.url}`;
     if (sendingRef.current.has(messageKey)) {
-      console.log('⏭️ Ignorando envio duplicado de mídia');
       return;
     }
     sendingRef.current.add(messageKey);
@@ -1517,7 +1465,6 @@ export function WhatsAppChat({
     // ✅ MUTEX: Prevenir duplicação (SEM Date.now())
     const messageKey = `doc-${selectedConversation.id}-${file.url}`;
     if (sendingRef.current.has(messageKey)) {
-      console.log('⏭️ Ignorando envio duplicado de documento');
       return;
     }
     sendingRef.current.add(messageKey);
@@ -1580,11 +1527,6 @@ export function WhatsAppChat({
 
   // ✅ Selecionar conversa e carregar mensagens lazy
   const handleSelectConversation = async (conversation: WhatsAppConversation) => {
-    console.log('🎯 [handleSelectConversation] Selecionando conversa:', {
-      conversationId: conversation.id,
-      contactName: conversation.contact.name
-    });
-
     setSelectedConversation(conversation);
 
     // Limpar modo de seleção ao trocar de conversa
@@ -1597,14 +1539,12 @@ export function WhatsAppChat({
     setIsAtBottom(true);
 
     // ✅ Carregar mensagens com refresh forçado para garantir status atualizado
-    console.log('📥 [handleSelectConversation] Atualizando mensagens:', conversation.id);
     clearMessages(); // Limpar mensagens da conversa anterior (somente na troca)
     await loadMessages(conversation.id, true); // ✅ forceRefresh = true
     
     if (!isMasterUser) {
-      console.log('🔔 [WhatsAppChat] Marcando conversa como lida:', conversation.id);
       markContactAsRead(conversation.id); // atualiza sino/notificações
-      try { await markAsRead(conversation.id); } catch (e) { console.warn('⚠️ markAsRead falhou (continua):', e); }
+      try { await markAsRead(conversation.id); } catch (e) { /* markAsRead failed - continue */ }
     }
   };
 
@@ -1618,11 +1558,6 @@ export function WhatsAppChat({
     if (!selectedWorkspace?.workspace_id) return;
 
     try {
-      console.log('🔎 [WhatsAppChat] Buscando conversa direto no banco (fallback):', {
-        conversationId,
-        workspaceId: selectedWorkspace.workspace_id,
-      });
-
       const { data, error } = await supabase.functions.invoke(
         `get-chat-data?conversation_id=${encodeURIComponent(conversationId)}`,
         {
@@ -1979,16 +1914,6 @@ export function WhatsAppChat({
     if (!message || message.sender_type === 'contact') return undefined;
 
     const status = message.status?.toLowerCase();
-    
-    console.log('🔍 [getDisplayMessageStatus]:', {
-      messageId: message.id,
-      external_id: message.external_id,
-      rawStatus: message.status,
-      normalizedStatus: status,
-      delivered_at: message.delivered_at,
-      read_at: message.read_at,
-      sender_type: message.sender_type
-    });
 
     // ✅ Mapear status direto (já vem normalizado do backend)
     switch (status) {
@@ -2029,12 +1954,6 @@ export function WhatsAppChat({
   // Gerenciar agente IA
   const handleToggleAgent = async () => {
     if (selectedConversation) {
-      console.log('🎯 handleToggleAgent chamado:', {
-        conversationId: selectedConversation.id,
-        currentState: selectedConversation.agente_ativo,
-        willCall: selectedConversation.agente_ativo ? 'assumirAtendimento' : 'reativarIA'
-      });
-      
       // Se está ativo, desativar (assumir atendimento)
       if (selectedConversation.agente_ativo) {
         const newAgenteAtivoState = false;
@@ -2387,11 +2306,6 @@ export function WhatsAppChat({
       }
 
       // Call Edge Function to create quick conversation
-      console.log('📞 Criando conversa rápida:', {
-        original: fullPhoneNumber,
-        formatted: phoneNumber.format('E.164'),
-        national: phoneNumber.format('NATIONAL')
-      });
       if (!selectedWorkspace?.workspace_id) {
         toast({
           title: "Erro",
@@ -2444,7 +2358,6 @@ export function WhatsAppChat({
           handleSelectConversation(conversation);
         } else {
           // Tentar novamente após refetch
-          console.log('⏳ Aguardando lista atualizar...');
           setTimeout(async () => {
             await fetchConversations();
             const retryConv = conversations.find(conv => conv.id === data.conversationId);
@@ -2576,8 +2489,6 @@ export function WhatsAppChat({
       setIsVisualLoading(true);
       isLoadingMoreRef.current = true;
 
-      console.log('🔄 Scroll infinito - Iniciando preloading visual de 1s');
-
       // Simular delay visual de 1s conforme pedido
       setTimeout(() => {
         // ✅ CAPTURA CRÍTICA: Capturar a posição EXATAMENTE antes de mudar o estado
@@ -2600,17 +2511,6 @@ export function WhatsAppChat({
         }
       }, 1000);
     }
-    
-    console.log('📜 Posição do scroll:', {
-      isNearBottom,
-      isNearTop,
-      scrollTop: element.scrollTop,
-      scrollHeight: element.scrollHeight,
-      clientHeight: element.clientHeight,
-      hasMore,
-      loadingMore,
-      messagesCount: messages.length
-    });
   }, [hasMore, loadingMore, messages, loadMoreMessages]);
 
   // Handler para React.UIEvent
@@ -2630,7 +2530,6 @@ export function WhatsAppChat({
   useEffect(() => {
     const viewport = messagesScrollRef.current;
     if (viewport) {
-      console.log('✅ Anexando listener nativo ao viewport');
       viewport.addEventListener('scroll', handleNativeScroll, { passive: true });
       return () => {
         viewport.removeEventListener('scroll', handleNativeScroll);
@@ -3021,7 +2920,6 @@ export function WhatsAppChat({
                     variant="ghost" 
                     size="icon" 
                     onClick={async () => {
-                      console.log('🔄 Recarregando conversas manualmente...');
                       await fetchConversations();
                     }}
                     disabled={loading}
@@ -3630,7 +3528,6 @@ export function WhatsAppChat({
                 const scrollContainer = node.querySelector('[data-radix-scroll-area-viewport]');
                 if (scrollContainer) {
                   messagesScrollRef.current = scrollContainer as HTMLElement;
-                  console.log('✅ Viewport encontrado:', scrollContainer);
                 }
               }
             }}
@@ -3892,7 +3789,6 @@ export function WhatsAppChat({
               // MUTEX: Prevenir duplicação baseado na URL do arquivo
               const messageKey = `media-${selectedConversation.id}-${fileUrl}`;
               if (sendingRef.current.has(messageKey)) {
-                console.log('⏭️ Ignorando envio duplicado de mídia');
                 return;
               }
               sendingRef.current.add(messageKey);
@@ -3953,7 +3849,6 @@ export function WhatsAppChat({
                     content: `❌ ${optimisticMessage.content}`
                   });
                 } else {
-                  console.log('✅ Mídia enviada com sucesso:', sendResult);
                   // Atualizar external_id para corresponder à mensagem real que virá do Realtime
                   if (sendResult.external_id) {
                     updateMessage(clientMessageId, {
@@ -4271,7 +4166,6 @@ export function WhatsAppChat({
         conversationId={selectedConversation?.id || ''}
         currentAgentId={selectedConversation?.agent_active_id}
         onAgentChanged={async () => {
-          console.log('🔄 Agente alterado, atualizando conversa...');
           // Recarregar conversas para atualizar a lista
           await fetchConversations();
         }}

@@ -32,7 +32,6 @@ export function useFloatingDate(
 
   const handleScroll = useCallback(() => {
     if (!scrollRef.current || messages.length === 0) {
-      console.log('🔍 [FloatingDate] Scroll ignorado:', { hasRef: !!scrollRef.current, messagesCount: messages.length });
       setShouldShowFloating(false);
       return;
     }
@@ -41,14 +40,8 @@ export function useFloatingDate(
     const scrollTop = scrollContainer.scrollTop;
     const containerRect = scrollContainer.getBoundingClientRect();
     
-    console.log('📜 [FloatingDate] Evento de scroll:', { 
-      scrollTop, 
-      containerHeight: containerRect.height 
-    });
-    
     // Encontrar qual data corresponde às mensagens visíveis no viewport
     const dateSeparators = scrollContainer.querySelectorAll('[data-date-separator]');
-    console.log('🏷️ [FloatingDate] Separadores encontrados:', dateSeparators.length);
     
     let currentVisibleDate: string | null = null;
     let firstSeparatorTop: number | null = null;
@@ -58,12 +51,6 @@ export function useFloatingDate(
       const rect = separator.getBoundingClientRect();
       const separatorTop = rect.top - containerRect.top;
       const dateLabel = separator.getAttribute('data-date-separator');
-      
-      console.log(`📍 [FloatingDate] Separador ${index}:`, {
-        date: dateLabel,
-        separatorTop,
-        isAboveViewport: separatorTop < 100
-      });
       
       // Se o separador está acima do viewport (ou muito próximo do topo)
       // Isso significa que estamos vendo as mensagens DESTA data
@@ -77,14 +64,6 @@ export function useFloatingDate(
     
     // Verificar se o primeiro separador está muito próximo do topo (visível)
     const isFirstSeparatorVisible = firstSeparatorTop !== null && firstSeparatorTop >= 0 && firstSeparatorTop < 80;
-    
-    console.log('✅ [FloatingDate] Resultado:', {
-      currentVisibleDate,
-      firstSeparatorTop,
-      isFirstSeparatorVisible,
-      scrollTop,
-      shouldShow: scrollTop > 50 && !isFirstSeparatorVisible && currentVisibleDate
-    });
     
     // Limpar timeout anterior se existir
     if (hideTimeoutRef.current) {
@@ -103,17 +82,14 @@ export function useFloatingDate(
     // 2. O primeiro separador não está visível no topo
     // 3. Há uma data identificada
     if (scrollTop > 50 && !isFirstSeparatorVisible && currentVisibleDate) {
-      console.log('🎯 [FloatingDate] MOSTRAR indicador:', currentVisibleDate);
       setFloatingDate(currentVisibleDate);
       setShouldShowFloating(true);
       
       // Timer para esconder após 1 segundo sem rolar
       scrollStopTimeoutRef.current = setTimeout(() => {
-        console.log('⏱️ [FloatingDate] Scroll parado - ESCONDER indicador');
         setShouldShowFloating(false);
       }, 1000);
     } else {
-      console.log('❌ [FloatingDate] ESCONDER indicador');
       // Adicionar delay antes de esconder para evitar piscar
       hideTimeoutRef.current = setTimeout(() => {
         setShouldShowFloating(false);

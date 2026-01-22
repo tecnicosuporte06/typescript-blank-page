@@ -144,13 +144,10 @@ export function CRMContatos() {
       setIsLoading(true);
       
       if (!selectedWorkspace?.workspace_id) {
-        console.warn("⚠️ [CRMContatos] No workspace selected");
         setContacts([]);
         setIsLoading(false);
         return;
       }
-
-      console.log("🔄 [CRMContatos] Fetching contacts for workspace:", selectedWorkspace.workspace_id);
 
       // ✅ Verificar workspace_id antes de fazer query
       if (!selectedWorkspace.workspace_id) {
@@ -165,11 +162,6 @@ export function CRMContatos() {
         return;
       }
 
-      console.log("🔍 [CRMContatos] Query params:", {
-        workspace_id: selectedWorkspace.workspace_id,
-        table: "contacts"
-      });
-
       // Get all contacts from the workspace
       const { data: contactsData, error: contactsError } = await supabase
         .from("contacts")
@@ -178,15 +170,6 @@ export function CRMContatos() {
         .order("created_at", {
           ascending: false,
         });
-
-      // ✅ Log detalhado do resultado
-      console.log("📊 [CRMContatos] Query result:", {
-        hasError: !!contactsError,
-        errorCode: contactsError?.code,
-        errorMessage: contactsError?.message,
-        dataLength: contactsData?.length || 0,
-        dataPreview: contactsData?.slice(0, 2) // Primeiros 2 contatos para debug
-      });
 
       if (contactsError) {
         console.error("❌ [CRMContatos] Error fetching contacts:", {
@@ -217,13 +200,10 @@ export function CRMContatos() {
       }
 
       if (!contactsData || contactsData.length === 0) {
-        console.log("ℹ️ [CRMContatos] No contacts found for workspace:", selectedWorkspace.workspace_id);
         setContacts([]);
         setIsLoading(false);
         return;
       }
-
-      console.log(`✅ [CRMContatos] Found ${contactsData.length} contacts for workspace ${selectedWorkspace.workspace_id}`);
 
       const contactIds = contactsData.map((c) => c.id);
 
@@ -302,7 +282,6 @@ export function CRMContatos() {
         };
       });
 
-      console.log(`✅ [CRMContatos] Successfully loaded ${contactsWithTags.length} contacts`);
       setContacts(contactsWithTags);
     } catch (error: any) {
       console.error("❌ [CRMContatos] Unexpected error fetching contacts:", error);
@@ -324,10 +303,7 @@ export function CRMContatos() {
 
   // ✅ CARREGAR CONTATOS AUTOMATICAMENTE quando workspace ou página mudar
   useEffect(() => {
-    console.log("🎯 [CRMContatos] useEffect triggered - workspace:", selectedWorkspace?.workspace_id, "page:", page);
-    
     if (!selectedWorkspace?.workspace_id) {
-      console.warn("⚠️ [CRMContatos] No workspace selected, clearing contacts");
       setContacts([]);
       setIsLoading(false);
       return;
@@ -337,12 +313,8 @@ export function CRMContatos() {
     const loadContacts = async () => {
       try {
         setIsLoading(true);
-        
-        console.log("🔄 [CRMContatos] Fetching contacts for workspace:", selectedWorkspace.workspace_id, "page:", page);
 
       // Get contacts com suporte a busca (ilike) e paginação apenas quando sem busca
-        console.log("🔍 [CRMContatos] Fazendo query com workspace_id:", selectedWorkspace.workspace_id, "search:", searchTerm, "page:", page);
-        
         const start = (page - 1) * pageSize;
         const end = start + pageSize - 1;
 
@@ -472,13 +444,6 @@ export function CRMContatos() {
 
         const { data: contactsData, error: contactsError, count } = await query;
 
-        console.log("📦 [CRMContatos] Resposta da query:", {
-          success: !contactsError,
-          count: contactsData?.length || 0,
-          error: contactsError,
-          sampleData: contactsData?.slice(0, 2)
-        });
-
         if (contactsError) {
           console.error("❌ [CRMContatos] Error:", contactsError);
           toast({
@@ -493,12 +458,9 @@ export function CRMContatos() {
         setTotalCount(count || 0);
 
         if (!contactsData || contactsData.length === 0) {
-          console.log("ℹ️ [CRMContatos] No contacts found");
           setContacts([]);
           return;
         }
-
-        console.log(`✅ [CRMContatos] Loaded ${contactsData.length} contacts`);
 
         // Buscar tags opcionalmente (não bloquear se falhar)
         const contactIds = contactsData.map((c) => c.id);
@@ -588,8 +550,6 @@ export function CRMContatos() {
   useEffect(() => {
     if (!selectedWorkspace?.workspace_id) return;
 
-    console.log("📡 [CRMContatos] Setting up realtime subscription for workspace:", selectedWorkspace.workspace_id);
-
     const channel = supabase
       .channel(`contacts-changes-${selectedWorkspace.workspace_id}`)
       .on(
@@ -601,7 +561,6 @@ export function CRMContatos() {
           filter: `workspace_id=eq.${selectedWorkspace.workspace_id}`,
         },
         async (payload) => {
-          console.log("🆕 [CRMContatos] New contact inserted:", payload.new.id);
           const newContactData = payload.new;
           const newContact: Contact = {
             id: newContactData.id,
@@ -631,7 +590,6 @@ export function CRMContatos() {
           filter: `workspace_id=eq.${selectedWorkspace.workspace_id}`,
         },
         (payload) => {
-          console.log("🔄 [CRMContatos] Contact updated:", payload.new.id);
           // ✅ Atualizar apenas o contato específico (mais eficiente)
           const updatedContact = payload.new;
           setContacts((prev) =>
@@ -659,21 +617,17 @@ export function CRMContatos() {
           filter: `workspace_id=eq.${selectedWorkspace.workspace_id}`,
         },
         (payload) => {
-          console.log("🗑️ [CRMContatos] Contact deleted:", payload.old.id);
           const deletedId = payload.old.id;
           setContacts((prev) => prev.filter((c) => c.id !== deletedId));
         },
       )
       .subscribe((status) => {
-        if (status === "SUBSCRIBED") {
-          console.log("✅ [CRMContatos] Realtime subscription active");
-        } else if (status === "CHANNEL_ERROR") {
+        if (status === "CHANNEL_ERROR") {
           console.error("❌ [CRMContatos] Realtime subscription error");
         }
       });
 
     return () => {
-      console.log("🔌 [CRMContatos] Cleaning up realtime subscription");
       supabase.removeChannel(channel);
     };
   }, [selectedWorkspace?.workspace_id, fetchContacts]);
@@ -757,8 +711,6 @@ export function CRMContatos() {
 
       // 5. Delete n8n chat histories (usando telefone do contato como session_id)
       if (contact.phone) {
-        console.log(`🗑️ Deleting n8n_chat_histories for contact phone: ${contact.phone}`);
-        
         try {
           // Função para normalizar telefone (remove caracteres não numéricos)
           const normalizePhone = (phone: string): string => {
@@ -794,15 +746,11 @@ export function CRMContatos() {
           }
 
           const uniqueVariations = Array.from(phoneVariations).filter(p => p && p.trim() !== '');
-          console.log(`📋 Trying ${uniqueVariations.length} phone variations:`, uniqueVariations);
 
           // Tentar deletar com cada variação
-          let deletedCount = 0;
-          const deletionErrors: string[] = [];
-
           for (const phoneVar of uniqueVariations) {
             try {
-              const { data, error: n8nError } = await supabase
+              const { error: n8nError } = await supabase
                 .from("n8n_chat_histories")
                 .delete()
                 .eq("session_id", phoneVar)
@@ -815,13 +763,6 @@ export function CRMContatos() {
                     !errorMsg.toLowerCase().includes('permission') &&
                     !errorMsg.toLowerCase().includes('not found')) {
                   console.warn(`⚠️ Error deleting n8n_chat_histories for ${phoneVar}:`, n8nError);
-                  deletionErrors.push(`${phoneVar}: ${errorMsg}`);
-                }
-              } else {
-                const count = data?.length || 0;
-                if (count > 0) {
-                  deletedCount += count;
-                  console.log(`✅ Deleted ${count} record(s) from n8n_chat_histories for ${phoneVar}`);
                 }
               }
             } catch (err) {
@@ -830,17 +771,8 @@ export function CRMContatos() {
               if (!errorMsg.toLowerCase().includes('not found') && 
                   !errorMsg.toLowerCase().includes('permission')) {
                 console.warn(`⚠️ Exception deleting n8n_chat_histories for ${phoneVar}:`, errorMsg);
-                deletionErrors.push(`${phoneVar}: ${errorMsg}`);
               }
             }
-          }
-
-          if (deletedCount > 0) {
-            console.log(`✅ Successfully deleted ${deletedCount} record(s) from n8n_chat_histories`);
-          } else if (deletionErrors.length > 0) {
-            console.warn(`⚠️ Errors occurred during deletion attempts:`, deletionErrors);
-          } else {
-            console.log(`ℹ️ No records found in n8n_chat_histories for any phone variation`);
           }
         } catch (error) {
           console.error(`❌ Error processing n8n_chat_histories deletion:`, error);

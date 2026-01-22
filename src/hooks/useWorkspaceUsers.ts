@@ -34,30 +34,20 @@ export function useWorkspaceUsers(workspaceId?: string, filterProfiles?: ('user'
         }
       }
     }
-
-    console.log('🔍 [useWorkspaceUsers] useEffect triggered:', { 
-      workspaceIdProp: workspaceId, 
-      effectiveWorkspaceId,
-      filterProfiles,
-      hasWorkspaceId: !!effectiveWorkspaceId
-    });
     
     if (!effectiveWorkspaceId) {
-      console.warn('⚠️ useWorkspaceUsers: sem workspace ID efetivo');
       setUsers([]);
       return;
     }
 
     // Prevenir chamadas simultâneas
     if (isFetchingRef.current) {
-      console.log('⏸️ Fetch já em andamento, ignorando...');
       return;
     }
 
     // Proteção anti-loop: evitar requisições muito rápidas
     const now = Date.now();
     if (now - lastFetchTime.current < MIN_FETCH_INTERVAL) {
-      console.log('⏸️ Requisição muito rápida, aguardando...');
       return;
     }
     lastFetchTime.current = now;
@@ -68,8 +58,6 @@ export function useWorkspaceUsers(workspaceId?: string, filterProfiles?: ('user'
     const fetchUsers = async () => {
       setIsLoading(true);
       try {
-        console.log('🔄 Buscando usuários do workspace via edge function:', effectiveWorkspaceId);
-        
         const { data, error } = await supabase.functions.invoke('manage-workspace-members', {
           body: { 
             action: 'list',
@@ -91,7 +79,6 @@ export function useWorkspaceUsers(workspaceId?: string, filterProfiles?: ('user'
         }
 
         const members = data.members || [];
-        console.log(`📋 Encontrados ${members.length} membros do workspace`);
 
         const allUsers: WorkspaceUser[] = members
           .filter((member: any) => member.user)
@@ -105,8 +92,6 @@ export function useWorkspaceUsers(workspaceId?: string, filterProfiles?: ('user'
         const filteredUsers = filterProfiles
           ? allUsers.filter(user => filterProfiles.includes(user.profile as 'user' | 'admin' | 'master'))
           : allUsers;
-
-        console.log(`✅ ${filteredUsers.length} usuários carregados`);
         
         if (!cancelled) {
           setUsers(filteredUsers);

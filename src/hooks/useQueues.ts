@@ -34,24 +34,18 @@ export function useQueues(workspaceIdProp?: string, includeInactive?: boolean) {
 
   const fetchQueues = async () => {
     if (!workspaceId) {
-      console.log('🚫 useQueues: Nenhum workspace disponível', { 
-        prop: workspaceIdProp, 
-        context: selectedWorkspace?.workspace_id 
-      });
       setLoading(false);
       return;
     }
 
     // Proteção anti-loop: evitar requisições duplicadas
     if (isFetchingRef.current) {
-      console.log('⏸️ useQueues: Fetch já em andamento, ignorando...');
       return;
     }
 
     // Proteção anti-loop: evitar requisições muito rápidas
     const now = Date.now();
     if (now - lastFetchTime.current < MIN_FETCH_INTERVAL) {
-      console.log('⏸️ useQueues: Requisição muito rápida, aguardando...');
       return;
     }
     lastFetchTime.current = now;
@@ -60,8 +54,6 @@ export function useQueues(workspaceIdProp?: string, includeInactive?: boolean) {
 
     try {
       setLoading(true);
-      console.log('🔍 useQueues: Buscando filas para workspace:', workspaceId, 
-        includeInactive ? '(incluindo inativas)' : '(apenas ativas)');
       
       let query = supabase
         .from('queues')
@@ -83,7 +75,6 @@ export function useQueues(workspaceIdProp?: string, includeInactive?: boolean) {
         throw error;
       }
       
-      console.log('✅ useQueues: Filas carregadas:', data?.length || 0, 'filas');
       setQueues(data || []);
     } catch (error) {
       console.error('❌ useQueues: Erro ao carregar filas:', error);

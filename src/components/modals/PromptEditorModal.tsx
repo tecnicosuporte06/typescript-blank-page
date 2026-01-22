@@ -17,7 +17,8 @@ import {
   Link2, 
   Shuffle,
   ListFilter,
-  CheckSquare
+  CheckSquare,
+  Target
 } from "lucide-react";
 import {
   ContextMenu,
@@ -83,6 +84,12 @@ const actionButtons: ActionButton[] = [
     id: "qualify-deal",
     label: "Qualificar cliente",
     icon: <CheckSquare className="w-4 h-4" />,
+    tag: '',
+  },
+  {
+    id: "opportunity-status",
+    label: "Status Oportunidade",
+    icon: <Target className="w-4 h-4" />,
     tag: '',
   },
 ];
@@ -183,6 +190,8 @@ export function PromptEditorModal({
   const [showFunnelSelector, setShowFunnelSelector] = useState(false);
   const [showQualificationSelector, setShowQualificationSelector] = useState(false);
   const [qualificationSelection, setQualificationSelection] = useState<'qualified' | 'unqualified'>('qualified');
+  const [showOpportunityStatusSelector, setShowOpportunityStatusSelector] = useState(false);
+  const [opportunityStatusSelection, setOpportunityStatusSelection] = useState<'aberto' | 'ganho' | 'perda'>('aberto');
   const [pendingActionType, setPendingActionType] = useState<string | null>(null);
   const editorRef = useRef<PromptEditorRef>(null);
 
@@ -323,6 +332,11 @@ export function PromptEditorModal({
       return;
     }
 
+    if (action.id === "opportunity-status") {
+      setShowOpportunityStatusSelector(true);
+      return;
+    }
+
     // Para outras ações genéricas (incluindo save-info), inserir texto diretamente
     const actionText = `\n${action.tag}\n`;
     editorRef.current?.insertText(actionText);
@@ -393,6 +407,21 @@ export function PromptEditorModal({
     const actionText = `\n[${qualificationSelection}]\n`;
     editorRef.current?.insertText(actionText);
     setShowQualificationSelector(false);
+  };
+
+  const handleConfirmOpportunityStatus = () => {
+    // Inserir token de status no formato [status:aberto], [status:ganho] ou [status:perda]
+    editorRef.current?.insertBadge({
+      token: `[status:${opportunityStatusSelection}]`,
+      label: `Status: ${opportunityStatusSelection === 'aberto' ? 'Aberto' : opportunityStatusSelection === 'ganho' ? 'Ganho' : 'Perdido'}`,
+      type: 'status_oportunidade',
+      colorClass: opportunityStatusSelection === 'ganho' 
+        ? 'bg-green-100 text-green-700 border-green-300 dark:bg-green-900/30 dark:text-green-300 dark:border-green-700'
+        : opportunityStatusSelection === 'perda'
+        ? 'bg-red-100 text-red-700 border-red-300 dark:bg-red-900/30 dark:text-red-300 dark:border-red-700'
+        : 'bg-blue-100 text-blue-700 border-blue-300 dark:bg-blue-900/30 dark:text-blue-300 dark:border-blue-700',
+    });
+    setShowOpportunityStatusSelector(false);
   };
 
   const handleSave = () => {
@@ -542,6 +571,77 @@ export function PromptEditorModal({
                 Cancelar
               </Button>
               <Button type="button" className="rounded-none" onClick={handleConfirmQualification}>
+                Confirmar
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Modal de Status Oportunidade */}
+      <Dialog open={showOpportunityStatusSelector} onOpenChange={setShowOpportunityStatusSelector}>
+        <DialogContent
+          className="max-w-md border border-[#d4d4d4] shadow-lg sm:rounded-none bg-white dark:bg-[#0b0b0b] dark:border-gray-700 dark:text-gray-100"
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') {
+              e.preventDefault();
+              handleConfirmOpportunityStatus();
+            }
+          }}
+        >
+          <DialogHeader>
+            <DialogTitle>Status da Oportunidade</DialogTitle>
+          </DialogHeader>
+
+          <div className="space-y-3">
+            <p className="text-sm text-muted-foreground">
+              Selecione o status que será atribuído à oportunidade/negócio:
+            </p>
+            <div className="grid grid-cols-3 gap-2">
+              <Button
+                type="button"
+                variant={opportunityStatusSelection === 'aberto' ? 'default' : 'outline'}
+                onClick={() => setOpportunityStatusSelection('aberto')}
+                className="rounded-none"
+              >
+                Aberto
+              </Button>
+
+              <Button
+                type="button"
+                variant={opportunityStatusSelection === 'ganho' ? 'default' : 'outline'}
+                onClick={() => setOpportunityStatusSelection('ganho')}
+                className={cn(
+                  "rounded-none",
+                  opportunityStatusSelection === 'ganho' && "bg-green-600 hover:bg-green-700"
+                )}
+              >
+                Ganho
+              </Button>
+
+              <Button
+                type="button"
+                variant={opportunityStatusSelection === 'perda' ? 'default' : 'outline'}
+                onClick={() => setOpportunityStatusSelection('perda')}
+                className={cn(
+                  "rounded-none",
+                  opportunityStatusSelection === 'perda' && "bg-red-600 hover:bg-red-700"
+                )}
+              >
+                Perdido
+              </Button>
+            </div>
+
+            <div className="flex justify-end gap-2 pt-2">
+              <Button
+                type="button"
+                variant="outline"
+                className="rounded-none"
+                onClick={() => setShowOpportunityStatusSelector(false)}
+              >
+                Cancelar
+              </Button>
+              <Button type="button" className="rounded-none" onClick={handleConfirmOpportunityStatus}>
                 Confirmar
               </Button>
             </div>

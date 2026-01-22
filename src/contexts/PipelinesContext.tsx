@@ -6,7 +6,7 @@ import { useAuth } from '@/hooks/useAuth';
 import { usePipelineRealtime } from '@/hooks/usePipelineRealtime';
 import { generateRandomId } from '@/lib/generate-random-id';
 
-const IS_DEV = import.meta.env.DEV;
+const IS_DEV = false; // Desabilitado para evitar logs em excesso
 const devLog = (...args: any[]) => {
   if (IS_DEV) console.log(...args);
 };

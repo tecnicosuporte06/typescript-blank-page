@@ -235,20 +235,11 @@ function DraggableDeal({
     const fetchProductsTotal = async () => {
       if (!deal.id) return;
       
-      console.log('🔍 [DraggableDeal] Buscando produtos via Edge Function:', {
-        cardId: deal.id,
-        productId: deal.product_id,
-        productName: deal.product_name,
-        currentValue: deal.value
-      });
-      
       try {
         // Usar Edge Function para bypass de RLS
         const { data, error } = await supabase.functions.invoke('get-card-products', {
           body: { cardId: deal.id }
         });
-        
-        console.log('📦 [DraggableDeal] Resposta da Edge Function:', data, 'Erro:', error);
         
         if (error) {
           console.error('❌ [DraggableDeal] Erro na Edge Function:', error);
@@ -259,12 +250,6 @@ function DraggableDeal({
         }
         
         if (data?.success && data.count > 0) {
-          console.log('💰 [DraggableDeal] Produtos encontrados:', {
-            count: data.count,
-            totalValue: data.totalValue,
-            products: data.products
-          });
-          
           const totalValue = data.totalValue ?? 0;
           setProductCount(data.count);
           setProductPrice(totalValue);
@@ -281,7 +266,6 @@ function DraggableDeal({
             setFetchedProductName(null);
           }
         } else {
-          console.log('⚠️ [DraggableDeal] Nenhum produto encontrado via Edge Function:', data);
           setProductPrice(null);
           setProductCount(0);
           setFetchedProductName(null);
@@ -510,13 +494,10 @@ function DraggableDeal({
               onPointerDown={e => e.stopPropagation()}
               onClick={async e => {
             e.stopPropagation();
-            console.log('🎯 Clique no botão de chat - Deal:', deal);
-            console.log('📞 Contact ID:', deal.contact?.id);
 
             // Buscar conversa do contato antes de abrir o modal
             if (deal.contact?.id) {
               try {
-                console.log('🔍 Buscando conversa para contact_id:', deal.contact.id);
                 let query = supabase
                   .from('conversations')
                   .select('id')
@@ -531,10 +512,6 @@ function DraggableDeal({
                   data: conversations,
                   error
                 } = await query.limit(1);
-                console.log('📊 Resultado da busca:', {
-                  conversations,
-                  error
-                });
                 if (error) throw error;
                 if (conversations && conversations.length > 0) {
                   // Anexar conversation_id ao deal antes de passar para o modal
@@ -545,8 +522,6 @@ function DraggableDeal({
                       id: conversations[0].id
                     }
                   };
-                  console.log('✅ Conversa encontrada! ID:', conversations[0].id);
-                  console.log('📦 Deal com conversa:', dealWithConversation);
                   onChatClick?.(dealWithConversation);
                 } else {
                   console.warn('⚠️ Nenhuma conversa encontrada para o contato');
@@ -614,20 +589,8 @@ function DraggableDeal({
                   onClick={(e) => {
                     e.preventDefault();
                     e.stopPropagation();
-                    console.log('🤖 Botão de agente clicado:', { 
-                      hasConversation: !!deal.conversation, 
-                      conversationId: deal.conversation?.id,
-                      hasOnConfigureAgent: !!onConfigureAgent 
-                    });
                     if (deal.conversation?.id && onConfigureAgent) {
-                      console.log('✅ Chamando onConfigureAgent com:', deal.conversation.id);
                       onConfigureAgent(deal.conversation.id);
-                    } else {
-                      console.warn('⚠️ Não foi possível abrir modal:', {
-                        hasConversation: !!deal.conversation,
-                        conversationId: deal.conversation?.id,
-                        hasOnConfigureAgent: !!onConfigureAgent
-                      });
                     }
                   }}
                   type="button"
@@ -872,16 +835,6 @@ function CRMNegociosContent({
   // Para Masters, priorizar workspaceId da URL
   const effectiveWorkspaceId = isMaster && urlWorkspaceId ? urlWorkspaceId : selectedWorkspace?.workspace_id;
   
-  // Debug logs
-  useEffect(() => {
-    console.log('🔍 CRMNegocios - Role Debug:', {
-      userWorkspaceRole,
-      isMaster,
-      selectedWorkspaceId: selectedWorkspace?.workspace_id,
-      canManagePipelines: canManagePipelines(selectedWorkspace?.workspace_id || undefined),
-      canManageColumns: canManageColumns(selectedWorkspace?.workspace_id || undefined)
-    });
-  }, [userWorkspaceRole, isMaster, selectedWorkspace?.workspace_id, canManagePipelines, canManageColumns]);
   const {
     getHeaders
   } = useWorkspaceHeaders();
@@ -1116,7 +1069,6 @@ const [selectedCardForProduct, setSelectedCardForProduct] = useState<{
   // ✅ CRÍTICO: Limpar estado do drag quando colunas mudarem
   // Isso previne o bug de travamento na segunda movimentação
   useEffect(() => {
-    console.log('🔄 Colunas atualizadas, limpando estado do drag');
     setDraggedColumn(null);
     setActiveId(null);
     setDragOverColumn(null);
@@ -1378,16 +1330,6 @@ const [selectedCardForProduct, setSelectedCardForProduct] = useState<{
           ? conversation.unread_count 
           : (typeof conversation?.unread_count === 'string' ? parseInt(conversation.unread_count) || 0 : 0);
         
-        // Debug log
-        console.log('🔍 Filtro unread:', {
-          cardId: card.id,
-          hasConversation: !!conversation,
-          conversationId: conversation?.id,
-          unreadCount: conversationUnreadCount,
-          unreadCountRaw: conversation?.unread_count,
-          willInclude: conversationUnreadCount > 0
-        });
-        
         return conversationUnreadCount > 0;
       });
     }
@@ -1420,8 +1362,6 @@ const [selectedCardForProduct, setSelectedCardForProduct] = useState<{
   const handleDragStart = useCallback((event: DragStartEvent) => {
     const activeId = event.active.id as string;
     
-    console.log('🎬 handleDragStart:', { activeId });
-    
     // ✅ Limpar TODOS os estados de drag antes de iniciar novo
     setDraggedColumn(null);
     setActiveId(null);
@@ -1431,7 +1371,6 @@ const [selectedCardForProduct, setSelectedCardForProduct] = useState<{
     if (activeId.startsWith('column-')) {
       const columnId = activeId.replace('column-', '');
       setDraggedColumn(columnId);
-      console.log('✅ Coluna sendo arrastada:', columnId);
       return;
     }
     
@@ -1475,12 +1414,6 @@ const [selectedCardForProduct, setSelectedCardForProduct] = useState<{
       over
     } = event;
     
-    console.log('🎯 handleDragEnd iniciado:', {
-      activeId: active.id,
-      overId: over?.id,
-      isDraggedColumn: !!draggedColumn
-    });
-    
     // ✅ SEMPRE limpar estados do drag IMEDIATAMENTE (não esperar async)
     const wasDraggingColumn = draggedColumn;
     setDraggedColumn(null);
@@ -1494,13 +1427,6 @@ const [selectedCardForProduct, setSelectedCardForProduct] = useState<{
       
       if (oldIndex !== -1 && newIndex !== -1) {
         const newColumns = arrayMove(columns, oldIndex, newIndex);
-        
-        console.log('🔄 Reordenando colunas otimisticamente:', {
-          from: oldIndex,
-          to: newIndex,
-          oldId: columns[oldIndex].id,
-          newPosition: newIndex
-        });
         
         try {
           // ✅ Fire and forget - não bloquear a UI
@@ -1544,12 +1470,6 @@ const [selectedCardForProduct, setSelectedCardForProduct] = useState<{
 
     // 🚀 USAR OPTIMISTIC UPDATE para movimento instantâneo
     if (activeCard.column_id !== newColumnId) {
-      console.log('🎯 Iniciando drag fluido:', {
-        cardId: activeCard.id,
-        from: activeCard.column_id,
-        to: newColumnId
-      });
-
       // Não precisa await - deixar executar em background
       moveCardOptimistic(activeCard.id, newColumnId);
     }
@@ -1557,14 +1477,6 @@ const [selectedCardForProduct, setSelectedCardForProduct] = useState<{
   const navigate = useNavigate();
   
   const openCardDetails = (card: any, opts?: { openActivityEditId?: string | null }) => {
-    console.log('🔍 Abrindo detalhes do card:', card);
-    console.log('📋 Card completo:', {
-      id: card.id,
-      title: card.title,
-      column_id: card.column_id,
-      pipeline_id: card.pipeline_id,
-      contact: card.contact
-    });
     // Recolher sidebar para melhor visualização
     onCollapseSidebar?.();
     // Abrir modal deslizante de detalhes (sheet)
@@ -2191,16 +2103,8 @@ const [selectedCardForProduct, setSelectedCardForProduct] = useState<{
                           const calculateColumnTotal = () => {
                             const total = columnCards.reduce((sum, card) => {
                               const effectiveValue = getCardEffectiveValue(card);
-                              console.log('💰 [Mobile Total] Card:', {
-                                cardId: card.id,
-                                cardValue: card.value,
-                                effectiveValue,
-                                hasProducts: !!card.products,
-                                products: card.products
-                              });
                               return sum + effectiveValue;
                             }, 0);
-                            console.log('📊 [Mobile Total] Total calculado:', total, 'para', columnCards.length, 'cards');
                             return total;
                           };
                           const formatCurrency = (value: number) => {
@@ -2271,28 +2175,13 @@ const [selectedCardForProduct, setSelectedCardForProduct] = useState<{
                                        </div>
                                        {isLoadingInitialCardsByColumn?.[column.id] ? (
                                          <div className="h-24" />
-                                       ) : columnCards.length > 0 ? columnCards.map((card, idx) => {
-                                         const productRelations = Array.isArray((card as any).products) ? (card as any).products : [];
-                                         const primaryProduct = productRelations.length > 0 ? productRelations[0] : null;
-                                         const productName = primaryProduct?.product?.name || (card as any).product_name;
-                                         const productId = primaryProduct?.product_id || primaryProduct?.product?.id || (card as any).product_id;
-                                         
-                                         // Debug: Log para verificar estrutura dos dados
-                                         if (productName && (!card.value || card.value === 0)) {
-                                           console.log('🔍 [Card Debug]', {
-                                             cardId: card.id,
-                                             productName,
-                                             productId,
-                                             products: card.products,
-                                             primaryProduct,
-                                             cardValue: card.value,
-                                             total_value: primaryProduct?.total_value,
-                                             unit_value: primaryProduct?.unit_value,
-                                             product_value: primaryProduct?.product?.value
-                                           });
-                                         }
-                                         
-                                         const productValue = primaryProduct?.total_value ?? primaryProduct?.unit_value ?? primaryProduct?.product?.value ?? (card as any).product_value ?? (card as any).total_value ?? null;
+                                      ) : columnCards.length > 0 ? columnCards.map((card, idx) => {
+                                        const productRelations = Array.isArray((card as any).products) ? (card as any).products : [];
+                                        const primaryProduct = productRelations.length > 0 ? productRelations[0] : null;
+                                        const productName = primaryProduct?.product?.name || (card as any).product_name;
+                                        const productId = primaryProduct?.product_id || primaryProduct?.product?.id || (card as any).product_id;
+                                        
+                                        const productValue = primaryProduct?.total_value ?? primaryProduct?.unit_value ?? primaryProduct?.product?.value ?? (card as any).product_value ?? (card as any).total_value ?? null;
                                          const effectiveValue = card.value || productValue || 0;
 
                                          const deal: Deal = {
@@ -2633,10 +2522,6 @@ const [selectedCardForProduct, setSelectedCardForProduct] = useState<{
                           };
                           return (
                               <DraggableDeal key={card.id} deal={deal} isDarkMode={isDarkMode} onClick={() => !isSelectionMode && openCardDetails(card)} onEditPendingTask={(activityId) => openCardDetails(card, { openActivityEditId: activityId })} columnColor={column.color} workspaceId={effectiveWorkspaceId} onOpenTransferModal={handleOpenTransferModal} onVincularResponsavel={handleVincularResponsavel} onChatClick={dealData => {
-                            console.log('🎯 CRM: Abrindo chat para deal:', dealData);
-                            console.log('🆔 CRM: Deal ID:', dealData.id);
-                            console.log('🗣️ CRM: Deal conversation:', dealData.conversation);
-                            console.log('👤 CRM: Deal contact:', dealData.contact);
                             setSelectedChatCard(dealData);
                             setIsChatModalOpen(true);
                           }} onValueClick={dealData => {
@@ -2773,7 +2658,6 @@ const [selectedCardForProduct, setSelectedCardForProduct] = useState<{
               };
               return <div style={{ width: `${columnWidth ?? 240}px`, maxWidth: `${columnWidth ?? 240}px` }}>
                 <DraggableDeal deal={deal} isDarkMode={isDarkMode} onClick={() => {}} onEditPendingTask={(activityId) => openCardDetails(activeCard, { openActivityEditId: activityId })} columnColor={activeColumn?.color} workspaceId={effectiveWorkspaceId} onChatClick={dealData => {
-                console.log('🎯 CRM DragOverlay: Abrindo chat para deal:', dealData);
                 setSelectedChatCard(dealData);
                 setIsChatModalOpen(true);
               }} onValueClick={dealData => {
@@ -2823,7 +2707,6 @@ const [selectedCardForProduct, setSelectedCardForProduct] = useState<{
       <CriarPipelineModal isOpen={isCriarPipelineModalOpen} onClose={() => setIsCriarPipelineModalOpen(false)} onSave={handlePipelineCreate} isDarkMode={isDarkMode} />
 
       <CriarNegocioModal isOpen={isCriarNegocioModalOpen} onClose={() => setIsCriarNegocioModalOpen(false)} onCreateBusiness={handleCreateBusiness} isDarkMode={isDarkMode} onResponsibleUpdated={() => {
-      console.log('🔄 Negócio criado com responsável, refreshing active users...');
       refreshActiveUsers();
     }} />
 
@@ -2860,7 +2743,6 @@ const [selectedCardForProduct, setSelectedCardForProduct] = useState<{
       </Sheet>
 
       <ChatModal isOpen={isChatModalOpen} onClose={() => {
-      console.log('🔽 Fechando ChatModal');
       setIsChatModalOpen(false);
     }} conversationId={selectedChatCard?.conversation?.id || selectedChatCard?.conversation_id || ""} contactName={selectedChatCard?.contact?.name || selectedChatCard?.name || ""} contactPhone={selectedChatCard?.contact?.phone || ""} contactAvatar={selectedChatCard?.contact?.profile_image_url || ""} contactId={selectedChatCard?.contact?.id || ""} />
 
@@ -2908,7 +2790,6 @@ const [selectedCardForProduct, setSelectedCardForProduct] = useState<{
       setIsVincularResponsavelModalOpen(false);
       setSelectedCardForResponsavel(null);
     }} cardId={selectedCardForResponsavel?.cardId || ""} conversationId={selectedCardForResponsavel?.conversationId} contactId={selectedCardForResponsavel?.contactId} currentResponsibleId={selectedCardForResponsavel?.currentResponsibleId} onSuccess={() => refreshCurrentPipeline()} onResponsibleUpdated={() => {
-      console.log('🔄 Responsável atualizado, refreshing active users...');
       refreshActiveUsers();
     }} />
 

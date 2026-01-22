@@ -139,7 +139,6 @@ export function CRMAgenda() {
 
     try {
       setIsLoading(true);
-      console.log("🔄 Buscando agenda...");
 
       // Buscar atividades baseado na visualização atual
       let searchStart: Date;
