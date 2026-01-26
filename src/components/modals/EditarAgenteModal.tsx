@@ -460,6 +460,7 @@ Exemplo: [ENVIE PARA O TOOL \`qualificar-cliente\` (METODO POST) o workspace_id:
                   <SelectItem value="gpt-4o-transcribe" className="text-gray-900 dark:text-gray-200 dark:hover:bg-gray-700">gpt-4o-transcribe</SelectItem>
                   <SelectItem value="gpt-4o-transcribe-diarize" className="text-gray-900 dark:text-gray-200 dark:hover:bg-gray-700">gpt-4o-transcribe-diarize</SelectItem>
                   <SelectItem value="gpt-5" className="text-gray-900 dark:text-gray-200 dark:hover:bg-gray-700">gpt-5</SelectItem>
+                  <SelectItem value="gpt-5.1" className="text-gray-900 dark:text-gray-200 dark:hover:bg-gray-700">gpt-5.1</SelectItem>
                   <SelectItem value="gpt-5-2025-08-07" className="text-gray-900 dark:text-gray-200 dark:hover:bg-gray-700">gpt-5-2025-08-07</SelectItem>
                   <SelectItem value="gpt-5-chat-latest" className="text-gray-900 dark:text-gray-200 dark:hover:bg-gray-700">gpt-5-chat-latest</SelectItem>
                   <SelectItem value="gpt-5-codex" className="text-gray-900 dark:text-gray-200 dark:hover:bg-gray-700">gpt-5-codex</SelectItem>
