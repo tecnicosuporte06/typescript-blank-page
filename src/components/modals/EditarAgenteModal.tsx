@@ -20,6 +20,7 @@ import { PromptEditorModal } from "./PromptEditorModal";
 import { ActionPreviewDisplay } from "@/components/ui/action-preview-display";
 import { useQueryClient } from '@tanstack/react-query';
 import { generateRandomId } from "@/lib/generate-random-id";
+import { isReasoningEffortModel, type ReasoningEffort } from "@/lib/ai-models";
 
 interface EditarAgenteModalProps {
   open: boolean;
@@ -35,6 +36,7 @@ interface FormData {
   model: string;
   system_instructions: string;
   temperature: number;
+  reasoning_effort: ReasoningEffort | null;
   max_tokens: number;
   max_messages: number;
   response_delay: number;
@@ -65,6 +67,7 @@ export function EditarAgenteModal({
     model: 'gpt-4o',
     system_instructions: '',
     temperature: 0.3,
+    reasoning_effort: null,
     max_tokens: 2000,
     max_messages: 300,
     response_delay: 15,
@@ -155,6 +158,15 @@ Exemplo: [ENVIE PARA O TOOL \`qualificar-cliente\` (METODO POST) o workspace_id:
     }
   }, [open, agentId]);
 
+  useEffect(() => {
+    if (!isReasoningEffortModel(formData.model)) {
+      return;
+    }
+    if (!formData.reasoning_effort) {
+      setFormData((prev) => ({ ...prev, reasoning_effort: "medium" }));
+    }
+  }, [formData.model, formData.reasoning_effort]);
+
   const loadAgentData = async () => {
     if (!agentId) {
       return;
@@ -186,6 +198,7 @@ Exemplo: [ENVIE PARA O TOOL \`qualificar-cliente\` (METODO POST) o workspace_id:
         model: data.model || 'gpt-4o',
         system_instructions: data.system_instructions || '',
         temperature: data.temperature ?? 0.3,
+        reasoning_effort: (data.reasoning_effort as ReasoningEffort | null) ?? null,
         max_tokens: data.max_tokens || 2000,
         max_messages: data.max_messages || 300,
         response_delay: (data.response_delay_ms || 15000) / 1000,
@@ -349,7 +362,8 @@ Exemplo: [ENVIE PARA O TOOL \`qualificar-cliente\` (METODO POST) o workspace_id:
           api_key_encrypted: formData.api_key,
           model: formData.model,
           system_instructions: formData.system_instructions,
-          temperature: formData.temperature,
+          temperature: isReasoningEffortModel(formData.model) ? 1 : formData.temperature,
+          reasoning_effort: isReasoningEffortModel(formData.model) ? formData.reasoning_effort : null,
           max_tokens: formData.max_tokens,
           max_messages: formData.max_messages,
           response_delay_ms: formData.response_delay * 1000,
@@ -500,7 +514,7 @@ Exemplo: [ENVIE PARA O TOOL \`qualificar-cliente\` (METODO POST) o workspace_id:
             <Label htmlFor="system_instructions" className="text-xs font-medium text-gray-700 dark:text-gray-300">Instruções do Sistema (Prompt)</Label>
             <div 
               onClick={() => setShowPromptEditor(true)}
-              className="min-h-[100px] p-3 rounded-none border border-[#d4d4d4] dark:border-gray-700 bg-white dark:bg-[#2d2d2d] text-gray-900 dark:text-gray-200 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
+              className="min-h-[56px] max-h-28 overflow-hidden p-3 rounded-none border border-[#d4d4d4] dark:border-gray-700 bg-white dark:bg-[#2d2d2d] text-gray-900 dark:text-gray-200 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
             >
               {formData.system_instructions ? (
                 <ActionPreviewDisplay value={formData.system_instructions} />
@@ -602,16 +616,37 @@ Exemplo: [ENVIE PARA O TOOL \`qualificar-cliente\` (METODO POST) o workspace_id:
             </div>
             
             <div className="space-y-2">
-              <div className="flex justify-between">
-                <Label className="text-xs font-medium text-gray-700 dark:text-gray-300">Temperatura ({formData.temperature})</Label>
-              </div>
-              <Slider
-                value={[formData.temperature]}
-                onValueChange={([value]) => setFormData({ ...formData, temperature: value })}
-                min={0}
-                max={1}
-                step={0.1}
-              />
+              {isReasoningEffortModel(formData.model) ? (
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-medium text-gray-700 dark:text-gray-300">Esforço de Raciocínio</Label>
+                  <Select
+                    value={formData.reasoning_effort || "medium"}
+                    onValueChange={(value) => setFormData({ ...formData, reasoning_effort: value as ReasoningEffort })}
+                  >
+                    <SelectTrigger className="h-8 text-xs rounded-none border-[#d4d4d4] dark:border-gray-700 bg-white dark:bg-[#2d2d2d] text-gray-900 dark:text-gray-200">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent className="rounded-none border-[#d4d4d4] dark:border-gray-700 bg-white dark:bg-[#2d2d2d]">
+                      <SelectItem value="low" className="text-gray-900 dark:text-gray-200 dark:hover:bg-gray-700">Baixo</SelectItem>
+                      <SelectItem value="medium" className="text-gray-900 dark:text-gray-200 dark:hover:bg-gray-700">Médio</SelectItem>
+                      <SelectItem value="high" className="text-gray-900 dark:text-gray-200 dark:hover:bg-gray-700">Alto</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              ) : (
+                <>
+                  <div className="flex justify-between">
+                    <Label className="text-xs font-medium text-gray-700 dark:text-gray-300">Temperatura ({formData.temperature})</Label>
+                  </div>
+                  <Slider
+                    value={[formData.temperature]}
+                    onValueChange={([value]) => setFormData({ ...formData, temperature: value })}
+                    min={0}
+                    max={1}
+                    step={0.1}
+                  />
+                </>
+              )}
             </div>
 
             <div className="grid grid-cols-2 gap-4">

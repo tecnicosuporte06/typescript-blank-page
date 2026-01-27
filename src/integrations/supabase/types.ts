@@ -173,6 +173,7 @@ export type Database = {
           model: string
           name: string
           process_messages: boolean | null
+          reasoning_effort: string | null
           response_delay_ms: number | null
           split_responses: boolean | null
           system_instructions: string | null
@@ -205,6 +206,7 @@ export type Database = {
           model?: string
           name: string
           process_messages?: boolean | null
+          reasoning_effort?: string | null
           response_delay_ms?: number | null
           split_responses?: boolean | null
           system_instructions?: string | null
@@ -237,6 +239,7 @@ export type Database = {
           model?: string
           name?: string
           process_messages?: boolean | null
+          reasoning_effort?: string | null
           response_delay_ms?: number | null
           split_responses?: boolean | null
           system_instructions?: string | null

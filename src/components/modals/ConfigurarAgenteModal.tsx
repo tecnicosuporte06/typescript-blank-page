@@ -18,6 +18,7 @@ import { Slider } from "@/components/ui/slider";
 import { Bot, Upload, FileText, Trash2, TestTube } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
+import { isReasoningEffortModel, type ReasoningEffort } from "@/lib/ai-models";
 
 interface AIAgent {
   id: string;
@@ -27,6 +28,7 @@ interface AIAgent {
   model: string;
   system_instructions: string;
   temperature: number;
+  reasoning_effort: ReasoningEffort | null;
   max_tokens: number;
   response_delay_ms: number;
   knowledge_base_enabled: boolean;
@@ -88,6 +90,7 @@ export function ConfigurarAgenteModal({
     model: 'gpt-4o-mini',
     system_instructions: '',
     temperature: 0.7,
+    reasoning_effort: null,
     max_tokens: 1000,
     response_delay_ms: 1000,
     knowledge_base_enabled: false,
@@ -114,6 +117,7 @@ export function ConfigurarAgenteModal({
         model: 'gpt-4o-mini',
         system_instructions: '',
         temperature: 0.7,
+        reasoning_effort: null,
         max_tokens: 1000,
         response_delay_ms: 1000,
         knowledge_base_enabled: false,
@@ -128,6 +132,15 @@ export function ConfigurarAgenteModal({
       setKnowledgeFiles([]);
     }
   }, [open, agentId]);
+
+  useEffect(() => {
+    if (!isReasoningEffortModel(agent.model)) {
+      return;
+    }
+    if (!agent.reasoning_effort) {
+      setAgent((prev) => ({ ...prev, reasoning_effort: "medium" }));
+    }
+  }, [agent.model, agent.reasoning_effort]);
 
   const loadAgent = async () => {
     try {
@@ -164,7 +177,11 @@ export function ConfigurarAgenteModal({
   const handleSave = async () => {
     setLoading(true);
     try {
-      const agentData = { ...agent };
+      const agentData = {
+        ...agent,
+        temperature: isReasoningEffortModel(agent.model) ? 1 : agent.temperature,
+        reasoning_effort: isReasoningEffortModel(agent.model) ? agent.reasoning_effort : null,
+      };
       delete agentData.id;
 
       if (agentId) {
@@ -380,18 +397,42 @@ export function ConfigurarAgenteModal({
               </CardHeader>
               <CardContent className="space-y-4">
                 <div className="space-y-2">
-                  <Label>Temperatura: {agent.temperature}</Label>
-                  <Slider
-                    value={[agent.temperature]}
-                    onValueChange={([value]) => setAgent({ ...agent, temperature: value })}
-                    min={0}
-                    max={2}
-                    step={0.1}
-                    className="w-full"
-                  />
-                  <p className="text-xs text-muted-foreground">
-                    Controla a criatividade das respostas (0 = conservador, 2 = criativo)
-                  </p>
+                  {isReasoningEffortModel(agent.model) ? (
+                    <>
+                      <Label>Esforço de Raciocínio</Label>
+                      <Select
+                        value={agent.reasoning_effort || "medium"}
+                        onValueChange={(value) => setAgent({ ...agent, reasoning_effort: value as ReasoningEffort })}
+                      >
+                        <SelectTrigger>
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="low">Baixo</SelectItem>
+                          <SelectItem value="medium">Médio</SelectItem>
+                          <SelectItem value="high">Alto</SelectItem>
+                        </SelectContent>
+                      </Select>
+                      <p className="text-xs text-muted-foreground">
+                        Define o esforço de raciocínio para modelos compatíveis.
+                      </p>
+                    </>
+                  ) : (
+                    <>
+                      <Label>Temperatura: {agent.temperature}</Label>
+                      <Slider
+                        value={[agent.temperature]}
+                        onValueChange={([value]) => setAgent({ ...agent, temperature: value })}
+                        min={0}
+                        max={2}
+                        step={0.1}
+                        className="w-full"
+                      />
+                      <p className="text-xs text-muted-foreground">
+                        Controla a criatividade das respostas (0 = conservador, 2 = criativo)
+                      </p>
+                    </>
+                  )}
                 </div>
 
                 <div className="space-y-2">
