@@ -7,6 +7,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Switch } from "@/components/ui/switch";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Plus, Trash2, X, Clock } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from '@/integrations/supabase/client';
@@ -42,7 +43,7 @@ interface AutomationModalProps {
 
 interface Trigger {
   id: string;
-  trigger_type: 'enter_column' | 'leave_column' | 'time_in_column' | 'message_received' | '';
+  trigger_type: 'enter_column' | 'leave_column' | 'time_in_column' | 'scheduled_time' | 'message_received' | '';
   trigger_config: any;
 }
 
@@ -57,6 +58,7 @@ const TRIGGER_TYPES = [
   { value: 'enter_column', label: 'Entrada na coluna' },
   { value: 'leave_column', label: 'Saída da coluna' },
   { value: 'time_in_column', label: 'Tempo na coluna' },
+  { value: 'scheduled_time', label: 'Horário específico' },
   { value: 'message_received', label: 'Mensagens recebidas' },
 ];
 
@@ -80,6 +82,14 @@ const TIME_UNITS = [
   { value: 'hours', label: 'hora(s)' },
   { value: 'days', label: 'dia(s)' },
 ];
+
+const HOURS_OPTIONS = Array.from({ length: 24 }, (_, index) =>
+  String(index).padStart(2, '0')
+);
+
+const MINUTES_OPTIONS = Array.from({ length: 60 }, (_, index) =>
+  String(index).padStart(2, '0')
+);
 
 export function AutomationModal({
   open,
@@ -1114,11 +1124,79 @@ export function AutomationModal({
                         </div>
                       </div>
                     )}
+
+                    {trigger.trigger_type === 'scheduled_time' && (
+                      <div className="flex items-center gap-2 pt-2">
+                        <div className="flex-1">
+                          <Popover>
+                            <PopoverTrigger asChild>
+                              <button
+                                type="button"
+                                className="flex w-full items-center justify-between h-8 text-xs rounded-none border border-gray-300 dark:border-gray-700 bg-white dark:bg-[#1b1b1b] text-gray-900 dark:text-gray-100 px-3 focus-visible:outline-none focus-visible:ring-0"
+                              >
+                                <span>
+                                  {trigger.trigger_config?.scheduled_time || 'Selecione o horário'}
+                                </span>
+                                <span className="text-[10px] text-gray-500 dark:text-gray-400">▼</span>
+                              </button>
+                            </PopoverTrigger>
+                            <PopoverContent className="rounded-none border-gray-300 dark:border-gray-700 bg-white dark:bg-[#1b1b1b] p-3 w-56">
+                              <div className="flex items-center gap-2">
+                                <Select
+                                  value={(trigger.trigger_config?.scheduled_time || '').split(':')[0] || '00'}
+                                  onValueChange={(value) => {
+                                    const minutes = (trigger.trigger_config?.scheduled_time || '00:00').split(':')[1] || '00';
+                                    updateTriggerConfig(trigger.id, 'scheduled_time', `${value}:${minutes}`);
+                                  }}
+                                >
+                                  <SelectTrigger className="h-8 text-xs rounded-none border-gray-300 dark:border-gray-700 bg-white dark:bg-[#1b1b1b] text-gray-900 dark:text-gray-100 focus:ring-0">
+                                    <SelectValue />
+                                  </SelectTrigger>
+                                  <SelectContent className="rounded-none border-gray-300 dark:border-gray-700 bg-white dark:bg-[#1b1b1b]">
+                                    {HOURS_OPTIONS.map((hour) => (
+                                      <SelectItem key={hour} value={hour} className="text-xs rounded-none text-gray-900 dark:text-gray-100 focus:bg-gray-100 dark:focus:bg-[#2a2a2a]">
+                                        {hour}
+                                      </SelectItem>
+                                    ))}
+                                  </SelectContent>
+                                </Select>
+                                <span className="text-xs text-gray-600 dark:text-gray-300">:</span>
+                                <Select
+                                  value={(trigger.trigger_config?.scheduled_time || '').split(':')[1] || '00'}
+                                  onValueChange={(value) => {
+                                    const hours = (trigger.trigger_config?.scheduled_time || '00:00').split(':')[0] || '00';
+                                    updateTriggerConfig(trigger.id, 'scheduled_time', `${hours}:${value}`);
+                                  }}
+                                >
+                                  <SelectTrigger className="h-8 text-xs rounded-none border-gray-300 dark:border-gray-700 bg-white dark:bg-[#1b1b1b] text-gray-900 dark:text-gray-100 focus:ring-0">
+                                    <SelectValue />
+                                  </SelectTrigger>
+                                  <SelectContent className="rounded-none border-gray-300 dark:border-gray-700 bg-white dark:bg-[#1b1b1b]">
+                                    {MINUTES_OPTIONS.map((minute) => (
+                                      <SelectItem key={minute} value={minute} className="text-xs rounded-none text-gray-900 dark:text-gray-100 focus:bg-gray-100 dark:focus:bg-[#2a2a2a]">
+                                        {minute}
+                                      </SelectItem>
+                                    ))}
+                                  </SelectContent>
+                                </Select>
+                              </div>
+                            </PopoverContent>
+                          </Popover>
+                        </div>
+                      </div>
+                    )}
                     
                     {trigger.trigger_type === 'time_in_column' && (
                       <p className={`text-[10px] text-muted-foreground dark:text-gray-400 flex items-start gap-2 pl-1`}>
                         <span className="text-yellow-500 dark:text-yellow-400 font-bold">⚠</span>
                         Executa apenas uma vez quando o card atinge o tempo configurado na coluna
+                      </p>
+                    )}
+
+                    {trigger.trigger_type === 'scheduled_time' && (
+                      <p className={`text-[10px] text-muted-foreground dark:text-gray-400 flex items-start gap-2 pl-1`}>
+                        <span className="text-blue-500 dark:text-blue-400 font-bold">⏰</span>
+                        Executa diariamente no horário configurado enquanto o card estiver na coluna
                       </p>
                     )}
                     

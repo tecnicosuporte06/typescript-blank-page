@@ -157,6 +157,584 @@ function convertToMinutes(value: number, unit: string): number {
   }
 }
 
+function parseScheduledTime(value?: string) {
+  if (!value || typeof value !== 'string') {
+    return null;
+  }
+  const [hoursStr, minutesStr] = value.split(':');
+  const hours = Number(hoursStr);
+  const minutes = Number(minutesStr);
+  if (
+    Number.isNaN(hours) ||
+    Number.isNaN(minutes) ||
+    hours < 0 ||
+    hours > 23 ||
+    minutes < 0 ||
+    minutes > 59
+  ) {
+    return null;
+  }
+  return { hours, minutes };
+}
+
+function getLocalTimeInfo(now: Date, timeZone: string) {
+  const formatter = new Intl.DateTimeFormat('en-US', {
+    timeZone,
+    weekday: 'long',
+    hour: '2-digit',
+    minute: '2-digit',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour12: false,
+  });
+
+  const parts = formatter.formatToParts(now);
+
+  const weekdayMap: Record<string, number> = {
+    'Sunday': 0,
+    'Monday': 1,
+    'Tuesday': 2,
+    'Wednesday': 3,
+    'Thursday': 4,
+    'Friday': 5,
+    'Saturday': 6,
+  };
+
+  const dayName = parts.find(p => p.type === 'weekday')?.value || '';
+  const dayOfWeek = weekdayMap[dayName] ?? now.getDay();
+  const hours = parseInt(parts.find(p => p.type === 'hour')?.value || '0', 10);
+  const minutes = parseInt(parts.find(p => p.type === 'minute')?.value || '0', 10);
+  const year = parts.find(p => p.type === 'year')?.value || '';
+  const month = parts.find(p => p.type === 'month')?.value || '';
+  const day = parts.find(p => p.type === 'day')?.value || '';
+  const date = `${year}-${month}-${day}`;
+
+  return { dayName, dayOfWeek, hours, minutes, date };
+}
+
+async function executeAutomationActions(
+  automation: any,
+  card: any,
+  supabase: any,
+  supabaseKey: string
+): Promise<boolean> {
+  let actionSuccess = true;
+  const shouldIgnoreBusinessHours =
+    automation?.ignore_business_hours === true ||
+    automation?.ignore_business_hours === 'true' ||
+    automation?.ignore_business_hours === 1 ||
+    automation?.ignore_business_hours === '1' ||
+    automation?.ignore_business_hours === 't' ||
+    automation?.ignore_business_hours === 'yes' ||
+    automation?.ignore_business_hours === 'y';
+
+  if (!automation?.actions || automation.actions.length === 0) {
+    return true;
+  }
+
+  // Ordenar ações por action_order
+  const sortedActions = automation.actions.sort((a: any, b: any) =>
+    (a.action_order || 0) - (b.action_order || 0)
+  );
+
+  // Executar cada ação
+  for (const action of sortedActions) {
+    try {
+      const actionConfig = typeof action.action_config === 'string'
+        ? JSON.parse(action.action_config)
+        : action.action_config;
+
+      console.log(`🎬 [Time Automations] Executando ação: ${action.action_type}`, actionConfig);
+
+      switch (action.action_type) {
+        case 'mover_coluna':
+        case 'move_to_column': {
+          const targetColumnId = actionConfig?.column_id || actionConfig?.target_column_id;
+          const targetPipelineId = actionConfig?.pipeline_id || actionConfig?.target_pipeline_id;
+
+          console.log(`🔍 [Time Automations] Move action config:`, actionConfig);
+          console.log(`🔍 [Time Automations] Target column ID: ${targetColumnId}, Target Pipeline ID: ${targetPipelineId}`);
+
+          if (targetColumnId) {
+            const updateData: any = {
+              column_id: targetColumnId,
+              moved_to_column_at: new Date().toISOString(),
+              updated_at: new Date().toISOString()
+            };
+
+            if (targetPipelineId) {
+              updateData.pipeline_id = targetPipelineId;
+            }
+
+            // Usar update direto para suportar pipeline_id
+            const { data: updateResult, error: updateError } = await supabase
+              .from('pipeline_cards')
+              .update(updateData)
+              .eq('id', card.id)
+              .select()
+              .single();
+
+            if (updateError) {
+              console.error(`❌ [Time Automations] Erro ao mover card:`, updateError);
+            } else {
+              console.log(`✅ [Time Automations] Card ${card.id} movido para coluna ${targetColumnId} no pipeline ${targetPipelineId || card.pipeline_id}`, updateResult);
+
+              // Enviar broadcast manual para garantir que o frontend receba a atualização
+              const channel = supabase.channel(`pipeline-${card.pipeline_id}`);
+              await channel.send({
+                type: 'broadcast',
+                event: 'pipeline-card-moved',
+                payload: {
+                  card_id: card.id,
+                  old_column_id: card.column_id,
+                  new_column_id: targetColumnId,
+                  pipeline_id: targetPipelineId || card.pipeline_id
+                }
+              });
+              console.log(`📡 [Time Automations] Broadcast enviado para pipeline-${card.pipeline_id}`);
+            }
+          } else {
+            console.error(`❌ [Time Automations] column_id não encontrado no actionConfig`);
+          }
+          break;
+        }
+
+        case 'add_tag':
+        case 'adicionar_tag': {
+          const tagId = actionConfig?.tag_id;
+          if (tagId && card.contact_id) {
+            // Verificar se a tag já existe
+            const { data: existingTag } = await supabase
+              .from('contact_tags')
+              .select('id')
+              .eq('contact_id', card.contact_id)
+              .eq('tag_id', tagId)
+              .maybeSingle();
+
+            if (!existingTag) {
+              await supabase
+                .from('contact_tags')
+                .insert({
+                  contact_id: card.contact_id,
+                  tag_id: tagId
+                });
+              console.log(`✅ [Time Automations] Tag ${tagId} adicionada ao contato`);
+            }
+          }
+          break;
+        }
+
+        case 'remove_tag':
+        case 'remover_tag': {
+          const tagId = actionConfig?.tag_id;
+          if (tagId && card.contact_id) {
+            await supabase
+              .from('contact_tags')
+              .delete()
+              .eq('contact_id', card.contact_id)
+              .eq('tag_id', tagId);
+            console.log(`✅ [Time Automations] Tag ${tagId} removida do contato`);
+          }
+          break;
+        }
+
+        case 'assign_responsible':
+        case 'atribuir_responsavel': {
+          const userId = actionConfig?.user_id;
+          if (userId) {
+            await supabase
+              .from('pipeline_cards')
+              .update({ responsible_user_id: userId })
+              .eq('id', card.id);
+            console.log(`✅ [Time Automations] Responsável ${userId} atribuído ao card`);
+          }
+          break;
+        }
+
+        case 'add_agent': {
+          if (card.conversation_id) {
+            const agentId = actionConfig?.agent_id;
+            if (agentId) {
+              await supabase
+                .from('conversations')
+                .update({
+                  agente_ativo: true,
+                  agent_active_id: agentId,
+                  status: 'open'
+                })
+                .eq('id', card.conversation_id);
+              console.log(`✅ [Time Automations] Agente ${agentId} ativado na conversa`);
+            }
+          }
+          break;
+        }
+
+        case 'remove_agent':
+        case 'remover_agente': {
+          if (!card.conversation_id) {
+            console.warn('⚠️ [Time Automations] Card sem conversation_id para remove_agent');
+            actionSuccess = false;
+            break;
+          }
+
+          console.log(`🚫 [Time Automations] Desativando agente IA na conversa ${card.conversation_id}`);
+
+          const { error: agentError } = await supabase
+            .from('conversations')
+            .update({
+              agente_ativo: false,
+              agent_active_id: null
+            })
+            .eq('id', card.conversation_id);
+
+          if (agentError) {
+            console.error('❌ [Time Automations] Erro ao desativar agente:', agentError);
+            actionSuccess = false;
+          } else {
+            console.log('✅ [Time Automations] Agente desativado com sucesso');
+          }
+          break;
+        }
+
+        case 'send_message':
+        case 'enviar_mensagem': {
+          const messageText = actionConfig?.message;
+          if (!messageText) {
+            console.warn('⚠️ [Time Automations] send_message sem mensagem configurada');
+            actionSuccess = false;
+            break;
+          }
+
+          if (!card.conversation_id) {
+            console.error('❌ [Time Automations] Conversa não encontrada no card');
+            actionSuccess = false;
+            break;
+          }
+
+          // ✅ Verificar horário de funcionamento antes de enviar (a menos que ignore_business_hours esteja ativo)
+          const workspaceId = (card as any).pipelines?.workspace_id;
+
+          console.log('🕒 [Time Automations] Config horário de funcionamento:', {
+            automation_id: automation?.id,
+            ignore_business_hours: automation?.ignore_business_hours,
+            shouldIgnoreBusinessHours
+          });
+
+          if (workspaceId && !shouldIgnoreBusinessHours) {
+            const withinBusinessHours = await isWithinBusinessHours(workspaceId, supabase);
+            if (!withinBusinessHours) {
+              console.log(`🚫 [Time Automations] Mensagem bloqueada: fora do horário de funcionamento`);
+              console.log(`   Workspace ID: ${workspaceId}`);
+              console.log(`   Card ID: ${card.id}`);
+              console.log(`   Mensagem não será enviada para evitar violação legal`);
+              actionSuccess = false;
+              break; // Sair do switch sem enviar
+            }
+            console.log(`✅ [Time Automations] Dentro do horário de funcionamento - prosseguindo com envio`);
+          } else if (shouldIgnoreBusinessHours) {
+            console.log(`⏰ [Time Automations] Automação configurada para ignorar horário de funcionamento - prosseguindo com envio`);
+          } else {
+            console.warn(`⚠️ [Time Automations] Workspace ID não encontrado - não é possível verificar horário de funcionamento`);
+          }
+
+          console.log(`📤 [Time Automations] Enviando mensagem para conversa ${card.conversation_id}`);
+          console.log(`📤 [Time Automations] Conteúdo da mensagem: "${messageText}"`);
+
+          // Chamar send-message (função de produção)
+          // Usar UUID especial para identificar mensagens de automação
+          const serviceRoleKey = supabaseKey || Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || '';
+          const functionsUrl = `${Deno.env.get('SUPABASE_URL')}/functions/v1/send-message`;
+
+          if (!serviceRoleKey) {
+            console.error('❌ [Time Automations] SUPABASE_SERVICE_ROLE_KEY não encontrado para envio de mensagem');
+            actionSuccess = false;
+            break;
+          }
+
+          const sendResponse = await fetch(functionsUrl, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              Authorization: `Bearer ${serviceRoleKey}`,
+              apikey: serviceRoleKey,
+              'x-system-user-id': '00000000-0000-0000-0000-000000000001',
+              'x-system-user-email': 'automacao@sistema.com',
+              'x-workspace-id': (card as any).pipelines?.workspace_id || ''
+            },
+            body: JSON.stringify({
+              conversation_id: card.conversation_id,
+              content: messageText,
+              sender_id: '00000000-0000-0000-0000-000000000001', // ID especial para automações
+              sender_type: 'system',
+              message_type: 'text'
+            })
+          });
+
+          if (!sendResponse.ok) {
+            let errorBody = '';
+            try {
+              errorBody = await sendResponse.text();
+            } catch {
+              errorBody = '';
+            }
+            console.error('❌ [Time Automations] Erro ao enviar mensagem:', {
+              status: sendResponse.status,
+              statusText: sendResponse.statusText,
+              body: errorBody
+            });
+            actionSuccess = false;
+          } else {
+            console.log('✅ [Time Automations] Mensagem enviada com sucesso');
+          }
+          break;
+        }
+
+        case 'send_funnel': {
+          console.log(`🎯 [Time Automations] ========== EXECUTANDO AÇÃO: ENVIAR FUNIL ==========`);
+
+          const funnelId = actionConfig?.funnel_id;
+
+          if (!funnelId) {
+            console.warn(`⚠️ [Time Automations] Ação send_funnel não tem funnel_id configurado.`);
+            actionSuccess = false;
+            break;
+          }
+
+          // Buscar conversa do card
+          let conversationId = card.conversation_id;
+
+          // Se não tem conversa, tentar buscar por contact_id
+          if (!conversationId && card.contact_id) {
+            const workspaceId = (card as any).pipelines?.workspace_id;
+
+            if (workspaceId) {
+              const { data: existingConversation } = await supabase
+                .from('conversations')
+                .select('id, connection_id, workspace_id')
+                .eq('contact_id', card.contact_id)
+                .eq('workspace_id', workspaceId)
+                .not('connection_id', 'is', null)
+                .order('created_at', { ascending: false })
+                .limit(1)
+                .maybeSingle();
+
+              if (existingConversation) {
+                conversationId = existingConversation.id;
+              }
+            }
+          }
+
+          if (!conversationId) {
+            console.warn(`⚠️ [Time Automations] Card não tem conversa associada. Não é possível enviar funil. Card ID: ${card.id}, Contact ID: ${card.contact_id}`);
+            actionSuccess = false;
+            break;
+          }
+
+          // Buscar o funil
+          console.log(`🔍 [Time Automations] Buscando funil: ${funnelId}`);
+          const { data: funnel, error: funnelError } = await supabase
+            .from('quick_funnels')
+            .select('*')
+            .eq('id', funnelId)
+            .single();
+
+          if (funnelError || !funnel) {
+            console.error(`❌ [Time Automations] Erro ao buscar funil:`, funnelError);
+            actionSuccess = false;
+            break;
+          }
+
+          console.log(`✅ [Time Automations] Funil encontrado: "${funnel.title}" com ${funnel.steps?.length || 0} steps`);
+
+          if (!funnel.steps || funnel.steps.length === 0) {
+            console.warn(`⚠️ [Time Automations] Funil ${funnelId} não tem steps configurados.`);
+            actionSuccess = false;
+            break;
+          }
+
+          // Ordenar steps por order
+          const sortedSteps = [...funnel.steps].sort((a: any, b: any) => (a.order || 0) - (b.order || 0));
+
+          console.log(`📤 [Time Automations] Iniciando envio de ${sortedSteps.length} mensagens do funil...`);
+
+          // ✅ Verificar horário de funcionamento antes de enviar funil (a menos que ignore_business_hours esteja ativo)
+          const funnelWorkspaceId = (card as any).pipelines?.workspace_id;
+
+          if (funnelWorkspaceId && !shouldIgnoreBusinessHours) {
+            const withinBusinessHours = await isWithinBusinessHours(funnelWorkspaceId, supabase);
+            if (!withinBusinessHours) {
+              console.log(`🚫 [Time Automations] Funil bloqueado: fora do horário de funcionamento`);
+              console.log(`   Workspace ID: ${funnelWorkspaceId}`);
+              console.log(`   Card ID: ${card.id}`);
+              console.log(`   Funil não será enviado para evitar violação legal`);
+              actionSuccess = false;
+              break; // Sair do switch sem enviar
+            }
+            console.log(`✅ [Time Automations] Dentro do horário de funcionamento - prosseguindo com envio do funil`);
+          } else if (shouldIgnoreBusinessHours) {
+            console.log(`⏰ [Time Automations] Automação configurada para ignorar horário de funcionamento - prosseguindo com envio do funil`);
+          } else {
+            console.warn(`⚠️ [Time Automations] Workspace ID não encontrado - não é possível verificar horário de funcionamento`);
+          }
+
+          // Processar cada step
+          for (let i = 0; i < sortedSteps.length; i++) {
+            const step = sortedSteps[i];
+            console.log(`\n📨 [Time Automations] Processando step ${i + 1}/${sortedSteps.length}:`, {
+              type: step.type,
+              item_id: step.item_id,
+              delay_seconds: step.delay_seconds
+            });
+
+            try {
+              let messagePayload: any = null;
+
+              // Buscar item de acordo com o tipo
+              const normalizedType = step.type.toLowerCase();
+
+              switch (normalizedType) {
+                case 'message':
+                case 'messages':
+                case 'mensagens': {
+                  const { data: message } = await supabase
+                    .from('quick_messages')
+                    .select('*')
+                    .eq('id', step.item_id)
+                    .single();
+
+                  if (message) {
+                    messagePayload = {
+                      conversation_id: conversationId,
+                      content: message.content,
+                      message_type: 'text'
+                    };
+                  }
+                  break;
+                }
+
+                case 'audio':
+                case 'audios': {
+                  const { data: audio } = await supabase
+                    .from('quick_audios')
+                    .select('*')
+                    .eq('id', step.item_id)
+                    .single();
+
+                  if (audio) {
+                    messagePayload = {
+                      conversation_id: conversationId,
+                      content: '',
+                      message_type: 'audio',
+                      file_url: audio.file_url,
+                      file_name: audio.file_name || audio.title || 'audio.mp3'
+                    };
+                  }
+                  break;
+                }
+
+                case 'media':
+                case 'midias': {
+                  const { data: media } = await supabase
+                    .from('quick_media')
+                    .select('*')
+                    .eq('id', step.item_id)
+                    .single();
+
+                  if (media) {
+                    // Determinar tipo baseado no file_type ou URL
+                    let mediaType = 'image';
+                    if (media.file_type?.startsWith('video/')) {
+                      mediaType = 'video';
+                    } else if (media.file_url) {
+                      const url = media.file_url.toLowerCase();
+                      if (url.includes('.mp4') || url.includes('.mov') || url.includes('.avi')) {
+                        mediaType = 'video';
+                      }
+                    }
+
+                    messagePayload = {
+                      conversation_id: conversationId,
+                      content: media.title || '',
+                      message_type: mediaType,
+                      file_url: media.file_url,
+                      file_name: media.file_name || media.title || `media.${mediaType === 'video' ? 'mp4' : 'jpg'}`
+                    };
+                  }
+                  break;
+                }
+
+                case 'document':
+                case 'documents':
+                case 'documentos': {
+                  const { data: document } = await supabase
+                    .from('quick_documents')
+                    .select('*')
+                    .eq('id', step.item_id)
+                    .single();
+
+                  if (document) {
+                    messagePayload = {
+                      conversation_id: conversationId,
+                      content: document.title || '',
+                      message_type: 'document',
+                      file_url: document.file_url,
+                      file_name: document.file_name || document.title || 'document.pdf'
+                    };
+                  }
+                  break;
+                }
+
+                default:
+                  console.error(`❌ [Time Automations] Tipo de step não reconhecido: "${step.type}"`);
+              }
+
+              if (!messagePayload) {
+                console.error(`❌ [Time Automations] Falha ao criar payload para step ${i + 1}`);
+                continue;
+              }
+
+              console.log(`📦 [Time Automations] Enviando mensagem ${i + 1}/${sortedSteps.length}...`);
+
+              // Enviar mensagem
+              const { error: stepError } = await supabase.functions.invoke('test-send-msg', {
+                body: messagePayload
+              });
+
+              if (stepError) {
+                console.error(`❌ [Time Automations] Erro ao enviar step ${i + 1}:`, stepError);
+                continue;
+              }
+
+              console.log(`✅ [Time Automations] Mensagem ${i + 1}/${sortedSteps.length} enviada com sucesso`);
+
+              // Aguardar delay antes do próximo step (se houver)
+              if (step.delay_seconds && step.delay_seconds > 0 && i < sortedSteps.length - 1) {
+                console.log(`⏳ [Time Automations] Aguardando ${step.delay_seconds} segundos antes do próximo step...`);
+                await new Promise(resolve => setTimeout(resolve, step.delay_seconds * 1000));
+              }
+
+            } catch (stepError) {
+              console.error(`❌ [Time Automations] Erro ao processar step ${i + 1}:`, stepError);
+            }
+          }
+
+          console.log(`✅ [Time Automations] ========== FUNIL ENVIADO COM SUCESSO ==========`);
+          break;
+        }
+
+        default:
+          console.log(`⚠️ [Time Automations] Ação ${action.action_type} não implementada em time-based automations`);
+      }
+    } catch (actionError) {
+      console.error(`❌ [Time Automations] Erro ao executar ação ${action.action_type}:`, actionError);
+      actionSuccess = false;
+    }
+  }
+
+  return actionSuccess;
+}
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
@@ -197,7 +775,7 @@ serve(async (req) => {
         )
       `)
       .eq('is_active', true)
-      .in('triggers.trigger_type', ['time_in_column', 'tempo_na_coluna']);
+      .in('triggers.trigger_type', ['time_in_column', 'tempo_na_coluna', 'scheduled_time']);
 
     if (automationsError) {
       console.error('❌ [Time Automations] Error fetching automations:', automationsError);
@@ -234,6 +812,123 @@ serve(async (req) => {
         const triggerConfig = typeof trigger.trigger_config === 'string' 
           ? JSON.parse(trigger.trigger_config) 
           : trigger.trigger_config;
+        const triggerType = trigger?.trigger_type;
+
+        if (triggerType === 'scheduled_time') {
+          const scheduledConfig = triggerConfig || {};
+          const scheduledTime = scheduledConfig.scheduled_time;
+          const parsedTime = parseScheduledTime(scheduledTime);
+          const timeZone = scheduledConfig.timezone || 'America/Sao_Paulo';
+
+          if (!parsedTime) {
+            console.warn(`⚠️ [Time Automations] scheduled_time inválido para automação ${automation.id}:`, scheduledTime);
+            continue;
+          }
+
+          const now = new Date();
+          const localTime = getLocalTimeInfo(now, timeZone);
+
+          if (Array.isArray(scheduledConfig.days_of_week) && scheduledConfig.days_of_week.length > 0) {
+            if (!scheduledConfig.days_of_week.includes(localTime.dayOfWeek)) {
+              continue;
+            }
+          }
+
+          if (localTime.hours !== parsedTime.hours || localTime.minutes !== parsedTime.minutes) {
+            continue;
+          }
+
+          console.log(`🕐 [Time Automations] Horário agendado atingido (${scheduledTime}) para automação "${automation.name}" no fuso ${timeZone}`);
+
+          const { data: scheduledCards, error: scheduledCardsError } = await supabase
+            .from('pipeline_cards')
+            .select(`
+              id,
+              column_id,
+              moved_to_column_at,
+              pipeline_id,
+              contact_id,
+              conversation_id,
+              pipelines!inner(workspace_id)
+            `)
+            .eq('column_id', automation.column_id);
+
+          if (scheduledCardsError) {
+            console.error(`❌ [Time Automations] Erro ao buscar cards para scheduled_time ${automation.id}:`, scheduledCardsError);
+            continue;
+          }
+
+          if (!scheduledCards || scheduledCards.length === 0) {
+            continue;
+          }
+
+          for (const card of scheduledCards) {
+            const { data: existingExecution, error: existingExecutionError } = await supabase
+              .from('crm_automation_executions')
+              .select('id, metadata, executed_at')
+              .eq('automation_id', automation.id)
+              .eq('card_id', card.id)
+              .eq('column_id', automation.column_id)
+              .maybeSingle();
+
+            if (existingExecutionError) {
+              console.error(`❌ [Time Automations] Erro ao checar execução para card ${card.id}:`, existingExecutionError);
+            }
+
+            const existingMetadata = existingExecution?.metadata || {};
+            if (
+              existingExecution &&
+              existingMetadata?.scheduled_date === localTime.date &&
+              existingMetadata?.scheduled_time === scheduledTime
+            ) {
+              continue;
+            }
+
+            const actionSuccess = await executeAutomationActions(automation, card, supabase, supabaseKey);
+
+            if (actionSuccess) {
+              const metadata = {
+                scheduled_time: scheduledTime,
+                scheduled_date: localTime.date,
+                timezone: timeZone,
+                day_of_week: localTime.dayOfWeek
+              };
+
+              if (existingExecution?.id) {
+                const { error: updateError } = await supabase
+                  .from('crm_automation_executions')
+                  .update({
+                    executed_at: new Date().toISOString(),
+                    execution_type: 'scheduled_time',
+                    metadata
+                  })
+                  .eq('id', existingExecution.id);
+
+                if (updateError) {
+                  console.error(`❌ [Time Automations] Erro ao atualizar execução:`, updateError);
+                }
+              } else {
+                const { error: insertError } = await supabase
+                  .from('crm_automation_executions')
+                  .insert({
+                    automation_id: automation.id,
+                    card_id: card.id,
+                    column_id: automation.column_id,
+                    execution_type: 'scheduled_time',
+                    metadata
+                  });
+
+                if (insertError) {
+                  console.error(`❌ [Time Automations] Erro ao registrar execução:`, insertError);
+                }
+              }
+
+              totalProcessed++;
+            }
+          }
+
+          continue;
+        }
 
         // Suportar tanto configuração nova (time_unit + time_value) quanto antiga (time_in_minutes)
         let timeInMinutes: number;
@@ -345,482 +1040,13 @@ serve(async (req) => {
 
           console.log(`🎬 [Time Automations] Executing automation "${automation.name}" for card ${card.id}`);
 
-          // Executar as ações diretamente
+          let actionSuccess = false;
           try {
-            let actionSuccess = true;
-            
-            // Ordenar ações por action_order
-            const sortedActions = automation.actions.sort((a: any, b: any) => 
-              (a.action_order || 0) - (b.action_order || 0)
-            );
-
-            // Executar cada ação
-            for (const action of sortedActions) {
-              try {
-                const actionConfig = typeof action.action_config === 'string' 
-                  ? JSON.parse(action.action_config) 
-                  : action.action_config;
-
-                console.log(`🎬 [Time Automations] Executando ação: ${action.action_type}`, actionConfig);
-
-                switch (action.action_type) {
-                  case 'mover_coluna':
-                  case 'move_to_column': {
-                    const targetColumnId = actionConfig?.column_id || actionConfig?.target_column_id;
-                    const targetPipelineId = actionConfig?.pipeline_id || actionConfig?.target_pipeline_id;
-                    
-                    console.log(`🔍 [Time Automations] Move action config:`, actionConfig);
-                    console.log(`🔍 [Time Automations] Target column ID: ${targetColumnId}, Target Pipeline ID: ${targetPipelineId}`);
-                    
-                    if (targetColumnId) {
-                      const updateData: any = {
-                        column_id: targetColumnId,
-                        moved_to_column_at: new Date().toISOString(),
-                        updated_at: new Date().toISOString()
-                      };
-
-                      if (targetPipelineId) {
-                        updateData.pipeline_id = targetPipelineId;
-                      }
-
-                      // Usar update direto para suportar pipeline_id
-                      const { data: updateResult, error: updateError } = await supabase
-                        .from('pipeline_cards')
-                        .update(updateData)
-                        .eq('id', card.id)
-                        .select()
-                        .single();
-                      
-                      if (updateError) {
-                        console.error(`❌ [Time Automations] Erro ao mover card:`, updateError);
-                      } else {
-                        console.log(`✅ [Time Automations] Card ${card.id} movido para coluna ${targetColumnId} no pipeline ${targetPipelineId || card.pipeline_id}`, updateResult);
-                        
-                        // Enviar broadcast manual para garantir que o frontend receba a atualização
-                        const channel = supabase.channel(`pipeline-${card.pipeline_id}`);
-                        await channel.send({
-                          type: 'broadcast',
-                          event: 'pipeline-card-moved',
-                          payload: {
-                            card_id: card.id,
-                            old_column_id: card.column_id,
-                            new_column_id: targetColumnId,
-                            pipeline_id: targetPipelineId || card.pipeline_id
-                          }
-                        });
-                        console.log(`📡 [Time Automations] Broadcast enviado para pipeline-${card.pipeline_id}`);
-                      }
-                    } else {
-                      console.error(`❌ [Time Automations] column_id não encontrado no actionConfig`);
-                    }
-                    break;
-                  }
-
-                  case 'add_tag':
-                  case 'adicionar_tag': {
-                    const tagId = actionConfig?.tag_id;
-                    if (tagId && card.contact_id) {
-                      // Verificar se a tag já existe
-                      const { data: existingTag } = await supabase
-                        .from('contact_tags')
-                        .select('id')
-                        .eq('contact_id', card.contact_id)
-                        .eq('tag_id', tagId)
-                        .maybeSingle();
-
-                      if (!existingTag) {
-                        await supabase
-                          .from('contact_tags')
-                          .insert({
-                            contact_id: card.contact_id,
-                            tag_id: tagId
-                          });
-                        console.log(`✅ [Time Automations] Tag ${tagId} adicionada ao contato`);
-                      }
-                    }
-                    break;
-                  }
-
-                  case 'remove_tag':
-                  case 'remover_tag': {
-                    const tagId = actionConfig?.tag_id;
-                    if (tagId && card.contact_id) {
-                      await supabase
-                        .from('contact_tags')
-                        .delete()
-                        .eq('contact_id', card.contact_id)
-                        .eq('tag_id', tagId);
-                      console.log(`✅ [Time Automations] Tag ${tagId} removida do contato`);
-                    }
-                    break;
-                  }
-
-                  case 'assign_responsible':
-                  case 'atribuir_responsavel': {
-                    const userId = actionConfig?.user_id;
-                    if (userId) {
-                      await supabase
-                        .from('pipeline_cards')
-                        .update({ responsible_user_id: userId })
-                        .eq('id', card.id);
-                      console.log(`✅ [Time Automations] Responsável ${userId} atribuído ao card`);
-                    }
-                    break;
-                  }
-
-                  case 'add_agent': {
-                    if (card.conversation_id) {
-                      const agentId = actionConfig?.agent_id;
-                      if (agentId) {
-                        await supabase
-                          .from('conversations')
-                          .update({
-                            agente_ativo: true,
-                            agent_active_id: agentId,
-                            status: 'open'
-                          })
-                          .eq('id', card.conversation_id);
-                        console.log(`✅ [Time Automations] Agente ${agentId} ativado na conversa`);
-                      }
-                    }
-                    break;
-                  }
-
-                  case 'remove_agent':
-                  case 'remover_agente': {
-                    if (!card.conversation_id) {
-                      console.warn('⚠️ [Time Automations] Card sem conversation_id para remove_agent');
-                      actionSuccess = false;
-                      break;
-                    }
-
-                    console.log(`🚫 [Time Automations] Desativando agente IA na conversa ${card.conversation_id}`);
-
-                    const { error: agentError } = await supabase
-                      .from('conversations')
-                      .update({
-                        agente_ativo: false,
-                        agent_active_id: null
-                      })
-                      .eq('id', card.conversation_id);
-
-                    if (agentError) {
-                      console.error('❌ [Time Automations] Erro ao desativar agente:', agentError);
-                      actionSuccess = false;
-                    } else {
-                      console.log('✅ [Time Automations] Agente desativado com sucesso');
-                    }
-                    break;
-                  }
-
-                  case 'send_message':
-                  case 'enviar_mensagem': {
-                    const messageText = actionConfig?.message;
-                    if (!messageText) {
-                      console.warn('⚠️ [Time Automations] send_message sem mensagem configurada');
-                      actionSuccess = false;
-                      break;
-                    }
-
-                    if (!card.conversation_id) {
-                      console.error('❌ [Time Automations] Conversa não encontrada no card');
-                      actionSuccess = false;
-                      break;
-                    }
-
-                    // ✅ Verificar horário de funcionamento antes de enviar (a menos que ignore_business_hours esteja ativo)
-                    const workspaceId = (card as any).pipelines?.workspace_id;
-                    const ignoreBusinessHours = (automation as any).ignore_business_hours === true;
-                    
-                    if (workspaceId && !ignoreBusinessHours) {
-                      const withinBusinessHours = await isWithinBusinessHours(workspaceId, supabase);
-                      if (!withinBusinessHours) {
-                        console.log(`🚫 [Time Automations] Mensagem bloqueada: fora do horário de funcionamento`);
-                        console.log(`   Workspace ID: ${workspaceId}`);
-                        console.log(`   Card ID: ${card.id}`);
-                        console.log(`   Mensagem não será enviada para evitar violação legal`);
-                        actionSuccess = false;
-                        break; // Sair do switch sem enviar
-                      }
-                      console.log(`✅ [Time Automations] Dentro do horário de funcionamento - prosseguindo com envio`);
-                    } else if (ignoreBusinessHours) {
-                      console.log(`⏰ [Time Automations] Automação configurada para ignorar horário de funcionamento - prosseguindo com envio`);
-                    } else {
-                      console.warn(`⚠️ [Time Automations] Workspace ID não encontrado - não é possível verificar horário de funcionamento`);
-                    }
-
-                    console.log(`📤 [Time Automations] Enviando mensagem para conversa ${card.conversation_id}`);
-                    console.log(`📤 [Time Automations] Conteúdo da mensagem: "${messageText}"`);
-
-                    // Chamar send-message (função de produção)
-                    // Usar UUID especial para identificar mensagens de automação
-                    const { data: sendResult, error: sendError } = await supabase.functions.invoke('send-message', {
-                      body: {
-                        conversation_id: card.conversation_id,
-                        content: messageText,
-                        sender_id: '00000000-0000-0000-0000-000000000001', // ID especial para automações
-                        sender_type: 'system',
-                        message_type: 'text'
-                      },
-                      headers: {
-                        Authorization: `Bearer ${supabaseKey}`,
-                        'x-system-user-id': '00000000-0000-0000-0000-000000000001',
-                        'x-system-user-email': 'automacao@sistema.com',
-                        'x-workspace-id': (card as any).pipelines?.workspace_id || ''
-                      }
-                    });
-
-                    if (sendError) {
-                      console.error('❌ [Time Automations] Erro ao enviar mensagem:', sendError);
-                      actionSuccess = false;
-                    } else {
-                      console.log('✅ [Time Automations] Mensagem enviada com sucesso:', sendResult);
-                    }
-                    break;
-                  }
-
-                  case 'send_funnel': {
-                    console.log(`🎯 [Time Automations] ========== EXECUTANDO AÇÃO: ENVIAR FUNIL ==========`);
-                    
-                    const funnelId = actionConfig?.funnel_id;
-                    
-                    if (!funnelId) {
-                      console.warn(`⚠️ [Time Automations] Ação send_funnel não tem funnel_id configurado.`);
-                      actionSuccess = false;
-                      break;
-                    }
-                    
-                    // Buscar conversa do card
-                    let conversationId = card.conversation_id;
-                    
-                    // Se não tem conversa, tentar buscar por contact_id
-                    if (!conversationId && card.contact_id) {
-                      const workspaceId = (card as any).pipelines?.workspace_id;
-                      
-                      if (workspaceId) {
-                        const { data: existingConversation } = await supabase
-                          .from('conversations')
-                          .select('id, connection_id, workspace_id')
-                          .eq('contact_id', card.contact_id)
-                          .eq('workspace_id', workspaceId)
-                          .not('connection_id', 'is', null)
-                          .order('created_at', { ascending: false })
-                          .limit(1)
-                          .maybeSingle();
-                        
-                        if (existingConversation) {
-                          conversationId = existingConversation.id;
-                        }
-                      }
-                    }
-                    
-                    if (!conversationId) {
-                      console.warn(`⚠️ [Time Automations] Card não tem conversa associada. Não é possível enviar funil. Card ID: ${card.id}, Contact ID: ${card.contact_id}`);
-                      actionSuccess = false;
-                      break;
-                    }
-                    
-                    // Buscar o funil
-                    console.log(`🔍 [Time Automations] Buscando funil: ${funnelId}`);
-                    const { data: funnel, error: funnelError } = await supabase
-                      .from('quick_funnels')
-                      .select('*')
-                      .eq('id', funnelId)
-                      .single();
-                    
-                    if (funnelError || !funnel) {
-                      console.error(`❌ [Time Automations] Erro ao buscar funil:`, funnelError);
-                      actionSuccess = false;
-                      break;
-                    }
-                    
-                    console.log(`✅ [Time Automations] Funil encontrado: "${funnel.title}" com ${funnel.steps?.length || 0} steps`);
-                    
-                    if (!funnel.steps || funnel.steps.length === 0) {
-                      console.warn(`⚠️ [Time Automations] Funil ${funnelId} não tem steps configurados.`);
-                      actionSuccess = false;
-                      break;
-                    }
-                    
-                    // Ordenar steps por order
-                    const sortedSteps = [...funnel.steps].sort((a: any, b: any) => (a.order || 0) - (b.order || 0));
-                    
-                    console.log(`📤 [Time Automations] Iniciando envio de ${sortedSteps.length} mensagens do funil...`);
-                    
-                    // ✅ Verificar horário de funcionamento antes de enviar funil (a menos que ignore_business_hours esteja ativo)
-                    const funnelWorkspaceId = (card as any).pipelines?.workspace_id;
-                    const ignoreFunnelBusinessHours = (automation as any).ignore_business_hours === true;
-                    
-                    if (funnelWorkspaceId && !ignoreFunnelBusinessHours) {
-                      const withinBusinessHours = await isWithinBusinessHours(funnelWorkspaceId, supabase);
-                      if (!withinBusinessHours) {
-                        console.log(`🚫 [Time Automations] Funil bloqueado: fora do horário de funcionamento`);
-                        console.log(`   Workspace ID: ${funnelWorkspaceId}`);
-                        console.log(`   Card ID: ${card.id}`);
-                        console.log(`   Funil não será enviado para evitar violação legal`);
-                        actionSuccess = false;
-                        break; // Sair do switch sem enviar
-                      }
-                      console.log(`✅ [Time Automations] Dentro do horário de funcionamento - prosseguindo com envio do funil`);
-                    } else if (ignoreFunnelBusinessHours) {
-                      console.log(`⏰ [Time Automations] Automação configurada para ignorar horário de funcionamento - prosseguindo com envio do funil`);
-                    } else {
-                      console.warn(`⚠️ [Time Automations] Workspace ID não encontrado - não é possível verificar horário de funcionamento`);
-                    }
-                    
-                    // Processar cada step
-                    for (let i = 0; i < sortedSteps.length; i++) {
-                      const step = sortedSteps[i];
-                      console.log(`\n📨 [Time Automations] Processando step ${i + 1}/${sortedSteps.length}:`, {
-                        type: step.type,
-                        item_id: step.item_id,
-                        delay_seconds: step.delay_seconds
-                      });
-                      
-                      try {
-                        let messagePayload: any = null;
-                        
-                        // Buscar item de acordo com o tipo
-                        const normalizedType = step.type.toLowerCase();
-                        
-                        switch (normalizedType) {
-                          case 'message':
-                          case 'messages':
-                          case 'mensagens': {
-                            const { data: message } = await supabase
-                              .from('quick_messages')
-                              .select('*')
-                              .eq('id', step.item_id)
-                              .single();
-                            
-                            if (message) {
-                              messagePayload = {
-                                conversation_id: conversationId,
-                                content: message.content,
-                                message_type: 'text'
-                              };
-                            }
-                            break;
-                          }
-                          
-                          case 'audio':
-                          case 'audios': {
-                            const { data: audio } = await supabase
-                              .from('quick_audios')
-                              .select('*')
-                              .eq('id', step.item_id)
-                              .single();
-                            
-                            if (audio) {
-                              messagePayload = {
-                                conversation_id: conversationId,
-                                content: '',
-                                message_type: 'audio',
-                                file_url: audio.file_url,
-                                file_name: audio.file_name || audio.title || 'audio.mp3'
-                              };
-                            }
-                            break;
-                          }
-                          
-                          case 'media':
-                          case 'midias': {
-                            const { data: media } = await supabase
-                              .from('quick_media')
-                              .select('*')
-                              .eq('id', step.item_id)
-                              .single();
-                            
-                            if (media) {
-                              // Determinar tipo baseado no file_type ou URL
-                              let mediaType = 'image';
-                              if (media.file_type?.startsWith('video/')) {
-                                mediaType = 'video';
-                              } else if (media.file_url) {
-                                const url = media.file_url.toLowerCase();
-                                if (url.includes('.mp4') || url.includes('.mov') || url.includes('.avi')) {
-                                  mediaType = 'video';
-                                }
-                              }
-                              
-                              messagePayload = {
-                                conversation_id: conversationId,
-                                content: media.title || '',
-                                message_type: mediaType,
-                                file_url: media.file_url,
-                                file_name: media.file_name || media.title || `media.${mediaType === 'video' ? 'mp4' : 'jpg'}`
-                              };
-                            }
-                            break;
-                          }
-                          
-                          case 'document':
-                          case 'documents':
-                          case 'documentos': {
-                            const { data: document } = await supabase
-                              .from('quick_documents')
-                              .select('*')
-                              .eq('id', step.item_id)
-                              .single();
-                            
-                            if (document) {
-                              messagePayload = {
-                                conversation_id: conversationId,
-                                content: document.title || '',
-                                message_type: 'document',
-                                file_url: document.file_url,
-                                file_name: document.file_name || document.title || 'document.pdf'
-                              };
-                            }
-                            break;
-                          }
-                          
-                          default:
-                            console.error(`❌ [Time Automations] Tipo de step não reconhecido: "${step.type}"`);
-                        }
-                        
-                        if (!messagePayload) {
-                          console.error(`❌ [Time Automations] Falha ao criar payload para step ${i + 1}`);
-                          continue;
-                        }
-                        
-                        console.log(`📦 [Time Automations] Enviando mensagem ${i + 1}/${sortedSteps.length}...`);
-                        
-                        // Enviar mensagem
-                        const { error: stepError } = await supabase.functions.invoke('test-send-msg', {
-                          body: messagePayload
-                        });
-                        
-                        if (stepError) {
-                          console.error(`❌ [Time Automations] Erro ao enviar step ${i + 1}:`, stepError);
-                          continue;
-                        }
-                        
-                        console.log(`✅ [Time Automations] Mensagem ${i + 1}/${sortedSteps.length} enviada com sucesso`);
-                        
-                        // Aguardar delay antes do próximo step (se houver)
-                        if (step.delay_seconds && step.delay_seconds > 0 && i < sortedSteps.length - 1) {
-                          console.log(`⏳ [Time Automations] Aguardando ${step.delay_seconds} segundos antes do próximo step...`);
-                          await new Promise(resolve => setTimeout(resolve, step.delay_seconds * 1000));
-                        }
-                        
-                      } catch (stepError) {
-                        console.error(`❌ [Time Automations] Erro ao processar step ${i + 1}:`, stepError);
-                      }
-                    }
-                    
-                    console.log(`✅ [Time Automations] ========== FUNIL ENVIADO COM SUCESSO ==========`);
-                    break;
-                  }
-
-                  default:
-                    console.log(`⚠️ [Time Automations] Ação ${action.action_type} não implementada em time-based automations`);
-                }
-              } catch (actionError) {
-                console.error(`❌ [Time Automations] Erro ao executar ação ${action.action_type}:`, actionError);
-                actionSuccess = false;
-              }
-            }
+            actionSuccess = await executeAutomationActions(automation, card, supabase, supabaseKey);
+          } catch (actionError) {
+            console.error(`❌ [Time Automations] Erro ao executar ações para o card ${card.id}:`, actionError);
+            actionSuccess = false;
+          }
 
             if (actionSuccess) {
               // Registrar execução
@@ -850,9 +1076,6 @@ serve(async (req) => {
             } else {
               console.error(`❌ [Time Automations] Failed to execute automation for card ${card.id}`);
             }
-          } catch (execError) {
-            console.error(`❌ [Time Automations] Error executing automation for card ${card.id}:`, execError);
-          }
         }
       } catch (automationError) {
         console.error(`❌ [Time Automations] Error processing automation ${automation.id}:`, automationError);

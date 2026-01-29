@@ -30,7 +30,7 @@ interface ColumnAutomation {
 interface AutomationTrigger {
   id: string;
   automation_id?: string;
-  trigger_type: 'enter_column' | 'leave_column' | 'time_in_column' | 'message_received';
+  trigger_type: 'enter_column' | 'leave_column' | 'time_in_column' | 'scheduled_time' | 'message_received';
   trigger_config: any;
 }
 
@@ -54,6 +54,16 @@ const TIME_UNIT_LABELS: Record<string, string> = {
   minutes: "minutos",
   hours: "horas",
   days: "dias",
+};
+
+const DAY_LABELS: Record<number, string> = {
+  0: "Dom",
+  1: "Seg",
+  2: "Ter",
+  3: "Qua",
+  4: "Qui",
+  5: "Sex",
+  6: "Sáb",
 };
 
 const truncateText = (value: string, limit = 40) => {
@@ -80,6 +90,16 @@ const formatTriggerLabel = (trigger: AutomationTrigger) => {
     case "message_received": {
       const count = config.message_count;
       return count ? `Recebe ${count} mensagem(ns)` : "Mensagens recebidas";
+    }
+    case "scheduled_time": {
+      const scheduledTime = config.scheduled_time;
+      const days = Array.isArray(config.days_of_week) ? config.days_of_week : null;
+      const daysLabel = days && days.length > 0
+        ? ` (${days.map((day: number) => DAY_LABELS[day] || day).join(", ")})`
+        : "";
+      return scheduledTime
+        ? `Horário específico: ${scheduledTime}${daysLabel}`
+        : "Horário específico";
     }
     default:
       return "Gatilho configurado";
