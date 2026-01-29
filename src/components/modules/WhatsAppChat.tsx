@@ -304,6 +304,15 @@ export function WhatsAppChat({
   const [isOpeningConversation, setIsOpeningConversation] = useState(false);
   const lastAutoReadMessageIdRef = useRef<string | null>(null);
   const composerTextareaRef = useRef<HTMLTextAreaElement | null>(null);
+  
+  // 📏 Auto-resize do textarea conforme conteúdo
+  const autoResizeTextarea = useCallback(() => {
+    const el = composerTextareaRef.current;
+    if (!el) return;
+    el.style.height = 'auto';
+    el.style.height = `${Math.min(el.scrollHeight, 200)}px`; // max 200px
+  }, []);
+
   const [slashOpen, setSlashOpen] = useState(false);
   const [slashQuery, setSlashQuery] = useState("");
   const slashReplaceRangeRef = useRef<{ start: number; end: number } | null>(null);
@@ -1021,6 +1030,10 @@ export function WhatsAppChat({
     setSlashOpen(false);
     setSlashQuery("");
     slashReplaceRangeRef.current = null;
+    // Resetar altura do textarea ao trocar de conversa
+    if (composerTextareaRef.current) {
+      composerTextareaRef.current.style.height = '36px';
+    }
   }, [selectedConversation?.id]);
 
 
@@ -1039,6 +1052,11 @@ export function WhatsAppChat({
     
     const textToSend = trimmedMessage;
     clearMessageDraft(selectedConversation.id);
+    
+    // Resetar altura do textarea após enviar
+    if (composerTextareaRef.current) {
+      composerTextareaRef.current.style.height = '36px';
+    }
     
     try {
       const clientMessageId = generateRandomId();
@@ -3999,6 +4017,9 @@ export function WhatsAppChat({
                             const cursor = e.target.selectionStart ?? value.length;
                             updateMessageDraft(selectedConversation.id, value);
 
+                            // Auto-resize do textarea
+                            autoResizeTextarea();
+
                             const uptoCursor = value.slice(0, cursor);
                             const match = uptoCursor.match(/(?:^|\s)\/([^\s\/]{0,50})$/);
                             if (match) {
@@ -4041,7 +4062,7 @@ export function WhatsAppChat({
                               handleSendMessage();
                             }
                           }} 
-                          className="h-9 min-h-[36px] max-h-32 text-xs rounded-none border-gray-300 focus-visible:ring-0 focus-visible:border-primary bg-white shadow-sm resize-none dark:bg-[#2d2d2d] dark:border-gray-600 dark:text-gray-100 dark:placeholder:text-gray-400" 
+                          className="min-h-[36px] max-h-[200px] text-xs rounded-none border-gray-300 focus-visible:ring-0 focus-visible:border-primary bg-white shadow-sm overflow-y-auto dark:bg-[#2d2d2d] dark:border-gray-600 dark:text-gray-100 dark:placeholder:text-gray-400" 
                         />
                       </div>
                     </PopoverTrigger>
