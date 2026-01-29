@@ -441,51 +441,128 @@ async function executeAutomationActions(
           console.log(`📤 [Time Automations] Enviando mensagem para conversa ${card.conversation_id}`);
           console.log(`📤 [Time Automations] Conteúdo da mensagem: "${messageText}"`);
 
-          // Chamar send-message (função de produção)
-          // Usar UUID especial para identificar mensagens de automação
-          const serviceRoleKey = supabaseKey || Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || '';
-          const functionsUrl = `${Deno.env.get('SUPABASE_URL')}/functions/v1/send-message`;
+          // ========== ENVIO DIRETO (BYPASS send-message para evitar 401 JWT) ==========
+          // 1. Buscar dados da conversa (usando relacionamento explícito para evitar erro PGRST201)
+          const { data: conversation, error: conversationError } = await supabase
+            .from('conversations')
+            .select(`
+              id,
+              workspace_id,
+              connection_id,
+              contact:contacts(id, phone, name),
+              connection:connections!conversations_connection_id_fkey(id, instance_name, status)
+            `)
+            .eq('id', card.conversation_id)
+            .single();
 
-          if (!serviceRoleKey) {
-            console.error('❌ [Time Automations] SUPABASE_SERVICE_ROLE_KEY não encontrado para envio de mensagem');
+          if (conversationError || !conversation) {
+            console.error('❌ [Time Automations] Conversa não encontrada:', conversationError);
             actionSuccess = false;
             break;
           }
 
-          const sendResponse = await fetch(functionsUrl, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              Authorization: `Bearer ${serviceRoleKey}`,
-              apikey: serviceRoleKey,
-              'x-system-user-id': '00000000-0000-0000-0000-000000000001',
-              'x-system-user-email': 'automacao@sistema.com',
-              'x-workspace-id': (card as any).pipelines?.workspace_id || ''
-            },
-            body: JSON.stringify({
-              conversation_id: card.conversation_id,
-              content: messageText,
-              sender_id: '00000000-0000-0000-0000-000000000001', // ID especial para automações
-              sender_type: 'system',
-              message_type: 'text'
-            })
-          });
+          // Normalizar dados de join (Supabase pode retornar arrays)
+          const connection = Array.isArray(conversation.connection) 
+            ? conversation.connection[0] 
+            : conversation.connection;
+          const contact = Array.isArray(conversation.contact) 
+            ? conversation.contact[0] 
+            : conversation.contact;
 
-          if (!sendResponse.ok) {
-            let errorBody = '';
-            try {
-              errorBody = await sendResponse.text();
-            } catch {
-              errorBody = '';
-            }
-            console.error('❌ [Time Automations] Erro ao enviar mensagem:', {
-              status: sendResponse.status,
-              statusText: sendResponse.statusText,
-              body: errorBody
+          // Validar conexão
+          if (!connection || connection.status !== 'connected') {
+            console.error('❌ [Time Automations] Conexão WhatsApp não está pronta:', {
+              hasConnection: !!connection,
+              status: connection?.status
             });
             actionSuccess = false;
+            break;
+          }
+
+          // 2. Criar registro da mensagem no banco
+          const requestId = `auto_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+          
+          const { data: message, error: messageError } = await supabase
+            .from('messages')
+            .insert({
+              conversation_id: conversation.id,
+              workspace_id: conversation.workspace_id,
+              content: messageText,
+              message_type: 'text',
+              sender_type: 'system',
+              sender_id: '00000000-0000-0000-0000-000000000001',
+              status: 'sending',
+              external_id: requestId,
+              metadata: {
+                requestId,
+                automation_id: automation?.id,
+                created_at: new Date().toISOString(),
+                source: 'time_automation'
+              }
+            })
+            .select()
+            .single();
+
+          if (messageError || !message) {
+            console.error('❌ [Time Automations] Erro ao criar mensagem:', messageError);
+            actionSuccess = false;
+            break;
+          }
+
+          console.log(`💾 [Time Automations] Mensagem criada no banco: ${message.id}`);
+
+          // 3. Chamar message-sender diretamente (tem verify_jwt = false)
+          const senderPayload = {
+            messageId: message.id,
+            phoneNumber: contact?.phone,
+            content: messageText,
+            messageType: 'text',
+            evolutionInstance: connection.instance_name,
+            conversationId: conversation.id,
+            workspaceId: conversation.workspace_id,
+            external_id: message.external_id
+          };
+
+          console.log(`🚀 [Time Automations] Chamando message-sender diretamente...`);
+
+          const { data: senderResult, error: senderError } = await supabase.functions.invoke('message-sender', {
+            body: senderPayload
+          });
+
+          if (senderError) {
+            console.error('❌ [Time Automations] Erro no message-sender:', senderError);
+            
+            // Atualizar status da mensagem para erro
+            await supabase
+              .from('messages')
+              .update({ 
+                status: 'failed',
+                metadata: { 
+                  ...message.metadata,
+                  error: senderError.message,
+                  sent_via: 'sender_error',
+                  timestamp: new Date().toISOString()
+                }
+              })
+              .eq('id', message.id);
+
+            actionSuccess = false;
           } else {
-            console.log('✅ [Time Automations] Mensagem enviada com sucesso');
+            // Sucesso - atualizar metadata da mensagem
+            await supabase
+              .from('messages')
+              .update({ 
+                status: 'sent',
+                metadata: { 
+                  ...message.metadata,
+                  sent_via: senderResult?.method || 'message-sender',
+                  timestamp: new Date().toISOString(),
+                  external_response: senderResult?.result
+                }
+              })
+              .eq('id', message.id);
+
+            console.log(`✅ [Time Automations] Mensagem enviada com sucesso via ${senderResult?.method || 'message-sender'}`);
           }
           break;
         }
@@ -884,46 +961,95 @@ serve(async (req) => {
               continue;
             }
 
+            // ========== LOCK: Registrar execução ANTES de processar (evita duplicatas) ==========
+            const lockMetadata = {
+              scheduled_time: scheduledTime,
+              scheduled_date: localTime.date,
+              timezone: timeZone,
+              day_of_week: localTime.dayOfWeek,
+              status: 'processing',
+              lock_timestamp: new Date().toISOString()
+            };
+
+            let lockRecordId: string | null = null;
+
+            if (existingExecution?.id) {
+              // Atualizar registro existente como lock
+              const { error: updateLockError } = await supabase
+                .from('crm_automation_executions')
+                .update({
+                  executed_at: new Date().toISOString(),
+                  execution_type: 'scheduled_time',
+                  metadata: lockMetadata
+                })
+                .eq('id', existingExecution.id);
+
+              if (updateLockError) {
+                console.log(`⏭️ [Time Automations] Falha ao adquirir lock para card ${card.id}:`, updateLockError.message);
+                continue;
+              }
+              lockRecordId = existingExecution.id;
+            } else {
+              // Inserir novo registro como lock
+              const { data: newLock, error: insertLockError } = await supabase
+                .from('crm_automation_executions')
+                .insert({
+                  automation_id: automation.id,
+                  card_id: card.id,
+                  column_id: automation.column_id,
+                  execution_type: 'scheduled_time',
+                  metadata: lockMetadata
+                })
+                .select('id')
+                .single();
+
+              if (insertLockError || !newLock) {
+                console.log(`⏭️ [Time Automations] Card ${card.id} já está sendo processado (lock falhou):`, insertLockError?.message);
+                continue;
+              }
+              lockRecordId = newLock.id;
+            }
+
+            // Verificar se somos o primeiro registro (proteção contra race condition)
+            const { data: allScheduledExecs } = await supabase
+              .from('crm_automation_executions')
+              .select('id, executed_at')
+              .eq('automation_id', automation.id)
+              .eq('card_id', card.id)
+              .eq('column_id', automation.column_id)
+              .order('executed_at', { ascending: true })
+              .limit(2);
+
+            if (allScheduledExecs && allScheduledExecs.length > 1 && allScheduledExecs[0].id !== lockRecordId) {
+              console.log(`⏭️ [Time Automations] Outra instância já processou card ${card.id} (race condition detectada)`);
+              // Se criamos um registro novo (não era update), remover
+              if (!existingExecution?.id && lockRecordId) {
+                await supabase
+                  .from('crm_automation_executions')
+                  .delete()
+                  .eq('id', lockRecordId);
+              }
+              continue;
+            }
+
+            console.log(`🔒 [Time Automations] Lock adquirido para scheduled_time card ${card.id}`);
+
             const actionSuccess = await executeAutomationActions(automation, card, supabase, supabaseKey);
 
+            // Atualizar status final
+            const finalMetadata = {
+              ...lockMetadata,
+              status: actionSuccess ? 'completed' : 'failed'
+            };
+
+            await supabase
+              .from('crm_automation_executions')
+              .update({ metadata: finalMetadata })
+              .eq('id', lockRecordId);
+
             if (actionSuccess) {
-              const metadata = {
-                scheduled_time: scheduledTime,
-                scheduled_date: localTime.date,
-                timezone: timeZone,
-                day_of_week: localTime.dayOfWeek
-              };
-
-              if (existingExecution?.id) {
-                const { error: updateError } = await supabase
-                  .from('crm_automation_executions')
-                  .update({
-                    executed_at: new Date().toISOString(),
-                    execution_type: 'scheduled_time',
-                    metadata
-                  })
-                  .eq('id', existingExecution.id);
-
-                if (updateError) {
-                  console.error(`❌ [Time Automations] Erro ao atualizar execução:`, updateError);
-                }
-              } else {
-                const { error: insertError } = await supabase
-                  .from('crm_automation_executions')
-                  .insert({
-                    automation_id: automation.id,
-                    card_id: card.id,
-                    column_id: automation.column_id,
-                    execution_type: 'scheduled_time',
-                    metadata
-                  });
-
-                if (insertError) {
-                  console.error(`❌ [Time Automations] Erro ao registrar execução:`, insertError);
-                }
-              }
-
               totalProcessed++;
+              console.log(`✅ [Time Automations] Scheduled automation executed for card ${card.id}`);
             }
           }
 
@@ -1038,6 +1164,57 @@ serve(async (req) => {
             continue;
           }
 
+          // ========== LOCK: Registrar execução ANTES de processar (evita duplicatas) ==========
+          const executionMetadata = {
+            time_in_minutes: timeInMinutes,
+            original_value: originalValue,
+            original_unit: originalUnit,
+            moved_to_column_at: card.moved_to_column_at,
+            status: 'processing',
+            lock_timestamp: new Date().toISOString()
+          };
+
+          const { data: lockRecord, error: lockError } = await supabase
+            .from('crm_automation_executions')
+            .insert({
+              automation_id: automation.id,
+              card_id: card.id,
+              column_id: automation.column_id,
+              execution_type: 'tempo_na_coluna',
+              metadata: executionMetadata
+            })
+            .select('id')
+            .single();
+
+          if (lockError) {
+            // Se falhou ao inserir, provavelmente já está sendo processado por outra instância
+            console.log(`⏭️ [Time Automations] Card ${card.id} já está sendo processado (lock falhou):`, lockError.message);
+            continue;
+          }
+
+          // Verificar se somos o primeiro registro (proteção contra race condition)
+          const { data: allExecutions } = await supabase
+            .from('crm_automation_executions')
+            .select('id, executed_at')
+            .eq('automation_id', automation.id)
+            .eq('card_id', card.id)
+            .eq('column_id', automation.column_id)
+            .gte('executed_at', card.moved_to_column_at)
+            .order('executed_at', { ascending: true })
+            .limit(2);
+
+          // Se há mais de um registro ou não somos o primeiro, outra instância ganhou a corrida
+          if (allExecutions && allExecutions.length > 1 && allExecutions[0].id !== lockRecord.id) {
+            console.log(`⏭️ [Time Automations] Outra instância já processou card ${card.id} (race condition detectada)`);
+            // Remover nosso registro duplicado
+            await supabase
+              .from('crm_automation_executions')
+              .delete()
+              .eq('id', lockRecord.id);
+            continue;
+          }
+
+          console.log(`🔒 [Time Automations] Lock adquirido para card ${card.id} (exec_id: ${lockRecord.id})`);
           console.log(`🎬 [Time Automations] Executing automation "${automation.name}" for card ${card.id}`);
 
           let actionSuccess = false;
@@ -1048,34 +1225,21 @@ serve(async (req) => {
             actionSuccess = false;
           }
 
-            if (actionSuccess) {
-              // Registrar execução
-              const { error: execInsertError } = await supabase
-                .from('crm_automation_executions')
-                .insert({
-                  automation_id: automation.id,
-                  card_id: card.id,
-                  column_id: automation.column_id,
-                  execution_type: 'tempo_na_coluna',
-                  metadata: {
-                    time_in_minutes: timeInMinutes,
-                    original_value: originalValue,
-                    original_unit: originalUnit,
-                    moved_to_column_at: card.moved_to_column_at
-                  }
-                });
+          // Atualizar registro de execução com resultado
+          const finalStatus = actionSuccess ? 'completed' : 'failed';
+          await supabase
+            .from('crm_automation_executions')
+            .update({
+              metadata: { ...executionMetadata, status: finalStatus }
+            })
+            .eq('id', lockRecord.id);
 
-              if (execInsertError) {
-                console.error(`❌ [Time Automations] Erro ao registrar execução:`, execInsertError);
-              } else {
-                console.log(`📝 [Time Automations] Execução registrada com sucesso`);
-              }
-
-              totalProcessed++;
-              console.log(`✅ [Time Automations] Automation executed successfully for card ${card.id}`);
-            } else {
-              console.error(`❌ [Time Automations] Failed to execute automation for card ${card.id}`);
-            }
+          if (actionSuccess) {
+            totalProcessed++;
+            console.log(`✅ [Time Automations] Automation executed successfully for card ${card.id}`);
+          } else {
+            console.error(`❌ [Time Automations] Failed to execute automation for card ${card.id}`);
+          }
         }
       } catch (automationError) {
         console.error(`❌ [Time Automations] Error processing automation ${automation.id}:`, automationError);

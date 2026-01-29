@@ -2489,14 +2489,32 @@ export function WhatsAppChat({
       setIsVisualLoading(true);
       isLoadingMoreRef.current = true;
 
+      // ✅ TIMEOUT DE SEGURANÇA: Garantir que flags sejam resetados após 3s no máximo
+      const safetyTimeout = setTimeout(() => {
+        if (isLoadingMoreRef.current) {
+          console.warn('⚠️ [Scroll] Safety timeout - resetando flags travados');
+          isLoadingMoreRef.current = false;
+          scrollPositionBeforeLoadRef.current = null;
+          setIsVisualLoading(false);
+        }
+      }, 3000);
+
       // Simular delay visual de 1s conforme pedido
       setTimeout(() => {
+        clearTimeout(safetyTimeout); // Limpar timeout de segurança se tudo correr bem
+        
         // ✅ CAPTURA CRÍTICA: Capturar a posição EXATAMENTE antes de mudar o estado
         if (messagesScrollRef.current) {
           scrollPositionBeforeLoadRef.current = {
             scrollTop: messagesScrollRef.current.scrollTop,
             scrollHeight: messagesScrollRef.current.scrollHeight
           };
+        } else {
+          // ✅ FIX: Se ref não existe, resetar flags para evitar deadlock
+          console.warn('⚠️ [Scroll] messagesScrollRef.current é null - resetando flags');
+          isLoadingMoreRef.current = false;
+          setIsVisualLoading(false);
+          return;
         }
 
         // ✅ ATUALIZAÇÃO ATÔMICA: Injetar mensagens e remover spinner no mesmo ciclo
@@ -2511,7 +2529,7 @@ export function WhatsAppChat({
         }
       }, 1000);
     }
-  }, [hasMore, loadingMore, messages, loadMoreMessages]);
+  }, [hasMore, loadingMore, messages, loadMoreMessages, visibleMessagesCount, isVisualLoading]);
 
   // Handler para React.UIEvent
   const handleScroll = useCallback((event: React.UIEvent<HTMLElement>) => {
@@ -2545,7 +2563,17 @@ export function WhatsAppChat({
 
   // ✅ ALGORITMO DE PRESERVAÇÃO DE POSIÇÃO VISUAL (Infinite Scroll Upwards)
   useLayoutEffect(() => {
-    if (!isLoadingMoreRef.current || !scrollPositionBeforeLoadRef.current || !messagesScrollRef.current) {
+    // ✅ FIX: Se não estamos em processo de carregamento, apenas atualizar o contador
+    if (!isLoadingMoreRef.current) {
+      lastMessageLengthRef.current = messages.length;
+      return;
+    }
+
+    // ✅ FIX: Se estamos carregando mas faltam dados, RESETAR para evitar deadlock
+    if (!scrollPositionBeforeLoadRef.current || !messagesScrollRef.current) {
+      console.warn('⚠️ [Scroll] Resetando flags devido a refs inválidas');
+      isLoadingMoreRef.current = false;
+      scrollPositionBeforeLoadRef.current = null;
       lastMessageLengthRef.current = messages.length;
       return;
     }
