@@ -8,6 +8,8 @@ import { CriarAgenteModal } from "../../modals/CriarAgenteModal";
 import { EditarAgenteModal } from "../../modals/EditarAgenteModal";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
+import { useSyncUserContext } from "@/hooks/useUserContext";
+import { logDelete } from "@/utils/auditLog";
 
 export interface DSAgenteMasterRef {
   handleAddAgent: () => void;
@@ -28,6 +30,9 @@ interface AIAgent {
 }
 
 export const DSAgenteMaster = forwardRef<DSAgenteMasterRef>(function DSAgenteMasterComponent(_, ref) {
+  // Sincroniza o contexto do usuário para auditoria
+  useSyncUserContext();
+  
   const [agents, setAgents] = useState<AIAgent[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [showCreateModal, setShowCreateModal] = useState(false);
@@ -83,12 +88,29 @@ export const DSAgenteMaster = forwardRef<DSAgenteMasterRef>(function DSAgenteMas
   const handleDeleteAgent = async (agentId: string) => {
     if (!confirm('Tem certeza que deseja deletar este agente?')) return;
     try {
+      // Buscar dados do agente antes de deletar para auditoria
+      const { data: agentData } = await supabase
+        .from('ai_agents')
+        .select('name, workspace_id, model, is_active')
+        .eq('id', agentId)
+        .single();
+
       const { error } = await supabase.from('ai_agents').delete().eq('id', agentId);
       if (error) {
         console.error('Erro ao deletar agente:', error);
         toast.error('Erro ao deletar agente');
         return;
       }
+      
+      // Registrar auditoria
+      await logDelete(
+        'ai_agent',
+        agentId,
+        agentData?.name || 'Agente',
+        agentData,
+        agentData?.workspace_id
+      );
+      
       toast.success('Agente deletado com sucesso');
       loadAgents();
     } catch (error) {

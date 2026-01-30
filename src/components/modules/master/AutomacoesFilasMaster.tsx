@@ -9,6 +9,7 @@ import { AdicionarFilaModal } from "../../modals/AdicionarFilaModal";
 import { EditarFilaModal } from "../../modals/EditarFilaModal";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
+import { useSyncUserContext } from "@/hooks/useUserContext";
 
 export interface AutomacoesFilasMasterRef {
   handleAddFila: () => void;
@@ -32,6 +33,9 @@ interface Fila {
 }
 
 export const AutomacoesFilasMaster = forwardRef<AutomacoesFilasMasterRef>((props, ref) => {
+  // Sincroniza o contexto do usuário para auditoria
+  useSyncUserContext();
+  
   const [filas, setFilas] = useState<Fila[]>([]);
   const [loading, setLoading] = useState(true);
   const [showAddModal, setShowAddModal] = useState(false);

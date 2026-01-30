@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { ChevronLeft, Building2, BarChart3, Search, UserCircle, BrainCircuit, ListOrdered, Settings2, Calendar, MoreVertical, LogOut, User, Moon, Sun } from "lucide-react";
+import { ChevronLeft, Building2, BarChart3, Search, UserCircle, BrainCircuit, ListOrdered, Settings2, Calendar, MoreVertical, LogOut, User, Moon, Sun, ScrollText } from "lucide-react";
 import logoEx from "@/assets/logo-ex.png";
 import logoEnc from "@/assets/logo-enc.png";
 import { cn } from "@/lib/utils";
@@ -18,7 +18,8 @@ export type MasterPage =
   | "ds-agent"
   | "filas"
   | "configuracoes"
-  | "google-agenda-config";
+  | "google-agenda-config"
+  | "auditoria";
 
 interface MasterSidebarProps {
   activePage: MasterPage;
@@ -39,6 +40,7 @@ const menuItems: Array<{
   { id: "usuarios", label: "Usuários", icon: <UserCircle className="w-5 h-5" /> },
   { id: "ds-agent", label: "Agentes de IA", icon: <BrainCircuit className="w-5 h-5" /> },
   { id: "filas", label: "Filas", icon: <ListOrdered className="w-5 h-5" /> },
+  { id: "auditoria", label: "Auditoria", icon: <ScrollText className="w-5 h-5" /> },
   { id: "configuracoes", label: "Configurações", icon: <Settings2 className="w-5 h-5" /> },
   { id: "google-agenda-config", label: "Google Agenda", icon: <Calendar className="w-5 h-5" /> },
 ];

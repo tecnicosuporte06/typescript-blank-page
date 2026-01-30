@@ -46,6 +46,9 @@ import { useWorkspace } from "@/contexts/WorkspaceContext";
 import { useWorkspaceContactFields } from "@/hooks/useWorkspaceContactFields";
 import { ConfigurarCamposObrigatoriosModal } from "@/components/modals/ConfigurarCamposObrigatoriosModal";
 import { Separator } from "@/components/ui/separator";
+import { useSyncUserContext } from "@/hooks/useUserContext";
+import { logDelete } from "@/utils/auditLog";
+
 interface Contact {
   id: string;
   name: string;
@@ -66,6 +69,9 @@ const DEFAULT_PAGE_SIZE = 100;
 const MIN_PAGE_SIZE = 10;
 
 export function CRMContatos() {
+  // Sincroniza o contexto do usuário para auditoria
+  useSyncUserContext();
+  
   const { selectedWorkspace } = useWorkspace();
   const [editingContact, setEditingContact] = useState<Contact | null>(null);
   const [searchTerm, setSearchTerm] = useState("");
@@ -792,6 +798,15 @@ export function CRMContatos() {
       // 8. Finally delete the contact
       const { error: contactError } = await supabase.from("contacts").delete().eq("id", contact.id);
       if (contactError) throw contactError;
+
+      // Registrar auditoria
+      await logDelete(
+        'contact',
+        contact.id,
+        contact.name || contact.phone || 'Contato',
+        { name: contact.name, phone: contact.phone, email: contact.email },
+        selectedWorkspace?.workspace_id
+      );
 
       // Update local state
       setContacts((prev) => prev.filter((c) => c.id !== contact.id));

@@ -34,6 +34,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { RelatoriosAvancados } from '@/components/relatorios-avancados/RelatoriosAvancados';
 import { MasterBuscaIds } from '@/components/modules/master/MasterBuscaIds';
 import { GoogleAgendaMasterConfig } from '@/components/modules/master/GoogleAgendaMasterConfig';
+import { AuditLogsTab } from '@/components/modules/master/AuditLogsTab';
 import { Badge } from '@/components/ui/badge';
 import { formatDistanceToNow } from "date-fns";
 import { ptBR } from "date-fns/locale";
@@ -365,7 +366,8 @@ export default function MasterDashboard() {
               activePage === 'configuracoes' ||
               activePage === 'ds-agent' ||
               activePage === 'busca-ids' ||
-              activePage === 'google-agenda-config'
+              activePage === 'google-agenda-config' ||
+              activePage === 'auditoria'
             ? 'overflow-hidden flex flex-col bg-white dark:bg-[#050505]'
             : 'p-6 overflow-auto'
         }`}>
@@ -597,6 +599,10 @@ export default function MasterDashboard() {
           ) : activePage === 'google-agenda-config' ? (
             <div className="h-full flex flex-col overflow-auto">
               <GoogleAgendaMasterConfig />
+            </div>
+          ) : activePage === 'auditoria' ? (
+            <div className="h-full flex flex-col">
+              <AuditLogsTab />
             </div>
           ) : null}
         </main>

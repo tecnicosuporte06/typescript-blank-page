@@ -9,6 +9,7 @@ import { DeletarUsuarioModal } from "@/components/modals/DeletarUsuarioModal";
 import { AdministracaoCargos } from "./AdministracaoCargos";
 import { useSystemUsers, type SystemUser } from "@/hooks/useSystemUsers";
 import { cn } from "@/lib/utils";
+import { useSyncUserContext } from "@/hooks/useUserContext";
 
 export interface AdministracaoUsuariosRef {
   searchTerm: string;
@@ -18,6 +19,9 @@ export interface AdministracaoUsuariosRef {
 }
 
 export const AdministracaoUsuarios = forwardRef<AdministracaoUsuariosRef>((props, ref) => {
+  // Sincroniza o contexto do usuário para auditoria
+  useSyncUserContext();
+  
   const { loading, listUsers, createUser, updateUser, deleteUser } = useSystemUsers();
   const [users, setUsers] = useState<SystemUser[]>([]);
   const [searchTerm, setSearchTerm] = useState("");
