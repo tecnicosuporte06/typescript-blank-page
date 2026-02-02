@@ -8,6 +8,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { useWorkspace } from "@/contexts/WorkspaceContext";
+import { logCreate } from "@/utils/auditLog";
 
 const colors = [
   "#8B5CF6", "#EF4444", "#F59E0B", "#10B981", "#3B82F6", 
@@ -49,15 +50,38 @@ export function CriarTagModal({ isOpen, onClose, onTagCreated }: CriarTagModalPr
 
     setIsLoading(true);
     try {
-      const { error } = await supabase
+      const { data: newTag, error } = await supabase
         .from('tags')
         .insert({
           name: name.trim(),
           color: color,
           workspace_id: selectedWorkspace.workspace_id
-        });
+        })
+        .select()
+        .single();
 
       if (error) throw error;
+
+      // Registrar log de auditoria
+      console.log('🏷️ [CriarTag] Registrando log de auditoria:', {
+        entityType: 'tag',
+        entityId: newTag.id,
+        entityName: newTag.name,
+        workspaceId: selectedWorkspace.workspace_id
+      });
+      
+      try {
+        await logCreate(
+          'tag',
+          newTag.id,
+          newTag.name,
+          { name: newTag.name, color: newTag.color },
+          selectedWorkspace.workspace_id
+        );
+        console.log('🏷️ [CriarTag] Log registrado com sucesso!');
+      } catch (logError) {
+        console.error('🏷️ [CriarTag] Erro ao registrar log:', logError);
+      }
 
       toast({
         title: "Etiqueta criada",

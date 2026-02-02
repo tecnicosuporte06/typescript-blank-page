@@ -1341,6 +1341,20 @@ serve(async (req) => {
       );
     }
     
+    // Buscar o perfil do usuário para filtros de lab test
+    let userProfile: string | null = null;
+    try {
+      const { data: userData } = await supabaseClient
+        .from('system_users')
+        .select('profile')
+        .eq('id', userId)
+        .single();
+      userProfile = userData?.profile || null;
+      console.log('👤 User profile:', userProfile);
+    } catch (profileErr) {
+      console.warn('⚠️ Failed to fetch user profile:', profileErr);
+    }
+
     // Set user context for RLS with error handling (non-critical since we use service_role)
     try {
       console.log('🔧 Setting user context:', { userId, userEmail, workspaceId });
@@ -2184,6 +2198,13 @@ serve(async (req) => {
             .eq('pipeline_id', pipelineId)
             .order('created_at', { ascending: false });
 
+          // ✅ Filtrar cards do laboratório - apenas master pode ver
+          // Usar .not() para excluir is_lab_test = true, permitindo null e false
+          if (userProfile !== 'master') {
+            query = query.not('is_lab_test', 'eq', true);
+            console.log('🧪 Lab test filter applied: hiding lab cards for non-master user');
+          }
+
           if (columnId) {
             query = query.eq('column_id', columnId);
           }
@@ -2210,6 +2231,11 @@ serve(async (req) => {
               .select(selectLiteLegacyNoTitle)
               .eq('pipeline_id', pipelineId)
               .order('created_at', { ascending: false });
+
+            // ✅ Filtrar cards do laboratório - apenas master pode ver
+            if (userProfile !== 'master') {
+              retry = retry.not('is_lab_test', 'eq', true);
+            }
 
             if (columnId) retry = retry.eq('column_id', columnId);
             if (shouldPaginate) {

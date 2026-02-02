@@ -92,9 +92,9 @@ export function VincularResponsavelModal({
           const belongsToWorkspace = user.workspaces?.some(
             (ws: any) => ws.id === selectedWorkspace.workspace_id
           );
-          const isNotMaster = user.profile !== 'master';
-          console.log(`User ${user.name} belongs to workspace:`, belongsToWorkspace, 'isNotMaster:', isNotMaster);
-          return belongsToWorkspace && isNotMaster;
+          const isNotMasterOrSupport = user.profile !== 'master' && user.profile !== 'support';
+          console.log(`User ${user.name} belongs to workspace:`, belongsToWorkspace, 'isNotMasterOrSupport:', isNotMasterOrSupport);
+          return belongsToWorkspace && isNotMasterOrSupport;
         })
         .map((user: any) => ({
           id: user.id,

@@ -62,6 +62,24 @@ Deno.serve(async (req) => {
       console.log('✅ Limpeza realizada via client direto')
     }
 
+    // Limpar também o histórico de chat do N8N
+    try {
+      const { error: deleteN8nHistoryError } = await supabaseClient
+        .from('n8n_chat_histories')
+        .delete()
+        .neq('id', 0) // Delete all (id é int, não uuid)
+
+      if (deleteN8nHistoryError) {
+        console.warn('⚠️ Erro ao limpar n8n_chat_histories:', deleteN8nHistoryError)
+        // Não interromper o fluxo, apenas logar o aviso
+      } else {
+        console.log('✅ Histórico de chat N8N limpo')
+      }
+    } catch (n8nError) {
+      console.warn('⚠️ Erro ao limpar n8n_chat_histories:', n8nError)
+      // Não interromper o fluxo
+    }
+
     console.log('🎉 Todas as conversas foram limpas com sucesso')
 
     return new Response(

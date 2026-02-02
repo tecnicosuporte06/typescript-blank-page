@@ -13,12 +13,15 @@ import {
 } from "@/components/ui/select";
 import { useProducts, Product } from "@/hooks/useProducts";
 import { cn } from "@/lib/utils";
+import { useWorkspace } from "@/contexts/WorkspaceContext";
+import { logCreate, logUpdate, logDelete } from "@/utils/auditLog";
 
 const DEFAULT_PAGE_SIZE = 100;
 const MIN_PAGE_SIZE = 10;
 
 export function CRMProdutos() {
   const { products, isLoading, createProduct, updateProduct, deleteProduct } = useProducts();
+  const { selectedWorkspace } = useWorkspace();
   const [searchTerm, setSearchTerm] = useState("");
   
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
@@ -62,10 +65,22 @@ export function CRMProdutos() {
     if (!formData.name.trim()) return;
     
     try {
-      await createProduct({
+      const newProduct = await createProduct({
         name: formData.name.trim(),
         value: parseFloat(formData.value) || 0
       });
+      
+      // Registrar log de auditoria
+      if (newProduct) {
+        await logCreate(
+          'product',
+          newProduct.id,
+          newProduct.name,
+          { name: newProduct.name, value: newProduct.value },
+          selectedWorkspace?.workspace_id
+        );
+      }
+      
       resetForm();
       setIsCreateModalOpen(false);
     } catch (error) {
@@ -77,10 +92,23 @@ export function CRMProdutos() {
     if (!selectedProduct || !formData.name.trim()) return;
     
     try {
-      await updateProduct(selectedProduct.id, {
+      const updatedProduct = await updateProduct(selectedProduct.id, {
         name: formData.name.trim(),
         value: parseFloat(formData.value) || 0
       });
+      
+      // Registrar log de auditoria
+      if (updatedProduct) {
+        await logUpdate(
+          'product',
+          updatedProduct.id,
+          updatedProduct.name,
+          { name: selectedProduct.name, value: selectedProduct.value },
+          { name: updatedProduct.name, value: updatedProduct.value },
+          selectedWorkspace?.workspace_id
+        );
+      }
+      
       resetForm();
       setIsEditModalOpen(false);
       setSelectedProduct(null);
@@ -94,6 +122,16 @@ export function CRMProdutos() {
     
     try {
       await deleteProduct(productToDelete.id);
+      
+      // Registrar log de auditoria
+      await logDelete(
+        'product',
+        productToDelete.id,
+        productToDelete.name,
+        { name: productToDelete.name, value: productToDelete.value },
+        selectedWorkspace?.workspace_id
+      );
+      
       setIsDeleteModalOpen(false);
       setProductToDelete(null);
     } catch (error) {

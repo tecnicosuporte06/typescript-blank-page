@@ -10,6 +10,8 @@ import { AdministracaoCargos } from "./AdministracaoCargos";
 import { useSystemUsers, type SystemUser } from "@/hooks/useSystemUsers";
 import { cn } from "@/lib/utils";
 import { useSyncUserContext } from "@/hooks/useUserContext";
+import { useAuth } from "@/hooks/useAuth";
+import { useToast } from "@/hooks/use-toast";
 
 export interface AdministracaoUsuariosRef {
   searchTerm: string;
@@ -23,6 +25,8 @@ export const AdministracaoUsuarios = forwardRef<AdministracaoUsuariosRef>((props
   useSyncUserContext();
   
   const { loading, listUsers, createUser, updateUser, deleteUser } = useSystemUsers();
+  const { user: currentUser, userRole } = useAuth();
+  const { toast } = useToast();
   const [users, setUsers] = useState<SystemUser[]>([]);
   const [searchTerm, setSearchTerm] = useState("");
   const [isAddEditModalOpen, setIsAddEditModalOpen] = useState(false);
@@ -51,10 +55,30 @@ export const AdministracaoUsuarios = forwardRef<AdministracaoUsuariosRef>((props
   };
   const handleDeleteUser = (userId: string) => {
     const user = users.find(u => u.id === userId);
-    if (user) {
-      setSelectedUser(user);
-      setIsDeleteModalOpen(true);
+    if (!user) return;
+    
+    // Support não pode deletar a si mesmo
+    if (userRole === 'support' && currentUser?.id === userId) {
+      toast({
+        title: "Ação não permitida",
+        description: "Você não pode excluir seu próprio usuário.",
+        variant: "destructive"
+      });
+      return;
     }
+    
+    // Support não pode deletar usuários master ou support
+    if (userRole === 'support' && (user.profile === 'master' || user.profile === 'support')) {
+      toast({
+        title: "Ação não permitida",
+        description: "Você não tem permissão para excluir este tipo de usuário.",
+        variant: "destructive"
+      });
+      return;
+    }
+    
+    setSelectedUser(user);
+    setIsDeleteModalOpen(true);
   };
   const handleConfirmDelete = async () => {
     if (selectedUser) {
@@ -166,14 +190,14 @@ export const AdministracaoUsuarios = forwardRef<AdministracaoUsuariosRef>((props
                 className="grid grid-cols-7 border-b border-[#d4d4d4] hover:bg-gray-50 transition-colors dark:border-gray-700 dark:hover:bg-gray-900/60"
               >
                 {/* Nome */}
-                <div className="px-3 py-2.5 text-xs border-r border-[#d4d4d4] flex items-center gap-2 dark:border-gray-700 dark:text-gray-100">
-                  <UserCircle className="h-3.5 w-3.5 text-gray-500 dark:text-gray-400" />
-                  <span className="font-medium">{user.name}</span>
+                <div className="px-3 py-2.5 text-xs border-r border-[#d4d4d4] flex items-center gap-2 dark:border-gray-700 dark:text-gray-100 overflow-hidden">
+                  <UserCircle className="h-3.5 w-3.5 text-gray-500 dark:text-gray-400 flex-shrink-0" />
+                  <span className="font-medium truncate" title={user.name}>{user.name}</span>
                 </div>
 
                 {/* Email */}
-                <div className="px-3 py-2.5 text-xs border-r border-[#d4d4d4] text-gray-600 dark:text-gray-300 dark:border-gray-700">
-                  {user.email}
+                <div className="px-3 py-2.5 text-xs border-r border-[#d4d4d4] text-gray-600 dark:text-gray-300 dark:border-gray-700 overflow-hidden">
+                  <span className="block truncate" title={user.email}>{user.email}</span>
                 </div>
 
                 {/* Perfil */}
@@ -182,13 +206,15 @@ export const AdministracaoUsuarios = forwardRef<AdministracaoUsuariosRef>((props
                 </div>
 
                 {/* Empresa */}
-                <div className="px-3 py-2.5 text-xs border-r border-[#d4d4d4] dark:border-gray-700 dark:text-gray-200">
-                  {user.profile === 'master' ? 'Todas' : (user.empresa || (user.workspaces?.map(w => w.name).join(", ") || "-"))}
+                <div className="px-3 py-2.5 text-xs border-r border-[#d4d4d4] dark:border-gray-700 dark:text-gray-200 overflow-hidden">
+                  <span className="block truncate" title={(user.profile === 'master' || user.profile === 'support') ? 'Todas' : (user.empresa || (user.workspaces?.map(w => w.name).join(", ") || "-"))}>
+                    {(user.profile === 'master' || user.profile === 'support') ? 'Todas' : (user.empresa || (user.workspaces?.map(w => w.name).join(", ") || "-"))}
+                  </span>
                 </div>
 
                 {/* Criado por */}
-                <div className="px-3 py-2.5 text-xs border-r border-[#d4d4d4] text-gray-600 dark:text-gray-300 dark:border-gray-700">
-                  {user.created_by_name || "-"}
+                <div className="px-3 py-2.5 text-xs border-r border-[#d4d4d4] text-gray-600 dark:text-gray-300 dark:border-gray-700 overflow-hidden">
+                  <span className="block truncate" title={user.created_by_name || "-"}>{user.created_by_name || "-"}</span>
                 </div>
 
                 {/* Status */}

@@ -7,6 +7,8 @@ import { Palette } from "lucide-react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
+import { useWorkspace } from "@/contexts/WorkspaceContext";
+import { logUpdate } from "@/utils/auditLog";
 
 const colors = [
   "#8B5CF6", "#EF4444", "#F59E0B", "#10B981", "#3B82F6", 
@@ -32,6 +34,7 @@ export function EditarTagModal({ isOpen, onClose, onTagUpdated, tag }: EditarTag
   const [isLoading, setIsLoading] = useState(false);
   
   const { toast } = useToast();
+  const { selectedWorkspace } = useWorkspace();
 
   useEffect(() => {
     if (tag) {
@@ -63,6 +66,16 @@ export function EditarTagModal({ isOpen, onClose, onTagUpdated, tag }: EditarTag
         .eq('id', tag.id);
 
       if (error) throw error;
+
+      // Registrar log de auditoria
+      await logUpdate(
+        'tag',
+        tag.id,
+        name.trim(),
+        { name: tag.name, color: tag.color },
+        { name: name.trim(), color: color },
+        selectedWorkspace?.workspace_id
+      );
 
       toast({
         title: "Etiqueta atualizada",

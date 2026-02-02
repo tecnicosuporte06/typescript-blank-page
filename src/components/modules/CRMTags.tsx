@@ -51,8 +51,8 @@ export function CRMTags() {
 
   const selectedUser = members.find(m => m.user_id === selectedUserId);
   
-  // Filtrar usuários master
-  const filteredMembers = members.filter(member => member.role !== 'master');
+  // Filtrar usuários master e support
+  const filteredMembers = members.filter(member => member.role !== 'master' && member.role !== 'support');
 
   const handleResetFilters = () => {
     setSelectedUserId("");

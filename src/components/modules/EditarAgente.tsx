@@ -13,6 +13,7 @@ import { Badge } from "@/components/ui/badge";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { isReasoningEffortModel, type ReasoningEffort } from "@/lib/ai-models";
+import { logUpdate } from "@/utils/auditLog";
 
 interface AIAgent {
   id: string;
@@ -39,6 +40,7 @@ interface AIAgent {
   disable_outside_platform: boolean;
   assign_responsible: boolean;
   ignore_interval: number;
+  workspace_id?: string;
 }
 
 interface KnowledgeFile {
@@ -188,6 +190,16 @@ export function EditarAgente({ agentId }: EditarAgenteProps) {
         console.error('Erro detalhado:', error);
         throw error;
       }
+      
+      // Registrar log de auditoria
+      await logUpdate(
+        'ai_agent',
+        agentId,
+        agent.name,
+        null, // oldData não disponível
+        { name: agent.name, model: agent.model, is_active: agent.is_active },
+        agent.workspace_id
+      );
       
       toast.success('Agente atualizado com sucesso!');
     } catch (error: any) {

@@ -90,7 +90,7 @@ export function CRMAgenda() {
       const id = (m as any)?.user?.id || (m as any)?.user_id;
       if (!id) continue;
       const profile = String((m as any)?.user?.profile || (m as any)?.role || "").toLowerCase().trim();
-      if (profile === "master") continue;
+      if (profile === "master" || profile === "support") continue;
       if (profile !== "admin" && profile !== "user") continue;
       const name = String((m as any)?.user?.name || "").trim() || String((m as any)?.user?.email || "").trim();
       if (!name) continue;

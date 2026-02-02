@@ -36,6 +36,7 @@ import { useWorkspaceHeaders } from "@/lib/workspaceHeaders";
 import { cardHistoryQueryKey, useCardHistory } from "@/hooks/useCardHistory";
 import { Bot, UserCheck, Users, ArrowRightLeft, LayoutGrid, Tag as TagIcon, CalendarClock, Calendar as CalendarIconLucide } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
+import { logCreate, logUpdate, logDelete } from "@/utils/auditLog";
 interface Tag {
   id: string;
   name: string;
@@ -1555,6 +1556,21 @@ export function DealDetailsModal({
     try {
       setIsDeletingActivity(true);
 
+      // Registrar auditoria ANTES de excluir (com dados da atividade)
+      await logDelete(
+        'activity',
+        activityToDelete.id,
+        activityToDelete.subject || activityToDelete.type,
+        {
+          type: activityToDelete.type,
+          subject: activityToDelete.subject,
+          description: activityToDelete.description,
+          scheduled_for: activityToDelete.scheduled_for,
+          responsible_id: activityToDelete.responsible_id,
+        },
+        activityToDelete.workspace_id || workspaceId
+      );
+
       const { error } = await supabase
         .from('activities')
         .delete()
@@ -1817,6 +1833,21 @@ export function DealDetailsModal({
 
       if (error) throw error;
 
+      // Registrar auditoria da criação
+      await logCreate(
+        'activity',
+        activity.id,
+        activity.subject || activityForm.type,
+        {
+          type: activityForm.type,
+          subject: activity.subject,
+          description: activityForm.description,
+          scheduled_for: activity.scheduled_for,
+          responsible_id: activityForm.responsibleId,
+        },
+        contactDataForActivity.workspace_id || workspaceId
+      );
+
       handleActivityCreated(activity);
       
       // Verificar se evento foi criado no Google Calendar (opcional, não bloqueia)
@@ -1875,6 +1906,9 @@ export function DealDetailsModal({
   const handleCompleteActivity = async (activityId: string) => {
     try {
       const completionTimestamp = new Date().toISOString();
+      
+      // Buscar atividade atual para auditoria
+      const activityToComplete = activities.find(a => a.id === activityId);
 
       const {
         error
@@ -1883,6 +1917,19 @@ export function DealDetailsModal({
         completed_at: completionTimestamp
       }).eq('id', activityId);
       if (error) throw error;
+
+      // Registrar auditoria da conclusão
+      if (activityToComplete) {
+        await logUpdate(
+          'activity',
+          activityId,
+          activityToComplete.subject || activityToComplete.type,
+          { is_completed: false },
+          { is_completed: true, completed_at: completionTimestamp },
+          activityToComplete.workspace_id || workspaceId
+        );
+      }
+
       setActivities(prev => prev.map(activity => activity.id === activityId ? {
         ...activity,
         is_completed: true,

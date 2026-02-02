@@ -8,8 +8,13 @@ export const useSessionMonitor = () => {
   const channelRef = useRef<any>(null);
   const hasNotifiedRef = useRef(false);
   const checkIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const isDisabledRef = useRef(false); // Desabilitar se tabela não existir
 
   useEffect(() => {
+    // TEMPORARIAMENTE DESABILITADO - tabela user_sessions não existe ainda
+    // Remover esta linha quando a migration for criada
+    return;
+
     if (!user?.id) {
       // Limpar canal se não houver usuário
       if (channelRef.current) {

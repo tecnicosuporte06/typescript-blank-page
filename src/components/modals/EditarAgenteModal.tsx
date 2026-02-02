@@ -16,6 +16,7 @@ import { Eye, EyeOff, FileText, Trash } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { useWorkspaces } from "@/hooks/useWorkspaces";
+import { logUpdate } from "@/utils/auditLog";
 import { PromptEditorModal } from "./PromptEditorModal";
 import { ActionPreviewDisplay } from "@/components/ui/action-preview-display";
 import { useQueryClient } from '@tanstack/react-query';
@@ -378,6 +379,16 @@ Exemplo: [ENVIE PARA O TOOL \`qualificar-cliente\` (METODO POST) o workspace_id:
         .eq('id', agentId);
 
       if (error) throw error;
+
+      // Registrar log de auditoria
+      await logUpdate(
+        'ai_agent',
+        agentId,
+        formData.name,
+        null, // oldData não disponível
+        { name: formData.name, model: formData.model, is_active: formData.is_active },
+        formData.workspace_id
+      );
 
       // Invalidar cache do workspace-agent para atualizar o botão
       queryClient.invalidateQueries({ queryKey: ['workspace-agent'] });

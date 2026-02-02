@@ -749,7 +749,7 @@ export function WhatsAppChat({
   const [selectedDealCardId, setSelectedDealCardId] = useState<string | null>(null);
   const lastDealsKeyRef = useRef<string | null>(null);
 
-  const fetchActiveDealsForContact = useCallback(async () => {
+  const fetchActiveDealsForContact = useCallback(async (retryCount = 0) => {
     const workspaceId = selectedWorkspace?.workspace_id;
     const contactId = selectedConversation?.contact?.id;
     if (!workspaceId || !contactId) return;
@@ -759,6 +759,50 @@ export function WhatsAppChat({
     if (lastDealsKeyRef.current === cacheKey && contactDeals.length > 0) return;
 
     setIsLoadingDeals(true);
+    
+    // Helper para normalizar dados
+    const normalizeDeals = (rows: any[]) => {
+      const closedStatuses = new Set(["ganho", "perdido", "perda", "closed"]);
+      const isActive = (status: any) => {
+        const s = String(status || "").toLowerCase().trim();
+        return s.length > 0 && !closedStatuses.has(s);
+      };
+
+      return rows
+        .map((row: any) => ({
+          card_id: row.card_id || row.id,
+          description: row.description || null,
+          pipeline_id: row.pipeline_id || null,
+          pipeline_name: row.pipeline_name || row.pipelines?.name || null,
+          column_id: row.column_id || null,
+          column_name: row.column_name || row.pipeline_columns?.name || null,
+          card_status: row.card_status || row.status || null,
+        }))
+        .sort((a: any, b: any) => {
+          const aActive = isActive(a.card_status);
+          const bActive = isActive(b.card_status);
+          if (aActive !== bActive) return aActive ? -1 : 1;
+          return String(a.description || "").localeCompare(String(b.description || ""));
+        });
+    };
+
+    // Helper para tentar RPC como fallback
+    const tryRpcFallback = async () => {
+      console.log('🔄 [WhatsAppChat] Tentando fallback via RPC para deals...');
+      const { data: rpcData, error: rpcError } = await supabase.rpc('get_contact_deals', {
+        p_contact_id: contactId,
+        p_workspace_id: workspaceId,
+      });
+      
+      if (rpcError) {
+        console.error('❌ [WhatsAppChat] Fallback RPC também falhou:', rpcError);
+        throw rpcError;
+      }
+      
+      console.log('✅ [WhatsAppChat] Fallback RPC bem sucedido');
+      return Array.isArray(rpcData) ? rpcData : [];
+    };
+
     try {
       // ✅ Mesma lógica do painel lateral (ContactSidePanel): join em pipelines + filtro pipelines.workspace_id
       const { data: joinData, error: joinError } = await supabase
@@ -776,42 +820,45 @@ export function WhatsAppChat({
         .eq("contact_id", contactId)
         .eq("pipelines.workspace_id", workspaceId);
 
-      if (joinError) throw joinError;
+      if (joinError) {
+        console.warn('⚠️ [WhatsAppChat] Query principal falhou, tentando fallback...', joinError);
+        
+        // Retry automático (máximo 2 tentativas)
+        if (retryCount < 2) {
+          console.log(`🔄 [WhatsAppChat] Retry ${retryCount + 1}/2...`);
+          await new Promise(r => setTimeout(r, 500 * (retryCount + 1)));
+          return fetchActiveDealsForContact(retryCount + 1);
+        }
+        
+        // Tenta o fallback RPC
+        const rpcRows = await tryRpcFallback();
+        const normalized = normalizeDeals(rpcRows);
+        setContactDeals(normalized);
+        lastDealsKeyRef.current = cacheKey;
+        return;
+      }
 
       const rows = (joinData || []).filter(
         (row: any) => String(row?.pipelines?.workspace_id || "") === String(workspaceId)
       );
 
-      // Priorizar negócios "ativos", mas não esconder os demais (porque o usuário pode ter só ganhos/perdas)
-      const closedStatuses = new Set(["ganho", "perdido", "perda", "closed"]);
-      const isActive = (status: any) => {
-        const s = String(status || "").toLowerCase().trim();
-        return s.length > 0 && !closedStatuses.has(s);
-      };
-
-      const normalized = rows
-        .map((row: any) => ({
-          card_id: row.id,
-          description: row.description || null,
-          pipeline_id: row.pipeline_id || null,
-          pipeline_name: row.pipelines?.name || null,
-          column_id: row.column_id || null,
-          column_name: row.pipeline_columns?.name || null,
-          card_status: row.status || null,
-        }))
-        .sort((a: any, b: any) => {
-          const aActive = isActive(a.card_status);
-          const bActive = isActive(b.card_status);
-          if (aActive !== bActive) return aActive ? -1 : 1;
-          return String(a.description || "").localeCompare(String(b.description || ""));
-        });
-
+      const normalized = normalizeDeals(rows);
       setContactDeals(normalized);
       lastDealsKeyRef.current = cacheKey;
     } catch (err) {
       console.error("Erro ao buscar negócios do contato:", err);
-      setContactDeals([]);
-      lastDealsKeyRef.current = cacheKey;
+      
+      // Última tentativa: RPC
+      try {
+        const rpcRows = await tryRpcFallback();
+        const normalized = normalizeDeals(rpcRows);
+        setContactDeals(normalized);
+        lastDealsKeyRef.current = cacheKey;
+      } catch (rpcErr) {
+        console.error("Fallback RPC também falhou:", rpcErr);
+        setContactDeals([]);
+        lastDealsKeyRef.current = cacheKey;
+      }
     } finally {
       setIsLoadingDeals(false);
     }
@@ -881,6 +928,7 @@ export function WhatsAppChat({
       setIsDeletingConversation(true);
       const conversationId = selectedConversation.id;
 
+      // 1. Deletar mensagens da conversa
       const { error: messagesError } = await supabase
         .from("messages")
         .delete()
@@ -890,6 +938,18 @@ export function WhatsAppChat({
         throw messagesError;
       }
 
+      // 2. Deletar histórico do chat N8N (session_id = conversation_id)
+      const { error: n8nHistoryError } = await supabase
+        .from("n8n_chat_histories")
+        .delete()
+        .eq("session_id", conversationId);
+
+      if (n8nHistoryError) {
+        console.warn("Erro ao limpar n8n_chat_histories:", n8nHistoryError);
+        // Não interromper o fluxo, apenas logar o aviso
+      }
+
+      // 3. Deletar a conversa
       const { error: conversationError } = await supabase
         .from("conversations")
         .delete()

@@ -169,6 +169,13 @@ serve(async (req) => {
       `)
       .eq('workspace_id', workspaceId);
 
+    // ✅ Filtrar conversas do laboratório - apenas master pode ver
+    // Usar .not() para excluir is_lab_test = true, permitindo null e false
+    if (userProfile !== 'master') {
+      query = query.not('is_lab_test', 'eq', true);
+      console.log('🧪 Lab test filter: hiding lab conversations for non-master user');
+    }
+
     // ✅ CORREÇÃO: Apenas USER tem filtro de assigned_user_id
     // Master e Admin veem TUDO do workspace
     if (userProfile === 'user') {
@@ -348,6 +355,10 @@ serve(async (req) => {
         .from('conversations')
         .select('id', { count: 'exact', head: true })
         .eq('workspace_id', workspaceId);
+      // Filtrar lab tests para não-master usando .not() para evitar conflito com .or()
+      if (userProfile !== 'master') {
+        q = q.not('is_lab_test', 'eq', true);
+      }
       if (userProfile === 'user') {
         q = q.or(`assigned_user_id.eq.${systemUserId},assigned_user_id.is.null`);
       }

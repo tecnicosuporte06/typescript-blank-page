@@ -84,14 +84,27 @@ export const useLossReasons = (workspaceId: string | null) => {
 
       for (let attempt = 0; attempt < 3; attempt++) {
         try {
+          // Usar VIEW para melhor performance e estabilidade
           const res = await supabase
-            .from('loss_reasons')
-            .select('*')
+            .from('loss_reasons_view' as any)
+            .select('id, name, workspace_id, is_active, created_at, updated_at')
             .eq('workspace_id', workspaceId)
             .order('name');
 
-          if (res.error) throw res.error;
-          data = res.data || [];
+          if (res.error) {
+            // Fallback para tabela original se VIEW não existir
+            console.log('⚠️ useLossReasons: VIEW não disponível, usando tabela original');
+            const fallbackRes = await supabase
+              .from('loss_reasons')
+              .select('*')
+              .eq('workspace_id', workspaceId)
+              .order('name');
+            
+            if (fallbackRes.error) throw fallbackRes.error;
+            data = fallbackRes.data || [];
+          } else {
+            data = res.data || [];
+          }
           lastError = null;
           break;
         } catch (e: any) {

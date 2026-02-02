@@ -20,7 +20,14 @@ import {
   Edit,
   Power,
   RefreshCw,
-  X
+  X,
+  Tag,
+  Package,
+  MessageSquare,
+  Mic,
+  Image,
+  FileText,
+  GitBranch
 } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
@@ -85,6 +92,13 @@ export function AuditLogsTab() {
       case 'contact': return <Users className="w-3.5 h-3.5" />;
       case 'automation': return <RefreshCw className="w-3.5 h-3.5" />;
       case 'workspace': return <Building2 className="w-3.5 h-3.5" />;
+      case 'tag': return <Tag className="w-3.5 h-3.5" />;
+      case 'product': return <Package className="w-3.5 h-3.5" />;
+      case 'quick_message': return <MessageSquare className="w-3.5 h-3.5" />;
+      case 'quick_audio': return <Mic className="w-3.5 h-3.5" />;
+      case 'quick_media': return <Image className="w-3.5 h-3.5" />;
+      case 'quick_document': return <FileText className="w-3.5 h-3.5" />;
+      case 'quick_funnel': return <GitBranch className="w-3.5 h-3.5" />;
       default: return <ScrollText className="w-3.5 h-3.5" />;
     }
   };
@@ -156,7 +170,7 @@ export function AuditLogsTab() {
             </SelectContent>
           </Select>
 
-          {/* Filtro por Tipo de Entidade */}
+          {/* Filtro por Tipo de Recurso */}
           <Select 
             value={filters.entityType || 'all'} 
             onValueChange={(value) => {
@@ -169,7 +183,7 @@ export function AuditLogsTab() {
               <SelectValue placeholder="Tipo" />
             </SelectTrigger>
             <SelectContent className="rounded-none dark:bg-[#1a1a1a] dark:border-gray-700">
-              <SelectItem value="all" className="text-xs">Todos os tipos</SelectItem>
+              <SelectItem value="all" className="text-xs">Todos os recursos</SelectItem>
               <SelectItem value="ai_agent" className="text-xs">Agente IA</SelectItem>
               <SelectItem value="user" className="text-xs">Usuário</SelectItem>
               <SelectItem value="connection" className="text-xs">Conexão</SelectItem>
@@ -298,7 +312,7 @@ export function AuditLogsTab() {
             {/* Table Header */}
             <div className="grid grid-cols-[1fr_180px_180px_180px_100px_160px] bg-[#f3f3f3] border-b border-[#d4d4d4] sticky top-0 z-10 dark:bg-[#161616] dark:border-gray-700">
               <div className="px-3 py-2 text-xs font-semibold text-gray-700 border-r border-[#d4d4d4] dark:text-gray-200 dark:border-gray-700">
-                Entidade
+                Recurso
               </div>
               <div className="px-3 py-2 text-xs font-semibold text-gray-700 border-r border-[#d4d4d4] dark:text-gray-200 dark:border-gray-700">
                 Ação
@@ -331,7 +345,7 @@ export function AuditLogsTab() {
                     )}
                     onClick={() => hasDetails && toggleRowExpansion(log.id)}
                   >
-                    {/* Entidade */}
+                    {/* Recurso */}
                     <div className="px-3 py-2.5 text-xs border-r border-[#d4d4d4] flex items-center gap-2 dark:border-gray-700">
                       <div className="text-gray-500 dark:text-gray-400">
                         {getEntityIcon(log.entity_type)}

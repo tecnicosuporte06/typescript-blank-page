@@ -15,6 +15,7 @@ import { Slider } from "@/components/ui/slider";
 import { FileText, Trash } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
+import { logCreate } from "@/utils/auditLog";
 import { useWorkspaces } from "@/hooks/useWorkspaces";
 import { PromptEditorModal } from "./PromptEditorModal";
 import { ActionPreviewDisplay } from "@/components/ui/action-preview-display";
@@ -292,6 +293,15 @@ Exemplo: [ENVIE PARA O TOOL \`qualificar-cliente\` (METODO POST) o workspace_id:
           // Não bloquear a criação do agente se o RAG falhar
         }
       }
+
+      // Registrar log de auditoria
+      await logCreate(
+        'ai_agent',
+        agentId,
+        formData.name,
+        { name: formData.name, model: formData.model, is_active: formData.is_active },
+        formData.workspace_id
+      );
 
       // Invalidar cache do workspace-agent para atualizar o botão
       queryClient.invalidateQueries({ queryKey: ['workspace-agent'] });

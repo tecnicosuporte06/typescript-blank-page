@@ -28,6 +28,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useWorkspaceHeaders } from "@/lib/workspaceHeaders";
 import { Separator } from "@/components/ui/separator";
 import { cn } from "@/lib/utils";
+import { logUpdate } from "@/utils/auditLog";
 interface Contact {
   id: string;
   name: string;
@@ -242,6 +243,16 @@ export function ContactSidePanel({
         if (onContactUpdated) {
           onContactUpdated();
         }
+        
+        // Registrar log de auditoria
+        await logUpdate(
+          'contact',
+          updatedData.id,
+          updatedData.name,
+          null, // oldData não disponível
+          { name: updatedData.name, email: updatedData.email },
+          selectedWorkspace?.workspace_id || ''
+        );
       }
     } catch (error) {
       console.error('❌ Erro ao salvar contato:', error);

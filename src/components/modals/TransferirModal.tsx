@@ -572,7 +572,7 @@ export function TransferirModal({
                   Remover responsável
                 </SelectItem>
                 {workspaceUsers
-                  .filter(user => user.profile !== 'master')
+                  .filter(user => user.profile !== 'master' && user.profile !== 'support')
                   .map(user => (
                     <SelectItem 
                       key={user.id} 

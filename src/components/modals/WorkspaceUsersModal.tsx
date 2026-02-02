@@ -44,7 +44,7 @@ export function WorkspaceUsersModal({ open, onOpenChange, workspaceId, workspace
 
   const filteredMembers = useMemo(() => {
     const q = searchTerm.trim().toLowerCase();
-    const base = (members || []).filter((m) => m.user?.profile !== "master");
+    const base = (members || []).filter((m) => m.user?.profile !== "master" && m.user?.profile !== "support");
     if (!q) return base;
     return base.filter((m) => {
       const name = (m.user?.name || "").toLowerCase();

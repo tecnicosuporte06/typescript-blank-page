@@ -20,6 +20,7 @@ import { useWorkspaceHeaders } from "@/lib/workspaceHeaders";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/useAuth";
 import { useWorkspaceMembers } from "@/hooks/useWorkspaceMembers";
+import { logCreate, logUpdate, logDelete } from "@/utils/auditLog";
 import { format, differenceInDays, differenceInHours } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
@@ -1292,7 +1293,7 @@ const normalizeFieldKey = (label: string) => {
       if (!id) continue;
 
       const profile = String(m?.user?.profile || m?.role || "").toLowerCase().trim();
-      if (profile === "master") continue;
+      if (profile === "master" || profile === "support") continue;
       if (profile !== "admin" && profile !== "user") continue;
 
       const name =
@@ -2316,6 +2317,23 @@ const normalizeFieldKey = (label: string) => {
 
       if (error) throw error;
 
+      // Registrar auditoria da criação
+      if (insertedActivity?.id) {
+        await logCreate(
+          'activity',
+          insertedActivity.id,
+          activityForm.subject.trim() || activityForm.type,
+          {
+            type: activityForm.type,
+            subject: activityForm.subject.trim() || activityForm.type,
+            description: activityForm.description,
+            scheduled_for: startDateTime.toISOString(),
+            responsible_id: activityForm.responsibleId,
+          },
+          effectiveWorkspaceId
+        );
+      }
+
       // Registrar no histórico quando houver anexo (persistente)
       if (attachmentUrl && attachmentName) {
         try {
@@ -2590,13 +2608,15 @@ const normalizeFieldKey = (label: string) => {
 
   const deleteActivityById = useCallback(
     async (activityId: string) => {
-      // Se a atividade tiver anexo, registrar remoção no histórico antes de deletar
+      // Buscar dados completos da atividade para auditoria e histórico
+      let activityRow: any = null;
       try {
-        const { data: activityRow } = await supabase
+        const { data } = await supabase
           .from('activities')
-          .select('id, attachment_url, attachment_name')
+          .select('id, type, subject, description, scheduled_for, responsible_id, workspace_id, attachment_url, attachment_name')
           .eq('id', activityId)
           .maybeSingle();
+        activityRow = data;
 
         if (activityRow?.attachment_url) {
           await supabase.from('pipeline_card_history').insert({
@@ -2616,12 +2636,29 @@ const normalizeFieldKey = (label: string) => {
         console.warn('⚠️ Não foi possível registrar histórico de arquivo removido ao excluir atividade:', historyErr);
       }
 
+      // Registrar auditoria ANTES de excluir
+      if (activityRow) {
+        await logDelete(
+          'activity',
+          activityId,
+          activityRow.subject || activityRow.type,
+          {
+            type: activityRow.type,
+            subject: activityRow.subject,
+            description: activityRow.description,
+            scheduled_for: activityRow.scheduled_for,
+            responsible_id: activityRow.responsible_id,
+          },
+          activityRow.workspace_id || effectiveWorkspaceId
+        );
+      }
+
       const { error } = await supabase.from("activities").delete().eq("id", activityId);
       if (error) throw error;
       await fetchActivities();
       queryClient.invalidateQueries({ queryKey: ['card-history', cardId] });
     },
-    [authUser?.id, cardId, fetchActivities, getUserDisplayName, queryClient]
+    [authUser?.id, cardId, effectiveWorkspaceId, fetchActivities, getUserDisplayName, queryClient]
   );
 
   const handleDeleteActivity = useCallback(async () => {

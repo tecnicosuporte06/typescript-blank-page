@@ -26,8 +26,8 @@ export function TopBar({ onNavigateToConversation }: TopBarProps) {
     navigate('/master-dashboard');
   };
 
-  // Verificar se deve mostrar o botão de voltar
-  const showBackButton = userRole === 'master' && selectedWorkspace;
+  // Verificar se deve mostrar o botão de voltar (master e support)
+  const showBackButton = (userRole === 'master' || userRole === 'support') && selectedWorkspace;
 
   return (
     <>

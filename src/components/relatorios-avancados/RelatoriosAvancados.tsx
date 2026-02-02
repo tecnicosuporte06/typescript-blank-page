@@ -287,9 +287,9 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
     }
     const agentsList = (data || [])
       .filter((wm: any) => {
-        // NUNCA incluir usuários masters (seja no role do workspace ou no perfil global)
-        const isMasterRole = wm.role === 'master';
-        const isMasterProfile = wm.system_users?.profile === 'master';
+        // NUNCA incluir usuários masters ou support (seja no role do workspace ou no perfil global)
+        const isMasterRole = wm.role === 'master' || wm.role === 'support';
+        const isMasterProfile = wm.system_users?.profile === 'master' || wm.system_users?.profile === 'support';
         return !isMasterRole && !isMasterProfile;
       })
       .map((wm: any) => wm.system_users)
@@ -746,7 +746,7 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
     return { from: minFrom, to: maxTo };
   }, [draftFunnels, rehydrateNonce]);
 
-  const fetchData = async (fetchKey?: string) => {
+  const fetchData = async (fetchKey?: string, retryCount = 0) => {
     if (!user?.id) return;
     const fetchId = crypto.randomUUID();
     activeFetchIdRef.current = fetchId;
@@ -796,44 +796,91 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
 
     const headers = getHeaders(effectiveWorkspaceId);
 
+      // Helper para tentar RPC como fallback
+      const tryRpcFallback = async () => {
+        console.log('🔄 [Relatórios] Tentando fallback via RPC...');
+        const { data: rpcData, error: rpcError } = await supabase.rpc('get_report_data', {
+          p_workspace_id: effectiveWorkspaceId,
+          p_from: from,
+          p_to: to,
+          p_user_id: user?.id || null,
+          p_is_user_scoped: userRole === 'user',
+        });
+        
+        if (rpcError) {
+          console.error('❌ [Relatórios] Fallback RPC também falhou:', rpcError);
+          throw rpcError;
+        }
+        
+        console.log('✅ [Relatórios] Fallback RPC bem sucedido');
+        return rpcData;
+      };
+
       // FASE 1 (rápida): cards core (sem tags/produtos) + conversations
-      const [cardsRes, baseRes] = await Promise.all([
-        supabase.functions.invoke("report-indicator-cards-lite", {
+      let cardsLite: any[] = [];
+      let conversationsData: any[] = [];
+      let usedFallback = false;
+
+      try {
+        const [cardsRes, baseRes] = await Promise.all([
+          supabase.functions.invoke("report-indicator-cards-lite", {
+              method: "POST",
+              headers,
+            body: { workspaceId: effectiveWorkspaceId, from, to, includeRelations: false, userRole },
+          }),
+          supabase.functions.invoke("report-base-data-lite", {
             method: "POST",
             headers,
-          body: { workspaceId: effectiveWorkspaceId, from, to, includeRelations: false, userRole },
-        }),
-        supabase.functions.invoke("report-base-data-lite", {
-          method: "POST",
-          headers,
-          body: {
-            workspaceId: effectiveWorkspaceId,
-            from,
-            to,
-            userRole,
-            userId: user.id,
-            includeContacts: false,
-            includeActivities: false,
-            includeConversations: true,
-          },
-        }),
-      ]);
+            body: {
+              workspaceId: effectiveWorkspaceId,
+              from,
+              to,
+              userRole,
+              userId: user.id,
+              includeContacts: false,
+              includeActivities: false,
+              includeConversations: true,
+            },
+          }),
+        ]);
+
+        if (activeFetchIdRef.current !== fetchId) return;
+
+        if (cardsRes.error || baseRes.error) {
+          console.warn('⚠️ [Relatórios] Edge Functions falharam, tentando fallback...');
+          const rpcData = await tryRpcFallback();
+          cardsLite = Array.isArray(rpcData?.cards) ? rpcData.cards : [];
+          conversationsData = Array.isArray(rpcData?.conversations) ? rpcData.conversations : [];
+          usedFallback = true;
+        } else {
+          cardsLite = Array.isArray((cardsRes.data as any)?.cards) ? (cardsRes.data as any).cards : [];
+          conversationsData = Array.isArray((baseRes.data as any)?.conversations)
+            ? (baseRes.data as any).conversations
+            : [];
+        }
+      } catch (edgeFnError) {
+        console.warn('⚠️ [Relatórios] Exceção nas Edge Functions:', edgeFnError);
+        
+        // Retry automático (máximo 2 tentativas)
+        if (retryCount < 2) {
+          console.log(`🔄 [Relatórios] Retry ${retryCount + 1}/2...`);
+          await new Promise(r => setTimeout(r, 1000 * (retryCount + 1))); // Backoff exponencial
+          return fetchData(fetchKey, retryCount + 1);
+        }
+        
+        // Se ainda falhar, tenta o fallback RPC
+        try {
+          const rpcData = await tryRpcFallback();
+          cardsLite = Array.isArray(rpcData?.cards) ? rpcData.cards : [];
+          conversationsData = Array.isArray(rpcData?.conversations) ? rpcData.conversations : [];
+          usedFallback = true;
+        } catch (rpcError) {
+          // Se RPC também falhar, propaga o erro original
+          throw edgeFnError;
+        }
+      }
 
       if (activeFetchIdRef.current !== fetchId) return;
-
-      if (cardsRes.error) {
-        console.error('❌ [Relatórios] Erro ao buscar cards:', cardsRes.error);
-        throw cardsRes.error;
-      }
-      if (baseRes.error) {
-        console.error('❌ [Relatórios] Erro ao buscar base:', baseRes.error);
-        throw baseRes.error;
-      }
-
-      const cardsLite = Array.isArray((cardsRes.data as any)?.cards) ? (cardsRes.data as any).cards : [];
-      const conversationsData = Array.isArray((baseRes.data as any)?.conversations)
-        ? (baseRes.data as any).conversations
-        : [];
 
       // Normaliza cards vindos da Edge Function LITE para o shape usado nos indicadores
       const toNumberOrNull = (v: any) => {

@@ -13,6 +13,7 @@ import { cn } from "@/lib/utils";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/useAuth";
+import { logCreate } from "@/utils/auditLog";
 
 interface User {
   id: string;
@@ -210,6 +211,21 @@ export function CreateActivityModal({
         .single();
 
       if (error) throw error;
+
+      // Registrar auditoria da criação
+      await logCreate(
+        'activity',
+        activity.id,
+        activity.subject || formData.type,
+        {
+          type: formData.type,
+          subject: activity.subject,
+          description: formData.description,
+          scheduled_for: activity.scheduled_for,
+          responsible_id: formData.responsibleId,
+        },
+        contactData.workspace_id
+      );
 
       onActivityCreated(activity);
       

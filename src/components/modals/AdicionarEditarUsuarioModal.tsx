@@ -23,6 +23,7 @@ import { useWorkspaceConnections } from "@/hooks/useWorkspaceConnections";
 import { useSystemUsers, type SystemUser } from "@/hooks/useSystemUsers";
 import { useWorkspaceMembers } from "@/hooks/useWorkspaceMembers";
 import { useCargos } from "@/hooks/useCargos";
+import { useAuth } from "@/hooks/useAuth";
 import { cn } from "@/lib/utils";
 
 interface AdicionarEditarUsuarioModalProps {
@@ -62,6 +63,7 @@ export function AdicionarEditarUsuarioModal({
   });
 
   const { toast } = useToast();
+  const { userRole: currentUserRole } = useAuth();
   const { workspaces, isLoading: workspacesLoading } = useWorkspaces();
   const { connections, isLoading: connectionsLoading } = useWorkspaceConnections(selectedWorkspaceId);
   const { createUser, updateUser } = useSystemUsers();
@@ -182,6 +184,16 @@ export function AdicionarEditarUsuarioModal({
       return;
     }
 
+    // Usuários 'support' só podem criar 'admin' e 'user'
+    if (currentUserRole === 'support' && (formData.profile === 'master' || formData.profile === 'support')) {
+      toast({
+        title: "Erro",
+        description: "Você não tem permissão para criar usuários deste perfil.",
+        variant: "destructive"
+      });
+      return;
+    }
+
     if (!editingUser && !formData.senha) {
       toast({
         title: "Erro",
@@ -191,7 +203,9 @@ export function AdicionarEditarUsuarioModal({
       return;
     }
 
-    if (!selectedWorkspaceId) {
+    // Usuários master e support não precisam de empresa (têm acesso a todas)
+    const isGlobalProfile = formData.profile === 'master' || formData.profile === 'support';
+    if (!isGlobalProfile && !selectedWorkspaceId) {
       toast({
         title: "Erro",
         description: "Selecione uma empresa",
@@ -237,31 +251,46 @@ export function AdicionarEditarUsuarioModal({
           default_channel: formData.default_channel || null
         };
         
-        // Como o formulário exige "Empresa", sempre criamos o usuário E vinculamos ao workspace selecionado,
-        // para que ele apareça na lista de membros da empresa.
-        const memberRole =
-          formData.profile === 'master'
-            ? 'master'
-            : formData.profile === 'admin'
-              ? 'admin'
-              : 'user';
-
-        await createUserAndAddToWorkspace(
-          {
+        // Usuários master e support são criados sem vínculo específico com empresa
+        // pois têm acesso a todas as empresas automaticamente
+        const isGlobalProfile = formData.profile === 'master' || formData.profile === 'support';
+        
+        if (isGlobalProfile) {
+          // Criar usuário global sem vincular a workspace
+          await createUser({
             name: userData.name,
             email: userData.email,
             profile: userData.profile,
             senha: userData.senha,
             default_channel: userData.default_channel || undefined,
             phone: userData.phone || undefined
-          },
-          memberRole
-        );
+          });
+          
+          toast({
+            title: "Sucesso",
+            description: `Usuário ${formData.profile === 'master' ? 'Master' : 'Sucesso do Cliente'} criado com sucesso`
+          });
+        } else {
+          // Para usuários comuns, criar e vincular à empresa selecionada
+          const memberRole = formData.profile === 'admin' ? 'admin' : 'user';
 
-        toast({
-          title: "Sucesso",
-          description: "Usuário criado e adicionado à empresa com sucesso"
-        });
+          await createUserAndAddToWorkspace(
+            {
+              name: userData.name,
+              email: userData.email,
+              profile: userData.profile,
+              senha: userData.senha,
+              default_channel: userData.default_channel || undefined,
+              phone: userData.phone || undefined
+            },
+            memberRole
+          );
+
+          toast({
+            title: "Sucesso",
+            description: "Usuário criado e adicionado à empresa com sucesso"
+          });
+        }
       }
 
       // Reset form and close modal
@@ -417,7 +446,14 @@ export function AdicionarEditarUsuarioModal({
                   <SelectContent className="rounded-none border-[#d4d4d4] dark:border-gray-700">
                     <SelectItem value="user">Usuário</SelectItem>
                     <SelectItem value="admin">Administrador</SelectItem>
-                    {!effectiveLockWorkspace && <SelectItem value="master">Master</SelectItem>}
+                    {/* Support só pode criar user e admin */}
+                    {/* Master pode criar todos os perfis quando não está travado a workspace */}
+                    {!effectiveLockWorkspace && currentUserRole === 'master' && (
+                      <>
+                        <SelectItem value="support">Sucesso do Cliente</SelectItem>
+                        <SelectItem value="master">Master</SelectItem>
+                      </>
+                    )}
                   </SelectContent>
                 </Select>
               </div>
@@ -468,7 +504,19 @@ export function AdicionarEditarUsuarioModal({
           <div className="col-span-12 lg:col-span-3 border border-[#d4d4d4] dark:border-gray-700 bg-white dark:bg-[#1f1f1f] p-5">
             <h3 className="font-semibold text-sm text-gray-700 dark:text-gray-200 uppercase tracking-wide mb-4">Empresa</h3>
 
-            {!effectiveLockWorkspace && (
+            {/* Perfis globais (master/support) não precisam de empresa específica */}
+            {(formData.profile === 'master' || formData.profile === 'support') && (
+              <div className="space-y-2">
+                <div className="p-3 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded text-sm text-blue-700 dark:text-blue-300">
+                  <p className="font-medium">Acesso Global</p>
+                  <p className="text-xs mt-1">
+                    Usuários {formData.profile === 'master' ? 'Master' : 'Sucesso do Cliente'} têm acesso a todas as empresas automaticamente.
+                  </p>
+                </div>
+              </div>
+            )}
+
+            {formData.profile !== 'master' && formData.profile !== 'support' && !effectiveLockWorkspace && (
               <div className="space-y-2">
                 <Label htmlFor="workspace" className="text-sm font-medium text-gray-700 dark:text-gray-300">Empresa *</Label>
                 <Select value={selectedWorkspaceId} onValueChange={setSelectedWorkspaceId}>
@@ -486,7 +534,7 @@ export function AdicionarEditarUsuarioModal({
             </div>
           )}
           
-          {effectiveLockWorkspace && selectedWorkspaceId && (
+          {formData.profile !== 'master' && formData.profile !== 'support' && effectiveLockWorkspace && selectedWorkspaceId && (
               <div className="space-y-2">
                 <Label className="text-sm font-medium text-gray-700 dark:text-gray-300">Empresa</Label>
                 <div className="h-9 flex items-center px-3 text-sm rounded-none border border-[#d4d4d4] dark:border-gray-700 bg-white dark:bg-[#2d2d2d] text-gray-900 dark:text-gray-200">
@@ -495,7 +543,7 @@ export function AdicionarEditarUsuarioModal({
             </div>
           )}
 
-          {selectedWorkspaceId && connections.length > 0 && (
+          {formData.profile !== 'master' && formData.profile !== 'support' && selectedWorkspaceId && connections.length > 0 && (
               <div className="mt-6">
                 <h3 className="font-semibold text-sm text-gray-700 dark:text-gray-200 uppercase tracking-wide mb-3">Canal Padrão</h3>
                 <div className="space-y-2">
@@ -531,7 +579,7 @@ export function AdicionarEditarUsuarioModal({
             </Button>
           <Button
             onClick={handleSubmit}
-            disabled={isSubmitting || !formData.name || !formData.email || !formData.profile || (!isEditing && !formData.senha) || !selectedWorkspaceId}
+            disabled={isSubmitting || !formData.name || !formData.email || !formData.profile || (!isEditing && !formData.senha) || (formData.profile !== 'master' && formData.profile !== 'support' && !selectedWorkspaceId)}
             className="h-9 px-5 text-sm rounded-none bg-primary hover:bg-primary/90"
           >
             {isSubmitting ? (isEditing ? "Salvando..." : "Criando...") : (isEditing ? "Salvar Alterações" : "Criar Usuário")}

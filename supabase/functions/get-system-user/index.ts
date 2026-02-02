@@ -67,8 +67,8 @@ Deno.serve(async (req) => {
       );
     }
 
-    // Masters podem fazer login independentemente do status do workspace
-    if (user.profile !== 'master') {
+    // Masters e Support podem fazer login independentemente do status do workspace
+    if (user.profile !== 'master' && user.profile !== 'support') {
       // Buscar workspaces do usuário
       const { data: memberWorkspaces, error: workspaceError } = await supabase
         .from('workspace_members')

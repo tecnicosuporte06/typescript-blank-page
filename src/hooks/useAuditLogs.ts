@@ -172,6 +172,31 @@ export const actionLabels: Record<string, string> = {
   'automation.created': 'Automação criada',
   'automation.updated': 'Automação atualizada',
   'automation.deleted': 'Automação excluída',
+  // Tags
+  'tag.created': 'Tag criada',
+  'tag.updated': 'Tag atualizada',
+  'tag.deleted': 'Tag excluída',
+  // Produtos
+  'product.created': 'Produto criado',
+  'product.updated': 'Produto atualizado',
+  'product.deleted': 'Produto excluído',
+  // Mensagens rápidas
+  'quick_message.created': 'Msg rápida criada',
+  'quick_message.updated': 'Msg rápida atualizada',
+  'quick_message.deleted': 'Msg rápida excluída',
+  // Áudios rápidos
+  'quick_audio.created': 'Áudio criado',
+  'quick_audio.deleted': 'Áudio excluído',
+  // Mídias rápidas
+  'quick_media.created': 'Mídia criada',
+  'quick_media.deleted': 'Mídia excluída',
+  // Documentos rápidos
+  'quick_document.created': 'Documento criado',
+  'quick_document.deleted': 'Documento excluído',
+  // Funis rápidos
+  'quick_funnel.created': 'Funil criado',
+  'quick_funnel.updated': 'Funil atualizado',
+  'quick_funnel.deleted': 'Funil excluído',
 };
 
 // Mapeamento de tipos de entidade para labels
@@ -184,6 +209,13 @@ export const entityTypeLabels: Record<string, string> = {
   'contact': 'Contato',
   'automation': 'Automação',
   'workspace': 'Workspace',
+  'tag': 'Tag/Etiqueta',
+  'product': 'Produto',
+  'quick_message': 'Msg Rápida',
+  'quick_audio': 'Áudio Rápido',
+  'quick_media': 'Mídia Rápida',
+  'quick_document': 'Documento',
+  'quick_funnel': 'Funil Rápido',
 };
 
 // Cores para cada tipo de ação

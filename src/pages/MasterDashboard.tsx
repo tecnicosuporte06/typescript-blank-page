@@ -35,6 +35,7 @@ import { RelatoriosAvancados } from '@/components/relatorios-avancados/Relatorio
 import { MasterBuscaIds } from '@/components/modules/master/MasterBuscaIds';
 import { GoogleAgendaMasterConfig } from '@/components/modules/master/GoogleAgendaMasterConfig';
 import { AuditLogsTab } from '@/components/modules/master/AuditLogsTab';
+import { LaboratorioTab } from '@/components/modules/master/LaboratorioTab';
 import { Badge } from '@/components/ui/badge';
 import { formatDistanceToNow } from "date-fns";
 import { ptBR } from "date-fns/locale";
@@ -70,8 +71,8 @@ export default function MasterDashboard() {
   const agentesRef = useRef<DSAgenteMasterRef>(null);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
 
-  // Verificar se o usuário é realmente master
-  if (userRole !== 'master') {
+  // Verificar se o usuário tem acesso à Central Tezeus (master ou support)
+  if (userRole !== 'master' && userRole !== 'support') {
     navigate('/relatorios');
     return null;
   }
@@ -207,6 +208,7 @@ export default function MasterDashboard() {
         isCollapsed={isSidebarCollapsed}
         onToggleCollapse={() => setIsSidebarCollapsed(v => !v)}
         onLogout={handleLogout}
+        userRole={userRole as 'master' | 'support' | 'admin' | 'user'}
       />
 
       {/* Main Content */}
@@ -367,7 +369,8 @@ export default function MasterDashboard() {
               activePage === 'ds-agent' ||
               activePage === 'busca-ids' ||
               activePage === 'google-agenda-config' ||
-              activePage === 'auditoria'
+              activePage === 'auditoria' ||
+              activePage === 'laboratorio'
             ? 'overflow-hidden flex flex-col bg-white dark:bg-[#050505]'
             : 'p-6 overflow-auto'
         }`}>
@@ -604,13 +607,17 @@ export default function MasterDashboard() {
             <div className="h-full flex flex-col">
               <AuditLogsTab />
             </div>
+          ) : activePage === 'laboratorio' ? (
+            <div className="h-full flex flex-col">
+              <LaboratorioTab />
+            </div>
           ) : null}
         </main>
 
         {/* Footer */}
         <footer className="bg-card border-t border-border px-6 py-3 dark:bg-[#0b0b0b] dark:border-gray-700">
           <div className="flex items-center justify-between text-xs text-muted-foreground">
-            <span>Tezeus CRM – Usuário Interno</span>
+            <span>Central Tezeus – {userRole === 'master' ? 'Master' : 'Sucesso do Cliente'}</span>
             <span>Versão 1.0.0</span>
           </div>
         </footer>

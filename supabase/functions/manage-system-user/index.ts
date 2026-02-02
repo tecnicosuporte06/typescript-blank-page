@@ -37,10 +37,12 @@ Deno.serve(async (req) => {
 
     // For operations that need permission checks, get current user
     let currentUserProfile = null;
+    let currentUserId: string | null = null;
     let currentUserWorkspaces: string[] = [];
     
     const authHeader = req.headers.get('Authorization');
-    if (authHeader && action === 'list') {
+    // Expandido para verificar permissões em create, update e delete também
+    if (authHeader && ['list', 'create', 'update', 'delete'].includes(action)) {
       try {
         const supabaseAuth = createClient(
           supabaseUrl,
@@ -70,6 +72,7 @@ Deno.serve(async (req) => {
         }
         
         if (user && systemUserId) {
+          currentUserId = systemUserId;
           const { data: systemUser } = await supabase
             .from('system_users')
             .select('profile')
@@ -79,8 +82,8 @@ Deno.serve(async (req) => {
           currentUserProfile = systemUser?.profile;
           console.log('Current user profile:', currentUserProfile);
           
-          // Get user workspaces if not master
-          if (currentUserProfile && currentUserProfile !== 'master') {
+          // Get user workspaces if not master or support
+          if (currentUserProfile && currentUserProfile !== 'master' && currentUserProfile !== 'support') {
             const { data: memberships } = await supabase
               .from('workspace_members')
               .select('workspace_id')
@@ -121,6 +124,25 @@ Deno.serve(async (req) => {
         return new Response(
           JSON.stringify({ error: `Campos obrigatórios: ${missing.join(', ')}` }),
           { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+
+      // Validar permissões de criação de perfil
+      // Usuário 'support' não pode criar 'master' nem 'support'
+      if (currentUserProfile === 'support' && (profile === 'master' || profile === 'support')) {
+        console.error('Support user trying to create restricted profile:', profile);
+        return new Response(
+          JSON.stringify({ error: 'Você não tem permissão para criar usuários deste perfil.' }),
+          { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+      
+      // Apenas 'master' pode criar outros 'master' ou 'support'
+      if ((profile === 'master' || profile === 'support') && currentUserProfile !== 'master') {
+        console.error('Non-master user trying to create master/support profile');
+        return new Response(
+          JSON.stringify({ error: 'Apenas usuários Master podem criar este tipo de perfil.' }),
+          { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         );
       }
 
@@ -417,6 +439,32 @@ Deno.serve(async (req) => {
           JSON.stringify({ error: 'User ID is required for delete' }),
           { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         );
+      }
+
+      // Impedir que o usuário delete a si mesmo
+      if (currentUserId && userId === currentUserId) {
+        console.error('User trying to delete themselves:', userId);
+        return new Response(
+          JSON.stringify({ error: 'Você não pode excluir seu próprio usuário.' }),
+          { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+
+      // Verificar se usuário 'support' está tentando deletar 'master' ou 'support'
+      if (currentUserProfile === 'support') {
+        const { data: targetUser } = await supabase
+          .from('system_users')
+          .select('profile')
+          .eq('id', userId)
+          .single();
+        
+        if (targetUser && (targetUser.profile === 'master' || targetUser.profile === 'support')) {
+          console.error('Support user trying to delete restricted profile:', targetUser.profile);
+          return new Response(
+            JSON.stringify({ error: 'Você não tem permissão para excluir este tipo de usuário.' }),
+            { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          );
+        }
       }
 
       // First delete cargo assignments

@@ -37,8 +37,8 @@ export const Login = () => {
   // Redirecionar após login bem-sucedido baseado na role
   useEffect(() => {
     if (loginSuccess && user && userRole) {
-      if (userRole === 'master') {
-        // Master SEMPRE vai para master-dashboard após login
+      if (userRole === 'master' || userRole === 'support') {
+        // Master e Support SEMPRE vão para Central Tezeus após login
         navigate('/master-dashboard');
       } else {
         navigate('/relatorios');
@@ -48,8 +48,8 @@ export const Login = () => {
 
   // Redirect if already logged in
   if (user && !loading) {
-    if (userRole === 'master') {
-      // Master SEMPRE vai para master-dashboard
+    if (userRole === 'master' || userRole === 'support') {
+      // Master e Support SEMPRE vão para Central Tezeus
       return <Navigate to="/master-dashboard" replace />;
     }
     return <Navigate to="/relatorios" replace />;

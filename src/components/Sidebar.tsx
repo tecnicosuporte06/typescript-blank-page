@@ -113,8 +113,13 @@ export function Sidebar({
     isLoadingWorkspaces: isLoading
   } = useWorkspace();
   const { limits: workspaceLimits, isLoading: isLoadingWorkspaceLimits } = useWorkspaceLimits(selectedWorkspace?.workspace_id || "");
-  // Anti-flicker: enquanto carrega, NÃO mostra o Disparador (evita aparecer e sumir)
-  const isDisparadorEnabled = isLoadingWorkspaceLimits ? false : (workspaceLimits?.disparador_enabled ?? true);
+  // Anti-flicker: enquanto carrega ou sem workspace, NÃO mostra o Disparador
+  // Se tem workspace e dados carregados: usar valor da config (default true para empresas sem config)
+  const isDisparadorEnabled = isLoadingWorkspaceLimits 
+    ? false 
+    : selectedWorkspace 
+      ? (workspaceLimits?.disparador_enabled ?? true)
+      : false;
   
   // Hook para monitorar conexões desconectadas
   const { disconnectedConnections, hasDisconnected, disconnectedCount } = useDisconnectedConnections(selectedWorkspace?.workspace_id || "");
@@ -142,9 +147,9 @@ export function Sidebar({
     navigate('/master-dashboard');
   };
 
-  // Auto-select first workspace for master users
+  // Auto-select first workspace for master/support users
   useEffect(() => {
-    if (userRole === 'master' && !selectedWorkspace && workspaces.length > 0 && !isLoading) {
+    if ((userRole === 'master' || userRole === 'support') && !selectedWorkspace && workspaces.length > 0 && !isLoading) {
       setSelectedWorkspace(workspaces[0]);
     }
   }, [userRole, selectedWorkspace, workspaces, isLoading, setSelectedWorkspace]);
@@ -371,8 +376,8 @@ export function Sidebar({
         <ChevronLeft className="w-4 h-4 text-white group-hover:scale-110 transition-all" />
       </button>
 
-      {/* Workspace Info - apenas para master */}
-      {selectedWorkspace && hasRole(['master']) && (
+      {/* Workspace Info - para master e support */}
+      {selectedWorkspace && hasRole(['master', 'support']) && (
         <div className={cn(
           "flex-shrink-0 bg-primary transition-all duration-300",
           isCollapsed ? 'p-1 flex justify-center' : 'px-3 py-2.5'
@@ -401,7 +406,7 @@ export function Sidebar({
           if (item.id === 'relatorios') return canView('dashboard-item');
           if (item.id === 'conversas') return canView('conversas-item');
           if (item.id === 'mensagens-rapidas') return true;
-          if (item.id === 'empresa') return hasRole(['master', 'admin']);
+          if (item.id === 'empresa') return hasRole(['master', 'support', 'admin']);
           if (item.id === 'filas') return hasRole(['master', 'admin']); // admin pode ver/criar filas; user não
           if (item.id === 'pipeline') return canView('crm-negocios-item');
           if (item.id === 'contatos') return canView('crm-contatos-item');
@@ -480,7 +485,7 @@ export function Sidebar({
                 </button>
               </DropdownMenuTrigger>
               <DropdownMenuContent className="z-50 bg-white border border-gray-300 shadow-md dark:bg-[#2d2d2d] dark:border-gray-600" side="right" align="end">
-                {hasRole(['master']) && selectedWorkspace && (
+                {hasRole(['master', 'support']) && selectedWorkspace && (
                   <DropdownMenuItem onClick={handleBackToMasterDashboard} className="text-xs">
                     <ArrowLeft className="w-3 h-3 mr-2" />
                     Central Tezeus
@@ -512,7 +517,7 @@ export function Sidebar({
                   </button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent className="z-50 bg-white border border-gray-300 shadow-md dark:bg-[#2d2d2d] dark:border-gray-600" align="end">
-                  {hasRole(['master']) && selectedWorkspace && (
+                  {hasRole(['master', 'support']) && selectedWorkspace && (
                     <DropdownMenuItem onClick={handleBackToMasterDashboard} className="text-xs">
                       <ArrowLeft className="w-3 h-3 mr-2" />
                       Central Tezeus
@@ -594,8 +599,8 @@ export function Sidebar({
                 </div>
               ))}
             </div>
-            {/* Botão "Verificar Conexões" só aparece para master e admin */}
-            {(userRole === 'master' || userRole === 'admin') && (
+            {/* Botão "Verificar Conexões" só aparece para master, support e admin */}
+            {(userRole === 'master' || userRole === 'support' || userRole === 'admin') && (
               <button
                 onClick={() => {
                   setIsDisconnectedAlertOpen(false);

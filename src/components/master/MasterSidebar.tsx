@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { ChevronLeft, Building2, BarChart3, Search, UserCircle, BrainCircuit, ListOrdered, Settings2, Calendar, MoreVertical, LogOut, User, Moon, Sun, ScrollText } from "lucide-react";
+import { ChevronLeft, Building2, BarChart3, Search, UserCircle, BrainCircuit, ListOrdered, Settings2, Calendar, MoreVertical, LogOut, User, Moon, Sun, ScrollText, FlaskConical } from "lucide-react";
 import logoEx from "@/assets/logo-ex.png";
 import logoEnc from "@/assets/logo-enc.png";
 import { cn } from "@/lib/utils";
@@ -19,7 +19,8 @@ export type MasterPage =
   | "filas"
   | "configuracoes"
   | "google-agenda-config"
-  | "auditoria";
+  | "auditoria"
+  | "laboratorio";
 
 interface MasterSidebarProps {
   activePage: MasterPage;
@@ -27,6 +28,7 @@ interface MasterSidebarProps {
   isCollapsed: boolean;
   onToggleCollapse: () => void;
   onLogout: () => void;
+  userRole?: 'master' | 'support' | 'admin' | 'user';
 }
 
 const menuItems: Array<{
@@ -40,10 +42,14 @@ const menuItems: Array<{
   { id: "usuarios", label: "Usuários", icon: <UserCircle className="w-5 h-5" /> },
   { id: "ds-agent", label: "Agentes de IA", icon: <BrainCircuit className="w-5 h-5" /> },
   { id: "filas", label: "Filas", icon: <ListOrdered className="w-5 h-5" /> },
+  { id: "laboratorio", label: "Laboratório", icon: <FlaskConical className="w-5 h-5" /> },
   { id: "auditoria", label: "Auditoria", icon: <ScrollText className="w-5 h-5" /> },
   { id: "configuracoes", label: "Configurações", icon: <Settings2 className="w-5 h-5" /> },
   { id: "google-agenda-config", label: "Google Agenda", icon: <Calendar className="w-5 h-5" /> },
 ];
+
+// Abas permitidas para o perfil 'support' na Central Tezeus
+const supportAllowedPages: MasterPage[] = ['workspaces', 'ds-agent', 'filas', 'laboratorio', 'auditoria'];
 
 export function MasterSidebar({
   activePage,
@@ -51,9 +57,15 @@ export function MasterSidebar({
   isCollapsed,
   onToggleCollapse,
   onLogout,
+  userRole = 'master',
 }: MasterSidebarProps) {
   const { user } = useAuth();
   const { customization } = useSystemCustomizationContext();
+  
+  // Filtrar menu items baseado no perfil do usuário
+  const filteredMenuItems = userRole === 'support'
+    ? menuItems.filter(item => supportAllowedPages.includes(item.id))
+    : menuItems;
 
   const [isPerfilModalOpen, setIsPerfilModalOpen] = useState(false);
   const [isDarkMode, setIsDarkMode] = useState(false);
@@ -182,7 +194,7 @@ export function MasterSidebar({
       </button>
 
       {/* Navigation */}
-      <nav className="flex-1 overflow-y-auto">{menuItems.map(renderMenuItem)}</nav>
+      <nav className="flex-1 overflow-y-auto">{filteredMenuItems.map(renderMenuItem)}</nav>
 
       {/* Action Icons (tema) */}
       <div className={cn("flex-shrink-0 bg-primary", isCollapsed ? "p-1" : "p-2")}>

@@ -872,6 +872,11 @@ function CRMNegociosContent({
   } = usePipelineActiveUsers(selectedPipeline?.id, effectiveWorkspaceId);
   const queryClient = useQueryClient();
   const [searchTerm, setSearchTerm] = useState("");
+  const [searchResults, setSearchResults] = useState<any[]>([]);
+  const [isSearchingBackend, setIsSearchingBackend] = useState(false);
+  const [showSearchResults, setShowSearchResults] = useState(false);
+  const searchTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const searchInputRef = useRef<HTMLInputElement>(null);
   // Panorama é um módulo próprio na sidebar (não fica dentro do Pipeline).
   const [selectedCard, setSelectedCard] = useState<any>(null);
   const [selectedChatCard, setSelectedChatCard] = useState<any>(null);
@@ -1229,12 +1234,20 @@ const [selectedCardForProduct, setSelectedCardForProduct] = useState<{
     
     try {
       // Buscar apenas os IDs dos cards da coluna (status aberto ou perda)
-      const { data, error } = await supabase
+      let query = supabase
         .from('pipeline_cards')
         .select('id')
         .eq('pipeline_id', selectedPipeline.id)
         .eq('column_id', columnId)
         .or('status.eq.aberto,status.eq.perda,status.eq.perdido,status.is.null');
+      
+      // Filtrar cards do laboratório - apenas master pode ver
+      // Usar .not() para excluir is_lab_test = true, permitindo null e false
+      if (userRole !== 'master') {
+        query = query.not('is_lab_test', 'eq', true);
+      }
+      
+      const { data, error } = await query;
       
       if (error) {
         console.error('Erro ao buscar IDs dos cards:', error);
@@ -1246,7 +1259,83 @@ const [selectedCardForProduct, setSelectedCardForProduct] = useState<{
       console.error('Erro ao buscar IDs dos cards:', error);
       return [];
     }
+  }, [selectedPipeline?.id, userRole]);
+
+  // Função para buscar cards no backend (busca global)
+  const searchCardsInBackend = useCallback(async (term: string) => {
+    if (!selectedPipeline?.id || !term || term.trim().length < 2) {
+      setSearchResults([]);
+      setShowSearchResults(false);
+      return;
+    }
+
+    setIsSearchingBackend(true);
+    try {
+      const { data, error } = await supabase.rpc('search_pipeline_cards', {
+        p_pipeline_id: selectedPipeline.id,
+        p_search_term: term.trim(),
+        p_limit: 50,
+      });
+
+      if (error) {
+        console.error('Erro na busca de cards:', error);
+        setSearchResults([]);
+      } else {
+        setSearchResults(Array.isArray(data) ? data : []);
+        setShowSearchResults(true);
+      }
+    } catch (err) {
+      console.error('Exceção na busca de cards:', err);
+      setSearchResults([]);
+    } finally {
+      setIsSearchingBackend(false);
+    }
   }, [selectedPipeline?.id]);
+
+  // Effect para busca com debounce
+  useEffect(() => {
+    if (searchTimeoutRef.current) {
+      clearTimeout(searchTimeoutRef.current);
+    }
+
+    if (searchTerm.trim().length >= 2) {
+      searchTimeoutRef.current = setTimeout(() => {
+        searchCardsInBackend(searchTerm);
+      }, 300);
+    } else {
+      setSearchResults([]);
+      setShowSearchResults(false);
+    }
+
+    return () => {
+      if (searchTimeoutRef.current) {
+        clearTimeout(searchTimeoutRef.current);
+      }
+    };
+  }, [searchTerm, searchCardsInBackend]);
+
+  // Função para abrir um card dos resultados da busca
+  const handleSearchResultClick = useCallback((card: any) => {
+    setSearchTerm('');
+    setShowSearchResults(false);
+    setSearchResults([]);
+    
+    // Abrir o modal de detalhes do card
+    setSelectedDealDetailsForSheet({
+      dealName: card.contact_name || card.description || 'Sem título',
+      contactNumber: card.contact_phone || '',
+      cardId: card.id,
+      currentColumnId: card.column_id,
+      currentPipelineId: card.pipeline_id,
+      contactData: {
+        id: card.contact_id,
+        name: card.contact_name,
+        phone: card.contact_phone,
+        profile_image_url: card.contact_image,
+      },
+    });
+    setIsDealDetailsModalOpen(true);
+  }, []);
 
   // Função para filtrar cards por coluna
   const getFilteredCards = (columnId: string) => {
@@ -2000,16 +2089,67 @@ const [selectedCardForProduct, setSelectedCardForProduct] = useState<{
                           )}
                       </Button>
 
-                      {/* Search Input */}
+                      {/* Search Input com dropdown de resultados globais */}
                       <div className="relative flex-1 min-w-[150px] max-w-xs">
-                        <Search className={`absolute left-2 top-1/2 transform -translate-y-1/2 h-3 w-3 text-gray-400 dark:text-gray-500`} />
+                        <Search className={`absolute left-2 top-1/2 transform -translate-y-1/2 h-3 w-3 text-gray-400 dark:text-gray-500 z-10`} />
+                        {isSearchingBackend && (
+                          <Loader2 className="absolute right-2 top-1/2 transform -translate-y-1/2 h-3 w-3 text-gray-400 animate-spin z-10" />
+                        )}
                         <Input
+                          ref={searchInputRef}
                           type="text"
-                          placeholder="Buscar..."
+                          placeholder="Buscar em todo o pipeline..."
                           value={searchTerm}
                           onChange={(e) => setSearchTerm(e.target.value)}
-                          className={`pl-7 h-7 text-xs bg-white dark:bg-[#1b1b1b] border-gray-300 dark:border-gray-700 rounded-none focus-visible:ring-1 focus-visible:ring-primary text-gray-900 dark:text-gray-100 placeholder:text-gray-500 dark:placeholder:text-gray-400`}
+                          onFocus={() => searchResults.length > 0 && setShowSearchResults(true)}
+                          onBlur={() => setTimeout(() => setShowSearchResults(false), 200)}
+                          className={`pl-7 pr-7 h-7 text-xs bg-white dark:bg-[#1b1b1b] border-gray-300 dark:border-gray-700 rounded-none focus-visible:ring-1 focus-visible:ring-primary text-gray-900 dark:text-gray-100 placeholder:text-gray-500 dark:placeholder:text-gray-400`}
                         />
+                        
+                        {/* Dropdown de resultados da busca global */}
+                        {showSearchResults && searchResults.length > 0 && (
+                          <div className="absolute top-full left-0 right-0 mt-1 bg-white dark:bg-[#1b1b1b] border border-gray-300 dark:border-gray-700 shadow-lg z-50 max-h-80 overflow-y-auto">
+                            <div className="px-2 py-1 text-[10px] text-gray-500 dark:text-gray-400 border-b border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-[#0f0f0f]">
+                              {searchResults.length} resultado{searchResults.length !== 1 ? 's' : ''} encontrado{searchResults.length !== 1 ? 's' : ''}
+                            </div>
+                            {searchResults.map((card) => (
+                              <button
+                                key={card.id}
+                                type="button"
+                                className="w-full text-left px-2 py-2 hover:bg-gray-100 dark:hover:bg-[#2a2a2a] border-b border-gray-100 dark:border-gray-800 last:border-b-0"
+                                onMouseDown={(e) => {
+                                  e.preventDefault();
+                                  handleSearchResultClick(card);
+                                }}
+                              >
+                                <div className="flex items-center gap-2">
+                                  <div className="flex-1 min-w-0">
+                                    <div className="text-xs font-medium text-gray-900 dark:text-gray-100 truncate">
+                                      {card.contact_name || card.description || 'Sem nome'}
+                                    </div>
+                                    <div className="text-[10px] text-gray-500 dark:text-gray-400 truncate">
+                                      {card.contact_phone && <span>{card.contact_phone}</span>}
+                                      {card.contact_phone && card.column_name && <span className="mx-1">•</span>}
+                                      {card.column_name && <span>{card.column_name}</span>}
+                                    </div>
+                                  </div>
+                                  {card.value && (
+                                    <div className="text-[10px] font-medium text-green-600 dark:text-green-400 whitespace-nowrap">
+                                      {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(card.value)}
+                                    </div>
+                                  )}
+                                </div>
+                              </button>
+                            ))}
+                          </div>
+                        )}
+                        
+                        {/* Mensagem quando não há resultados */}
+                        {showSearchResults && searchTerm.trim().length >= 2 && searchResults.length === 0 && !isSearchingBackend && (
+                          <div className="absolute top-full left-0 right-0 mt-1 bg-white dark:bg-[#1b1b1b] border border-gray-300 dark:border-gray-700 shadow-lg z-50 px-3 py-2 text-xs text-gray-500 dark:text-gray-400">
+                            Nenhuma oportunidade encontrada
+                          </div>
+                        )}
                       </div>
 
                       {/* Filtro por responsável */}

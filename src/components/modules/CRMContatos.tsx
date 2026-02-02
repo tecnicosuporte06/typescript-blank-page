@@ -47,7 +47,7 @@ import { useWorkspaceContactFields } from "@/hooks/useWorkspaceContactFields";
 import { ConfigurarCamposObrigatoriosModal } from "@/components/modals/ConfigurarCamposObrigatoriosModal";
 import { Separator } from "@/components/ui/separator";
 import { useSyncUserContext } from "@/hooks/useUserContext";
-import { logDelete } from "@/utils/auditLog";
+import { logCreate, logUpdate, logDelete } from "@/utils/auditLog";
 
 interface Contact {
   id: string;
@@ -1009,6 +1009,16 @@ export function CRMContatos() {
 
         // O contato será adicionado automaticamente pelo realtime subscription
         // Removido a adição manual para evitar duplicação
+        
+        // Registrar log de auditoria
+        await logCreate(
+          'contact',
+          newContactData.id,
+          newContactData.name,
+          { name: newContactData.name, phone: newContactData.phone, email: newContactData.email },
+          selectedWorkspace!.workspace_id
+        );
+        
         toast({
           title: "Contato criado",
           description: "O novo contato foi adicionado com sucesso.",
@@ -1062,6 +1072,17 @@ export function CRMContatos() {
               : contact,
           ),
         );
+        
+        // Registrar log de auditoria
+        await logUpdate(
+          'contact',
+          editingContact.id,
+          editingContact.name.trim(),
+          null, // oldData não disponível
+          { name: editingContact.name.trim(), email: editingContact.email.trim() },
+          selectedWorkspace!.workspace_id
+        );
+        
         toast({
           title: "Contato atualizado",
           description: "As informações do contato foram salvas com sucesso.",
@@ -2073,18 +2094,7 @@ export function CRMContatos() {
                   <tr key={contact.id} className="hover:bg-blue-50 group h-[32px] dark:hover:bg-[#1f2937]">
                     {/* Name */}
                     <td className="border border-[#e0e0e0] px-2 py-0 whitespace-nowrap dark:border-gray-700">
-                      <div className="flex items-center gap-2 h-full">
-                        <div className="w-5 h-5 rounded-full bg-gray-200 flex items-center justify-center overflow-hidden flex-shrink-0 border border-gray-300 dark:bg-gray-700 dark:border-gray-600">
-                           {contact.profile_image_url ? (
-                            <img src={contact.profile_image_url} alt="" className="w-full h-full object-cover" />
-                          ) : (
-                            <span className="text-[9px] font-bold text-gray-500 dark:text-gray-200">
-                              {(contact.name && contact.name !== '-' ? contact.name : (contact.phone || "?")).charAt(0).toUpperCase()}
-                            </span>
-                          )}
-                        </div>
-                        <span className="text-gray-900 font-medium truncate dark:text-gray-100">{contact.name && contact.name !== '-' ? contact.name : (contact.phone || 'Sem nome')}</span>
-                      </div>
+                      <span className="text-gray-900 font-medium truncate dark:text-gray-100">{contact.name && contact.name !== '-' ? contact.name : (contact.phone || 'Sem nome')}</span>
                     </td>
                     <td className="border border-[#e0e0e0] px-2 py-0 whitespace-nowrap align-top dark:border-gray-700">
                       <div className="flex items-start gap-1 h-full">

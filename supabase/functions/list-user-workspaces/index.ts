@@ -139,9 +139,9 @@ serve(async (req): Promise<Response> => {
 
       console.log('✅ Found system user:', systemUser.id, 'profile:', systemUser.profile);
 
-      // If user is master, return all workspaces (including inactive ones for management)
-      if (systemUser.profile === 'master') {
-        console.log('🔐 User is master, fetching all workspaces...');
+      // If user is master or support, return all workspaces (including inactive ones for management)
+      if (systemUser.profile === 'master' || systemUser.profile === 'support') {
+        console.log(`🔐 User is ${systemUser.profile}, fetching all workspaces...`);
         
         const { data: workspaces, error: workspacesError } = await supabase
           .from('workspaces_view')
@@ -150,7 +150,7 @@ serve(async (req): Promise<Response> => {
           .order('name');
 
         if (workspacesError) {
-          console.error('❌ Error fetching workspaces for master:', workspacesError);
+          console.error('❌ Error fetching workspaces for master/support:', workspacesError);
           throw new Error(`Failed to fetch workspaces: ${workspacesError.message}`);
         }
 
@@ -170,10 +170,10 @@ serve(async (req): Promise<Response> => {
           is_active: workspaceStatuses?.find(s => s.id === w.workspace_id)?.is_active ?? true
         })) || [];
 
-        console.log('✅ Returning', workspacesWithStatus?.length || 0, 'workspaces for master user');
+        console.log('✅ Returning', workspacesWithStatus?.length || 0, 'workspaces for', systemUser.profile, 'user');
         return successResponse({ 
           workspaces: workspacesWithStatus || [], 
-          userRole: 'master' 
+          userRole: systemUser.profile 
         });
       }
 

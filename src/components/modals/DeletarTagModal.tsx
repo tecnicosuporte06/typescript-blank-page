@@ -12,6 +12,8 @@ import {
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { AlertTriangle } from "lucide-react";
+import { useWorkspace } from "@/contexts/WorkspaceContext";
+import { logDelete } from "@/utils/auditLog";
 
 interface Tag {
   id: string;
@@ -28,6 +30,7 @@ interface DeletarTagModalProps {
 export function DeletarTagModal({ isOpen, onClose, onTagDeleted, tag }: DeletarTagModalProps) {
   const [isLoading, setIsLoading] = useState(false);
   const { toast } = useToast();
+  const { selectedWorkspace } = useWorkspace();
 
   const handleDelete = async () => {
     if (!tag?.id) return;
@@ -49,6 +52,15 @@ export function DeletarTagModal({ isOpen, onClose, onTagDeleted, tag }: DeletarT
         .eq('id', tag.id);
 
       if (tagError) throw tagError;
+
+      // Registrar log de auditoria
+      await logDelete(
+        'tag',
+        tag.id,
+        tag.name,
+        { name: tag.name },
+        selectedWorkspace?.workspace_id
+      );
 
       toast({
         title: "Etiqueta deletada",

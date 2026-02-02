@@ -13,7 +13,7 @@ interface AuthUser {
 
 interface AuthContextType {
   user: AuthUser | null;
-  userRole: 'master' | 'admin' | 'user' | null;
+  userRole: 'master' | 'support' | 'admin' | 'user' | null;
   loading: boolean;
   login: (email: string, password: string) => Promise<{ error?: string }>;
   logout: () => Promise<void>;
@@ -30,12 +30,14 @@ export const useAuth = () => {
   return context;
 };
 
-const mapProfileToRole = (profile: string): 'master' | 'admin' | 'user' => {
+const mapProfileToRole = (profile: string): 'master' | 'support' | 'admin' | 'user' => {
   const p = (profile || '').toLowerCase();
   switch (p) {
     case 'master':
     case 'mentor_master':
       return 'master';
+    case 'support':
+      return 'support';
     case 'admin':
     case 'gestor':
       return 'admin';
@@ -46,7 +48,7 @@ const mapProfileToRole = (profile: string): 'master' | 'admin' | 'user' => {
 
 export const useAuthState = () => {
   const [user, setUser] = useState<AuthUser | null>(null);
-  const [userRole, setUserRole] = useState<'master' | 'admin' | 'user' | null>(null);
+  const [userRole, setUserRole] = useState<'master' | 'support' | 'admin' | 'user' | null>(null);
   const [loading, setLoading] = useState(true);
 
   // Load user from localStorage on mount
