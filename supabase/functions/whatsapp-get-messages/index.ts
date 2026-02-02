@@ -4,8 +4,31 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-system-user-id, x-system-user-email, x-workspace-id',
-  'Cache-Control': 'public, max-age=10', // 10 seconds cache
+  'Cache-Control': 'private, max-age=5', // 5 seconds cache
 };
+
+// Campos necessários para exibição de mensagens (evita select *)
+const MESSAGE_SELECT_FIELDS = `
+  id,
+  conversation_id,
+  content,
+  message_type,
+  sender_type,
+  sender_id,
+  file_url,
+  file_name,
+  mime_type,
+  created_at,
+  status,
+  delivered_at,
+  read_at,
+  external_id,
+  metadata,
+  workspace_id,
+  origem_resposta,
+  reply_to_message_id,
+  evolution_key_id
+`;
 
 serve(async (req) => {
   // Handle CORS preflight requests
@@ -44,9 +67,10 @@ serve(async (req) => {
       before
     });
 
+    // Usar campos específicos para otimizar transferência de dados
     let query = supabase
       .from('messages')
-      .select('*')
+      .select(MESSAGE_SELECT_FIELDS)
       .eq('workspace_id', workspaceId)
       .eq('conversation_id', conversationId)
       .order('created_at', { ascending: false })
