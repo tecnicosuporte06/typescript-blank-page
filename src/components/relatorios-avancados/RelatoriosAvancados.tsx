@@ -777,7 +777,6 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
       // Limpar dados "pesados" — fase 2 repõe
       setContacts([]);
       setActivities([]);
-      setTeamWorkRankingData([]);
       setTags([]);
 
     const effectiveWorkspaceId =
@@ -1684,6 +1683,9 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
   const indicatorFunnels = useMemo(() => {
     const nameByTagId = new Map((availableTags || []).map((t: any) => [t.id, t.name]));
     const nameByProductId = new Map((availableProducts || []).map((p: any) => [p.id, p.name]));
+    const pipelineIdSet = new Set((pipelines || []).map((p: any) => p.id));
+    const getColumnsSet = (pipelineId: string) =>
+      new Set((pipelineColumnsMap?.[pipelineId] || []).map((c: any) => c.id));
 
     const apply = (funnel: any) => {
       const groups = normalizeFunnelGroups(Array.isArray(funnel?.filters) ? funnel.filters : []);
@@ -1713,8 +1715,8 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
       };
 
       groups.forEach((g: any) => {
-        const pipeline = g.pipeline || 'all';
-        const column = g.column || 'all';
+        let pipeline = g.pipeline || 'all';
+        let column = g.column || 'all';
         const team = g.team || 'all';
         const status = g.status || 'all';
         const tagFilters = Array.isArray(g.tags) ? g.tags : [];
@@ -1726,6 +1728,18 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
             }
           : null;
         const valueFilter = g.value;
+
+        if (pipeline !== 'all' && !pipelineIdSet.has(pipeline)) {
+          pipeline = 'all';
+        }
+        if (column !== 'all') {
+          if (pipeline === 'all') {
+            column = 'all';
+          } else {
+            const cols = getColumnsSet(pipeline);
+            if (!cols.has(column)) column = 'all';
+          }
+        }
 
         const withinDate = (iso?: string) => {
           if (!dateRange || (!dateRange.from && !dateRange.to)) return true;
@@ -1831,8 +1845,19 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
             const id = String(m?.id || '');
             const set = metricSets.get(id);
             if (!set) return;
-            const mp = String(m?.pipeline || 'all');
-            const mc = String(m?.column || 'all');
+            let mp = String(m?.pipeline || 'all');
+            let mc = String(m?.column || 'all');
+            if (mp !== 'all' && !pipelineIdSet.has(mp)) {
+              mp = 'all';
+            }
+            if (mc !== 'all') {
+              if (mp === 'all') {
+                mc = 'all';
+              } else {
+                const cols = getColumnsSet(mp);
+                if (!cols.has(mc)) mc = 'all';
+              }
+            }
             let scoped = cardsBase;
             if (mp !== 'all') scoped = scoped.filter((c: any) => c.pipeline_id === mp);
             if (mc !== 'all') scoped = scoped.filter((c: any) => c.column_id === mc);
