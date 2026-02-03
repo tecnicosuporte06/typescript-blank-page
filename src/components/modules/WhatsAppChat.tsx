@@ -17,7 +17,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { useTags } from "@/hooks/useTags";
 import { useProfileImages } from "@/hooks/useProfileImages";
 import { useInstanceAssignments } from "@/hooks/useInstanceAssignments";
-import { useWorkspaceConnections } from "@/hooks/useWorkspaceConnections";
+import { useWorkspaceConnections, WorkspaceConnection } from "@/hooks/useWorkspaceConnections";
 import { useWorkspaceMembers } from "@/hooks/useWorkspaceMembers";
 import { useWorkspace } from "@/contexts/WorkspaceContext";
 import { usePipelinesContext } from "@/contexts/PipelinesContext";
@@ -566,11 +566,15 @@ export function WhatsAppChat({
   const [quickCountryCode, setQuickCountryCode] = useState("55"); // ✅ padrão Brasil
   const [isCountryCodeOpen, setIsCountryCodeOpen] = useState(false);
   const [countryCodeSearch, setCountryCodeSearch] = useState("");
+  const [showConnectionPopover, setShowConnectionPopover] = useState(false);
+  const [pendingPhoneNumber, setPendingPhoneNumber] = useState<string>("");
+  const [pendingCountryCode, setPendingCountryCode] = useState<string>("");
   const [showAllQueues, setShowAllQueues] = useState(true);
   const [connectionsOpen, setConnectionsOpen] = useState(false);
   const [showSelectAgentModal, setShowSelectAgentModal] = useState(false);
   const [quickFunnelsModalOpen, setQuickFunnelsModalOpen] = useState(false);
   const [filtersOpen, setFiltersOpen] = useState(false);
+  const [sidebarConnections, setSidebarConnections] = useState<WorkspaceConnection[]>([]);
   const [selectedAgent, setSelectedAgent] = useState<string>("");
   const NO_TAG_FILTER_ID = "__NO_TAG__";
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
@@ -579,8 +583,51 @@ export function WhatsAppChat({
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [customFiltersOpen, setCustomFiltersOpen] = useState(false);
 
+  const resetQuickConversationStates = useCallback(() => {
+    setShowConnectionPopover(false);
+    setPendingPhoneNumber("");
+    setPendingCountryCode("");
+  }, []);
+
   // Estados para as abas baseadas no papel
   const [activeTab, setActiveTab] = useState<string>('all');
+
+  useEffect(() => {
+    resetQuickConversationStates();
+  }, [selectedWorkspace?.workspace_id, resetQuickConversationStates]);
+
+  useEffect(() => {
+    if (!selectedWorkspace?.workspace_id) {
+      setSidebarConnections([]);
+      return;
+    }
+
+    let cancelled = false;
+    const fetchSidebarConnections = async () => {
+      const { data, error } = await supabase
+        .from("connections")
+        .select("id, instance_name, phone_number, status")
+        .eq("workspace_id", selectedWorkspace.workspace_id)
+        .order("instance_name");
+
+      if (error) {
+        console.error("Erro ao carregar conexões da sidebar:", error);
+        return;
+      }
+
+      if (!cancelled) {
+        setSidebarConnections(data || []);
+      }
+    };
+
+    fetchSidebarConnections();
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedWorkspace?.workspace_id]);
+
+  const effectiveConnections =
+    sidebarConnections.length > 0 ? sidebarConnections : workspaceConnections;
 
   // ✅ Garantir que a aba "Minhas conversas" liste tudo sem depender do botão "Atualizar conversas"
   // O backend retorna counts (ex.: mine), mas a lista é paginada. Ao entrar na aba, vamos carregar mais páginas
@@ -2346,7 +2393,6 @@ export function WhatsAppChat({
       });
       return;
     }
-    setIsCreatingQuickConversation(true);
     try {
       // Montar número internacional completo
       const fullPhoneNumber = `+${ddiDigits}${localDigits}`;
@@ -2367,10 +2413,7 @@ export function WhatsAppChat({
       const phoneDigits = formattedPhone.replace(/\D/g, '');
 
       // Verificar contra todas as conexões do workspace atual
-      const {
-        data: connections
-      } = await supabase.from('connections').select('phone_number, instance_name').eq('workspace_id', selectedWorkspace?.workspace_id);
-      const isInstanceNumber = connections?.some(conn => {
+      const isInstanceNumber = workspaceConnections?.some(conn => {
         const connPhone = conn.phone_number?.replace(/\D/g, '');
         return connPhone && phoneDigits === connPhone;
       });
@@ -2392,12 +2435,39 @@ export function WhatsAppChat({
         });
         return;
       }
+
+      if (!effectiveConnections?.length) {
+        return;
+      }
+
+      const connectedConnections = effectiveConnections.filter(
+        (c) => String(c.status || '').toLowerCase() === 'connected'
+      );
+
+      if (connectedConnections.length === 0) {
+        toast({
+          title: "Conexão indisponível",
+          description: "Nenhuma conexão conectada no workspace atual.",
+          variant: "destructive"
+        });
+        return;
+      }
+
+      if (connectedConnections.length > 1) {
+        setPendingPhoneNumber(phoneNumber.format('E.164'));
+        setPendingCountryCode(quickCountryCode);
+        setShowConnectionPopover(true);
+        return;
+      }
+
+      setIsCreatingQuickConversation(true);
       const {
         data,
         error
       } = await supabase.functions.invoke('create-quick-conversation', {
         body: {
-          phoneNumber: phoneNumber.format('E.164')
+          phoneNumber: phoneNumber.format('E.164'),
+          connectionId: connectedConnections[0]?.id
         },
         headers: {
           'x-workspace-id': selectedWorkspace.workspace_id
@@ -2443,6 +2513,7 @@ export function WhatsAppChat({
           }, 1000);
         }
       }, 500);
+      resetQuickConversationStates();
       setQuickPhoneNumber("");
       setQuickCountryCode("55");
       toast({
@@ -2460,6 +2531,86 @@ export function WhatsAppChat({
         description: "Não foi possível criar conversa",
         variant: "destructive"
       });
+      resetQuickConversationStates();
+    } finally {
+      setIsCreatingQuickConversation(false);
+    }
+  };
+
+  const handleQuickConversationConnectionSelected = async (connectionId: string) => {
+    if (!pendingPhoneNumber || isCreatingQuickConversation) return;
+    if (!selectedWorkspace?.workspace_id) return;
+
+    setShowConnectionPopover(false);
+    setIsCreatingQuickConversation(true);
+
+    try {
+      const phoneNumberObj = parsePhoneNumber(pendingPhoneNumber);
+
+      const { data, error } = await supabase.functions.invoke('create-quick-conversation', {
+        body: {
+          phoneNumber: pendingPhoneNumber,
+          connectionId
+        },
+        headers: {
+          'x-workspace-id': selectedWorkspace.workspace_id
+        }
+      });
+
+      if (error) {
+        console.error('❌ Error calling create-quick-conversation (with connection):', {
+          error,
+          errorName: error.name,
+          errorMessage: error.message,
+          context: error.context
+        });
+        toast({
+          title: "Erro",
+          description: error.message || "Não foi possível criar conversa",
+          variant: "destructive"
+        });
+        return;
+      }
+
+      if (!data?.success) {
+        toast({
+          title: "Erro",
+          description: data?.error || "Não foi possível criar conversa",
+          variant: "destructive"
+        });
+        return;
+      }
+
+      await fetchConversations();
+
+      setTimeout(() => {
+        const conversation = conversations.find(conv => conv.id === data.conversationId);
+        if (conversation) {
+          handleSelectConversation(conversation);
+        } else {
+          setTimeout(async () => {
+            await fetchConversations();
+            const retryConv = conversations.find(conv => conv.id === data.conversationId);
+            if (retryConv) handleSelectConversation(retryConv);
+          }, 1000);
+        }
+      }, 500);
+
+      resetQuickConversationStates();
+      setQuickPhoneNumber("");
+      setQuickCountryCode("55");
+      toast({
+        title: "Conversa criada",
+        description: `Conversa iniciada com ${phoneNumberObj?.format('INTERNATIONAL') || pendingPhoneNumber}`
+      });
+    } catch (err) {
+      console.error('❌ Exception creating quick conversation (with connection):', err);
+      toast({
+        title: "Erro",
+        description: "Não foi possível criar conversa",
+        variant: "destructive"
+      });
+      resetQuickConversationStates();
     } finally {
       setIsCreatingQuickConversation(false);
     }
@@ -2764,9 +2915,25 @@ export function WhatsAppChat({
               </SelectTrigger>
               <SelectContent className="rounded-none border-[#d4d4d4] dark:bg-[#2d2d2d] dark:border-gray-600">
                 <SelectItem value="all" className="text-xs rounded-none cursor-pointer dark:text-gray-200 dark:focus:bg-gray-700">Todas as conexões</SelectItem>
-                {connectionsLoading ? <SelectItem value="__loading__" disabled className="text-xs dark:text-gray-400">Carregando...</SelectItem> : workspaceConnections.length === 0 ? <SelectItem value="__empty__" disabled className="text-xs dark:text-gray-400">Nenhuma conexão</SelectItem> : workspaceConnections.map(connection => <SelectItem key={connection.id} value={connection.id} className="text-xs rounded-none cursor-pointer dark:text-gray-200 dark:focus:bg-gray-700">
+                {connectionsLoading ? (
+                  <SelectItem value="__loading__" disabled className="text-xs dark:text-gray-400">
+                    Carregando...
+                  </SelectItem>
+                ) : effectiveConnections.length === 0 ? (
+                  <SelectItem value="__empty__" disabled className="text-xs dark:text-gray-400">
+                    Nenhuma conexão
+                  </SelectItem>
+                ) : (
+                  effectiveConnections.map((connection) => (
+                    <SelectItem
+                      key={connection.id}
+                      value={connection.id}
+                      className="text-xs rounded-none cursor-pointer dark:text-gray-200 dark:focus:bg-gray-700"
+                    >
                       {connection.instance_name}
-                    </SelectItem>)}
+                    </SelectItem>
+                  ))
+                )}
               </SelectContent>
             </Select>
           </div>}
@@ -3316,9 +3483,99 @@ export function WhatsAppChat({
                   disabled={isCreatingQuickConversation}
                   maxLength={15}
                 />
-                <Button variant="ghost" size="icon" className="absolute right-0 top-1/2 transform -translate-y-1/2 h-8 w-8 rounded-none hover:bg-gray-200 dark:hover:bg-gray-700" disabled={!quickPhoneNumber.trim() || isCreatingQuickConversation} onClick={handleCreateQuickConversation}>
-                  {isCreatingQuickConversation ? <div className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-primary border-t-transparent" /> : <ArrowRight className="w-3.5 h-3.5 dark:text-gray-400" />}
-                </Button>
+                <Popover
+                  open={showConnectionPopover}
+                  onOpenChange={(open) => {
+                    setShowConnectionPopover(open);
+                    if (!open) {
+                      setPendingPhoneNumber("");
+                      setPendingCountryCode("");
+                    }
+                  }}
+                >
+                  <PopoverTrigger asChild>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="absolute right-0 top-1/2 transform -translate-y-1/2 h-8 w-8 rounded-none hover:bg-gray-200 dark:hover:bg-gray-700"
+                        disabled={
+                          !quickPhoneNumber.trim() ||
+                          isCreatingQuickConversation ||
+                          connectionsLoading ||
+                          !effectiveConnections.length
+                        }
+                        onClick={handleCreateQuickConversation}
+                      >
+                      {isCreatingQuickConversation ? (
+                        <div className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+                      ) : (
+                        <ArrowRight className="w-3.5 h-3.5 dark:text-gray-400" />
+                      )}
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent
+                    className="w-64 p-0 rounded-none border-[#d4d4d4] bg-white dark:bg-[#1b1b1b] dark:border-gray-700"
+                    align="end"
+                    side="top"
+                    sideOffset={8}
+                    onOpenAutoFocus={(e) => e.preventDefault()}
+                  >
+                    <div className="p-2">
+                      <div className="flex items-center justify-between">
+                        <p className="text-xs font-semibold text-gray-700 dark:text-gray-200">
+                          Escolha a conexão
+                        </p>
+                        <button
+                          type="button"
+                          className="p-1 hover:bg-gray-100 dark:hover:bg-gray-700"
+                          onClick={() => setShowConnectionPopover(false)}
+                        >
+                          <X className="h-3.5 w-3.5 text-gray-500 dark:text-gray-300" />
+                        </button>
+                      </div>
+
+                      <div className="mt-2 max-h-56 overflow-y-auto">
+                        {effectiveConnections
+                          .filter((c) => String(c.status || '').toLowerCase() === 'connected')
+                          .map((connection) => (
+                            <button
+                              key={connection.id}
+                              type="button"
+                              onClick={() => handleQuickConversationConnectionSelected(connection.id)}
+                              className="w-full px-2 py-2 text-left hover:bg-accent dark:hover:bg-gray-700"
+                              disabled={isCreatingQuickConversation}
+                            >
+                              <div className="flex items-center justify-between gap-2">
+                                <span className="text-xs font-medium text-gray-800 dark:text-gray-100 truncate">
+                                  {connection.instance_name || 'Conexão'}
+                                </span>
+                                <span className="text-[10px] text-gray-500 dark:text-gray-400">
+                                  Conectada
+                                </span>
+                              </div>
+                              {connection.phone_number ? (
+                                <div className="text-[10px] text-gray-500 dark:text-gray-400 mt-0.5 truncate">
+                                  {connection.phone_number}
+                                </div>
+                              ) : null}
+                            </button>
+                          ))}
+
+                        {effectiveConnections.filter((c) => String(c.status || '').toLowerCase() === 'connected').length === 0 ? (
+                          <div className="px-2 py-3 text-xs text-gray-500 dark:text-gray-400">
+                            Nenhuma conexão conectada.
+                          </div>
+                        ) : null}
+                      </div>
+
+                      {pendingPhoneNumber ? (
+                        <div className="mt-2 px-2 pb-1 text-[10px] text-gray-500 dark:text-gray-400">
+                          Número: {pendingPhoneNumber}
+                        </div>
+                      ) : null}
+                    </div>
+                  </PopoverContent>
+                </Popover>
               </div>
             </div>
           </div>

@@ -52,6 +52,8 @@ const formatPhoneNumberDisplay = (phone: string): string => {
   return phone;
 };
 
+const PHONE_LENGTH_REGEX = /^\d{12,13}$/;
+
 const ALLOWED_CONNECTION_STATUSES: Connection['status'][] = ['creating', 'qr', 'connecting', 'connected', 'disconnected', 'error'];
 
 const normalizeConnectionStatus = (status?: string | null): Connection['status'] => {
@@ -642,6 +644,17 @@ export function ConexoesNova({ workspaceId }: ConexoesNovaProps) {
       // Buscar nome da coluna selecionada
       const selectedColumnData = pipelineColumns.find(col => col.id === selectedColumn);
       
+      const normalizedPhone = (phoneNumber || "").replace(/\D/g, "");
+
+      if (!PHONE_LENGTH_REGEX.test(normalizedPhone)) {
+        toast({
+          title: 'Número inválido',
+          description: 'Informe um número com 12 ou 13 dígitos (somente números).',
+          variant: 'destructive',
+        });
+        return;
+      }
+
       const connectionData = {
         instanceName: instanceName.trim(),
         historyRecovery: historyRecovery as 'none' | 'week' | 'month' | 'quarter',
@@ -651,7 +664,7 @@ export function ConexoesNova({ workspaceId }: ConexoesNovaProps) {
         defaultColumnId: selectedColumn || null,
         defaultColumnName: selectedColumnData?.name || null,
         queueId: selectedQueueId || null,
-        phoneNumber: phoneNumber?.trim() || null,
+        phoneNumber: normalizedPhone,
         provider: selectedProvider,
         metadata: {
           border_color: connectionColor
@@ -812,6 +825,15 @@ export function ConexoesNova({ workspaceId }: ConexoesNovaProps) {
     }
 
     const normalizedPhone = phoneNumber ? normalizePhoneNumber(phoneNumber) : null;
+
+    if (normalizedPhone && !PHONE_LENGTH_REGEX.test(normalizedPhone)) {
+      toast({
+        title: 'Número inválido',
+        description: 'Informe um número com 12 ou 13 dígitos (somente números).',
+        variant: 'destructive',
+      });
+      return;
+    }
 
     setIsLoading(true);
     try {
@@ -1465,11 +1487,16 @@ export function ConexoesNova({ workspaceId }: ConexoesNovaProps) {
                     </div>
 
                     <div className="space-y-2">
-                      <Label htmlFor="phoneNumber" className="text-gray-700 dark:text-gray-200">Número do WhatsApp</Label>
+                      <Label htmlFor="phoneNumber" className="text-gray-700 dark:text-gray-200">
+                        Número do WhatsApp
+                      </Label>
                       <Input
                         id="phoneNumber"
                         value={phoneNumber}
-                        onChange={(e) => setPhoneNumber(e.target.value)}
+                        onChange={(e) => {
+                          const digitsOnly = e.target.value.replace(/\D/g, "");
+                          setPhoneNumber(digitsOnly.slice(0, 13));
+                        }}
                         placeholder="Ex: 5511999999999"
                         type="tel"
                         className="rounded-none dark:bg-[#161616] dark:border-gray-700 dark:text-gray-100"

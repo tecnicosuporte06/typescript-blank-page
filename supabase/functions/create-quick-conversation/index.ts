@@ -13,7 +13,7 @@ serve(async (req) => {
   }
 
   try {
-    const { phoneNumber } = await req.json()
+    const { phoneNumber, connectionId } = await req.json()
 
     if (!phoneNumber) {
       return new Response(
@@ -130,22 +130,83 @@ serve(async (req) => {
       console.log(`Using existing contact with ID: ${contactId}`)
     }
 
-    // Buscar conexão padrão ativa antes de verificar conversas existentes
-    const { data: defaultConnection } = await supabase
-      .from('connections')
-      .select('id, instance_name')
-      .eq('workspace_id', workspaceId)
-      .eq('status', 'connected')
-      .eq('is_default', true)
-      .maybeSingle();
+    // Buscar conexão alvo (selecionada ou padrão)
+    let targetConnection: any = null;
+
+    if (connectionId) {
+      const { data: selectedConnection, error: selectedConnError } = await supabase
+        .from('connections')
+        .select('id, instance_name, phone_number, status, default_pipeline_id, queue_id')
+        .eq('workspace_id', workspaceId)
+        .eq('id', connectionId)
+        .maybeSingle();
+
+      if (selectedConnError) {
+        console.error('❌ Erro ao buscar conexão selecionada:', selectedConnError);
+        return new Response(
+          JSON.stringify({ error: 'Erro ao buscar conexão selecionada', success: false }),
+          { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+
+      if (!selectedConnection) {
+        return new Response(
+          JSON.stringify({ error: 'Conexão não encontrada', success: false }),
+          { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+
+      if (String(selectedConnection.status || '').toLowerCase() !== 'connected') {
+        return new Response(
+          JSON.stringify({ error: 'Conexão selecionada não está conectada', success: false }),
+          { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+
+      targetConnection = selectedConnection;
+    } else {
+      // Buscar conexão padrão ativa
+      const { data: defaultConnection } = await supabase
+        .from('connections')
+        .select('id, instance_name, phone_number, status, default_pipeline_id, queue_id')
+        .eq('workspace_id', workspaceId)
+        .eq('status', 'connected')
+        .eq('is_default', true)
+        .maybeSingle();
+
+      targetConnection = defaultConnection;
+
+      // Fallback: se não houver padrão, pegar a primeira conectada
+      if (!targetConnection) {
+        const { data: firstConnected } = await supabase
+          .from('connections')
+          .select('id, instance_name, phone_number, status, default_pipeline_id, queue_id')
+          .eq('workspace_id', workspaceId)
+          .eq('status', 'connected')
+          .order('instance_name', { ascending: true })
+          .limit(1)
+          .maybeSingle();
+
+        targetConnection = firstConnected;
+      }
+    }
+
+    const targetConnectionId = targetConnection?.id || null;
 
     // Buscar conversas existentes do contato no workspace
-    const { data: existingConversations, error: existingConvError } = await supabase
+    let existingConvQuery = supabase
       .from('conversations')
       .select('id, status, connection_id')
       .eq('contact_id', contactId)
       .eq('workspace_id', workspaceId)
       .order('created_at', { ascending: false });
+
+    // Se temos conexão alvo, buscar/reutilizar APENAS conversas daquela conexão
+    if (targetConnectionId) {
+      existingConvQuery = existingConvQuery.eq('connection_id', targetConnectionId);
+    }
+
+    const { data: existingConversations, error: existingConvError } = await existingConvQuery;
 
     if (existingConvError) {
       console.error('❌ Erro ao buscar conversas existentes:', existingConvError);
@@ -156,23 +217,23 @@ serve(async (req) => {
     }
 
     let conversationId: string | undefined;
-    let conversationToReuse =
-      existingConversations?.find(conv => conv.connection_id && defaultConnection?.id && conv.connection_id === defaultConnection.id) ??
-      existingConversations?.[0];
+    const conversationToReuse = existingConversations?.[0];
+    let createdNewConversation = false;
 
     if (conversationToReuse) {
       conversationId = conversationToReuse.id;
 
-      // Reabrir conversa caso esteja fechada e garantir que está vinculada à conexão padrão
+      // Reabrir conversa caso esteja fechada e garantir que está vinculada à conexão alvo
       const updates: Record<string, any> = {
         status: 'open',
         updated_at: new Date().toISOString(),
         last_activity_at: new Date().toISOString(),
       };
 
-      if (defaultConnection?.id) {
-        updates.connection_id = defaultConnection.id;
-        updates.evolution_instance = defaultConnection.instance_name || null;
+      if (targetConnection?.id) {
+        updates.connection_id = targetConnection.id;
+        updates.evolution_instance = targetConnection.instance_name || null;
+        updates.connection_phone = targetConnection.phone_number || null;
       }
 
       const { error: reopenError } = await supabase
@@ -196,7 +257,7 @@ serve(async (req) => {
     if (!conversationId) {
       console.log('📡 Creating new conversation for contact:', contactId);
 
-      if (!defaultConnection) {
+      if (!targetConnection) {
         console.warn(`⚠️ Nenhuma conexão ativa encontrada para workspace ${workspaceId}`);
       }
 
@@ -206,8 +267,9 @@ serve(async (req) => {
         workspace_id: workspaceId,
         canal: 'whatsapp',
         agente_ativo: false,
-        connection_id: defaultConnection?.id || null,
-        evolution_instance: defaultConnection?.instance_name || null
+        connection_id: targetConnection?.id || null,
+        evolution_instance: targetConnection?.instance_name || null,
+        instance_phone: targetConnection?.phone_number || null,
       }
 
       console.log('📦 Conversation data:', {
@@ -230,21 +292,24 @@ serve(async (req) => {
       }
 
       conversationId = newConversation.id
+      createdNewConversation = true;
       console.log(`Created new conversation with ID: ${conversationId}`)
 
       // 🎯 DISTRIBUIR CONVERSA PARA FILA PADRÃO DO WORKSPACE (se existir)
       try {
         console.log(`🎯 Verificando fila padrão do workspace: ${workspaceId}`);
         
-        // Buscar fila padrão do workspace (primeira ativa, ou pela conexão padrão)
-        const { data: defaultConnectionQueue } = await supabase
-          .from('connections')
-          .select('queue_id, instance_name')
-          .eq('workspace_id', workspaceId)
-          .eq('is_default', true)
-          .maybeSingle();
-
-        const defaultQueueId = defaultConnectionQueue?.queue_id;
+        let defaultQueueId = targetConnection?.queue_id || null;
+        if (!defaultQueueId) {
+          // Fallback: fila da conexão padrão
+          const { data: defaultConnectionQueue } = await supabase
+            .from('connections')
+            .select('queue_id, instance_name')
+            .eq('workspace_id', workspaceId)
+            .eq('is_default', true)
+            .maybeSingle();
+          defaultQueueId = defaultConnectionQueue?.queue_id || null;
+        }
 
         if (defaultQueueId) {
           console.log(`📋 Conexão padrão vinculada à fila: ${defaultQueueId}`);
@@ -358,6 +423,35 @@ serve(async (req) => {
       }
     } else {
       console.log(`Using existing conversation with ID: ${conversationId}`)
+    }
+
+    // 🧩 Criar card no pipeline (apenas quando a conversa foi criada agora)
+    if (createdNewConversation && conversationId) {
+      try {
+        const pipelineId = targetConnection?.default_pipeline_id || null;
+        const connectionPhone = targetConnection?.phone_number || null;
+
+        const { data: cardData, error: cardError } = await supabase.functions.invoke(
+          'smart-pipeline-card-manager',
+          {
+            body: {
+              contactId,
+              conversationId,
+              workspaceId,
+              pipelineId,
+              connectionPhone,
+            },
+          }
+        );
+
+        if (cardError) {
+          console.error('⚠️ Erro ao criar card (não-bloqueante):', cardError);
+        } else {
+          console.log('✅ Card criado/gerenciado:', cardData?.action || 'ok');
+        }
+      } catch (cardErr) {
+        console.error('⚠️ Exceção ao criar card (não-bloqueante):', cardErr);
+      }
     }
 
     return new Response(
