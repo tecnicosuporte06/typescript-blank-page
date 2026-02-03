@@ -1,6 +1,5 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { supabase } from '@/integrations/supabase/client';
-import { toast } from '@/hooks/use-toast';
 
 export interface WorkspaceConnection {
   id: string;
@@ -11,93 +10,103 @@ export interface WorkspaceConnection {
 
 export const useWorkspaceConnections = (workspaceId?: string) => {
   const [connections, setConnections] = useState<WorkspaceConnection[]>([]);
-  const [isLoading, setIsLoading] = useState(false);
+  const [isLoading, setIsLoading] = useState(true); // Start as loading
   const [pollingEnabled, setPollingEnabled] = useState(true);
+  const isFirstLoadRef = useRef(true);
+  const isFetchingRef = useRef(false);
 
-  const fetchConnections = async () => {
-    if (!workspaceId) return;
+  const fetchConnections = useCallback(async (isPolling = false) => {
+    if (!workspaceId) {
+      setConnections([]);
+      setIsLoading(false);
+      return;
+    }
     
-    setIsLoading(true);
+    // Evitar múltiplas chamadas simultâneas
+    if (isFetchingRef.current) return;
+    isFetchingRef.current = true;
+    
+    // Só mostrar loading no primeiro carregamento, não em polling
+    if (!isPolling && isFirstLoadRef.current) {
+      setIsLoading(true);
+    }
+    
     try {
-      // First, try direct query to connections table
+      // Query direta para a tabela connections
       const { data, error } = await supabase
         .from('connections')
         .select('id, instance_name, phone_number, status')
         .eq('workspace_id', workspaceId)
         .order('instance_name');
 
-      if (error || !data || data.length === 0) {
-        // Fallback to edge function silently
-        try {
-          // Get user data for headers
-          const userData = localStorage.getItem('currentUser');
-          const currentUserData = userData ? JSON.parse(userData) : null;
-          
-          if (!currentUserData?.id) {
-            setConnections([]);
-            return;
-          }
-
-          const { data: functionData, error: functionError } = await supabase.functions.invoke('evolution-list-connections', {
-            body: { workspaceId },
-            headers: {
-              'x-system-user-id': currentUserData.id,
-              'x-system-user-email': currentUserData.email || '',
-              'x-workspace-id': workspaceId
-            }
-          });
-
-          if (functionError) {
-            // Silently fail - Evolution API not configured
-            setConnections([]);
-            return;
-          }
-
-          if (functionData?.success && functionData.connections) {
-            setConnections(functionData.connections.map((conn: any) => ({
-              id: conn.id,
-              instance_name: conn.instance_name,
-              phone_number: conn.phone_number,
-              status: conn.status
-            })));
-          } else {
-            setConnections([]);
-          }
-        } catch (fallbackError) {
-          // Silently fail - Evolution API not configured or other network issues
-          setConnections([]);
-        }
-      } else {
-        setConnections(data || []);
+      if (error) {
+        console.warn('⚠️ Erro ao buscar conexões:', error);
+        // NÃO zerar conexões em caso de erro - manter estado anterior
+        return;
       }
+
+      // Só atualizar se houver dados ou se for primeiro load
+      if (data) {
+        setConnections(data);
+      }
+      
+      isFirstLoadRef.current = false;
     } catch (error) {
-      // Only log serious errors, not configuration issues
       console.error('Error fetching connections:', error);
-      setConnections([]);
+      // NÃO zerar conexões em caso de erro - manter estado anterior
     } finally {
+      isFetchingRef.current = false;
       setIsLoading(false);
     }
-  };
-
-  useEffect(() => {
-    fetchConnections();
   }, [workspaceId]);
 
-  // Polling automático a cada 5 segundos para atualizar status das conexões
+  // Primeiro carregamento
+  useEffect(() => {
+    isFirstLoadRef.current = true;
+    fetchConnections(false);
+  }, [workspaceId, fetchConnections]);
+
+  // Realtime subscription ao invés de polling agressivo
+  useEffect(() => {
+    if (!workspaceId) return;
+
+    const channel = supabase
+      .channel(`connections-${workspaceId}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'connections',
+          filter: `workspace_id=eq.${workspaceId}`
+        },
+        () => {
+          // Atualizar quando houver mudanças na tabela
+          fetchConnections(true);
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [workspaceId, fetchConnections]);
+
+  // Polling mais lento (30 segundos) como fallback para status
   useEffect(() => {
     if (!workspaceId || !pollingEnabled) return;
 
     const interval = setInterval(() => {
-      fetchConnections();
-    }, 5000); // 5 segundos
+      fetchConnections(true);
+    }, 30000); // 30 segundos (era 5)
 
     return () => clearInterval(interval);
-  }, [workspaceId, pollingEnabled]);
+  }, [workspaceId, pollingEnabled, fetchConnections]);
 
   return {
     connections,
     isLoading,
-    fetchConnections,
+    fetchConnections: () => fetchConnections(false),
     setPollingEnabled,
   };
 };

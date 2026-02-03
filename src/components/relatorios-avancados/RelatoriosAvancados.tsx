@@ -970,9 +970,9 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
                       ? rel.product_items.map((pi: any) => ({
                           product_id: pi.product_id ?? null,
                           product_name_snapshot: pi.product_name_snapshot ?? null,
-                          quantity: 1,
-                          unit_value: null,
-                          total_value: null,
+                          quantity: pi.quantity ?? 1,
+                          unit_value: pi.unit_value ?? null,
+                          total_value: pi.total_value ?? null,
                           product: null,
                         }))
                       : c.products,

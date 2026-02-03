@@ -128,7 +128,7 @@ serve(async (req) => {
       cardIds.length
         ? supabase
             .from("pipeline_cards_products")
-            .select("pipeline_card_id, product_id, product_name_snapshot")
+            .select("pipeline_card_id, product_id, product_name_snapshot, quantity, unit_value, total_value")
             .in("pipeline_card_id", cardIds)
         : Promise.resolve({ data: [], error: null }),
       contactIds.length
@@ -140,7 +140,16 @@ serve(async (req) => {
     if (ctagsError) throw ctagsError;
 
     const productIdsByCard = new Map<string, string[]>();
-    const productItemsByCard = new Map<string, Array<{ product_id: string; product_name_snapshot: string | null }>>();
+    const productItemsByCard = new Map<
+      string,
+      Array<{
+        product_id: string;
+        product_name_snapshot: string | null;
+        quantity: number | null;
+        unit_value: number | null;
+        total_value: number | null;
+      }>
+    >();
     (pcp || []).forEach((row: any) => {
       if (!row?.pipeline_card_id || !row?.product_id) return;
       const arr = productIdsByCard.get(row.pipeline_card_id) || [];
@@ -148,7 +157,13 @@ serve(async (req) => {
       productIdsByCard.set(row.pipeline_card_id, arr);
 
       const items = productItemsByCard.get(row.pipeline_card_id) || [];
-      items.push({ product_id: row.product_id, product_name_snapshot: row.product_name_snapshot ?? null });
+      items.push({
+        product_id: row.product_id,
+        product_name_snapshot: row.product_name_snapshot ?? null,
+        quantity: row.quantity ?? null,
+        unit_value: row.unit_value ?? null,
+        total_value: row.total_value ?? null,
+      });
       productItemsByCard.set(row.pipeline_card_id, items);
     });
 
