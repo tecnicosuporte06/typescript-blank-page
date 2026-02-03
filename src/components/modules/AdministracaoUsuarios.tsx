@@ -12,6 +12,7 @@ import { cn } from "@/lib/utils";
 import { useSyncUserContext } from "@/hooks/useUserContext";
 import { useAuth } from "@/hooks/useAuth";
 import { useToast } from "@/hooks/use-toast";
+import { logDelete } from "@/utils/auditLog";
 
 export interface AdministracaoUsuariosRef {
   searchTerm: string;
@@ -84,6 +85,19 @@ export const AdministracaoUsuarios = forwardRef<AdministracaoUsuariosRef>((props
     if (selectedUser) {
       const result = await deleteUser(selectedUser.id);
       if (result.success) {
+        await logDelete(
+          'user',
+          selectedUser.id,
+          selectedUser.name || 'Usuário',
+          {
+            name: selectedUser.name,
+            email: selectedUser.email,
+            profile: selectedUser.profile,
+            status: selectedUser.status,
+            default_channel: selectedUser.default_channel || null
+          },
+          null
+        );
         await refreshUsers();
       }
     }

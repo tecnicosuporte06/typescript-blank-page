@@ -9,6 +9,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { useWorkspaceHeaders } from '@/lib/workspaceHeaders';
 import { useWorkspace } from '@/contexts/WorkspaceContext';
 import { AutomationModal } from './AutomationModal';
+import { logDelete, logUpdate } from '@/utils/auditLog';
 
 interface ColumnAutomation {
   id: string;
@@ -356,6 +357,21 @@ export function ColumnAutomationsTab({
 
       if (error) throw error;
 
+      await logUpdate(
+        'automation',
+        automation.id,
+        automation.name || 'Automação',
+        {
+          name: automation.name,
+          is_active: automation.is_active
+        },
+        {
+          name: automation.name,
+          is_active: newStatus
+        },
+        selectedWorkspace?.workspace_id || null
+      );
+
       await fetchAutomations();
       onAutomationChange?.();
 
@@ -377,6 +393,7 @@ export function ColumnAutomationsTab({
     if (!confirm('Tem certeza que deseja excluir esta automação?')) return;
 
     try {
+      const automation = automations.find(a => a.id === automationId);
       const headers = getHeaders();
       
       const { error } = await supabase
@@ -386,6 +403,19 @@ export function ColumnAutomationsTab({
         });
 
       if (error) throw error;
+
+      if (automation) {
+        await logDelete(
+          'automation',
+          automation.id,
+          automation.name || 'Automação',
+          {
+            name: automation.name,
+            is_active: automation.is_active
+          },
+          selectedWorkspace?.workspace_id || null
+        );
+      }
 
       await fetchAutomations();
       onAutomationChange?.();

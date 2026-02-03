@@ -25,6 +25,7 @@ import { useWorkspaceMembers } from "@/hooks/useWorkspaceMembers";
 import { useCargos } from "@/hooks/useCargos";
 import { useAuth } from "@/hooks/useAuth";
 import { cn } from "@/lib/utils";
+import { logCreate, logUpdate } from "@/utils/auditLog";
 
 interface AdicionarEditarUsuarioModalProps {
   open: boolean;
@@ -236,6 +237,27 @@ export function AdicionarEditarUsuarioModal({
           throw new Error(result.error);
         }
 
+        await logUpdate(
+          'user',
+          editingUser.id,
+          formData.name || editingUser.name || 'Usuário',
+          {
+            name: editingUser.name,
+            email: editingUser.email,
+            profile: editingUser.profile,
+            status: editingUser.status,
+            default_channel: editingUser.default_channel || null
+          },
+          {
+            name: formData.name,
+            email: formData.email,
+            profile: formData.profile,
+            status: editingUser.status,
+            default_channel: formData.default_channel || null
+          },
+          selectedWorkspaceId || null
+        );
+
         toast({
           title: "Sucesso",
           description: "Usuário atualizado com sucesso"
@@ -257,7 +279,7 @@ export function AdicionarEditarUsuarioModal({
         
         if (isGlobalProfile) {
           // Criar usuário global sem vincular a workspace
-          await createUser({
+          const result = await createUser({
             name: userData.name,
             email: userData.email,
             profile: userData.profile,
@@ -265,6 +287,23 @@ export function AdicionarEditarUsuarioModal({
             default_channel: userData.default_channel || undefined,
             phone: userData.phone || undefined
           });
+
+          const createdUserId = result?.data?.id;
+          if (createdUserId) {
+            await logCreate(
+              'user',
+              createdUserId,
+              userData.name,
+              {
+                name: userData.name,
+                email: userData.email,
+                profile: userData.profile,
+                status: 'active',
+                default_channel: userData.default_channel || null
+              },
+              null
+            );
+          }
           
           toast({
             title: "Sucesso",
@@ -274,7 +313,7 @@ export function AdicionarEditarUsuarioModal({
           // Para usuários comuns, criar e vincular à empresa selecionada
           const memberRole = formData.profile === 'admin' ? 'admin' : 'user';
 
-          await createUserAndAddToWorkspace(
+          const createdMember = await createUserAndAddToWorkspace(
             {
               name: userData.name,
               email: userData.email,
@@ -285,6 +324,23 @@ export function AdicionarEditarUsuarioModal({
             },
             memberRole
           );
+
+          const createdUserId = (createdMember as any)?.user_id || (createdMember as any)?.user?.id;
+          if (createdUserId) {
+            await logCreate(
+              'user',
+              createdUserId,
+              userData.name,
+              {
+                name: userData.name,
+                email: userData.email,
+                profile: userData.profile,
+                status: 'active',
+                default_channel: userData.default_channel || null
+              },
+              selectedWorkspaceId || null
+            );
+          }
 
           toast({
             title: "Sucesso",

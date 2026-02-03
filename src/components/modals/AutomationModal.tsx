@@ -13,6 +13,7 @@ import { useToast } from "@/hooks/use-toast";
 import { supabase } from '@/integrations/supabase/client';
 import { useWorkspaceHeaders } from '@/lib/workspaceHeaders';
 import { useWorkspace } from '@/contexts/WorkspaceContext';
+import { logCreate, logUpdate } from '@/utils/auditLog';
 // ✅ Removidos hooks que carregam tudo de uma vez - agora fazemos lazy loading
 
 interface AutomationModalProps {
@@ -466,6 +467,20 @@ export function AutomationModal({
       setIsLoading(true);
       const headers = getHeaders();
       const currentUserId = headers['x-system-user-id'] || null;
+      const buildAuditPayload = () => ({
+        name: name.trim(),
+        description: description.trim() || null,
+        ignore_business_hours: ignoreBusinessHours,
+        triggers: triggers.map(t => ({
+          trigger_type: t.trigger_type,
+          trigger_config: t.trigger_config || {}
+        })),
+        actions: actions.map(a => ({
+          action_type: a.action_type,
+          action_config: a.action_config || {},
+          action_order: a.action_order
+        }))
+      });
 
       if (automation?.id) {
         // Atualizar automação existente usando função SQL
@@ -519,6 +534,22 @@ export function AutomationModal({
             throw updateError;
           }
         }
+
+        await logUpdate(
+          'automation',
+          automation.id,
+          name.trim() || automation.name || 'Automação',
+          {
+            name: automation.name,
+            description: automation.description,
+            is_active: automation.is_active,
+            ignore_business_hours: automation.ignore_business_hours ?? false,
+            triggers: automation.triggers || [],
+            actions: automation.actions || []
+          },
+          buildAuditPayload(),
+          selectedWorkspace?.workspace_id || null
+        );
       } else {
         // Criar nova automação usando função SQL
         if (!selectedWorkspace?.workspace_id) {
@@ -541,6 +572,7 @@ export function AutomationModal({
           console.log('🔍 [AutomationModal] Salvando ações remove_agent:', JSON.stringify(removeAgentActions, null, 2));
         }
 
+        let createdAutomationId: string | null = null;
         // Criar nova automação
         const { data: automationId, error: createError } = await supabase.rpc('create_column_automation', {
           p_column_id: columnId,
@@ -569,6 +601,7 @@ export function AutomationModal({
             if (retryError) throw retryError;
             
             if (retryId) {
+              createdAutomationId = retryId as any;
               await (supabase.rpc as any)('update_automation_ignore_business_hours', {
                 p_automation_id: retryId,
                 p_ignore_business_hours: ignoreBusinessHours
@@ -577,6 +610,18 @@ export function AutomationModal({
           } else {
             throw createError;
           }
+        } else if (automationId) {
+          createdAutomationId = automationId as any;
+        }
+
+        if (createdAutomationId) {
+          await logCreate(
+            'automation',
+            createdAutomationId,
+            name.trim() || 'Automação',
+            buildAuditPayload(),
+            selectedWorkspace.workspace_id
+          );
         }
       }
 

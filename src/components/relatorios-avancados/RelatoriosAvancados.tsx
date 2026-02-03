@@ -219,7 +219,6 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
   const [contacts, setContacts] = useState<ContactRecord[]>([]);
   const [conversations, setConversations] = useState<any[]>([]);
   const [activities, setActivities] = useState<ActivityRecord[]>([]);
-  const [teamWorkRankingData, setTeamWorkRankingData] = useState<TeamWorkRankingRow[]>([]);
   const [cards, setCards] = useState<PipelineCardRecord[]>([]);
   const [tags, setTags] = useState<TagRecord[]>([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -919,7 +918,7 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
           const currentFetchId = fetchId;
           const cardIds = (cardsLite || []).map((c: any) => c?.id).filter(Boolean);
 
-          const [relationsRes, baseHeavyRes, rankingRes] = await Promise.allSettled([
+          const [relationsRes, baseHeavyRes] = await Promise.allSettled([
             cardIds.length
               ? supabase.functions.invoke("report-indicator-cards-lite", {
                   method: "POST",
@@ -940,12 +939,6 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
                 includeActivities: true,
                 includeConversations: false,
               },
-            }),
-            supabase.rpc("report_team_work_ranking", {
-              p_workspace_id: effectiveWorkspaceId || null,
-              p_from: from,
-              p_to: to,
-              p_responsible_id: userRole === "user" ? user.id : null,
             }),
           ]);
 
@@ -1002,11 +995,6 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
             setActivities(activitiesData);
           }
 
-          // ranking
-          if (rankingRes.status === "fulfilled") {
-            const rr = rankingRes.value as any;
-            if (!rr?.error) setTeamWorkRankingData(Array.isArray(rr?.data) ? rr.data : []);
-          }
         } catch (e) {
           console.error("❌ [Relatórios] Erro na fase 2 (background):", e);
         }
@@ -1259,6 +1247,9 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
   const [workRankingStartDate, setWorkRankingStartDate] = useState<Date | null>(startOfDay(subDays(new Date(), 29)));
   const [workRankingEndDate, setWorkRankingEndDate] = useState<Date | null>(endOfDay(new Date()));
   
+  const [salesRankingRows, setSalesRankingRows] = useState<any[]>([]);
+  const [salesRankingLoading, setSalesRankingLoading] = useState(false);
+
   // Estado separado para dados do ranking de trabalho (busca específica por período)
   const [workRankingData, setWorkRankingData] = useState<TeamWorkRankingRow[]>([]);
   const [workRankingLoading, setWorkRankingLoading] = useState(false);
@@ -1305,24 +1296,100 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
     return applyPresetToRange(preset);
   };
 
+  const toDateOnly = (d?: Date | null) => {
+    if (!d) return null;
+    return format(d, 'yyyy-MM-dd');
+  };
+
+  // Ranking de vendas via VIEW
+  useEffect(() => {
+    const fetchSalesRankingRows = async () => {
+      if (!selectedWorkspaceId) return;
+
+      setSalesRankingLoading(true);
+      try {
+        const { from, to } = getEffectiveRange(salesRankingPreset, salesRankingStartDate, salesRankingEndDate);
+        const fromDate = toDateOnly(from);
+        const toDate = toDateOnly(to);
+
+        let query = supabase
+          .from('report_sales_ranking_view' as any)
+          .select('responsible_user_id, revenue, products_qty, card_date')
+          .eq('workspace_id', selectedWorkspaceId);
+
+        if (fromDate) query = query.gte('card_date', fromDate);
+        if (toDate) query = query.lte('card_date', toDate);
+
+        const { data, error } = await query;
+        if (!error && data) {
+          setSalesRankingRows(Array.isArray(data) ? data : []);
+        }
+      } catch (e) {
+        console.error("[Relatórios] Erro ao buscar ranking de vendas (view):", e);
+      } finally {
+        setSalesRankingLoading(false);
+      }
+    };
+
+    fetchSalesRankingRows();
+  }, [selectedWorkspaceId, salesRankingPreset, salesRankingStartDate, salesRankingEndDate]);
+
   // useEffect para buscar dados do ranking de trabalho quando os filtros específicos mudarem
   useEffect(() => {
     const fetchWorkRankingData = async () => {
-      if (!selectedWorkspaceId || !user?.id) return;
+      if (!selectedWorkspaceId) return;
       
       setWorkRankingLoading(true);
       try {
         const { from, to } = getEffectiveRange(workRankingPreset, workRankingStartDate, workRankingEndDate);
-        
-        const { data, error } = await supabase.rpc("report_team_work_ranking", {
-          p_workspace_id: selectedWorkspaceId,
-          p_from: from ? from.toISOString() : null,
-          p_to: to ? to.toISOString() : null,
-          p_responsible_id: userRole === "user" ? user.id : null,
-        });
-        
+        const fromDate = toDateOnly(from);
+        const toDate = toDateOnly(to);
+
+        let query = supabase
+          .from('report_team_work_ranking_view' as any)
+          .select('*')
+          .eq('workspace_id', selectedWorkspaceId);
+
+        if (fromDate) query = query.gte('activity_date', fromDate);
+        if (toDate) query = query.lte('activity_date', toDate);
+
+        const { data, error } = await query;
         if (!error && data) {
-          setWorkRankingData(Array.isArray(data) ? data : []);
+          const aggregated = new Map<string, TeamWorkRankingRow>();
+          (data as any[]).forEach((row) => {
+            const id = row.responsible_id;
+            if (!id) return;
+            const current = aggregated.get(id) || {
+              responsible_id: id,
+              mensagem: 0,
+              ligacao_nao_atendida: 0,
+              ligacao_atendida: 0,
+              ligacao_abordada: 0,
+              ligacao_agendada: 0,
+              ligacao_follow_up: 0,
+              reuniao_agendada: 0,
+              reuniao_realizada: 0,
+              reuniao_nao_realizada: 0,
+              reuniao_reagendada: 0,
+              whatsapp_enviado: 0
+            };
+
+            current.mensagem += Number(row.mensagem || 0);
+            current.ligacao_nao_atendida += Number(row.ligacao_nao_atendida || 0);
+            current.ligacao_atendida += Number(row.ligacao_atendida || 0);
+            current.ligacao_abordada += Number(row.ligacao_abordada || 0);
+            current.ligacao_agendada += Number(row.ligacao_agendada || 0);
+            current.ligacao_follow_up += Number(row.ligacao_follow_up || 0);
+            current.reuniao_agendada += Number(row.reuniao_agendada || 0);
+            current.reuniao_realizada += Number(row.reuniao_realizada || 0);
+            current.reuniao_nao_realizada += Number(row.reuniao_nao_realizada || 0);
+            current.reuniao_reagendada += Number(row.reuniao_reagendada || 0);
+            current.whatsapp_enviado += Number(row.whatsapp_enviado || 0);
+
+            aggregated.set(id, current);
+          });
+
+          setWorkRankingData(Array.from(aggregated.values()));
         }
       } catch (e) {
         console.error("[Relatórios] Erro ao buscar ranking de trabalho:", e);
@@ -1332,7 +1399,7 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
     };
     
     fetchWorkRankingData();
-  }, [selectedWorkspaceId, user?.id, userRole, workRankingPreset, workRankingStartDate, workRankingEndDate]);
+  }, [selectedWorkspaceId, workRankingPreset, workRankingStartDate, workRankingEndDate]);
 
   const getTeamMetricCountForRange = (metricKey: TeamMetricKey, rangeFrom?: Date | null, rangeTo?: Date | null) => {
     if (metricKey === 'leads') {
@@ -2320,46 +2387,15 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
       return agg[id];
     };
 
-    const pickCardDateIso = (c: any) =>
-      c?.won_at || c?.closed_at || c?.updated_at || c?.created_at || c?.createdAt || c?.date;
+    (salesRankingRows || []).forEach((row: any) => {
+      if (!withinRange(row?.card_date, from, to)) return;
 
-    (cards || []).forEach((c: any) => {
-      const s = (c.status || '').toLowerCase();
-      const isWon = s === 'won' || s === 'ganho' || s === 'venda' || s === 'success' || s === 'sucesso';
-      if (!isWon) return;
-
-      if (!withinRange(pickCardDateIso(c), from, to)) return;
-
-      const cardProducts = Array.isArray(c.products) ? c.products : [];
-      const hasProducts = cardProducts.length > 0;
-      if (!hasProducts) return; // considerar somente cartões ganhos com produto vinculado
-
-      const target = ensure(c.responsible_user_id);
+      const target = ensure(row?.responsible_user_id || null);
       if (!target) return;
 
-      const revenueFromProducts = cardProducts.reduce((sum: number, pcp: any) => {
-        const total = parseNumber(pcp.total_value ?? pcp.total ?? pcp.total_price);
-        const unit = parseNumber(
-          pcp.unit_value ??
-            pcp.price ??
-            pcp.value ??
-            pcp.amount ??
-            pcp.product_value ??
-            pcp.product?.value ??
-            pcp.unitPrice ??
-            pcp.unit_price
-        );
-        const qty = parseNumber(pcp.quantity || 1);
-        const base = total > 0 ? total : unit * (qty || 1);
-        return sum + base;
-      }, 0);
-
-      const revenue = revenueFromProducts > 0 ? revenueFromProducts : Number(c.value || 0);
-      const totalProductsQuantity = cardProducts.reduce((sum: number, pcp: any) => sum + Number(pcp.quantity || 1), 0);
-
       target.sales += 1;
-      target.revenue += revenue;
-      target.products += totalProductsQuantity;
+      target.revenue += parseNumber(row?.revenue || 0);
+      target.products += parseNumber(row?.products_qty || 0);
     });
 
     const list = Object.values(agg)
@@ -2374,7 +2410,7 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
   }, [
     agents,
     agentMap,
-    cards,
+    salesRankingRows,
     salesRankingPreset,
     salesRankingStartDate,
     salesRankingEndDate,
