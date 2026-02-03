@@ -144,6 +144,23 @@ const dedupeAndSortMessages = (messages: WhatsAppMessage[]): WhatsAppMessage[] =
   );
 };
 
+const INVOKE_TIMEOUT_MS = 12000;
+
+const invokeWithTimeout = async <T>(promise: Promise<T>, ms = INVOKE_TIMEOUT_MS): Promise<T> => {
+  let timeoutId: ReturnType<typeof setTimeout> | null = null;
+  const timeoutPromise = new Promise<never>((_, reject) => {
+    timeoutId = setTimeout(() => {
+      reject(new Error('Timeout ao carregar mensagens'));
+    }, ms);
+  });
+
+  try {
+    return await Promise.race([promise, timeoutPromise]);
+  } finally {
+    if (timeoutId) clearTimeout(timeoutId);
+  }
+};
+
 interface UseConversationMessagesReturn {
   messages: WhatsAppMessage[];
   loading: boolean;
@@ -259,6 +276,7 @@ export function useConversationMessages(options?: {
       setCursorBefore(cached.cursorBefore);
       setHasMore(cached.hasMore);
       activeConversationIdRef.current = conversationId;
+      setLoading(false);
       return;
     }
     if (forceRefresh) {
@@ -278,13 +296,15 @@ export function useConversationMessages(options?: {
     }
 
     try {
-      const { data, error } = await supabase.functions.invoke('whatsapp-get-messages', {
-        body: { 
-          conversation_id: conversationId,
-          limit: 30
-        },
-        headers
-      });
+      const { data, error } = await invokeWithTimeout(
+        supabase.functions.invoke('whatsapp-get-messages', {
+          body: {
+            conversation_id: conversationId,
+            limit: 30
+          },
+          headers
+        })
+      );
 
       if (error) throw error;
 
@@ -339,14 +359,16 @@ export function useConversationMessages(options?: {
     setLoadingMore(true);
 
     try {
-      const { data, error } = await supabase.functions.invoke('whatsapp-get-messages', {
-        body: { 
-          conversation_id: currentConversationId,
-          limit: 30,
-          before: cursorBefore
-        },
-        headers
-      });
+      const { data, error } = await invokeWithTimeout(
+        supabase.functions.invoke('whatsapp-get-messages', {
+          body: {
+            conversation_id: currentConversationId,
+            limit: 30,
+            before: cursorBefore
+          },
+          headers
+        })
+      );
 
       if (error) throw error;
 
