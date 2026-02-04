@@ -35,7 +35,8 @@ serve(async (req) => {
     const workspaceId = body.workspaceId || workspaceIdHeader;
     const userId = body.userId || headerUserId;
     const userRole = String(body.userRole || "").toLowerCase();
-    const isPrivileged = userRole === "master" || userRole === "admin";
+    // support também precisa ter acesso privilegiado (mesmo sem membership explícito)
+    const isPrivileged = userRole === "master" || userRole === "admin" || userRole === "support";
 
     if (!userId) {
       return new Response(JSON.stringify({ error: "missing x-system-user-id" }), {
@@ -79,7 +80,7 @@ serve(async (req) => {
     const from = body.from ?? null;
     const to = body.to ?? null;
     const hasRange = !!(from && to);
-    const isUserScoped = String(body.userRole || "").toLowerCase() === "user";
+    // Removido isUserScoped - a filtragem por agente é feita no frontend baseada no filtro selecionado
 
     const includeContacts = body.includeContacts !== false; // default true
     const includeActivities = body.includeActivities !== false; // default true
@@ -111,7 +112,7 @@ serve(async (req) => {
               ].join(",")
             );
           }
-          if (isUserScoped) q = q.eq("responsible_id", userId);
+          // Removido filtro por userRole - filtragem é feita no frontend
           return q;
         })()
       : Promise.resolve({ data: [], error: null } as any);
@@ -123,7 +124,7 @@ serve(async (req) => {
             .select("id, contact_id, assigned_user_id, created_at, workspace_id")
             .eq("workspace_id", workspaceId);
           if (hasRange && from && to) q = q.gte("created_at", from).lte("created_at", to);
-          if (isUserScoped) q = q.eq("assigned_user_id", userId);
+          // Removido filtro por userRole - filtragem é feita no frontend
           return q;
         })()
       : Promise.resolve({ data: [], error: null } as any);

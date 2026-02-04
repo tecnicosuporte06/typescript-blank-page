@@ -850,6 +850,7 @@ function CRMNegociosContent({
     isLoadingColumns,
     isLoadingCards,
     isLoadingInitialCardsByColumn,
+    isAllColumnsLoaded,
     hasMoreCardsByColumn,
     isLoadingMoreCardsByColumn,
     totalCardsByColumn,
@@ -2305,7 +2306,7 @@ const [selectedCardForProduct, setSelectedCardForProduct] = useState<{
 
                                   {/* Cards Area */}
                                   <div
-                                    className={`flex-1 p-2 overflow-y-auto min-h-0 bg-white dark:bg-[#111111] scrollbar-thin scrollbar-thumb-gray-column scrollbar-track-transparent relative`}
+                                    className={`flex-1 p-2 overflow-y-auto min-h-0 bg-[#f9f9f9] dark:bg-[#0a0a0a] transition-all duration-200 scrollbar-thin scrollbar-thumb-gray-column scrollbar-track-transparent relative`}
                                     onScroll={(e) => {
                                       const el = e.currentTarget;
                                       const nearBottom = el.scrollTop + el.clientHeight >= el.scrollHeight - 120;
@@ -2314,11 +2315,10 @@ const [selectedCardForProduct, setSelectedCardForProduct] = useState<{
                                       }
                                     }}
                                   >
-                                    {isLoadingInitialCardsByColumn?.[column.id] && (
-                                      <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                                    {!isAllColumnsLoaded && (
+                                      <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-10 bg-[#f9f9f9]/80 dark:bg-[#0a0a0a]/80">
                                         <div className="flex flex-col items-center gap-2">
-                                          <Loader2 className="h-6 w-6 animate-spin text-muted-foreground dark:text-gray-400" />
-                                          <span className="text-xs text-muted-foreground dark:text-gray-400">Carregando...</span>
+                                          <Loader2 className="h-5 w-5 animate-spin text-muted-foreground dark:text-gray-400" />
                                         </div>
                                       </div>
                                     )}
@@ -2339,7 +2339,7 @@ const [selectedCardForProduct, setSelectedCardForProduct] = useState<{
                                            Solte aqui
                                          </div>
                                        </div>
-                                       {isLoadingInitialCardsByColumn?.[column.id] ? (
+                                       {!isAllColumnsLoaded ? (
                                          <div className="h-24" />
                                       ) : columnCards.length > 0 ? columnCards.map((card, idx) => {
                                         const productRelations = Array.isArray((card as any).products) ? (card as any).products : [];
@@ -2630,16 +2630,15 @@ const [selectedCardForProduct, setSelectedCardForProduct] = useState<{
                             }
                           }}
                         >
-                        {isLoadingInitialCardsByColumn?.[column.id] && (
-                          <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                        {!isAllColumnsLoaded && (
+                          <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-10 bg-[#f9f9f9]/80 dark:bg-[#0a0a0a]/80">
                             <div className="flex flex-col items-center gap-2">
-                              <Loader2 className="h-6 w-6 animate-spin text-muted-foreground dark:text-gray-400" />
-                              <span className="text-xs text-muted-foreground dark:text-gray-400">Carregando...</span>
+                              <Loader2 className="h-5 w-5 animate-spin text-muted-foreground dark:text-gray-400" />
                             </div>
                           </div>
                         )}
 
-                        {isLoadingInitialCardsByColumn?.[column.id] ? (
+                        {!isAllColumnsLoaded ? (
                           <div className="h-24" />
                         ) : columnCards.length === 0 ? (
                           <div className="flex items-center justify-center h-32 text-center">

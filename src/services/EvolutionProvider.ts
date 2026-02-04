@@ -379,7 +379,34 @@ class EvolutionProvider {
         headers
       });
       
-      console.log('📥 Update response:', { data, error });
+      // Log detalhado para debug
+      console.log('📥 Update response - data:', data);
+      console.log('📥 Update response - data.success:', data?.success);
+      console.log('📥 Update response - data.error:', data?.error);
+      console.log('📥 Update response - error:', error);
+      
+      // Primeiro checar se temos data com erro
+      if (data && data.success === false) {
+        const errMsg = data.error;
+        console.error('❌ Function returned error:');
+        console.error('  - Type:', typeof errMsg);
+        console.error('  - Value:', errMsg);
+        console.error('  - Keys:', errMsg ? Object.keys(errMsg) : 'N/A');
+        
+        // Extrair mensagem do erro
+        let errorMessage = 'Falha ao atualizar conexão';
+        if (typeof errMsg === 'string') {
+          errorMessage = errMsg;
+        } else if (errMsg && typeof errMsg === 'object') {
+          // Tentar várias propriedades comuns de erro
+          errorMessage = errMsg.message || errMsg.error || errMsg.detail || errMsg.hint || 
+                        (errMsg.code ? `Erro ${errMsg.code}` : null) ||
+                        JSON.stringify(errMsg);
+        }
+        
+        console.error('  - Final message:', errorMessage);
+        throw new Error(errorMessage);
+      }
       
       if (error) {
         console.error('❌ Supabase function error:', error);
@@ -387,7 +414,8 @@ class EvolutionProvider {
       }
 
       if (!data?.success) {
-        throw new Error(data?.error || 'Falha ao atualizar conexão');
+        console.error('❌ Data indicates failure:', data);
+        throw new Error('Falha ao atualizar conexão');
       }
       
       return data.connection;

@@ -23,7 +23,8 @@ serve(async (req) => {
 
     const workspaceId = body.workspaceId || workspaceIdHeader;
     const userRole = String(body?.userRole || "").toLowerCase();
-    const isPrivileged = userRole === "master" || userRole === "admin";
+    // support também precisa ter acesso privilegiado (mesmo sem membership explícito)
+    const isPrivileged = userRole === "master" || userRole === "admin" || userRole === "support";
     const includeRelations = body?.includeRelations !== false; // default true
     const from = body?.from ?? null;
     const to = body?.to ?? null;
@@ -85,13 +86,17 @@ serve(async (req) => {
     // Cards (minimal fields) — optionally scoped by cardIds for 2-phase loading
     let cardsQuery = supabase
       .from("pipeline_cards")
-      .select("id, pipeline_id, column_id, responsible_user_id, contact_id, status, qualification, created_at")
+      .select("id, pipeline_id, column_id, responsible_user_id, contact_id, status, qualification, created_at, updated_at")
       .in("pipeline_id", pipelineIds);
     if (cardIdsInput.length > 0) {
       cardsQuery = cardsQuery.in("id", cardIdsInput);
     }
     if (hasRange) {
-      cardsQuery = cardsQuery.gte("created_at", from).lte("created_at", to);
+      // Data "operacional": updated_at, mas também considerar created_at para compatibilidade
+      // (ex.: cards antigos com updated_at não confiável / null em alguns ambientes).
+      cardsQuery = cardsQuery.or(
+        `and(updated_at.gte.${from},updated_at.lte.${to}),and(created_at.gte.${from},created_at.lte.${to})`
+      );
     }
 
     const { data: cardsRaw, error: cardsError } = await cardsQuery;
@@ -111,6 +116,7 @@ serve(async (req) => {
         status: c.status,
         qualification: c.qualification,
         created_at: c.created_at,
+        updated_at: c.updated_at,
         product_ids: [],
         product_items: [],
         tag_ids: [],
@@ -184,6 +190,7 @@ serve(async (req) => {
       status: c.status,
       qualification: c.qualification,
       created_at: c.created_at,
+      updated_at: c.updated_at,
       product_ids: productIdsByCard.get(c.id) || [],
       product_items: productItemsByCard.get(c.id) || [],
       tag_ids: c.contact_id ? tagsByContact.get(c.contact_id) || [] : [],

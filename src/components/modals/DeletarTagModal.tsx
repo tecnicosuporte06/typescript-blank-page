@@ -94,9 +94,9 @@ export function DeletarTagModal({ isOpen, onClose, onTagDeleted, tag }: DeletarT
         <div className="py-4 px-4">
           <AlertDialogDescription className="text-sm text-gray-600 dark:text-gray-300">
             <strong>Atenção!</strong>{" "}
-            Tem certeza que deseja deletar a tag{" "}
+            Tem certeza que deseja deletar a etiqueta{" "}
             <span className="font-semibold text-gray-900 dark:text-gray-100">"{tag?.name}"</span>? Esta ação
-            removerá a tag de todos os contatos associados e não poderá ser desfeita.
+            removerá a etiqueta de todos os contatos associados e não poderá ser desfeita.
           </AlertDialogDescription>
         </div>
 

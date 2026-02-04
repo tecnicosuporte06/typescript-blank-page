@@ -152,6 +152,7 @@ interface PipelinesContextType {
   isLoadingColumns: boolean;
   isLoadingCards: boolean;
   isLoadingInitialCardsByColumn: Record<string, boolean>;
+  isAllColumnsLoaded: boolean;
   hasMoreCardsByColumn: Record<string, boolean>;
   isLoadingMoreCardsByColumn: Record<string, boolean>;
   totalCardsByColumn: Record<string, number>;
@@ -182,6 +183,7 @@ export function PipelinesProvider({ children }: { children: React.ReactNode }) {
   const [isLoadingColumns, setIsLoadingColumns] = useState(false);
   const [isLoadingCards, setIsLoadingCards] = useState(false);
   const [isLoadingInitialCardsByColumn, setIsLoadingInitialCardsByColumn] = useState<Record<string, boolean>>({});
+  const [isAllColumnsLoaded, setIsAllColumnsLoaded] = useState(false); // Todas as colunas carregadas juntas
   const [cardsOffsetByColumn, setCardsOffsetByColumn] = useState<Record<string, number>>({});
   const [hasMoreCardsByColumn, setHasMoreCardsByColumn] = useState<Record<string, boolean>>({});
   const [isLoadingMoreCardsByColumn, setIsLoadingMoreCardsByColumn] = useState<Record<string, boolean>>({});
@@ -237,16 +239,14 @@ export function PipelinesProvider({ children }: { children: React.ReactNode }) {
 
       // Ordenar pipelines: pipeline padrão primeiro, depois por created_at desc
       let sortedPipelines = data || [];
-      if (sortedPipelines.length > 0 && selectedWorkspace?.workspace_id) {
-        // Buscar workspace para pegar default_pipeline_id
-        const { data: workspaceData } = await supabase
-          .from('workspaces')
-          .select('default_pipeline_id')
-          .eq('id', selectedWorkspace.workspace_id)
-          .single();
+      // Ordenação por data de criação (mais recentes primeiro) - default_pipeline_id desabilitado temporariamente
+      if (sortedPipelines.length > 0) {
+        // TODO: Reabilitar quando migração 20260204110000 for aplicada
+        // Por enquanto, apenas ordenar por created_at
+        const defaultPipelineId: string | null = null;
         
-        if (workspaceData?.default_pipeline_id) {
-          const defaultPipeline = sortedPipelines.find(p => p.id === workspaceData.default_pipeline_id);
+        if (defaultPipelineId) {
+          const defaultPipeline = sortedPipelines.find(p => p.id === defaultPipelineId);
           if (defaultPipeline) {
             // Remover a pipeline padrão da lista e colocá-la no início
             sortedPipelines = [
@@ -469,6 +469,7 @@ export function PipelinesProvider({ children }: { children: React.ReactNode }) {
     setHasMoreCardsByColumn(initHasMore);
     setIsLoadingMoreCardsByColumn({});
     setIsLoadingInitialCardsByColumn(initInitialLoading);
+    setIsAllColumnsLoaded(false); // Marcar como não carregado
 
     try {
       setIsLoadingCards(true);
@@ -486,6 +487,9 @@ export function PipelinesProvider({ children }: { children: React.ReactNode }) {
         // Buscar contagem total de cards por coluna
         fetchTotalCardsCounts(pipelineId, effectiveColumns)
       ]);
+      
+      // Após todas as colunas carregarem, marcar como carregado
+      setIsAllColumnsLoaded(true);
     } catch (error) {
       const parsedError = await readFunctionErrorBodyAsync(error);
       console.error('❌ [fetchCards] Erro ao buscar cards (paginado):', { error, parsedError });
@@ -1658,6 +1662,7 @@ export function PipelinesProvider({ children }: { children: React.ReactNode }) {
     isLoadingColumns,
     isLoadingCards,
     isLoadingInitialCardsByColumn,
+    isAllColumnsLoaded,
     hasMoreCardsByColumn,
     isLoadingMoreCardsByColumn,
     totalCardsByColumn,
@@ -1684,6 +1689,7 @@ export function PipelinesProvider({ children }: { children: React.ReactNode }) {
     isLoadingColumns,
     isLoadingCards,
     isLoadingInitialCardsByColumn,
+    isAllColumnsLoaded,
     hasMoreCardsByColumn,
     isLoadingMoreCardsByColumn,
     totalCardsByColumn,

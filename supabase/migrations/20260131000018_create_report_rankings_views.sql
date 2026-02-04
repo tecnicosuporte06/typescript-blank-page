@@ -58,7 +58,7 @@ WITH base AS (
     (a.created_at::date) AS activity_date,
     translate(lower(trim(coalesce(a.type, ''))),
       'ãâáàêéèîíìõôóòûúùç',
-      'aaaaeeeiioooouuuc'
+      'aaaaeeeiiiooouuuc'
     ) AS t
   FROM public.activities a
   WHERE a.responsible_id IS NOT NULL

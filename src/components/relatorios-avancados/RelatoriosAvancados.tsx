@@ -15,11 +15,12 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { ResponsiveContainer, Tooltip as ReTooltip, Legend, LineChart, Line, XAxis, YAxis, CartesianGrid } from 'recharts';
-import { Filter, Users, Download, Loader2, Check, X, Plus, Trash2, Pencil, GripVertical } from 'lucide-react';
+import { Filter, Users, Download, Loader2, Check, X, Plus, Trash2, Pencil, GripVertical, Save } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { QueryBuilderSidebar } from './QueryBuilderSidebar';
 import { useReportIndicatorFunnelPresets } from '@/hooks/useReportIndicatorFunnelPresets';
 import { useReportUserSettings } from '@/hooks/useReportUserSettings';
+import { useReportFilterPresets } from '@/hooks/useReportFilterPresets';
 import { useWorkspaceHeaders } from '@/lib/workspaceHeaders';
 import { Checkbox } from '@/components/ui/checkbox';
 import {
@@ -183,6 +184,7 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
   const { selectedWorkspace, setSelectedWorkspace, workspaces: ctxWorkspaces } = useWorkspace();
   const { user, userRole } = useAuth();
   
+  
   // Tentar usar o contexto de pipelines, mas não falhar se não estiver disponível (master-dashboard)
   const pipelinesContext = useContext(PipelinesContext);
   const ctxPipelines = pipelinesContext?.pipelines || [];
@@ -201,14 +203,34 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
   const [endDate, setEndDate] = useState<Date | null>(() => endOfDay(new Date()));
   // Se workspaces for fornecido (master-dashboard), por padrão mostra todos os workspaces (vazio)
   // Caso contrário, usa o workspace selecionado ou o primeiro disponível
-  const [selectedWorkspaceId, setSelectedWorkspaceId] = useState<string>(
-    workspaces && workspaces.length > 0
-      ? '' // Master-dashboard: por padrão mostra todos os workspaces
-      : selectedWorkspace?.workspace_id ||
+  const [selectedWorkspaceId, setSelectedWorkspaceId] = useState<string>(() => {
+    if (workspaces && workspaces.length > 0) {
+      // Master-dashboard: por padrão mostra todos os workspaces (string vazia)
+      return '';
+    }
+    // Modo normal: usar workspace do contexto ou primeiro disponível
+    return selectedWorkspace?.workspace_id || ctxWorkspaces?.[0]?.workspace_id || '';
+  });
+  
+  // Workspace efetivo usado para carregar presets/configs e metadados (pipelines/tags/etc).
+  // Importante: no modo master, `selectedWorkspaceId === ''` significa "todas as empresas",
+  // mas ainda precisamos de um workspace de referência para presets/metadata.
+  const settingsWorkspaceId = useMemo(() => {
+    return (
+      selectedWorkspaceId ||
+      selectedWorkspace?.workspace_id ||
       workspaces?.[0]?.workspace_id ||
       ctxWorkspaces?.[0]?.workspace_id ||
       ''
-  );
+    );
+  }, [
+    selectedWorkspaceId,
+    selectedWorkspace?.workspace_id,
+    workspaces?.length,
+    workspaces?.[0]?.workspace_id,
+    ctxWorkspaces?.length,
+    ctxWorkspaces?.[0]?.workspace_id,
+  ]);
   const [selectedFunnel, setSelectedFunnel] = useState<string>('all');
   const [selectedAgent, setSelectedAgent] = useState<string>('all');
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
@@ -226,9 +248,19 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
   const [viewMode, setViewMode] = useState<'list' | 'bi' | 'kpis' | 'funnel'>('funnel');
   // Preset/draft: Funis (múltiplos) do bloco "Funil – Indicadores"
   const { savedFunnels, canEdit: canEditIndicatorFunnels, loading: loadingFunnelsPreset } =
-    useReportIndicatorFunnelPresets(selectedWorkspaceId);
+    useReportIndicatorFunnelPresets(settingsWorkspaceId);
   const { settings: userSettings, saveSettings: saveUserSettings, loading: loadingUserSettings } =
-    useReportUserSettings(selectedWorkspaceId);
+    useReportUserSettings(settingsWorkspaceId);
+  
+  // Filtros de relatório salvos para a empresa (master/admin salvam, todos veem)
+  const { 
+    savedFilters: companyFilters, 
+    canEdit: canEditCompanyFilters, 
+    savePresets: saveCompanyFilters,
+    loading: loadingCompanyFilters 
+  } = useReportFilterPresets(settingsWorkspaceId);
+  // ^ no modo "todas as empresas", este preset é carregado do workspace de referência
+  // para não travar a tela. (Dados multi-empresa são agregados via fetchData.)
   const [draftFunnels, setDraftFunnels] = useState<any[]>([]);
   // Mantém sempre a versão mais recente dos filtros para evitar salvar estado "antigo"
   // quando o usuário clica em Salvar logo após mudar um filtro.
@@ -237,10 +269,7 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
     draftFunnelsRef.current = draftFunnels;
   }, [draftFunnels]);
   const [editingMetricsFunnelId, setEditingMetricsFunnelId] = useState<string | null>(null);
-  const [savedSnapshot, setSavedSnapshot] = useState<any[]>([]);
-  const [funnelsDirty, setFunnelsDirty] = useState(false);
   const [rehydrateNonce, setRehydrateNonce] = useState(0);
-  const canSaveFilters = true;
   const lastFetchKeyRef = useRef<string | null>(null);
   const fetchDebounceRef = useRef<number | null>(null);
   const activeFetchIdRef = useRef<string | null>(null);
@@ -557,6 +586,40 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
     });
   };
 
+  // Salva filtros atuais como padrão da empresa (apenas admin/master)
+  const saveCompanyFiltersPreset = async () => {
+    if (!canEditCompanyFilters) return;
+    
+    const filtersToSave = {
+      customConv: {
+        periodPreset: customConvPeriodPreset,
+        agent: customConvAgent,
+        tags: customConvTags,
+        status: customConvStatus,
+      },
+      teamConv: {
+        periodPreset: teamConvPeriodPreset,
+        agent: teamConvAgent,
+        tags: teamConvTags,
+        status: teamConvStatus,
+      },
+      salesRanking: {
+        periodPreset: salesRankingPreset,
+        visibleUsers: salesRankingUsers,
+      },
+      workRanking: {
+        periodPreset: workRankingPreset,
+        visibleUsers: workRankingUsers,
+      },
+      funnels: buildFunnelsForDb(draftFunnelsRef.current ?? draftFunnels),
+      // Conversões customizadas para toda a empresa
+      customConversions: customConversions.map(c => ({ ...c, isEditing: false })),
+      teamConversions: teamConversions.map(c => ({ ...c, isEditing: false })),
+    };
+    
+    await saveCompanyFilters(filtersToSave);
+  };
+
   const addCustomConversion = () => {
     const newConv: CustomConversion = {
       id: crypto.randomUUID(),
@@ -581,16 +644,27 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
     setTeamConversions((prev) => [...prev, newConv]);
   };
 
+  // Salva conversões customizadas da empresa (admin/master)
+  const saveCompanyConversions = async (updates: { customConversions?: any[]; teamConversions?: any[] }) => {
+    if (!canEditCompanyFilters) return;
+    const filtersToSave = {
+      ...companyFilters,
+      ...(updates.customConversions !== undefined && { customConversions: updates.customConversions.map(c => ({ ...c, isEditing: false })) }),
+      ...(updates.teamConversions !== undefined && { teamConversions: updates.teamConversions.map(c => ({ ...c, isEditing: false })) }),
+    };
+    await saveCompanyFilters(filtersToSave);
+  };
+
   const removeCustomConversion = (id: string) => {
     const next = customConversions.filter(c => c.id !== id);
     setCustomConversions(next);
-    persistUserReportSettings({ customConversions: next });
+    saveCompanyConversions({ customConversions: next });
   };
 
   const removeTeamConversion = (id: string) => {
     const next = teamConversions.filter((c) => c.id !== id);
     setTeamConversions(next);
-    persistUserReportSettings({ teamConversions: next });
+    saveCompanyConversions({ teamConversions: next });
   };
 
   const addLeadMetric = (funnelId: string) => {
@@ -618,7 +692,6 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
           : f
       )
     );
-    setFunnelsDirty(true);
   };
 
   const patchLeadMetric = (funnelId: string, metricId: string, patch: any) => {
@@ -632,7 +705,6 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
         };
       })
     );
-    setFunnelsDirty(true);
   };
 
   const removeLeadMetric = async (funnelId: string, metricId: string) => {
@@ -643,7 +715,6 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
     });
     setDraftFunnels(nextFunnels);
     await persistUserReportSettings({ funnels: nextFunnels });
-    setFunnelsDirty(false);
   };
 
   const saveLeadMetric = async (funnelId: string, metricId: string) => {
@@ -665,7 +736,6 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
     });
     setDraftFunnels(nextFunnels);
     await persistUserReportSettings({ funnels: nextFunnels });
-    setFunnelsDirty(false);
   };
 
   const normalizeText = (s?: string | null) =>
@@ -746,7 +816,9 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
   }, [draftFunnels, rehydrateNonce]);
 
   const fetchData = async (fetchKey?: string, retryCount = 0) => {
-    if (!user?.id) return;
+    if (!user?.id) {
+      return;
+    }
     const fetchId = crypto.randomUUID();
     activeFetchIdRef.current = fetchId;
     setIsLoading(true);
@@ -779,104 +851,146 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
       setActivities([]);
       setTags([]);
 
-    const effectiveWorkspaceId =
-      selectedWorkspaceId ||
-      selectedWorkspace?.workspace_id ||
-      workspaces?.[0]?.workspace_id ||
-      ctxWorkspaces?.[0]?.workspace_id ||
-      '';
+      // Modo master: `selectedWorkspaceId === ''` => "todas as empresas"
+      // Prioridade: selectedWorkspaceId > lista de workspaces > settingsWorkspaceId > ctxWorkspaces
+      let workspaceIds: string[] = [];
+      if (selectedWorkspaceId) {
+        workspaceIds = [selectedWorkspaceId];
+      } else if (Array.isArray(workspaces) && workspaces.length > 0) {
+        workspaceIds = workspaces.map((w) => w.workspace_id).filter(Boolean);
+      } else if (settingsWorkspaceId) {
+        workspaceIds = [settingsWorkspaceId];
+      } else if (Array.isArray(ctxWorkspaces) && ctxWorkspaces.length > 0) {
+        workspaceIds = ctxWorkspaces.map((w) => w.workspace_id).filter(Boolean);
+      }
 
-    if (!effectiveWorkspaceId) {
+      if (!workspaceIds || workspaceIds.length === 0) {
         setCards([]);
         setConversations([]);
+        setIsLoading(false);
         return;
       }
 
-    const headers = getHeaders(effectiveWorkspaceId);
-
       // Helper para tentar RPC como fallback
-      const tryRpcFallback = async () => {
-        console.log('🔄 [Relatórios] Tentando fallback via RPC...');
+      const tryRpcFallback = async (workspaceId: string, headers: any) => {
         const { data: rpcData, error: rpcError } = await supabase.rpc('get_report_data', {
-          p_workspace_id: effectiveWorkspaceId,
+          p_workspace_id: workspaceId,
           p_from: from,
           p_to: to,
           p_user_id: user?.id || null,
-          p_is_user_scoped: userRole === 'user',
+          p_is_user_scoped: false, // Filtragem é feita no frontend baseada no agente selecionado
         });
         
         if (rpcError) {
-          console.error('❌ [Relatórios] Fallback RPC também falhou:', rpcError);
           throw rpcError;
         }
         
-        console.log('✅ [Relatórios] Fallback RPC bem sucedido');
         return rpcData;
       };
 
-      // FASE 1 (rápida): cards core (sem tags/produtos) + conversations
-      let cardsLite: any[] = [];
-      let conversationsData: any[] = [];
-      let usedFallback = false;
+      const runWithLimit = async (items: string[], limit: number, fn: (id: string) => Promise<any>) => {
+        const results: any[] = [];
+        let idx = 0;
+        const workers = new Array(Math.max(1, Math.min(limit, items.length))).fill(null).map(async () => {
+          while (idx < items.length) {
+            const current = items[idx++];
+            try {
+              results.push(await fn(current));
+            } catch (e) {
+              results.push({ __error: e, workspaceId: current });
+            }
+          }
+        });
+        await Promise.all(workers);
+        return results;
+      };
 
-      try {
-        const [cardsRes, baseRes] = await Promise.all([
-          supabase.functions.invoke("report-indicator-cards-lite", {
+      // FASE 1 (rápida): cards core (sem tags/produtos) + conversations
+      const phase1ByWs = new Map<string, { cardsLite: any[]; conversations: any[] }>();
+
+      // Criar headers manualmente para evitar dependência do hook useWorkspaceHeaders
+      const createHeaders = (wsId: string) => {
+        const userData = localStorage.getItem('currentUser');
+        const currentUserData = userData ? JSON.parse(userData) : null;
+        if (!currentUserData?.id) {
+          throw new Error('Usuário não autenticado');
+        }
+        return {
+          'x-system-user-id': currentUserData.id,
+          'x-system-user-email': currentUserData.email || '',
+          'x-workspace-id': wsId
+        };
+      };
+
+      const phase1Results = await runWithLimit(workspaceIds, 4, async (workspaceId) => {
+        let headers: any;
+        try {
+          headers = createHeaders(workspaceId);
+        } catch (headersError) {
+          return { __error: headersError, workspaceId };
+        }
+        
+        let cardsLite: any[] = [];
+        let conversationsData: any[] = [];
+        try {
+          const [cardsRes, baseRes] = await Promise.all([
+            supabase.functions.invoke("report-indicator-cards-lite", {
               method: "POST",
               headers,
-            body: { workspaceId: effectiveWorkspaceId, from, to, includeRelations: false, userRole },
-          }),
-          supabase.functions.invoke("report-base-data-lite", {
-            method: "POST",
-            headers,
-            body: {
-              workspaceId: effectiveWorkspaceId,
-              from,
-              to,
-              userRole,
-              userId: user.id,
-              includeContacts: false,
-              includeActivities: false,
-              includeConversations: true,
-            },
-          }),
-        ]);
+              body: { workspaceId, from, to, includeRelations: false, userRole },
+            }),
+            supabase.functions.invoke("report-base-data-lite", {
+              method: "POST",
+              headers,
+              body: {
+                workspaceId,
+                from,
+                to,
+                userRole,
+                userId: user.id,
+                includeContacts: false,
+                includeActivities: false,
+                includeConversations: true,
+              },
+            }),
+          ]);
 
-        if (activeFetchIdRef.current !== fetchId) return;
-
-        if (cardsRes.error || baseRes.error) {
-          console.warn('⚠️ [Relatórios] Edge Functions falharam, tentando fallback...');
-          const rpcData = await tryRpcFallback();
+          if (cardsRes.error || baseRes.error) {
+            const rpcData = await tryRpcFallback(workspaceId, headers);
+            cardsLite = Array.isArray(rpcData?.cards) ? rpcData.cards : [];
+            conversationsData = Array.isArray(rpcData?.conversations) ? rpcData.conversations : [];
+          } else {
+            cardsLite = Array.isArray((cardsRes.data as any)?.cards) ? (cardsRes.data as any).cards : [];
+            conversationsData = Array.isArray((baseRes.data as any)?.conversations)
+              ? (baseRes.data as any).conversations
+              : [];
+          }
+        } catch (edgeFnError) {
+          // Retry global somente quando for workspace único (evita tempestade no "todas as empresas")
+          if (workspaceIds.length === 1 && retryCount < 2) {
+            await new Promise(r => setTimeout(r, 1000 * (retryCount + 1)));
+            return fetchData(fetchKey, retryCount + 1);
+          }
+          // Fallback RPC por workspace
+          const rpcData = await tryRpcFallback(workspaceId, headers);
           cardsLite = Array.isArray(rpcData?.cards) ? rpcData.cards : [];
           conversationsData = Array.isArray(rpcData?.conversations) ? rpcData.conversations : [];
-          usedFallback = true;
-        } else {
-          cardsLite = Array.isArray((cardsRes.data as any)?.cards) ? (cardsRes.data as any).cards : [];
-          conversationsData = Array.isArray((baseRes.data as any)?.conversations)
-            ? (baseRes.data as any).conversations
-            : [];
         }
-      } catch (edgeFnError) {
-        console.warn('⚠️ [Relatórios] Exceção nas Edge Functions:', edgeFnError);
-        
-        // Retry automático (máximo 2 tentativas)
-        if (retryCount < 2) {
-          console.log(`🔄 [Relatórios] Retry ${retryCount + 1}/2...`);
-          await new Promise(r => setTimeout(r, 1000 * (retryCount + 1))); // Backoff exponencial
-          return fetchData(fetchKey, retryCount + 1);
-        }
-        
-        // Se ainda falhar, tenta o fallback RPC
-        try {
-          const rpcData = await tryRpcFallback();
-          cardsLite = Array.isArray(rpcData?.cards) ? rpcData.cards : [];
-          conversationsData = Array.isArray(rpcData?.conversations) ? rpcData.conversations : [];
-          usedFallback = true;
-        } catch (rpcError) {
-          // Se RPC também falhar, propaga o erro original
-          throw edgeFnError;
-        }
-      }
+        return { workspaceId, cardsLite, conversationsData };
+      });
+
+      if (activeFetchIdRef.current !== fetchId) return;
+
+      phase1Results.forEach((r: any) => {
+        if (!r || r.__error) return;
+        phase1ByWs.set(r.workspaceId, {
+          cardsLite: Array.isArray(r.cardsLite) ? r.cardsLite : [],
+          conversations: Array.isArray(r.conversationsData) ? r.conversationsData : [],
+        });
+      });
+
+      const allCardsLite = Array.from(phase1ByWs.values()).flatMap((v) => v.cardsLite || []);
+      const allConversations = Array.from(phase1ByWs.values()).flatMap((v) => v.conversations || []);
 
       if (activeFetchIdRef.current !== fetchId) return;
 
@@ -887,7 +1001,7 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
         const parsed = Number(String(v).replace(',', '.'));
         return Number.isFinite(parsed) ? parsed : null;
       };
-      let cardsFiltered = (cardsLite || []).map((c: any) => ({
+      let cardsFiltered = (allCardsLite || []).map((c: any) => ({
         id: c.id,
         contact_id: c.contact_id || null,
         value: toNumberOrNull(c.value ?? c.total_value ?? c.amount ?? null),
@@ -903,7 +1017,7 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
         products: [],
       }));
 
-      const conversationsFiltered = (conversationsData || []);
+      const conversationsFiltered = (allConversations || []);
 
       setCards(cardsFiltered);
       setConversations(conversationsFiltered);
@@ -915,40 +1029,67 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
       (async () => {
         try {
           const currentFetchId = fetchId;
-          const cardIds = (cardsLite || []).map((c: any) => c?.id).filter(Boolean);
+          const wsList = Array.from(phase1ByWs.keys());
+          const phase2Results = await runWithLimit(wsList, 3, async (workspaceId) => {
+            const headers = createHeaders(workspaceId);
+            const cardIds = (phase1ByWs.get(workspaceId)?.cardsLite || []).map((c: any) => c?.id).filter(Boolean);
 
-          const [relationsRes, baseHeavyRes] = await Promise.allSettled([
-            cardIds.length
-              ? supabase.functions.invoke("report-indicator-cards-lite", {
-                  method: "POST",
-                  headers,
-                  body: { workspaceId: effectiveWorkspaceId, from, to, includeRelations: true, cardIds, userRole },
-                })
-              : Promise.resolve({ data: { cards: [] }, error: null } as any),
-            supabase.functions.invoke("report-base-data-lite", {
-              method: "POST",
-              headers,
-              body: {
-                workspaceId: effectiveWorkspaceId,
-                from,
-                to,
-                userRole,
-                userId: user.id,
-                includeContacts: true,
-                includeActivities: true,
-                includeConversations: false,
-              },
-            }),
-          ]);
+            const [relationsRes, baseHeavyRes] = await Promise.allSettled([
+              cardIds.length
+                ? supabase.functions.invoke("report-indicator-cards-lite", {
+                    method: "POST",
+                    headers,
+                    body: { workspaceId, from, to, includeRelations: true, cardIds, userRole },
+                  })
+                : Promise.resolve({ data: { cards: [] }, error: null } as any),
+              supabase.functions.invoke("report-base-data-lite", {
+                method: "POST",
+                headers,
+                body: {
+                  workspaceId,
+                  from,
+                  to,
+                  userRole,
+                  userId: user.id,
+                  includeContacts: true,
+                  includeActivities: true,
+                  includeConversations: false,
+                },
+              }),
+            ]);
+
+            return { workspaceId, relationsRes, baseHeavyRes };
+          });
 
           if (activeFetchIdRef.current !== currentFetchId) return;
 
           // relations (tags/produtos)
-          if (relationsRes.status === "fulfilled" && !(relationsRes.value as any)?.error) {
-            const relCards = Array.isArray(((relationsRes.value as any)?.data as any)?.cards)
-              ? (((relationsRes.value as any)?.data as any)?.cards as any[])
-              : [];
-            const relById = new Map(relCards.map((c: any) => [c.id, c]));
+          const relCardsAll: any[] = [];
+          const contactsAll: any[] = [];
+          const activitiesAll: any[] = [];
+
+          phase2Results.forEach((r: any) => {
+            const relationsRes = r?.relationsRes;
+            const baseHeavyRes = r?.baseHeavyRes;
+
+            if (relationsRes?.status === "fulfilled" && !(relationsRes.value as any)?.error) {
+              const relCards = Array.isArray((((relationsRes.value as any)?.data as any) || {})?.cards)
+                ? ((((relationsRes.value as any)?.data as any) || {})?.cards as any[])
+                : [];
+              relCardsAll.push(...relCards);
+            }
+
+            if (baseHeavyRes?.status === "fulfilled" && !(baseHeavyRes.value as any)?.error) {
+              const d = ((baseHeavyRes.value as any)?.data as any) || {};
+              const contactsData = Array.isArray(d?.contacts) ? d.contacts : [];
+              const activitiesData = Array.isArray(d?.activities) ? d.activities : [];
+              contactsAll.push(...contactsData);
+              activitiesAll.push(...activitiesData);
+            }
+          });
+
+          if (relCardsAll.length > 0) {
+            const relById = new Map(relCardsAll.map((c: any) => [c.id, c]));
 
             setCards((prev) =>
               (prev || []).map((c: any) => {
@@ -973,7 +1114,7 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
             );
 
       const tagRows: any[] = [];
-            relCards.forEach((card: any) => {
+            relCardsAll.forEach((card: any) => {
         const contactId = card.contact_id;
         const tagIds = Array.isArray(card.tag_ids) ? card.tag_ids : [];
         if (!contactId) return;
@@ -985,17 +1126,11 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
       setTags(tagRows);
           }
 
-          // contacts/activities
-          if (baseHeavyRes.status === "fulfilled" && !(baseHeavyRes.value as any)?.error) {
-            const d = ((baseHeavyRes.value as any)?.data as any) || {};
-            const contactsData = Array.isArray(d?.contacts) ? d.contacts : [];
-            const activitiesData = Array.isArray(d?.activities) ? d.activities : [];
-            setContacts(contactsData);
-            setActivities(activitiesData);
-          }
+          // contacts/activities (merge)
+          setContacts(contactsAll);
+          setActivities(activitiesAll);
 
         } catch (e) {
-          console.error("❌ [Relatórios] Erro na fase 2 (background):", e);
         }
       })();
     } catch (error) {
@@ -1017,28 +1152,28 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
     // Prioriza o workspace do contexto; se faltar, usa o primeiro disponível das props ou contexto.
     const fallbackWs =
       selectedWorkspace?.workspace_id ||
-      workspaces?.[0]?.workspace_id ||
       ctxWorkspaces?.[0]?.workspace_id ||
       '';
+    
     if (fallbackWs && fallbackWs !== selectedWorkspaceId) {
       setSelectedWorkspaceId(fallbackWs);
     }
-  }, [selectedWorkspace, workspaces, ctxWorkspaces, selectedWorkspaceId]);
+  }, [selectedWorkspace?.workspace_id, workspaces?.length, ctxWorkspaces?.length, selectedWorkspaceId]);
 
   useEffect(() => {
     setIsHydrated(false);
     lastFetchKeyRef.current = null;
-    if (selectedWorkspaceId) {
+    if (settingsWorkspaceId) {
       // Pipelines: usar contexto se já carregado; caso contrário, buscar direto.
       if (ctxPipelines && ctxPipelines.length > 0) {
         setPipelines(ctxPipelines);
       } else {
-        fetchPipelines(selectedWorkspaceId);
+        fetchPipelines(settingsWorkspaceId);
         fetchCtxPipelines?.(); // dispara fetch global do contexto
       }
-      fetchTags(selectedWorkspaceId);
-      fetchProducts(selectedWorkspaceId);
-      fetchAgents(selectedWorkspaceId);
+      fetchTags(settingsWorkspaceId);
+      fetchProducts(settingsWorkspaceId);
+      fetchAgents(settingsWorkspaceId);
       // Reset filtros quando workspace mudar
       setSelectedFunnel('all');
       setSelectedTags([]);
@@ -1048,7 +1183,7 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
       setAvailableTags([]);
       setAgents([]);
     }
-  }, [selectedWorkspaceId]);
+  }, [settingsWorkspaceId]);
 
   // Inicializa o draft a partir das configurações do usuário (DB).
   // Fallback: usa o preset padrão do workspace (read-only para users comuns).
@@ -1074,14 +1209,81 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
 
   useEffect(() => {
     // Bloqueia qualquer lógica se não houver usuário ou workspace selecionado
-    if (!user?.id || !selectedWorkspaceId) return;
+    if (!user?.id || !settingsWorkspaceId) return;
 
-    // Enquanto estiver carregando as configurações do usuário, não faz nada
-    if (loadingUserSettings) return;
+    // Enquanto estiver carregando as configurações do usuário ou da empresa, não faz nada
+    if (loadingUserSettings || loadingCompanyFilters) return;
 
-    const sourceFunnels = Array.isArray(userSettings?.funnels) && userSettings!.funnels!.length > 0
-      ? (userSettings!.funnels as any[])
-      : (savedFunnels || []);
+    // 1️⃣ Primeiro: Aplica filtros da empresa (padrão para todos)
+    if (companyFilters && typeof companyFilters === 'object') {
+      const cf = companyFilters;
+      
+      // Conversão Customizada
+      if (cf.customConv) {
+        const preset = (cf.customConv.periodPreset as any) || 'last30';
+        setCustomConvPeriodPreset(preset);
+        const derived = applyPresetToRange(preset);
+        setCustomConvStartDate(derived.from);
+        setCustomConvEndDate(derived.to);
+        setCustomConvAgent(cf.customConv.agent || 'all');
+        setCustomConvTags(Array.isArray(cf.customConv.tags) ? cf.customConv.tags : []);
+        setCustomConvStatus((cf.customConv.status as any) || 'all');
+      }
+      
+      // Conversão Equipe
+      if (cf.teamConv) {
+        const preset = (cf.teamConv.periodPreset as any) || 'last30';
+        setTeamConvPeriodPreset(preset);
+        const derived = applyPresetToRange(preset);
+        setTeamConvStartDate(derived.from);
+        setTeamConvEndDate(derived.to);
+        setTeamConvAgent(cf.teamConv.agent || 'all');
+        setTeamConvTags(Array.isArray(cf.teamConv.tags) ? cf.teamConv.tags : []);
+        setTeamConvStatus((cf.teamConv.status as any) || 'all');
+      }
+      
+      // Ranking Vendas
+      if (cf.salesRanking) {
+        const preset = (cf.salesRanking.periodPreset as any) || 'last30';
+        setSalesRankingPreset(preset);
+        const derived = applyPresetToRange(preset);
+        setSalesRankingStartDate(derived.from);
+        setSalesRankingEndDate(derived.to);
+        if (Array.isArray(cf.salesRanking.visibleUsers)) {
+          setSalesRankingUsers(cf.salesRanking.visibleUsers);
+        }
+      }
+      
+      // Ranking Trabalho
+      if (cf.workRanking) {
+        const preset = (cf.workRanking.periodPreset as any) || 'last30';
+        setWorkRankingPreset(preset);
+        const derived = applyPresetToRange(preset);
+        setWorkRankingStartDate(derived.from);
+        setWorkRankingEndDate(derived.to);
+        if (Array.isArray(cf.workRanking.visibleUsers)) {
+          setWorkRankingUsers(cf.workRanking.visibleUsers);
+        }
+      }
+    }
+
+    // 2️⃣ Depois: Aplica configurações
+    // Para usuários "user": sempre usa filtros da empresa (companyFilters ou savedFunnels)
+    // Para admin/master: pode usar configurações pessoais (userSettings) se existirem
+    let sourceFunnels: any[];
+    if (userRole === 'user') {
+      // Usuário "user" sempre vê o que a empresa configurou
+      sourceFunnels = (companyFilters?.funnels && Array.isArray(companyFilters.funnels) && companyFilters.funnels.length > 0)
+        ? companyFilters.funnels
+        : (savedFunnels || []);
+    } else {
+      // Admin/master pode ter configurações pessoais
+      sourceFunnels = Array.isArray(userSettings?.funnels) && userSettings!.funnels!.length > 0
+        ? (userSettings!.funnels as any[])
+        : (companyFilters?.funnels && Array.isArray(companyFilters.funnels) && companyFilters.funnels.length > 0)
+          ? companyFilters.funnels
+          : (savedFunnels || []);
+    }
 
     const normalizeLeadMetrics = (metricsRaw: any[] | undefined) =>
       (Array.isArray(metricsRaw) ? metricsRaw : [])
@@ -1102,8 +1304,6 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
     }));
 
     setDraftFunnels(normalized);
-    setSavedSnapshot(normalized);
-    setFunnelsDirty(false);
     setRehydrateNonce((n) => n + 1);
 
     // Restaura outros filtros (exceto o filtro global de datas que agora é fixo em last30)
@@ -1114,10 +1314,21 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
       if (Array.isArray(gf.tags)) setSelectedTags(gf.tags);
     }
 
-    if (Array.isArray(userSettings?.customConversions)) {
+    // Carregar conversões da empresa (companyFilters) - fallback para userSettings (legado)
+    const companyCustomConv = (companyFilters as any)?.customConversions;
+    const companyTeamConv = (companyFilters as any)?.teamConversions;
+    
+    if (Array.isArray(companyCustomConv) && companyCustomConv.length > 0) {
+      setCustomConversions(companyCustomConv.map((c: any) => ({ ...c, isEditing: false })));
+    } else if (Array.isArray(userSettings?.customConversions)) {
+      // Fallback legado - dados antigos do usuário
       setCustomConversions((userSettings!.customConversions as any[]).map((c: any) => ({ ...c, isEditing: false })));
     }
-    if (Array.isArray(userSettings?.teamConversions)) {
+    
+    if (Array.isArray(companyTeamConv) && companyTeamConv.length > 0) {
+      setTeamConversions(companyTeamConv.map((c: any) => ({ ...c, isEditing: false })));
+    } else if (Array.isArray(userSettings?.teamConversions)) {
+      // Fallback legado - dados antigos do usuário
       setTeamConversions((userSettings!.teamConversions as any[]).map((c: any) => ({ ...c, isEditing: false })));
     }
 
@@ -1150,14 +1361,22 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
     setIsHydrated(true);
 
     // ✅ CRÍTICO: Removido userSettings das dependências para evitar loop infinito
-  }, [savedFunnels, user?.id, loadingUserSettings, selectedWorkspaceId]);
+  }, [savedFunnels, user?.id, userRole, loadingUserSettings, loadingCompanyFilters, settingsWorkspaceId]);
 
+  // ✅ Disparar fetchData quando houver contexto válido
   useEffect(() => {
-    // Evitar múltiplos fetches em cascata no mount / troca de filtros
-    if (!selectedWorkspaceId || !user?.id || !isHydrated) return;
+    // Precisa de usuário E (workspace específico OU lista de workspaces para modo "todas as empresas")
+    const hasWorkspaceContext = settingsWorkspaceId || (Array.isArray(workspaces) && workspaces.length > 0);
+    if (!user?.id || !hasWorkspaceContext) {
+      return;
+    }
 
     const key = JSON.stringify({
-      ws: selectedWorkspaceId,
+      // selectedWorkspaceId vazio = "todas as empresas"
+      ws: selectedWorkspaceId || 'all',
+      // garante refetch quando a lista de empresas do master carregar/alterar
+      wsLen: Array.isArray(workspaces) ? workspaces.length : 0,
+      wsFirst: Array.isArray(workspaces) ? (workspaces[0]?.workspace_id || null) : null,
       preset: periodPreset,
       start: startDate ? startDate.toISOString() : null,
       end: endDate ? endDate.toISOString() : null,
@@ -1167,24 +1386,16 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
       tags: selectedTags,
     });
 
-    if (lastFetchKeyRef.current === key) return;
-    lastFetchKeyRef.current = key;
-
-    if (fetchDebounceRef.current) {
-      window.clearTimeout(fetchDebounceRef.current);
+    if (lastFetchKeyRef.current === key) {
+      return;
     }
-
-    fetchDebounceRef.current = window.setTimeout(() => {
-      fetchData(key);
-    }, 200);
-
-    return () => {
-      if (fetchDebounceRef.current) {
-        window.clearTimeout(fetchDebounceRef.current);
-        fetchDebounceRef.current = null;
-      }
-    };
-  }, [periodPreset, startDate, endDate, selectedAgent, userRole, selectedFunnel, selectedTags, selectedWorkspaceId, user?.id]);
+    
+    lastFetchKeyRef.current = key;
+    
+    // Chamar diretamente sem debounce - o debounce estava sendo cancelado por re-renders
+    fetchData(key);
+    
+  }, [periodPreset, startDate, endDate, selectedAgent, userRole, selectedFunnel, selectedTags, selectedWorkspaceId, settingsWorkspaceId, user?.id, workspaces?.length]);
 
   const dndSensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
@@ -1201,7 +1412,7 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
       const newIndex = prev.findIndex((c: any) => String(c.id) === String(over.id));
       if (oldIndex < 0 || newIndex < 0) return prev;
       const next = arrayMove(prev, oldIndex, newIndex);
-      persistUserReportSettings({ customConversions: next });
+      saveCompanyConversions({ customConversions: next });
       return next;
     });
   };
@@ -1216,7 +1427,7 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
       const newIndex = prev.findIndex((c: any) => String(c.id) === String(over.id));
       if (oldIndex < 0 || newIndex < 0) return prev;
       const next = arrayMove(prev, oldIndex, newIndex);
-      persistUserReportSettings({ teamConversions: next });
+      saveCompanyConversions({ teamConversions: next });
       return next;
     });
   };
@@ -1245,6 +1456,10 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
   const [workRankingPreset, setWorkRankingPreset] = useState<ConversionPeriodPreset>('last30');
   const [workRankingStartDate, setWorkRankingStartDate] = useState<Date | null>(startOfDay(subDays(new Date(), 29)));
   const [workRankingEndDate, setWorkRankingEndDate] = useState<Date | null>(endOfDay(new Date()));
+  
+  // Filtro de usuários visíveis nos rankings (admin/master configura, todos veem)
+  const [salesRankingUsers, setSalesRankingUsers] = useState<string[]>([]); // vazio = todos
+  const [workRankingUsers, setWorkRankingUsers] = useState<string[]>([]); // vazio = todos
   
   const [salesRankingRows, setSalesRankingRows] = useState<any[]>([]);
   const [salesRankingLoading, setSalesRankingLoading] = useState(false);
@@ -1341,54 +1556,33 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
       setWorkRankingLoading(true);
       try {
         const { from, to } = getEffectiveRange(workRankingPreset, workRankingStartDate, workRankingEndDate);
-        const fromDate = toDateOnly(from);
-        const toDate = toDateOnly(to);
+        
+        // Usa a função RPC que trata acentos corretamente
+        const { data, error } = await supabase.rpc('report_team_work_ranking', {
+          p_workspace_id: selectedWorkspaceId,
+          p_from: from ? from.toISOString() : null,
+          p_to: to ? to.toISOString() : null,
+          p_responsible_id: null
+        });
 
-        let query = supabase
-          .from('report_team_work_ranking_view' as any)
-          .select('*')
-          .eq('workspace_id', selectedWorkspaceId);
-
-        if (fromDate) query = query.gte('activity_date', fromDate);
-        if (toDate) query = query.lte('activity_date', toDate);
-
-        const { data, error } = await query;
         if (!error && data) {
-          const aggregated = new Map<string, TeamWorkRankingRow>();
-          (data as any[]).forEach((row) => {
-            const id = row.responsible_id;
-            if (!id) return;
-            const current = aggregated.get(id) || {
-              responsible_id: id,
-              mensagem: 0,
-              ligacao_nao_atendida: 0,
-              ligacao_atendida: 0,
-              ligacao_abordada: 0,
-              ligacao_agendada: 0,
-              ligacao_follow_up: 0,
-              reuniao_agendada: 0,
-              reuniao_realizada: 0,
-              reuniao_nao_realizada: 0,
-              reuniao_reagendada: 0,
-              whatsapp_enviado: 0
-            };
-
-            current.mensagem += Number(row.mensagem || 0);
-            current.ligacao_nao_atendida += Number(row.ligacao_nao_atendida || 0);
-            current.ligacao_atendida += Number(row.ligacao_atendida || 0);
-            current.ligacao_abordada += Number(row.ligacao_abordada || 0);
-            current.ligacao_agendada += Number(row.ligacao_agendada || 0);
-            current.ligacao_follow_up += Number(row.ligacao_follow_up || 0);
-            current.reuniao_agendada += Number(row.reuniao_agendada || 0);
-            current.reuniao_realizada += Number(row.reuniao_realizada || 0);
-            current.reuniao_nao_realizada += Number(row.reuniao_nao_realizada || 0);
-            current.reuniao_reagendada += Number(row.reuniao_reagendada || 0);
-            current.whatsapp_enviado += Number(row.whatsapp_enviado || 0);
-
-            aggregated.set(id, current);
-          });
-
-          setWorkRankingData(Array.from(aggregated.values()));
+          const rows = (data as any[]).map((row) => ({
+            responsible_id: row.responsible_id,
+            mensagem: Number(row.mensagem || 0),
+            ligacao_nao_atendida: Number(row.ligacao_nao_atendida || 0),
+            ligacao_atendida: Number(row.ligacao_atendida || 0),
+            ligacao_abordada: Number(row.ligacao_abordada || 0),
+            ligacao_agendada: Number(row.ligacao_agendada || 0),
+            ligacao_follow_up: Number(row.ligacao_follow_up || 0),
+            reuniao_agendada: Number(row.reuniao_agendada || 0),
+            reuniao_realizada: Number(row.reuniao_realizada || 0),
+            reuniao_nao_realizada: Number(row.reuniao_nao_realizada || 0),
+            reuniao_reagendada: Number(row.reuniao_reagendada || 0),
+            whatsapp_enviado: Number(row.whatsapp_enviado || 0)
+          }));
+          setWorkRankingData(rows);
+        } else if (error) {
+          console.error("[Relatórios] Erro na RPC ranking de trabalho:", error);
         }
       } catch (e) {
         console.error("[Relatórios] Erro ao buscar ranking de trabalho:", e);
@@ -1496,7 +1690,8 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
     const labelA = teamMetricOptions.find((o) => o.key === conv.metricA)?.label || 'A';
     const labelB = teamMetricOptions.find((o) => o.key === conv.metricB)?.label || 'B';
 
-    if (conv.isEditing) {
+    // Modo edição só para admin/master
+    if (conv.isEditing && canEditCompanyFilters) {
       return (
         <SortableCard key={conv.id} id={conv.id} disabled>
           <Card className="rounded-none border-blue-200 dark:border-blue-900 bg-blue-50/30 dark:bg-blue-900/10 h-[132px]">
@@ -1558,7 +1753,7 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
                   onClick={() => {
                     const next = teamConversions.map((c) => (c.id === conv.id ? { ...c, isEditing: false } : c));
                     setTeamConversions(next);
-                    persistUserReportSettings({ teamConversions: next });
+                    saveCompanyConversions({ teamConversions: next });
                   }}
                   title="Salvar"
                 >
@@ -1591,64 +1786,82 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
               </div>
             </div>
             <div className="text-2xl font-semibold text-gray-900 dark:text-gray-100">{result}%</div>
-            <div className="absolute top-1 right-1 opacity-0 group-hover:opacity-100 transition-opacity flex gap-0.5">
-              <Button
-                size="icon"
-                variant="ghost"
-                className="h-5 w-5"
-                onClick={() => setTeamConversions((prev) => prev.map((c) => (c.id === conv.id ? { ...c, isEditing: true } : c)))}
-                title="Editar"
-              >
-                <Pencil className="h-3 w-3" />
-              </Button>
-              <Button
-                size="icon"
-                variant="ghost"
-                className="h-5 w-5 text-red-400"
-                onClick={() => removeTeamConversion(conv.id)}
-                title="Remover"
-              >
-                <Trash2 className="h-3 w-3" />
-              </Button>
-            </div>
+            {canEditCompanyFilters && (
+              <div className="absolute top-1 right-1 opacity-0 group-hover:opacity-100 transition-opacity flex gap-0.5">
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  className="h-5 w-5"
+                  onClick={() => setTeamConversions((prev) => prev.map((c) => (c.id === conv.id ? { ...c, isEditing: true } : c)))}
+                  title="Editar"
+                >
+                  <Pencil className="h-3 w-3" />
+                </Button>
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  className="h-5 w-5 text-red-400"
+                  onClick={() => removeTeamConversion(conv.id)}
+                  title="Remover"
+                >
+                  <Trash2 className="h-3 w-3" />
+                </Button>
+              </div>
+            )}
           </CardContent>
         </Card>
       </SortableCard>
     );
   };
 
+  // Filtragem baseada no agente SELECIONADO (não no userRole)
+  // "all" = dados gerais da empresa, agente específico = dados apenas daquele agente
   const contactsScoped = useMemo(() => {
-    // ✅ Compat: alguns ambientes não possuem responsible_id em contacts (ou não está selecionado).
-    // Só aplicar filtro quando o campo existir de fato.
-    if (userRole === 'user' && user?.id) {
+    if (selectedAgent && selectedAgent !== 'all' && selectedAgent !== 'ia') {
       const hasResponsible = (contacts as any[]).some((c: any) => c && ('responsible_id' in c));
       if (hasResponsible) {
-        return (contacts as any[]).filter((c: any) => String(c.responsible_id || '') === String(user.id));
-    }
+        return (contacts as any[]).filter((c: any) => String(c.responsible_id || '') === String(selectedAgent));
+      }
     }
     return contacts as any[];
-  }, [contacts, userRole, user?.id]);
+  }, [contacts, selectedAgent]);
 
   const conversationsScoped = useMemo(() => {
-    if (userRole === 'user' && user?.id) {
-      return conversations.filter((c) => c.assigned_user_id === user.id);
+    if (selectedAgent && selectedAgent !== 'all' && selectedAgent !== 'ia') {
+      return conversations.filter((c) => c.assigned_user_id === selectedAgent);
     }
     return conversations;
-  }, [conversations, userRole, user?.id]);
+  }, [conversations, selectedAgent]);
 
   const activitiesScoped = useMemo(() => {
-    if (userRole === 'user' && user?.id) {
-      return activities.filter((a) => a.responsible_id === user.id);
+    if (selectedAgent && selectedAgent !== 'all' && selectedAgent !== 'ia') {
+      return activities.filter((a) => a.responsible_id === selectedAgent);
     }
     return activities;
-  }, [activities, userRole, user?.id]);
+  }, [activities, selectedAgent]);
 
   const cardsScoped = useMemo(() => {
-    if (userRole === 'user' && user?.id) {
-      return cards.filter((c) => c.responsible_user_id === user.id);
+    if (selectedAgent && selectedAgent !== 'all' && selectedAgent !== 'ia') {
+      return cards.filter((c) => c.responsible_user_id === selectedAgent);
     }
     return cards;
-  }, [cards, userRole, user?.id]);
+  }, [cards, selectedAgent]);
+
+  // Lista de agentes filtrada: usuário "user" só vê ele mesmo
+  const agentsFiltered = useMemo(() => {
+    if (userRole === 'user' && user?.id) {
+      // Encontra o próprio usuário na lista de agentes (comparando como string para evitar problemas de tipo)
+      const selfAgent = agents.find((a) => String(a.id) === String(user.id));
+      // Se não encontrar na lista, cria uma entrada com o nome do usuário
+      if (selfAgent) {
+        return [selfAgent];
+      }
+      // Fallback: retorna entrada com o ID e nome do usuário atual
+      const userName = (user as any)?.name || (user as any)?.email?.split('@')[0] || 'Você';
+      return [{ id: user.id, name: userName }];
+    }
+    return agents;
+  }, [agents, userRole, user?.id, user]);
 
   const leadsReceived = conversationsScoped.length;
   // ✅ Compat: alguns ambientes não possuem `contacts.status`. Se não existir, usar `pipeline_cards.qualification`.
@@ -1688,7 +1901,20 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
       new Set((pipelineColumnsMap?.[pipelineId] || []).map((c: any) => c.id));
 
     const apply = (funnel: any) => {
-      const groups = normalizeFunnelGroups(Array.isArray(funnel?.filters) ? funnel.filters : []);
+      let groups = normalizeFunnelGroups(Array.isArray(funnel?.filters) ? funnel.filters : []);
+      // Se não há filtros, usa grupo padrão que inclui todos os dados
+      if (groups.length === 0) {
+        groups = [{
+          pipeline: 'all',
+          column: 'all',
+          team: 'all',
+          tags: [],
+          products: [],
+          dateRange: {},
+          status: 'all',
+          value: null,
+        }];
+      }
       const leadMetricsCfg = Array.isArray(funnel?.lead_metrics) ? funnel.lead_metrics : [];
       const metricSets = new Map<string, Set<string>>();
       leadMetricsCfg.forEach((m: any) => metricSets.set(String(m?.id || ''), new Set<string>()));
@@ -1780,12 +2006,13 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
           cardsF = cardsF.filter((c) => (c.products || []).some((p: any) => p?.product_id && productFilters.includes(p.product_id)));
         }
 
-        // data em cards (entrada/registro)
+        // data em cards (movimentação/edição): preferir updated_at, fallback created_at
         if (dateRange && (dateRange.from || dateRange.to)) {
           cardsF = cardsF.filter((c: any) => {
-            // se não tiver created_at, mantém para evitar quedas bruscas
-            if (!c.created_at) return true;
-            return withinDate(c.created_at);
+            const iso = c.updated_at || c.created_at;
+            // se não tiver data, mantém para evitar quedas bruscas
+            if (!iso) return true;
+            return withinDate(iso);
           });
         }
 
@@ -1827,8 +2054,9 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
         }
         if (dateRange && (dateRange.from || dateRange.to)) {
           cardsBase = cardsBase.filter((c: any) => {
-            if (!c.created_at) return true;
-            return withinDate(c.created_at);
+            const iso = c.updated_at || c.created_at;
+            if (!iso) return true;
+            return withinDate(iso);
           });
         }
         if (tagFilters.length > 0) {
@@ -1904,8 +2132,9 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
 
         // Séries diárias: baseadas em cards (entrada no funil) e qualificação do card
         cardsF.forEach((c: any) => {
-          if (!c?.created_at) return;
-          const key = format(new Date(c.created_at), 'yyyy-MM-dd');
+          const iso = c?.updated_at || c?.created_at;
+          if (!iso) return;
+          const key = format(new Date(iso), 'yyyy-MM-dd');
           const isQualified = String(c.qualification || '').toLowerCase() === 'qualified';
           addSeries(key, 1, isQualified ? 1 : 0);
         });
@@ -1972,7 +2201,7 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
     };
 
     return (draftFunnels || []).map(apply);
-  }, [availableProducts, availableTags, activities, cards, contacts, conversations, draftFunnels, tags]);
+  }, [availableProducts, availableTags, activities, cards, contacts, conversations, draftFunnels, tags, cardsScoped]);
 
   const leadsSeriesGlobal = useMemo(() => {
     const m = new Map<string, { received: number; qualified: number }>();
@@ -2020,7 +2249,6 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
         return { date: key, received: v?.received ?? 0, qualified: v?.qualified ?? 0 };
       });
     } catch (e) {
-      console.warn("📊 [Relatórios] Erro ao gerar série do gráfico:", e);
       return [];
     }
   }, [leadsSeriesGlobal, startDate, endDate, requiredDataRangeFromFunnels]);
@@ -2431,6 +2659,11 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
       }))
       .sort((a: any, b: any) => (b.revenue || 0) - (a.revenue || 0));
 
+    // Filtra usuários visíveis (se configurado pelo admin/master)
+    if (salesRankingUsers && salesRankingUsers.length > 0) {
+      return list.filter((row: any) => salesRankingUsers.includes(row.id));
+    }
+
     return list;
   }, [
     agents,
@@ -2439,6 +2672,7 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
     salesRankingPreset,
     salesRankingStartDate,
     salesRankingEndDate,
+    salesRankingUsers,
   ]);
 
   const rankingTrabalho = useMemo<any[]>(() => {
@@ -2541,11 +2775,19 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
       return { ...row, total };
     });
 
-    return list.sort((a: any, b: any) => (b.total || 0) - (a.total || 0));
+    const sorted = list.sort((a: any, b: any) => (b.total || 0) - (a.total || 0));
+
+    // Filtra usuários visíveis (se configurado pelo admin/master)
+    if (workRankingUsers && workRankingUsers.length > 0) {
+      return sorted.filter((row: any) => workRankingUsers.includes(row.id));
+    }
+
+    return sorted;
   }, [
     agents,
     agentMap,
     workRankingData,
+    workRankingUsers,
   ]);
 
   const rankingVendasTotals = useMemo(() => {
@@ -2647,8 +2889,25 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
               </div>
             )}
           </div>
-          <div className="flex items-center gap-2 px-4 pb-3">
+          <div className="flex items-center justify-between gap-2 px-4 pb-3">
             <span className="text-[11px] font-semibold text-gray-700 dark:text-gray-100">Filtros avançados</span>
+            {canEditCompanyFilters && (
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-7 px-3 text-[10px] rounded-none gap-1.5"
+                onClick={saveCompanyFiltersPreset}
+                disabled={loadingCompanyFilters}
+                title="Salvar filtros atuais como padrão para toda a empresa"
+              >
+                {loadingCompanyFilters ? (
+                  <Loader2 className="h-3 w-3 animate-spin" />
+                ) : (
+                  <Save className="h-3 w-3" />
+                )}
+                Salvar para empresa
+              </Button>
+            )}
           </div>
         </div>
 
@@ -2656,6 +2915,12 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
         <div className="flex-1 overflow-y-auto overflow-x-hidden bg-[#e6e6e6] dark:bg-[#050505] relative">
           <div className="block w-full align-middle bg-white dark:bg-[#111111]">
             <div className="p-4 space-y-4">
+              {!user?.id && (
+                <div className="border border-orange-300 bg-orange-50 text-orange-800 px-3 py-2 text-xs dark:border-orange-800 dark:bg-[#2a1d00] dark:text-orange-200">
+                  Sessão do usuário não carregada. Faça login novamente (ou recarregue a página após logar) para carregar os indicadores.
+                </div>
+              )}
+             
               {/* Área Principal */}
               <div className="flex flex-col overflow-hidden border border-[#d4d4d4] dark:border-gray-800 bg-white dark:bg-[#0f0f0f] shadow-sm p-4 space-y-6 min-h-0">
         {isLoading && (
@@ -2667,28 +2932,9 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
 
         {/* Funil – Indicadores */}
         <section className="space-y-3">
-          <div className="flex items-center justify-between gap-2">
-            <div className="flex items-center gap-2 text-sm font-semibold text-gray-900 dark:text-gray-100">
-              <Filter className="h-4 w-4" />
-              Funil – Indicadores
-            </div>
-
-            <div className="flex items-center gap-2">
-              {canSaveFilters && (
-                <Button
-                  className="h-8 px-3 text-xs rounded-none"
-                  onClick={async () => {
-                    const latest = draftFunnelsRef.current ?? draftFunnels;
-                    await persistUserReportSettings({ funnels: latest });
-                    setSavedSnapshot(latest);
-                    setFunnelsDirty(false);
-                  }}
-                  disabled={!funnelsDirty || loadingUserSettings}
-                >
-                  Salvar
-                </Button>
-              )}
-            </div>
+          <div className="flex items-center gap-2 text-sm font-semibold text-gray-900 dark:text-gray-100">
+            <Filter className="h-4 w-4" />
+            Funil – Indicadores
           </div>
 
           {/* Builder: múltiplos funis */}
@@ -2705,7 +2951,8 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
                     pipelines={pipelines || []}
                     tags={availableTags || []}
                     products={availableProducts || []}
-                    agents={agents || []}
+                    agents={agentsFiltered || []}
+                    showAIAgent={userRole !== 'user'}
                     selectedWorkspaceId={selectedWorkspaceId || workspaces?.[0]?.workspace_id || ''}
                     onFiltersChange={(filters) => {
                       setDraftFunnels((prev: any[]) => {
@@ -2719,7 +2966,6 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
                         const next = prev.map((x) => (x.id === f.id ? { ...x, filters: incomingCanon } : x));
                         return next;
                       });
-                      setFunnelsDirty(true);
                     }}
                     initialFilters={f.filters}
                     rehydrateNonce={rehydrateNonce}
@@ -2795,20 +3041,22 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
                       <CardTitle className="text-xs text-gray-700 dark:text-gray-100">
                         Leads
                       </CardTitle>
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="sm"
-                        className={cn(
-                          "h-7 px-2 rounded-none text-[10px] border border-transparent hover:border-gray-200 dark:hover:border-gray-700",
-                          "opacity-0 group-hover:opacity-100 transition-opacity",
-                          editingMetricsFunnelId === f.id && "opacity-100"
-                        )}
-                        onClick={() => setEditingMetricsFunnelId((cur) => (cur === f.id ? null : f.id))}
-                        title="Editar métricas"
-                      >
-                        Editar métricas
-                      </Button>
+                      {canEditIndicatorFunnels && (
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          className={cn(
+                            "h-7 px-2 rounded-none text-[10px] border border-transparent hover:border-gray-200 dark:hover:border-gray-700",
+                            "opacity-0 group-hover:opacity-100 transition-opacity",
+                            editingMetricsFunnelId === f.id && "opacity-100"
+                          )}
+                          onClick={() => setEditingMetricsFunnelId((cur) => (cur === f.id ? null : f.id))}
+                          title="Editar métricas"
+                        >
+                          Editar métricas
+                        </Button>
+                      )}
                     </div>
                   </CardHeader>
                   <CardContent className="p-2 flex flex-col h-full">
@@ -2841,8 +3089,8 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
                       );
                     })()}
 
-                    {/* Aviso (para não ficar “vazio” quando houver poucas linhas) */}
-                    {editingMetricsFunnelId !== f.id && (
+                    {/* Aviso (para não ficar "vazio" quando houver poucas linhas) - apenas para quem pode editar */}
+                    {canEditIndicatorFunnels && editingMetricsFunnelId !== f.id && (
                       <div className="mt-auto pt-2">
                         <div className="text-[10px] text-gray-500 dark:text-gray-400 border border-dashed border-gray-200 dark:border-gray-800 px-2 py-2 leading-4">
                           Passe o mouse no título e clique em <span className="font-semibold">Editar métricas</span> para adicionar contagens por <span className="font-semibold">pipeline/coluna</span>.
@@ -2850,8 +3098,8 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
                       </div>
                     )}
 
-                    {/* Editor (apenas quando o usuário clicar em "Editar métricas") */}
-                    {editingMetricsFunnelId === f.id && (
+                    {/* Editor (apenas quando o usuário clicar em "Editar métricas" - restrito a quem pode editar) */}
+                    {canEditIndicatorFunnels && editingMetricsFunnelId === f.id && (
                       <div className="mt-2 pt-2 border-t border-gray-100 dark:border-gray-800">
                         <div className="flex items-center justify-between gap-2">
                           <div className="text-[10px] font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
@@ -3146,8 +3394,8 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
                 </SelectTrigger>
                 <SelectContent className="text-[10px] rounded-none">
                   <SelectItem value="all">Todos os agentes</SelectItem>
-                  <SelectItem value="ia">Agente IA</SelectItem>
-                  {agents.map((a) => (
+                  {userRole !== 'user' && <SelectItem value="ia">Agente IA</SelectItem>}
+                  {agentsFiltered.map((a) => (
                     <SelectItem key={a.id} value={a.id}>
                       {a.name}
                     </SelectItem>
@@ -3397,17 +3645,19 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
                 </>
               )}
             </div>
-            <Button 
-              variant="outline" 
-              size="sm" 
-              className="h-7 px-2 text-[10px] rounded-none bg-gray-400 dark:bg-[#606060] border-gray-300 dark:border-gray-600"
-              onClick={addCustomConversion}
-            >
-              <Plus className="h-3 w-3 mr-1" />
-              Nova Conversão
-            </Button>
+            {canEditCompanyFilters && (
+              <Button 
+                variant="outline" 
+                size="sm" 
+                className="h-7 px-2 text-[10px] rounded-none bg-gray-400 dark:bg-[#606060] border-gray-300 dark:border-gray-600"
+                onClick={addCustomConversion}
+              >
+                <Plus className="h-3 w-3 mr-1" />
+                Nova Conversão
+              </Button>
+            )}
           </div>
-          <DndContext sensors={dndSensors} collisionDetection={closestCenter} onDragEnd={onDragEndCustomConversions}>
+          <DndContext sensors={canEditCompanyFilters ? dndSensors : []} collisionDetection={closestCenter} onDragEnd={onDragEndCustomConversions}>
             <SortableContext items={customConversions.map((c: any) => c.id)} strategy={rectSortingStrategy}>
               <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3">
                 {/* Conversões Customizadas */}
@@ -3427,7 +3677,8 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
 
               const result = conversion(countA, countB);
 
-              if (conv.isEditing) {
+              // Modo edição só para admin/master
+              if (conv.isEditing && canEditCompanyFilters) {
                 return (
                   <SortableCard key={conv.id} id={conv.id} disabled>
                     <Card className="rounded-none border-blue-200 dark:border-blue-900 bg-blue-50/30 dark:bg-blue-900/10">
@@ -3508,7 +3759,7 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
                           onClick={() => {
                             const next = customConversions.map(c => c.id === conv.id ? { ...c, isEditing: false } : c);
                             setCustomConversions(next);
-                            persistUserReportSettings({ customConversions: next });
+                            saveCompanyConversions({ customConversions: next });
                           }}
                         >
                           <Check className="h-3.5 w-3.5" />
@@ -3531,21 +3782,23 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
                       <div className="text-[11px] font-medium text-gray-700 dark:text-gray-100 truncate">{conv.name || 'Conversão'}</div>
                     </div>
                     <div className="text-xl font-semibold text-gray-900 dark:text-gray-100">{result}%</div>
-                    <div className="absolute top-1 right-1 opacity-0 group-hover:opacity-100 transition-opacity flex gap-0.5">
-                      <Button 
-                        size="icon" variant="ghost" className="h-5 w-5" 
-                        onClick={() => {
-                          setCustomConversions(prev => prev.map(c => c.id === conv.id ? { ...c, isEditing: true } : c));
-                          fetchColumnsForPipeline(conv.pipelineA);
-                          fetchColumnsForPipeline(conv.pipelineB);
-                        }}
-                      >
-                        <Pencil className="h-3 w-3" />
-                      </Button>
-                      <Button size="icon" variant="ghost" className="h-5 w-5 text-red-400" onClick={() => removeCustomConversion(conv.id)}>
-                        <Trash2 className="h-3 w-3" />
-                      </Button>
-                    </div>
+                    {canEditCompanyFilters && (
+                      <div className="absolute top-1 right-1 opacity-0 group-hover:opacity-100 transition-opacity flex gap-0.5">
+                        <Button 
+                          size="icon" variant="ghost" className="h-5 w-5" 
+                          onClick={() => {
+                            setCustomConversions(prev => prev.map(c => c.id === conv.id ? { ...c, isEditing: true } : c));
+                            fetchColumnsForPipeline(conv.pipelineA);
+                            fetchColumnsForPipeline(conv.pipelineB);
+                          }}
+                        >
+                          <Pencil className="h-3 w-3" />
+                        </Button>
+                        <Button size="icon" variant="ghost" className="h-5 w-5 text-red-400" onClick={() => removeCustomConversion(conv.id)}>
+                          <Trash2 className="h-3 w-3" />
+                        </Button>
+                      </div>
+                    )}
                     </CardContent>
                   </Card>
                 </SortableCard>
@@ -3556,7 +3809,10 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
               <Card className="rounded-none border-gray-200 dark:border-gray-700 dark:bg-[#1b1b1b] sm:col-span-2 md:col-span-3 lg:col-span-4 xl:col-span-5">
                 <CardContent className="p-3">
                   <div className="text-[11px] text-gray-600 dark:text-gray-300">
-                    Nenhuma conversão criada. Clique em <span className="font-medium">Nova Conversão</span>.
+                    {canEditCompanyFilters 
+                      ? <>Nenhuma conversão criada. Clique em <span className="font-medium">Nova Conversão</span>.</>
+                      : "Nenhuma conversão configurada pelo administrador."
+                    }
                   </div>
                 </CardContent>
               </Card>
@@ -3568,7 +3824,7 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
 
         {/* Equipe – Indicadores + Equipe – Conversão */}
         <section className="space-y-3">
-          <DndContext sensors={dndSensors} collisionDetection={closestCenter} onDragEnd={onDragEndTeamConversions}>
+          <DndContext sensors={canEditCompanyFilters ? dndSensors : []} collisionDetection={closestCenter} onDragEnd={onDragEndTeamConversions}>
             <SortableContext items={teamConversions.map((c: any) => c.id)} strategy={rectSortingStrategy}>
               
               {/* BLOCO SUPERIOR: Indicadores vs (Filtros + Cards) */}
@@ -3619,15 +3875,17 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
                       <Users className="h-4 w-4" />
                       Equipe – Conversão
                     </div>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="h-7 px-2 text-[10px] rounded-none bg-gray-400 dark:bg-[#606060] border-gray-300 dark:border-gray-600"
-                      onClick={addTeamConversion}
-                    >
-                      <Plus className="h-3 w-3 mr-1" />
-                      Nova Conversão
-                    </Button>
+                    {canEditCompanyFilters && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="h-7 px-2 text-[10px] rounded-none bg-gray-400 dark:bg-[#606060] border-gray-300 dark:border-gray-600"
+                        onClick={addTeamConversion}
+                      >
+                        <Plus className="h-3 w-3 mr-1" />
+                        Nova Conversão
+                      </Button>
+                    )}
                   </div>
 
                   {/* Filtros */}
@@ -3653,8 +3911,8 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
                       </SelectTrigger>
                       <SelectContent className="text-[10px] rounded-none">
                         <SelectItem value="all">Todos os agentes</SelectItem>
-                        <SelectItem value="ia">Agente IA</SelectItem>
-                        {agents.map((a) => (
+                        {userRole !== 'user' && <SelectItem value="ia">Agente IA</SelectItem>}
+                        {agentsFiltered.map((a) => (
                           <SelectItem key={a.id} value={a.id}>
                             {a.name}
                           </SelectItem>
@@ -3839,7 +4097,10 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
                   <Card className="rounded-none border-gray-200 dark:border-gray-700 dark:bg-[#1b1b1b] sm:col-span-2">
                     <CardContent className="p-3">
                       <div className="text-[11px] text-gray-600 dark:text-gray-300">
-                        Nenhuma conversão criada. Clique em <span className="font-medium">Nova Conversão</span>.
+                        {canEditCompanyFilters 
+                          ? <>Nenhuma conversão criada. Clique em <span className="font-medium">Nova Conversão</span>.</>
+                          : "Nenhuma conversão configurada pelo administrador."
+                        }
                       </div>
                     </CardContent>
                   </Card>
@@ -3881,6 +4142,65 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
                   <SelectItem value="custom">Personalizado</SelectItem>
                 </SelectContent>
               </Select>
+
+              {/* Seletor de usuários visíveis (apenas admin/master pode ver e editar) */}
+              {canEditCompanyFilters && (
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="h-7 shrink-0 px-2 text-[10px] rounded-none bg-gray-400 dark:bg-[#606060] border-gray-300 dark:border-gray-600 whitespace-nowrap gap-1"
+                    >
+                      <Users className="h-3 w-3" />
+                      {salesRankingUsers.length > 0 ? `${salesRankingUsers.length} usuário(s)` : 'Todos'}
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent
+                    className="w-56 p-2 rounded-none bg-white text-gray-900 border border-[#d4d4d4] dark:bg-[#1b1b1b] dark:text-gray-100 dark:border-gray-700"
+                    align="end"
+                  >
+                    <div className="text-[10px] font-semibold mb-2 text-gray-600 dark:text-gray-400">
+                      Usuários visíveis no ranking
+                    </div>
+                    <div className="space-y-1 max-h-48 overflow-y-auto">
+                      {(agents || []).map((a) => (
+                        <label key={a.id} className="flex items-center gap-2 py-1 cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-800 px-1">
+                          <Checkbox
+                            checked={salesRankingUsers.length === 0 || salesRankingUsers.includes(a.id)}
+                            onCheckedChange={(checked) => {
+                              if (checked) {
+                                setSalesRankingUsers([...salesRankingUsers, a.id]);
+                              } else {
+                                if (salesRankingUsers.length === 0) {
+                                  const allExceptThis = (agents || []).map((ag) => ag.id).filter((id) => id !== a.id);
+                                  setSalesRankingUsers(allExceptThis);
+                                } else {
+                                  const next = salesRankingUsers.filter((id) => id !== a.id);
+                                  setSalesRankingUsers(next);
+                                }
+                              }
+                            }}
+                          />
+                          <span className="text-[10px] truncate">{a.name}</span>
+                        </label>
+                      ))}
+                    </div>
+                    {salesRankingUsers.length > 0 && (
+                      <div className="pt-2 border-t border-gray-200 dark:border-gray-700 mt-2">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-6 px-2 text-[10px] rounded-none w-full"
+                          onClick={() => setSalesRankingUsers([])}
+                        >
+                          Mostrar todos
+                        </Button>
+                      </div>
+                    )}
+                  </PopoverContent>
+                </Popover>
+              )}
 
               {salesRankingPreset === 'custom' && (
                 <>
@@ -4028,6 +4348,65 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
                   <SelectItem value="custom">Personalizado</SelectItem>
                 </SelectContent>
               </Select>
+
+              {/* Seletor de usuários visíveis (apenas admin/master pode ver e editar) */}
+              {canEditCompanyFilters && (
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="h-7 shrink-0 px-2 text-[10px] rounded-none bg-gray-400 dark:bg-[#606060] border-gray-300 dark:border-gray-600 whitespace-nowrap gap-1"
+                    >
+                      <Users className="h-3 w-3" />
+                      {workRankingUsers.length > 0 ? `${workRankingUsers.length} usuário(s)` : 'Todos'}
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent
+                    className="w-56 p-2 rounded-none bg-white text-gray-900 border border-[#d4d4d4] dark:bg-[#1b1b1b] dark:text-gray-100 dark:border-gray-700"
+                    align="end"
+                  >
+                    <div className="text-[10px] font-semibold mb-2 text-gray-600 dark:text-gray-400">
+                      Usuários visíveis no ranking
+                    </div>
+                    <div className="space-y-1 max-h-48 overflow-y-auto">
+                      {(agents || []).map((a) => (
+                        <label key={a.id} className="flex items-center gap-2 py-1 cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-800 px-1">
+                          <Checkbox
+                            checked={workRankingUsers.length === 0 || workRankingUsers.includes(a.id)}
+                            onCheckedChange={(checked) => {
+                              if (checked) {
+                                setWorkRankingUsers([...workRankingUsers, a.id]);
+                              } else {
+                                if (workRankingUsers.length === 0) {
+                                  const allExceptThis = (agents || []).map((ag) => ag.id).filter((id) => id !== a.id);
+                                  setWorkRankingUsers(allExceptThis);
+                                } else {
+                                  const next = workRankingUsers.filter((id) => id !== a.id);
+                                  setWorkRankingUsers(next);
+                                }
+                              }
+                            }}
+                          />
+                          <span className="text-[10px] truncate">{a.name}</span>
+                        </label>
+                      ))}
+                    </div>
+                    {workRankingUsers.length > 0 && (
+                      <div className="pt-2 border-t border-gray-200 dark:border-gray-700 mt-2">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-6 px-2 text-[10px] rounded-none w-full"
+                          onClick={() => setWorkRankingUsers([])}
+                        >
+                          Mostrar todos
+                        </Button>
+                      </div>
+                    )}
+                  </PopoverContent>
+                </Popover>
+              )}
 
               {workRankingPreset === 'custom' && (
                 <>

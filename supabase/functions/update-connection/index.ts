@@ -7,6 +7,7 @@ const corsHeaders = {
 };
 
 serve(async (req) => {
+  // Always return CORS headers
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
   }
@@ -14,12 +15,35 @@ serve(async (req) => {
   try {
     console.log('update-connection: Starting request processing');
 
-    const supabase = createClient(
-      Deno.env.get('SUPABASE_URL') ?? '',
-      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
-    );
+    const supabaseUrl = Deno.env.get('SUPABASE_URL');
+    const serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
+    
+    console.log('update-connection: ENV check - URL exists:', !!supabaseUrl, 'Key exists:', !!serviceKey);
+    
+    if (!supabaseUrl || !serviceKey) {
+      console.error('update-connection: Missing environment variables');
+      return new Response(
+        JSON.stringify({ success: false, error: 'Configuração do servidor incompleta' }),
+        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
 
-    const { connectionId, phone_number, auto_create_crm_card, default_pipeline_id, default_column_id, default_column_name, queue_id, instance_name } = await req.json();
+    const supabase = createClient(supabaseUrl, serviceKey);
+
+    let body;
+    try {
+      const rawBody = await req.text();
+      console.log('update-connection: Raw body received:', rawBody.substring(0, 500));
+      body = JSON.parse(rawBody);
+    } catch (parseError) {
+      console.error('update-connection: Error parsing request body:', parseError);
+      return new Response(
+        JSON.stringify({ success: false, error: 'Corpo da requisição inválido' }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    const { connectionId, phone_number, auto_create_crm_card, default_pipeline_id, default_column_id, default_column_name, queue_id, instance_name } = body;
 
     console.log('update-connection: Received data:', { 
       connectionId, 
@@ -27,7 +51,9 @@ serve(async (req) => {
       auto_create_crm_card, 
       default_pipeline_id,
       default_column_id,
-      default_column_name
+      default_column_name,
+      queue_id,
+      instance_name
     });
 
     if (!connectionId) {
@@ -237,15 +263,41 @@ serve(async (req) => {
       }
     );
 
-  } catch (error) {
-    console.error('update-connection: Error:', error);
+  } catch (error: unknown) {
+    console.error('update-connection: Error caught:', error);
+    console.error('update-connection: Error type:', typeof error);
+    
+    // Extrair mensagem de erro de várias formas possíveis
+    let errorMessage = 'Erro desconhecido ao atualizar conexão';
+    
+    if (error instanceof Error) {
+      errorMessage = error.message;
+      console.error('update-connection: Error stack:', error.stack);
+    } else if (typeof error === 'string') {
+      errorMessage = error;
+    } else if (error && typeof error === 'object') {
+      // Tentar extrair mensagem de objetos de erro do Supabase/PostgreSQL
+      const errObj = error as Record<string, unknown>;
+      errorMessage = String(
+        errObj.message || 
+        errObj.error || 
+        errObj.detail || 
+        errObj.hint ||
+        errObj.msg ||
+        (errObj.code ? `Erro de banco: ${errObj.code}` : null) ||
+        JSON.stringify(error)
+      );
+    }
+    
+    console.error('update-connection: Final error message:', errorMessage);
+    
     return new Response(
       JSON.stringify({ 
         success: false, 
-        error: error instanceof Error ? error.message : String(error)
+        error: errorMessage
       }), 
       { 
-        status: 500, 
+        status: 200, // Return 200 with error in body so frontend can read it
         headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
       }
     );

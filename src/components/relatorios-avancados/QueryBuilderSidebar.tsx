@@ -23,6 +23,7 @@ interface QueryBuilderSidebarProps {
   showHeader?: boolean;
   disabled?: boolean;
   layout?: 'panel' | 'inline';
+  showAIAgent?: boolean; // Se deve mostrar opção "Agente IA" (ocultar para usuários "user")
 }
 
 export interface LegacyFilterItem {
@@ -55,6 +56,7 @@ export function QueryBuilderSidebar({
   showHeader = true,
   disabled = false,
   layout = 'panel',
+  showAIAgent = true,
 }: QueryBuilderSidebarProps) {
   type FilterGroup = {
     id: string;
@@ -373,7 +375,7 @@ export function QueryBuilderSidebar({
               </SelectTrigger>
               <SelectContent className="rounded-none border-[#d4d4d4] dark:border-gray-700">
                 <SelectItem value="all">Todos os Agentes</SelectItem>
-                <SelectItem value="ia">Agente IA</SelectItem>
+                {showAIAgent && <SelectItem value="ia">Agente IA</SelectItem>}
                 {(agents || []).map((a) => (
                   <SelectItem key={a.id} value={a.id}>
                     {a.name}

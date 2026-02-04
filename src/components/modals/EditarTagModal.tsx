@@ -79,7 +79,7 @@ export function EditarTagModal({ isOpen, onClose, onTagUpdated, tag }: EditarTag
 
       toast({
         title: "Etiqueta atualizada",
-        description: `A tag "${name}" foi atualizada com sucesso.`,
+        description: `A etiqueta "${name}" foi atualizada com sucesso.`,
       });
 
       onTagUpdated();

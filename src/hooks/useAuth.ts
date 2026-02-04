@@ -53,18 +53,62 @@ export const useAuthState = () => {
 
   // Load user from localStorage on mount
   useEffect(() => {
+    let cancelled = false;
+
+    const restoreFromSupabaseSession = async () => {
+      try {
+        const { data } = await supabase.auth.getSession();
+        const session = data?.session;
+        const meta: any = session?.user?.user_metadata || {};
+        const systemUserId = meta?.system_user_id;
+
+        if (!systemUserId) return;
+
+        const restored: AuthUser = {
+          id: String(systemUserId),
+          name: String(meta?.system_name || meta?.system_user_name || meta?.name || 'Usuário'),
+          email: String(meta?.system_email || meta?.email || session?.user?.email || ''),
+          profile: String(meta?.system_profile || meta?.profile || 'user'),
+          status: String(meta?.system_status || 'active'),
+          avatar: meta?.avatar || undefined,
+          cargo_id: meta?.cargo_id || undefined,
+        };
+
+        if (cancelled) return;
+        setUser(restored);
+        setUserRole(mapProfileToRole(restored.profile));
+        localStorage.setItem('currentUser', JSON.stringify(restored));
+      } catch (e) {
+        // Não bloquear a app se não houver sessão Supabase
+        console.log('Info: não foi possível restaurar usuário via Supabase Auth:', e);
+      }
+    };
+
     const savedUser = localStorage.getItem('currentUser');
     if (savedUser) {
       try {
         const parsedUser = JSON.parse(savedUser);
         setUser(parsedUser);
         setUserRole(mapProfileToRole(parsedUser.profile));
+        setLoading(false);
+        return () => {
+          cancelled = true;
+        };
       } catch (error) {
         console.error('Error parsing saved user:', error);
         localStorage.removeItem('currentUser');
       }
     }
-    setLoading(false);
+
+    // Fallback: restaurar via sessão Supabase (metadata) quando `currentUser` não existe.
+    (async () => {
+      await restoreFromSupabaseSession();
+      if (!cancelled) setLoading(false);
+    })();
+
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   useEffect(() => {

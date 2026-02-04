@@ -44,6 +44,18 @@ export function IniciarConversaContatoModal({
   const { connections, isLoading: connectionsLoading } = useWorkspaceConnections(
     selectedWorkspace?.workspace_id
   );
+  
+  // Debug: verificar conexões carregadas
+  useEffect(() => {
+    if (open) {
+      console.log('🔌 [IniciarConversa] Debug:', {
+        workspaceId: selectedWorkspace?.workspace_id,
+        connectionsLoading,
+        connectionsCount: connections.length,
+        connections: connections.map(c => ({ id: c.id, name: c.instance_name, status: c.status })),
+      });
+    }
+  }, [open, selectedWorkspace?.workspace_id, connectionsLoading, connections]);
 
   // Carregar filas
   useEffect(() => {
@@ -189,7 +201,7 @@ export function IniciarConversaContatoModal({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-md bg-white text-gray-900 dark:bg-[#0b0b0b] dark:text-gray-100 dark:border-gray-700">
-        <DialogHeader className="px-4 py-2 bg-primary text-primary-foreground border-b border-[#d4d4d4] rounded-t-none dark:border-gray-700">
+        <DialogHeader className="px-4 py-2 bg-primary text-primary-foreground border-b border-[#d4d4d4] rounded-t-none dark:bg-[#1a1a1a] dark:text-gray-100 dark:border-gray-700">
           <DialogTitle>Iniciar Conversa</DialogTitle>
         </DialogHeader>
         

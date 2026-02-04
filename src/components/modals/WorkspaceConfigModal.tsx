@@ -56,18 +56,9 @@ export function WorkspaceConfigModal({
   };
 
   const loadDefaultPipeline = async () => {
-    try {
-      const { data, error } = await supabase
-        .from('workspaces')
-        .select('default_pipeline_id')
-        .eq('id', workspaceId)
-        .single();
-
-      if (error) throw error;
-      setDefaultPipelineId(data?.default_pipeline_id || "none");
-    } catch (error) {
-      console.error('Erro ao carregar pipeline padrão:', error);
-    }
+    // TODO: Aplicar migração 20251119140252 para adicionar coluna default_pipeline_id
+    // Por enquanto, desabilitado para evitar erro 406
+    setDefaultPipelineId("none");
   };
 
   const handleSaveDefaultPipeline = async () => {

@@ -663,7 +663,7 @@ export function ConexoesNova({ workspaceId }: ConexoesNovaProps) {
         defaultPipelineId: selectedPipeline || null,
         defaultColumnId: selectedColumn || null,
         defaultColumnName: selectedColumnData?.name || null,
-        queueId: selectedQueueId || null,
+        queueId: (selectedQueueId && selectedQueueId !== 'no_queue') ? selectedQueueId : null,
         phoneNumber: normalizedPhone,
         provider: selectedProvider,
         metadata: {
@@ -847,7 +847,7 @@ export function ConexoesNova({ workspaceId }: ConexoesNovaProps) {
         default_pipeline_id: selectedPipeline || null,
         default_column_id: selectedColumn || null,
         default_column_name: selectedColumnData?.name || null,
-        queue_id: selectedQueueId || null,
+        queue_id: (selectedQueueId && selectedQueueId !== 'no_queue') ? selectedQueueId : null,
       };
 
       if (isZapiConnection && trimmedInstanceName) {

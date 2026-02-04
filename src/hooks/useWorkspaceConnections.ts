@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { supabase } from '@/integrations/supabase/client';
+import { getWorkspaceHeaders } from '@/lib/workspaceHeaders';
 
 export interface WorkspaceConnection {
   id: string;
@@ -32,23 +33,40 @@ export const useWorkspaceConnections = (workspaceId?: string) => {
     }
     
     try {
-      // Query direta para a tabela connections
-      const { data, error } = await supabase
-        .from('connections')
-        .select('id, instance_name, phone_number, status')
-        .eq('workspace_id', workspaceId)
-        .order('instance_name');
+      console.log('🔌 [useWorkspaceConnections] Buscando conexões para workspace:', workspaceId);
+      
+      // Usar Edge Function para bypassar RLS
+      const headers = getWorkspaceHeaders(workspaceId);
+      const { data, error } = await supabase.functions.invoke('workspace-connections', {
+        method: 'POST',
+        headers,
+        body: { workspaceId },
+      });
+
+      console.log('🔌 [useWorkspaceConnections] Resultado Edge Function:', { data, error });
 
       if (error) {
-        console.warn('⚠️ Erro ao buscar conexões:', error);
-        // NÃO zerar conexões em caso de erro - manter estado anterior
+        console.warn('⚠️ Erro ao buscar conexões via Edge Function:', error);
+        // Tentar fallback direto
+        console.log('🔌 [useWorkspaceConnections] Tentando fallback direto...');
+        const { data: directData, error: directError } = await supabase
+          .from('connections')
+          .select('id, instance_name, phone_number, status')
+          .eq('workspace_id', workspaceId)
+          .order('instance_name');
+        
+        console.log('🔌 [useWorkspaceConnections] Resultado direto:', { directData, directError, count: directData?.length });
+        
+        if (!directError && directData) {
+          setConnections(directData);
+        }
         return;
       }
 
-      // Só atualizar se houver dados ou se for primeiro load
-      if (data) {
-        setConnections(data);
-      }
+      // Só atualizar se houver dados
+      const connectionsData = data?.connections || [];
+      console.log('🔌 [useWorkspaceConnections] Conexões recebidas:', connectionsData.length);
+      setConnections(connectionsData);
       
       isFirstLoadRef.current = false;
     } catch (error) {
