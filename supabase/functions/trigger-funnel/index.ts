@@ -1,5 +1,4 @@
-import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { createClient } from "npm:@supabase/supabase-js@2";
 
 /**
  * Edge Function: trigger-funnel
@@ -16,7 +15,9 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
  * Body:
  *   {
  *     "workspace_id": "uuid-do-workspace",
- *     "funnel_id": "uuid-do-funil-campanha"
+ *     "funnel_id": "uuid-do-funil-campanha",
+ *     "connection_id": "uuid-da-conexao",
+ *     "phone": "5511999999999" // ou phone_number
  *   }
  * 
  * Resposta de sucesso:
@@ -36,7 +37,7 @@ const corsHeaders = {
   "Access-Control-Max-Age": "86400",
 };
 
-serve(async (req) => {
+Deno.serve(async (req) => {
   // CORS preflight
   if (req.method === "OPTIONS") {
     return new Response("ok", { status: 200, headers: corsHeaders });
@@ -53,6 +54,7 @@ serve(async (req) => {
     let body: {
       workspace_id?: string;
       funnel_id?: string;
+      connection_id?: string;
       phone?: string;
       phone_number?: string;
       contact_name?: string;
@@ -69,6 +71,7 @@ serve(async (req) => {
 
     const workspaceId = body.workspace_id;
     const funnelId = body.funnel_id;
+    const connectionId = String(body.connection_id || "").trim();
 
     // Validar campos obrigatórios
     if (!workspaceId) {
@@ -81,6 +84,13 @@ serve(async (req) => {
     if (!funnelId) {
       return new Response(
         JSON.stringify({ success: false, error: "funnel_id é obrigatório" }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    if (!connectionId) {
+      return new Response(
+        JSON.stringify({ success: false, error: "connection_id é obrigatório" }),
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
@@ -119,6 +129,38 @@ serve(async (req) => {
         );
       }
     }
+
+    // Validar conexão informada (deve pertencer ao workspace e estar conectada)
+    const { data: targetConnection, error: targetConnectionError } = await supabase
+      .from("connections")
+      .select("id, instance_name, phone_number, status, workspace_id")
+      .eq("id", connectionId)
+      .eq("workspace_id", workspaceId)
+      .maybeSingle();
+
+    if (targetConnectionError) {
+      console.error("[trigger-funnel] Erro ao validar connection_id:", targetConnectionError);
+      return new Response(
+        JSON.stringify({ success: false, error: "Erro ao validar connection_id", details: targetConnectionError.message }),
+        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    if (!targetConnection) {
+      return new Response(
+        JSON.stringify({ success: false, error: "connection_id inválida ou não pertence ao workspace" }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    if (targetConnection.status !== "connected") {
+      return new Response(
+        JSON.stringify({ success: false, error: "connection_id não está conectada" }),
+        { status: 409, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    const targetConnectionId = targetConnection.id;
 
     // -----------------------------
     // QUICK FUNNEL (quick_funnels)
@@ -230,41 +272,17 @@ serve(async (req) => {
       contact = newContact;
     }
 
-    // Selecionar conexão padrão (se existir) ou primeira conectada
-    let { data: targetConnection } = await supabase
-      .from("connections")
-      .select("id, instance_name, phone_number, status")
-      .eq("workspace_id", workspaceId)
-      .eq("status", "connected")
-      .eq("is_default", true)
-      .maybeSingle();
-    if (!targetConnection) {
-      const { data: firstConnected } = await supabase
-        .from("connections")
-        .select("id, instance_name, phone_number, status")
-        .eq("workspace_id", workspaceId)
-        .eq("status", "connected")
-        .order("instance_name", { ascending: true })
-        .limit(1)
-        .maybeSingle();
-      targetConnection = firstConnected as any;
-    }
-
-    const targetConnectionId = (targetConnection as any)?.id || null;
-
     // Reutilizar conversa existente (mesma conexão, se houver)
     let conversationId: string | null = null;
     try {
-      let convQuery = supabase
+      const convQuery = supabase
         .from("conversations")
         .select("id, connection_id")
         .eq("workspace_id", workspaceId)
         .eq("contact_id", (contact as any).id)
+        .eq("connection_id", targetConnectionId)
         .order("created_at", { ascending: false })
         .limit(1);
-      if (targetConnectionId) {
-        convQuery = convQuery.eq("connection_id", targetConnectionId);
-      }
       const { data: existingConv } = await convQuery.maybeSingle();
       if (existingConv?.id) {
         conversationId = existingConv.id;
@@ -274,8 +292,9 @@ serve(async (req) => {
             status: "open",
             updated_at: new Date().toISOString(),
             last_activity_at: new Date().toISOString(),
-            ...(targetConnectionId ? { connection_id: targetConnectionId } : {}),
-            ...(targetConnection as any)?.instance_name ? { evolution_instance: (targetConnection as any).instance_name } : {},
+            connection_id: targetConnectionId,
+            evolution_instance: (targetConnection as any)?.instance_name || null,
+            instance_phone: (targetConnection as any)?.phone_number || null,
           })
           .eq("id", conversationId)
           .eq("workspace_id", workspaceId);
@@ -458,6 +477,7 @@ serve(async (req) => {
         funnel: { id: (funnel as any).id, title: (funnel as any).title },
         workspace_id: workspaceId,
         conversation_id: conversationId,
+        connection_id: targetConnectionId,
         phone,
         steps_total: results.length,
         steps_sent: okCount,
