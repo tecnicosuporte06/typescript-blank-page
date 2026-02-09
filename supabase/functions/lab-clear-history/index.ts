@@ -40,6 +40,24 @@ serve(async (req) => {
       throw new Error('Sessão não encontrada')
     }
 
+    // 0. Deletar histórico do N8N (n8n_chat_histories)
+    // A coluna session_id nessa tabela armazena o ID da conversa
+    const n8nSessionId = session.conversation_id || session_id
+    if (n8nSessionId) {
+      const { error: n8nHistoryError } = await supabase
+        .from('n8n_chat_histories')
+        .delete()
+        .eq('session_id', n8nSessionId)
+
+      if (n8nHistoryError) {
+        console.error('❌ [Lab] Erro ao deletar n8n_chat_histories:', n8nHistoryError)
+      } else {
+        console.log('✅ [Lab] n8n_chat_histories deletado para session_id:', n8nSessionId)
+      }
+    } else {
+      console.warn('⚠️ [Lab] Sem conversation_id para limpar n8n_chat_histories')
+    }
+
     // 1. Deletar logs de ações
     const { error: actionsError } = await supabase
       .from('lab_action_logs')

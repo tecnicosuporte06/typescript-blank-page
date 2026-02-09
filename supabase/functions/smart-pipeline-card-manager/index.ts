@@ -21,7 +21,8 @@ serve(async (req) => {
       conversationId, 
       workspaceId,
       pipelineId,
-      connectionPhone = null
+      connectionPhone = null,
+      connectionId = null
     } = await req.json();
 
     console.log('🎯 Smart Pipeline Card Manager - Início', { 
@@ -85,6 +86,20 @@ serve(async (req) => {
 
     console.log('📋 Pipeline alvo:', targetPipelineId);
 
+    // Resolver connection_id (prioridade: body.connectionId > conversation.connection_id)
+    let effectiveConnectionId: string | null = connectionId;
+    if (!effectiveConnectionId && conversationId) {
+      const { data: conversationInfo } = await supabase
+        .from('conversations')
+        .select('connection_id')
+        .eq('id', conversationId)
+        .maybeSingle();
+
+      if (conversationInfo?.connection_id) {
+        effectiveConnectionId = conversationInfo.connection_id;
+      }
+    }
+
     // 4. VERIFICAR SE JÁ EXISTE UM CARD ABERTO PARA ESTE CONTATO NESTE PIPELINE
     const { data: existingCards, error: searchError } = await supabase
       .from('pipeline_cards')
@@ -94,6 +109,7 @@ serve(async (req) => {
         description,
         responsible_user_id,
         updated_at,
+        connection_id,
         conversation:conversation_id (
           id,
           connection_phone
@@ -111,7 +127,9 @@ serve(async (req) => {
     // Se já existe, RETORNAR ERRO amigável
     let filteredCards = existingCards || [];
 
-    if (connectionPhone) {
+    if (effectiveConnectionId) {
+      filteredCards = filteredCards.filter(card => card.connection_id === effectiveConnectionId);
+    } else if (connectionPhone) {
       filteredCards = filteredCards.filter(card => {
         const cardPhone = card.conversation?.[0]?.connection_phone;
         return !cardPhone || cardPhone === connectionPhone;
@@ -162,12 +180,15 @@ serve(async (req) => {
     if (conversationId) {
       const { data: conversation } = await supabase
         .from('conversations')
-        .select('assigned_user_id')
+        .select('assigned_user_id, connection_id')
         .eq('id', conversationId)
         .single();
 
       if (conversation?.assigned_user_id) {
         responsibleUserId = conversation.assigned_user_id;
+      }
+      if (!effectiveConnectionId && conversation?.connection_id) {
+        effectiveConnectionId = conversation.connection_id;
       }
     }
 
@@ -182,6 +203,7 @@ serve(async (req) => {
         column_id: columns[0].id,
         contact_id: contactId,
         conversation_id: conversationId,
+        connection_id: effectiveConnectionId,
         responsible_user_id: responsibleUserId,
         title: cardTitle,
         description: `[${timestamp}] Card criado automaticamente`,

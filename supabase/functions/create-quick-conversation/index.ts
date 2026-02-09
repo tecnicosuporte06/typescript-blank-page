@@ -440,6 +440,7 @@ serve(async (req) => {
               workspaceId,
               pipelineId,
               connectionPhone,
+              connectionId: targetConnection?.id || null,
             },
           }
         );

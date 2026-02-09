@@ -861,6 +861,7 @@ serve(async (req) => {
                   .select(`
                     id,
                     title,
+                    connection_id,
                     conversation:conversation_id (
                       id,
                       connection_phone
@@ -875,9 +876,9 @@ serve(async (req) => {
                 const shouldReuseExistingCard = Boolean(
                   existingCard &&
                   (
-                    !connectionData.phone_number ||
-                    !cardConnectionPhone ||
-                    cardConnectionPhone === connectionData.phone_number
+                    (connectionData?.id && existingCard.connection_id === connectionData.id) ||
+                    (!connectionData?.id &&
+                      (!connectionData.phone_number || !cardConnectionPhone || cardConnectionPhone === connectionData.phone_number))
                   )
                 );
 
@@ -895,7 +896,8 @@ serve(async (req) => {
                         conversationId: conversation.id,
                         workspaceId: workspaceId,
                         pipelineId: connectionData.default_pipeline_id,
-                        connectionPhone: connectionData.phone_number
+                        connectionPhone: connectionData.phone_number,
+                        connectionId: connectionData.id
                       }
                     }
                   );

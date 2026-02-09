@@ -2146,6 +2146,7 @@ export type Database = {
           column_id: string
           contact_id: string | null
           conversation_id: string | null
+          connection_id: string | null
           created_at: string
           description: string | null
           id: string
@@ -2164,6 +2165,7 @@ export type Database = {
           column_id: string
           contact_id?: string | null
           conversation_id?: string | null
+          connection_id?: string | null
           created_at?: string
           description?: string | null
           id?: string
@@ -2182,6 +2184,7 @@ export type Database = {
           column_id?: string
           contact_id?: string | null
           conversation_id?: string | null
+          connection_id?: string | null
           created_at?: string
           description?: string | null
           id?: string
@@ -2223,6 +2226,13 @@ export type Database = {
             columns: ["conversation_id"]
             isOneToOne: false
             referencedRelation: "conversations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "pipeline_cards_connection_id_fkey"
+            columns: ["connection_id"]
+            isOneToOne: false
+            referencedRelation: "connections"
             referencedColumns: ["id"]
           },
           {

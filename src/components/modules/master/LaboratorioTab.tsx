@@ -210,6 +210,13 @@ export function LaboratorioTab() {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const actionsEndRef = useRef<HTMLDivElement>(null);
 
+  const activeAgent = session ? agents.find(agent => agent.id === session.agent_id) : null;
+  const activeConnection = session ? connections.find(conn => conn.id === session.connection_id) : null;
+  const activeWorkspaceName =
+    activeConnection?.workspaces?.name ||
+    activeAgent?.workspaces?.name ||
+    'N/A';
+
   // Carregar URL do webhook salva
   useEffect(() => {
     async function loadWebhookUrl() {
@@ -610,6 +617,12 @@ export function LaboratorioTab() {
               <span className="text-gray-600 dark:text-gray-400">
                 Nome: <strong>{session.contact_name}</strong>
               </span>
+              <span className="text-gray-600 dark:text-gray-400">
+                Workspace: <strong>{activeWorkspaceName}</strong>
+              </span>
+              <span className="text-gray-600 dark:text-gray-400">
+                Agente: <strong>{activeAgent?.name || 'N/A'}</strong>
+              </span>
             </div>
             <div className="flex items-center gap-2">
               <Button
@@ -725,7 +738,12 @@ export function LaboratorioTab() {
             ) : actions.length === 0 ? (
               <div className="h-full flex items-center justify-center">
                 <div className="text-center text-gray-400 p-4">
-                  <Clock className="w-8 h-8 mx-auto mb-2 opacity-50" />
+                  <div className="relative w-8 h-8 mx-auto mb-2">
+                    <span className="absolute inset-0 rounded-full border border-[#e85a0c]/50 animate-ping" />
+                    <span className="absolute inset-1 rounded-full border border-[#e85a0c]/70 animate-ping [animation-delay:150ms]" />
+                    <span className="absolute inset-2 rounded-full border border-[#e85a0c]/80" />
+                    <span className="absolute inset-3 rounded-full bg-[#e85a0c]/80" />
+                  </div>
                   <p className="text-xs">Aguardando ações do agente...</p>
                 </div>
               </div>

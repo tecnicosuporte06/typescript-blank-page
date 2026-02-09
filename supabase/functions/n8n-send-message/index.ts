@@ -466,6 +466,7 @@ serve(async (req) => {
       instance: finalEvolutionInstance,
       workspace_id: finalWorkspaceId,
       connection_id: instanceData.id,
+      conversation_id: conversationIdResolved,
       phone_number: contactPhone,
       external_id: external_id || messageId,
       provider: providerType, // CAMPO IDENTIFICADOR DO PROVIDER
@@ -515,6 +516,7 @@ serve(async (req) => {
       provider: providerType,
       workspace_id: finalWorkspaceId,
       connection_id: instanceData.id,
+      conversation_id: conversationIdResolved,
       phone_number: contactPhone,
       instance: finalEvolutionInstance,
       messageType: evolutionMessageType,

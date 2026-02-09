@@ -17,6 +17,7 @@ import { createClient } from "npm:@supabase/supabase-js@2";
  *     "workspace_id": "uuid-do-workspace",
  *     "funnel_id": "uuid-do-funil-campanha",
  *     "connection_id": "uuid-da-conexao",
+ *     "conversation_id": "uuid-da-conversa",
  *     "phone": "5511999999999" // ou phone_number
  *   }
  * 
@@ -25,7 +26,7 @@ import { createClient } from "npm:@supabase/supabase-js@2";
  *     "success": true,
  *     "message": "Funil disparado com sucesso",
  *     "campaign": { ... },
- *     "contacts_count": 10,
+ *     "contacts_count": 10,          
  *     "triggered_at": "2024-01-01T00:00:00.000Z"
  *   }
  */
@@ -55,6 +56,7 @@ Deno.serve(async (req) => {
       workspace_id?: string;
       funnel_id?: string;
       connection_id?: string;
+      conversation_id?: string;
       phone?: string;
       phone_number?: string;
       contact_name?: string;
@@ -72,6 +74,7 @@ Deno.serve(async (req) => {
     const workspaceId = body.workspace_id;
     const funnelId = body.funnel_id;
     const connectionId = String(body.connection_id || "").trim();
+    const conversationIdInput = String(body.conversation_id || "").trim();
 
     // Validar campos obrigatórios
     if (!workspaceId) {
@@ -165,21 +168,88 @@ Deno.serve(async (req) => {
     // -----------------------------
     // QUICK FUNNEL (quick_funnels)
     // -----------------------------
-    const rawPhone = String(body.phone_number || body.phone || "").trim();
-    if (!rawPhone) {
-      return new Response(
-        JSON.stringify({ success: false, error: "phone (ou phone_number) é obrigatório para disparar Quick Funil" }),
-        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
-    }
-
     const normPhone = (v: string) => String(v || "").replace(/\D/g, "");
-    const phone = normPhone(rawPhone);
-    if (!phone) {
-      return new Response(
-        JSON.stringify({ success: false, error: "phone inválido" }),
-        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
+    let phone = "";
+    let contact: any = null;
+    let conversationId: string | null = null;
+
+    if (conversationIdInput) {
+      const { data: conversation, error: conversationErr } = await supabase
+        .from("conversations")
+        .select("id, workspace_id, connection_id, contact_id")
+        .eq("id", conversationIdInput)
+        .maybeSingle();
+
+      if (conversationErr) {
+        console.error("[trigger-funnel] Erro ao buscar conversation_id:", conversationErr);
+        return new Response(
+          JSON.stringify({ success: false, error: "Erro ao buscar conversation_id", details: conversationErr.message }),
+          { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+
+      if (!conversation) {
+        return new Response(
+          JSON.stringify({ success: false, error: "conversation_id não encontrada" }),
+          { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+
+      if (conversation.workspace_id !== workspaceId) {
+        return new Response(
+          JSON.stringify({ success: false, error: "conversation_id não pertence ao workspace" }),
+          { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+
+      if (conversation.connection_id !== targetConnectionId) {
+        return new Response(
+          JSON.stringify({ success: false, error: "conversation_id não pertence à connection_id informada" }),
+          { status: 409, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+
+      const { data: contactData, error: contactDataErr } = await supabase
+        .from("contacts")
+        .select("id, phone")
+        .eq("id", conversation.contact_id)
+        .eq("workspace_id", workspaceId)
+        .maybeSingle();
+
+      if (contactDataErr || !contactData) {
+        console.error("[trigger-funnel] Erro ao buscar contato da conversa:", contactDataErr);
+        return new Response(
+          JSON.stringify({ success: false, error: "Erro ao buscar contato da conversa" }),
+          { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+
+      phone = normPhone(contactData.phone);
+      if (!phone) {
+        return new Response(
+          JSON.stringify({ success: false, error: "Contato da conversa sem phone válido" }),
+          { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+
+      contact = contactData;
+      conversationId = conversation.id;
+    } else {
+      const rawPhone = String(body.phone_number || body.phone || "").trim();
+      if (!rawPhone) {
+        return new Response(
+          JSON.stringify({ success: false, error: "phone (ou phone_number) é obrigatório para disparar Quick Funil" }),
+          { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+
+      phone = normPhone(rawPhone);
+      if (!phone) {
+        return new Response(
+          JSON.stringify({ success: false, error: "phone inválido" }),
+          { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
     }
 
     // Buscar o funil em quick_funnels (é isso que a UI usa)
@@ -236,98 +306,101 @@ Deno.serve(async (req) => {
       );
     }
 
-    // Resolver/criar contato na tabela contacts (porque test-send-msg usa contacts)
-    const contactName = String(body.contact_name || phone).trim() || phone;
-    let { data: contact, error: contactErr } = await supabase
-      .from("contacts")
-      .select("id, phone")
-      .eq("workspace_id", workspaceId)
-      .eq("phone", phone)
-      .maybeSingle();
-    if (contactErr) {
-      console.error("[trigger-funnel] Erro ao buscar contato:", contactErr);
-      return new Response(
-        JSON.stringify({ success: false, error: "Erro ao buscar contato" }),
-        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
-    }
-    if (!contact) {
-      const { data: newContact, error: newContactErr } = await supabase
+    if (!conversationId) {
+      // Resolver/criar contato na tabela contacts (porque test-send-msg usa contacts)
+      const contactName = String(body.contact_name || phone).trim() || phone;
+      const { data: contactData, error: contactErr } = await supabase
         .from("contacts")
-        .insert({
-          name: contactName,
-          phone,
-          workspace_id: workspaceId,
-          extra_info: { temporary: true, source: "trigger-funnel" },
-        })
         .select("id, phone")
-        .single();
-      if (newContactErr || !newContact) {
-        console.error("[trigger-funnel] Erro ao criar contato:", newContactErr);
+        .eq("workspace_id", workspaceId)
+        .eq("phone", phone)
+        .maybeSingle();
+      if (contactErr) {
+        console.error("[trigger-funnel] Erro ao buscar contato:", contactErr);
         return new Response(
-          JSON.stringify({ success: false, error: "Erro ao criar contato" }),
+          JSON.stringify({ success: false, error: "Erro ao buscar contato" }),
           { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
         );
       }
-      contact = newContact;
-    }
+      if (!contactData) {
+        const { data: newContact, error: newContactErr } = await supabase
+          .from("contacts")
+          .insert({
+            name: contactName,
+            phone,
+            workspace_id: workspaceId,
+            extra_info: { temporary: true, source: "trigger-funnel" },
+          })
+          .select("id, phone")
+          .single();
+        if (newContactErr || !newContact) {
+          console.error("[trigger-funnel] Erro ao criar contato:", newContactErr);
+          return new Response(
+            JSON.stringify({ success: false, error: "Erro ao criar contato" }),
+            { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
+        contact = newContact;
+      } else {
+        contact = contactData;
+      }
 
-    // Reutilizar conversa existente (mesma conexão, se houver)
-    let conversationId: string | null = null;
-    try {
-      const convQuery = supabase
-        .from("conversations")
-        .select("id, connection_id")
-        .eq("workspace_id", workspaceId)
-        .eq("contact_id", (contact as any).id)
-        .eq("connection_id", targetConnectionId)
-        .order("created_at", { ascending: false })
-        .limit(1);
-      const { data: existingConv } = await convQuery.maybeSingle();
-      if (existingConv?.id) {
-        conversationId = existingConv.id;
-        await supabase
+      // Reutilizar conversa existente (mesma conexão, se houver)
+      try {
+        const convQuery = supabase
           .from("conversations")
-          .update({
+          .select("id, connection_id")
+          .eq("workspace_id", workspaceId)
+          .eq("contact_id", (contact as any).id)
+          .eq("connection_id", targetConnectionId)
+          .order("created_at", { ascending: false })
+          .limit(1);
+        const { data: existingConv } = await convQuery.maybeSingle();
+        if (existingConv?.id) {
+          conversationId = existingConv.id;
+          await supabase
+            .from("conversations")
+            .update({
+              status: "open",
+              updated_at: new Date().toISOString(),
+              last_activity_at: new Date().toISOString(),
+              connection_id: targetConnectionId,
+              evolution_instance: (targetConnection as any)?.instance_name || null,
+              instance_phone: (targetConnection as any)?.phone_number || null,
+            })
+            .eq("id", conversationId)
+            .eq("workspace_id", workspaceId);
+        }
+      } catch (e) {
+        console.warn("[trigger-funnel] Falha ao tentar reutilizar conversa (seguindo para criar nova):", e);
+      }
+
+      // Criar conversa se necessário
+      if (!conversationId) {
+        const { data: newConv, error: newConvErr } = await supabase
+          .from("conversations")
+          .insert({
+            contact_id: (contact as any).id,
             status: "open",
-            updated_at: new Date().toISOString(),
-            last_activity_at: new Date().toISOString(),
+            workspace_id: workspaceId,
+            canal: "whatsapp",
+            agente_ativo: false,
             connection_id: targetConnectionId,
             evolution_instance: (targetConnection as any)?.instance_name || null,
             instance_phone: (targetConnection as any)?.phone_number || null,
+            last_activity_at: new Date().toISOString(),
           })
-          .eq("id", conversationId)
-          .eq("workspace_id", workspaceId);
+          .select("id")
+          .single();
+        if (newConvErr || !newConv?.id) {
+          console.error("[trigger-funnel] Erro ao criar conversa:", newConvErr);
+          return new Response(
+            JSON.stringify({ success: false, error: "Erro ao criar conversa" }),
+            { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
+        conversationId = newConv.id;
       }
-    } catch (e) {
-      console.warn("[trigger-funnel] Falha ao tentar reutilizar conversa (seguindo para criar nova):", e);
-    }
-
-    // Criar conversa se necessário
-    if (!conversationId) {
-      const { data: newConv, error: newConvErr } = await supabase
-        .from("conversations")
-        .insert({
-          contact_id: (contact as any).id,
-          status: "open",
-          workspace_id: workspaceId,
-          canal: "whatsapp",
-          agente_ativo: false,
-          connection_id: targetConnectionId,
-          evolution_instance: (targetConnection as any)?.instance_name || null,
-          instance_phone: (targetConnection as any)?.phone_number || null,
-          last_activity_at: new Date().toISOString(),
-        })
-        .select("id")
-        .single();
-      if (newConvErr || !newConv?.id) {
-        console.error("[trigger-funnel] Erro ao criar conversa:", newConvErr);
-        return new Response(
-          JSON.stringify({ success: false, error: "Erro ao criar conversa" }),
-          { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-        );
-      }
-      conversationId = newConv.id;
     }
 
     // Enviar steps via test-send-msg (que encaminha ao n8n do workspace)

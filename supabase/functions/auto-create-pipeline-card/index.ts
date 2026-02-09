@@ -53,6 +53,20 @@ serve(async (req) => {
       );
     }
 
+    // Buscar conexão da conversa (para vincular ao card)
+    let connectionId: string | null = null;
+    if (conversationId) {
+      const { data: conversation } = await supabase
+        .from('conversations')
+        .select('id, connection_id')
+        .eq('id', conversationId)
+        .maybeSingle();
+
+      if (conversation?.connection_id) {
+        connectionId = conversation.connection_id;
+      }
+    }
+
     // Buscar informações do contato
     const { data: contact, error: contactError } = await supabase
       .from('contacts')
@@ -89,6 +103,7 @@ serve(async (req) => {
         column_id: firstColumn.id,
         conversation_id: conversationId,
         contact_id: contactId,
+        connection_id: connectionId,
         title: contact.name || contact.phone || 'Contato sem nome',
         description: 'Card criado automaticamente via mensagem',
         value: 0,

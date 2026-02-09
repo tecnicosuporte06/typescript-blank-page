@@ -28,6 +28,20 @@ serve(async (req) => {
     );
 
     let result: any = { success: false };
+    const effectiveConversationId = params?.conversation_id || conversationId || null;
+    let effectiveConnectionId: string | null = params?.connection_id || null;
+
+    if (!effectiveConnectionId && effectiveConversationId) {
+      const { data: convInfo } = await supabase
+        .from('conversations')
+        .select('connection_id')
+        .eq('id', effectiveConversationId)
+        .maybeSingle();
+
+      if (convInfo?.connection_id) {
+        effectiveConnectionId = convInfo.connection_id;
+      }
+    }
 
     switch (action) {
       case 'add-tag': {
@@ -105,13 +119,18 @@ serve(async (req) => {
 
       case 'create-card': {
         // Verificar se já existe card aberto para este contato neste pipeline
-        const { data: existingCard } = await supabase
+        let existingCardQuery = supabase
           .from('pipeline_cards')
           .select('id')
           .eq('contact_id', params.contact_id)
           .eq('pipeline_id', params.pipeline_id)
-          .eq('status', 'aberto')
-          .single();
+          .eq('status', 'aberto');
+
+        if (effectiveConnectionId) {
+          existingCardQuery = existingCardQuery.eq('connection_id', effectiveConnectionId);
+        }
+
+        const { data: existingCard } = await existingCardQuery.maybeSingle();
 
         if (existingCard) {
           result = {
@@ -138,7 +157,8 @@ serve(async (req) => {
             pipeline_id: params.pipeline_id,
             column_id: params.coluna_id,
             contact_id: params.contact_id,
-            conversation_id: params.conversation_id,
+            conversation_id: effectiveConversationId,
+            connection_id: effectiveConnectionId,
             title: `Card - ${contact?.name || 'Cliente'}`,
             status: 'aberto'
           })
@@ -158,13 +178,18 @@ serve(async (req) => {
 
       case 'transfer-column': {
         // Buscar o card do contato neste pipeline
-        const { data: card } = await supabase
+        let cardQuery = supabase
           .from('pipeline_cards')
           .select('id')
           .eq('contact_id', params.contact_id)
           .eq('pipeline_id', params.pipeline_id)
-          .eq('status', 'aberto')
-          .single();
+          .eq('status', 'aberto');
+
+        if (effectiveConnectionId) {
+          cardQuery = cardQuery.eq('connection_id', effectiveConnectionId);
+        }
+
+        const { data: card } = await cardQuery.maybeSingle();
 
         if (!card) {
           throw new Error('Card não encontrado para este contato no pipeline');

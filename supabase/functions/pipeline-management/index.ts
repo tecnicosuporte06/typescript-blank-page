@@ -1958,6 +1958,7 @@ serve(async (req) => {
               column_id,
               contact_id,
               conversation_id,
+              connection_id,
               responsible_user_id,
               title,
               description,
@@ -1988,6 +1989,7 @@ serve(async (req) => {
               column_id,
               contact_id,
               conversation_id,
+              connection_id,
               responsible_user_id,
               title:description,
               description,
@@ -2291,6 +2293,7 @@ serve(async (req) => {
 
             let resolvedConversationId = body.conversation_id || null;
             let resolvedWorkspaceId: string | null = null;
+            let resolvedConnectionId: string | null = null;
 
             // Descobrir workspace do pipeline (caso precise criar conversa)
             if (body.pipeline_id) {
@@ -2344,6 +2347,7 @@ serve(async (req) => {
                       console.error('❌ Erro ao buscar conversa existente:', existingConversationError);
                     } else if (existingConversation?.id) {
                       resolvedConversationId = existingConversation.id;
+                      resolvedConnectionId = existingConversation.connection_id || null;
                       console.log(`✅ Conversa existente reutilizada: ${resolvedConversationId}`);
                     } else {
                       console.log('📡 Nenhuma conversa aberta encontrada. Criando nova conversa automaticamente...');
@@ -2381,6 +2385,7 @@ serve(async (req) => {
                         console.error('❌ Erro ao criar conversa automaticamente:', conversationError);
                       } else {
                         resolvedConversationId = newConversation.id;
+                        resolvedConnectionId = defaultConnection?.id || null;
                         console.log(`✅ Conversa criada automaticamente: ${resolvedConversationId}`);
                       }
                     }
@@ -2399,10 +2404,21 @@ serve(async (req) => {
               );
             }
 
+            if (!resolvedConnectionId && resolvedConversationId) {
+              const { data: conversationRow } = await supabaseClient
+                .from('conversations')
+                .select('connection_id')
+                .eq('id', resolvedConversationId)
+                .maybeSingle() as any;
+
+              resolvedConnectionId = conversationRow?.connection_id || null;
+            }
+
             const insertPayload = {
               pipeline_id: body.pipeline_id,
               column_id: body.column_id,
               conversation_id: resolvedConversationId,
+              connection_id: resolvedConnectionId,
               contact_id: body.contact_id,
               description: body.description || body.title || '',
               value: body.value || 0,
@@ -3318,103 +3334,37 @@ serve(async (req) => {
             const dateFrom = url.searchParams.get('date_from'); // ISO
             const dateTo = url.searchParams.get('date_to'); // ISO
 
-            // 1) Resolver pipelines do workspace (ou pipeline específico)
-            let pipelinesQuery = supabaseClient
-              .from('pipelines')
-              .select('id, name')
-              .eq('workspace_id', workspaceId)
-              .eq('is_active', true);
-
-            if (pipelineIdFilter && pipelineIdFilter !== 'ALL') {
-              pipelinesQuery = pipelinesQuery.eq('id', pipelineIdFilter);
-            }
-
-            const { data: pipelinesRows, error: pipelinesError } = await pipelinesQuery;
-            if (pipelinesError) throw pipelinesError;
-
-            const pipelineIds = (pipelinesRows || []).map((p: any) => p.id).filter(Boolean);
-            if (!pipelineIds.length) {
-              return new Response(JSON.stringify([]), {
-                headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-              });
-            }
-
-            // 2) Buscar cards (sem joins) e aplicar filtros server-side essenciais
             const allowedStatuses = ['aberto', 'ganho', 'perda', 'perdido'];
-            let cardsQuery = supabaseClient
-              .from('pipeline_cards')
-              .select('id, status, created_at, updated_at, value, qualification, pipeline_id, column_id, responsible_user_id, contact_id')
-              .in('pipeline_id', pipelineIds)
+            let panoramaQuery = supabaseClient
+              .from('v_panorama_cards')
+              .select('*')
+              .eq('workspace_id', workspaceId)
               .in('status', allowedStatuses)
               .order('created_at', { ascending: false });
 
             if (statusFilter && statusFilter !== 'ALL') {
               if (statusFilter === 'perda') {
-                cardsQuery = cardsQuery.in('status', ['perda', 'perdido']);
+                panoramaQuery = panoramaQuery.in('status', ['perda', 'perdido']);
               } else {
-                cardsQuery = cardsQuery.eq('status', statusFilter);
+                panoramaQuery = panoramaQuery.eq('status', statusFilter);
               }
             }
 
+            if (pipelineIdFilter && pipelineIdFilter !== 'ALL') {
+              panoramaQuery = panoramaQuery.eq('pipeline_id', pipelineIdFilter);
+            }
+
             if (dateFrom) {
-              cardsQuery = cardsQuery.gte('created_at', dateFrom);
+              panoramaQuery = panoramaQuery.gte('created_at', dateFrom);
             }
             if (dateTo) {
-              cardsQuery = cardsQuery.lte('created_at', dateTo);
+              panoramaQuery = panoramaQuery.lte('created_at', dateTo);
             }
 
-            const { data: cards, error: cardsError } = await cardsQuery;
-            if (cardsError) throw cardsError;
+            const { data: rows, error } = await panoramaQuery;
+            if (error) throw error;
 
-            const cardRows = (cards || []) as any[];
-            if (!cardRows.length) {
-              return new Response(JSON.stringify([]), {
-                headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-              });
-            }
-
-            // 3) Buscar dados complementares em batch
-            const contactIds = Array.from(new Set(cardRows.map((c) => c.contact_id).filter(Boolean)));
-            const columnIds = Array.from(new Set(cardRows.map((c) => c.column_id).filter(Boolean)));
-            const responsibleIds = Array.from(new Set(cardRows.map((c) => c.responsible_user_id).filter(Boolean)));
-            const uniquePipelineIds = Array.from(new Set(cardRows.map((c) => c.pipeline_id).filter(Boolean)));
-
-            const [contactsRes, columnsRes, pipelinesRes, usersRes] = await Promise.all([
-              contactIds.length
-                ? supabaseClient.from('contacts').select('id, name, phone').in('id', contactIds)
-                : Promise.resolve({ data: [], error: null }),
-              columnIds.length
-                ? supabaseClient.from('pipeline_columns').select('id, name').in('id', columnIds)
-                : Promise.resolve({ data: [], error: null }),
-              uniquePipelineIds.length
-                ? supabaseClient.from('pipelines').select('id, name').in('id', uniquePipelineIds)
-                : Promise.resolve({ data: [], error: null }),
-              responsibleIds.length
-                ? supabaseClient.from('system_users').select('id, name').in('id', responsibleIds)
-                : Promise.resolve({ data: [], error: null }),
-            ] as any);
-
-            if (contactsRes.error) throw contactsRes.error;
-            if (columnsRes.error) throw columnsRes.error;
-            if (pipelinesRes.error) throw pipelinesRes.error;
-            if (usersRes.error) throw usersRes.error;
-
-            const contactsMap = new Map((contactsRes.data || []).map((c: any) => [c.id, c]));
-            const columnsMap = new Map((columnsRes.data || []).map((c: any) => [c.id, c]));
-            const pipelinesMap = new Map((pipelinesRes.data || []).map((p: any) => [p.id, p]));
-            const usersMap = new Map((usersRes.data || []).map((u: any) => [u.id, u]));
-
-            // 4) Montar resposta final no shape esperado pelo front
-            const result = cardRows.map((c: any) => ({
-              ...c,
-              contacts: undefined,
-              contact: c.contact_id ? contactsMap.get(c.contact_id) || null : null,
-              pipeline_columns: c.column_id ? columnsMap.get(c.column_id) || null : null,
-              pipelines: c.pipeline_id ? pipelinesMap.get(c.pipeline_id) || null : null,
-              responsible_user: c.responsible_user_id ? usersMap.get(c.responsible_user_id) || null : null,
-            }));
-
-            return new Response(JSON.stringify(result), {
+            return new Response(JSON.stringify(rows || []), {
               headers: { ...corsHeaders, 'Content-Type': 'application/json' },
             });
           } catch (error) {
