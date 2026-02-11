@@ -27,7 +27,8 @@ const MESSAGE_SELECT_FIELDS = `
   workspace_id,
   origem_resposta,
   reply_to_message_id,
-  evolution_key_id
+  evolution_key_id,
+  provider_moment
 `;
 
 serve(async (req) => {
@@ -68,19 +69,21 @@ serve(async (req) => {
     });
 
     // Usar campos específicos para otimizar transferência de dados
+    // 🕐 Ordenação por provider_moment (timestamp real do WhatsApp) em vez de created_at
     let query = supabase
       .from('messages')
       .select(MESSAGE_SELECT_FIELDS)
       .eq('workspace_id', workspaceId)
       .eq('conversation_id', conversationId)
-      .order('created_at', { ascending: false })
+      .order('provider_moment', { ascending: false, nullsFirst: false })
       .order('id', { ascending: false })
       .limit(limit);
 
-    // Apply cursor pagination if provided
+    // Apply cursor pagination if provided (usando provider_moment)
     if (before) {
-      const [beforeCreatedAt, beforeId] = before.split('|');
-      query = query.or(`created_at.lt.${beforeCreatedAt},and(created_at.eq.${beforeCreatedAt},id.lt.${beforeId})`);
+      const [beforeProviderMoment, beforeId] = before.split('|');
+      // Fallback para created_at se provider_moment não existir
+      query = query.or(`provider_moment.lt.${beforeProviderMoment},and(provider_moment.eq.${beforeProviderMoment},id.lt.${beforeId})`);
     }
 
     const { data: messages, error } = await query;
@@ -101,11 +104,14 @@ serve(async (req) => {
       new Map(messages.map(msg => [msg.id, msg])).values()
     ) : [];
 
-    // Generate next cursor if we have results
+    // Generate next cursor if we have results (usando provider_moment)
     let nextBefore = null;
     if (uniqueMessages && uniqueMessages.length === limit) {
       const lastMessage = uniqueMessages[uniqueMessages.length - 1];
-      nextBefore = `${lastMessage.created_at}|${lastMessage.id}`;
+      // Usar provider_moment para paginação (com fallback para created_at convertido)
+      const providerMoment = lastMessage.provider_moment || 
+        new Date(lastMessage.created_at).getTime();
+      nextBefore = `${providerMoment}|${lastMessage.id}`;
     }
 
     // Reverse messages to display in chronological order (oldest first)

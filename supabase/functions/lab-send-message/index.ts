@@ -313,9 +313,17 @@ serve(async (req) => {
     console.log('📤 [Lab] Enviando para N8N:', session.webhook_url)
     console.log('📤 [Lab] Payload completo com IDs reais')
 
-    // 10. Enviar para o webhook do N8N (fire-and-forget)
+    // 10. Enviar para o webhook do N8N
     // A resposta do agente e ações serão enviadas via callback (lab-action-callback)
+    console.log('📤 [Lab] URL do webhook:', session.webhook_url)
+    
+    let webhookStatus = 'pending'
+    let webhookError = null
+    let webhookResponseStatus = null
+    
     try {
+      console.log('🚀 [Lab] Iniciando fetch para N8N...')
+      
       const n8nResponse = await fetch(session.webhook_url, {
         method: 'POST',
         headers: {
@@ -324,33 +332,44 @@ serve(async (req) => {
         body: JSON.stringify(payload)
       })
 
+      webhookResponseStatus = n8nResponse.status
       console.log('📥 [Lab] Status do N8N:', n8nResponse.status)
 
       if (!n8nResponse.ok) {
         const errorText = await n8nResponse.text()
-        console.warn('⚠️ [Lab] N8N retornou erro:', n8nResponse.status, errorText.substring(0, 200))
-        // Não bloqueamos - o N8N pode estar processando assincronamente
+        console.error('❌ [Lab] N8N retornou erro:', n8nResponse.status, errorText.substring(0, 500))
+        webhookStatus = 'error'
+        webhookError = `N8N retornou status ${n8nResponse.status}: ${errorText.substring(0, 200)}`
       } else {
-        console.log('✅ [Lab] Webhook recebido pelo N8N')
+        console.log('✅ [Lab] Webhook recebido pelo N8N com sucesso')
+        webhookStatus = 'success'
       }
     } catch (fetchError: any) {
       console.error('❌ [Lab] Erro de conexão com N8N:', fetchError.message)
-      // Não bloqueamos - pode ser timeout ou problema temporário
+      console.error('❌ [Lab] Stack:', fetchError.stack)
+      webhookStatus = 'connection_error'
+      webhookError = `Erro de conexão: ${fetchError.message}`
     }
 
     // A resposta do agente e as ações serão enviadas via callback (lab-action-callback)
-    // Isso resolve problemas de formatação JSON no Respond to Webhook do N8N
     console.log('✅ [Lab] Mensagem processada - aguardando callbacks do N8N')
+    console.log('📊 [Lab] Status final do webhook:', webhookStatus, webhookError || '')
 
     return new Response(
       JSON.stringify({
-        success: true,
-        message: 'Mensagem enviada. Aguardando resposta via callback.',
-        session_id: session.id
+        success: webhookStatus === 'success',
+        message: webhookStatus === 'success' 
+          ? 'Mensagem enviada. Aguardando resposta via callback.'
+          : `Erro ao enviar para webhook: ${webhookError}`,
+        session_id: session.id,
+        webhook_status: webhookStatus,
+        webhook_response_status: webhookResponseStatus,
+        webhook_error: webhookError,
+        webhook_url_used: session.webhook_url
       }),
       {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        status: 200
+        status: 200 // Mantemos 200 para não quebrar o frontend, mas indicamos erro no body
       }
     )
 

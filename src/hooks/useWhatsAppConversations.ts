@@ -16,6 +16,7 @@ export interface WhatsAppMessage {
   file_url?: string;
   file_name?: string;
   origem_resposta: 'automatica' | 'manual';
+  provider_moment?: number; // 🕐 Timestamp real da mensagem no WhatsApp (Unix ms)
 }
 
 export interface WhatsAppConversation {

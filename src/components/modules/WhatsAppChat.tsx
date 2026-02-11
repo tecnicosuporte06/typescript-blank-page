@@ -47,7 +47,7 @@ import { QuickFunnelsModal } from "@/components/modals/QuickFunnelsModal";
 import { AssignmentHistoryModal } from "@/components/modals/AssignmentHistoryModal";
 import { DateSeparator } from "@/components/chat/DateSeparator";
 import { FloatingDateIndicator } from "@/components/chat/FloatingDateIndicator";
-import { useFloatingDate, groupMessagesByDate, formatMessageDate } from "@/hooks/useFloatingDate";
+import { useFloatingDate, groupMessagesByDate, formatMessageDate, getMessageTimestamp } from "@/hooks/useFloatingDate";
 import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuTrigger } from "@/components/ui/context-menu";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import {
@@ -3917,7 +3917,8 @@ export function WhatsAppChat({
               <div className="space-y-6">
                 {Array.from(messagesByDate.entries()).map(([dateKey, dateMessages]) => {
                   const firstMessage = dateMessages[0];
-                  const dateLabel = formatMessageDate(firstMessage.created_at);
+                  // 🕐 Usar provider_moment (timestamp real do WhatsApp) se disponível
+                  const dateLabel = formatMessageDate(getMessageTimestamp(firstMessage));
                   
                   return (
                     <div key={dateKey} className="space-y-4">
@@ -4061,7 +4062,7 @@ export function WhatsAppChat({
                           senderAvatar={isContactMessage ? selectedConversation.contact?.profile_image_url : undefined}
                           senderName={senderDisplayName}
                           messageStatus={displayStatus}
-                          timestamp={message.created_at}
+                          timestamp={getMessageTimestamp(message).toISOString()}
                           caption={message.content}
                         />
                       ) : (
@@ -4073,7 +4074,8 @@ export function WhatsAppChat({
                     
                     <div className="flex items-center justify-end gap-1 mt-1 select-none">
                       <span className="text-[9px] text-gray-400 font-medium">
-                        {new Date(message.created_at).toLocaleTimeString('pt-BR', {
+                        {/* 🕐 Usar provider_moment (timestamp real do WhatsApp) se disponível */}
+                        {getMessageTimestamp(message).toLocaleTimeString('pt-BR', {
                           hour: '2-digit',
                           minute: '2-digit'
                         })}

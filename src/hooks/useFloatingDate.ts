@@ -123,9 +123,27 @@ export function useFloatingDate(
   };
 }
 
+// 🕐 Helper para obter timestamp real da mensagem (prioriza provider_moment)
+export function getMessageTimestamp(message: any): Date {
+  // Prioridade: provider_moment (timestamp Unix ms) > created_at
+  if (message.provider_moment && typeof message.provider_moment === 'number') {
+    return new Date(message.provider_moment);
+  }
+  return new Date(message.created_at);
+}
+
 // Função auxiliar para formatar data de mensagem
-export function formatMessageDate(date: Date | string): string {
-  const messageDate = typeof date === 'string' ? new Date(date) : date;
+export function formatMessageDate(date: Date | string | number): string {
+  let messageDate: Date;
+  
+  if (typeof date === 'number') {
+    // É um timestamp Unix em ms (provider_moment)
+    messageDate = new Date(date);
+  } else if (typeof date === 'string') {
+    messageDate = new Date(date);
+  } else {
+    messageDate = date;
+  }
   
   if (isToday(messageDate)) return 'Hoje';
   if (isYesterday(messageDate)) return 'Ontem';
@@ -138,12 +156,13 @@ export function formatMessageDate(date: Date | string): string {
   return format(messageDate, 'dd/MM/yyyy', { locale: ptBR });
 }
 
-// Função para agrupar mensagens por data
+// Função para agrupar mensagens por data (usa provider_moment como prioridade)
 export function groupMessagesByDate(messages: any[]): Map<string, any[]> {
   const grouped = new Map<string, any[]>();
   
   messages.forEach(message => {
-    const messageDate = new Date(message.created_at);
+    // 🕐 Usar provider_moment se disponível, fallback para created_at
+    const messageDate = getMessageTimestamp(message);
     const dateKey = format(messageDate, 'yyyy-MM-dd');
     
     if (!grouped.has(dateKey)) {

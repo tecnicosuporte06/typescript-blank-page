@@ -204,8 +204,19 @@ serve(async (req) => {
       contact_name,       // Optional
       reply_to_message_id, // Optional - UUID of quoted message
       quoted_message,      // Optional - JSONB with quoted message data
-      metadata = {}
+      metadata = {},
+      provider_moment      // Optional - timestamp Unix em ms do momento real da mensagem
     } = payload;
+    
+    // 🕐 EXTRAIR provider_moment do payload do webhook (ZAPI/Evolution)
+    // Prioridade: campo direto > webhook_data.momment > data.momment > fallback Date.now()
+    if (!provider_moment) {
+      provider_moment = payload.webhook_data?.momment || 
+                        payload.data?.momment || 
+                        payload.momment ||
+                        Date.now();
+    }
+    console.log(`🕐 [${requestId}] provider_moment: ${provider_moment} (${new Date(provider_moment).toISOString()})`);
     
     // 🔄 EXTRACT QUOTED MESSAGE from Evolution payload structure (data.message.quoted)
     if (!reply_to_message_id && payload.data?.message?.quoted) {
@@ -699,6 +710,7 @@ serve(async (req) => {
       status: direction === 'inbound' ? 'received' : 'sent',
       origem_resposta: direction === 'inbound' ? 'automatica' : 'manual',
       external_id: external_id || crypto.randomUUID(), // external_id separado do id
+      provider_moment: provider_moment, // 🕐 Timestamp real da mensagem no WhatsApp
       metadata: {
         source: 'n8n-response-v2',
         direction: direction,

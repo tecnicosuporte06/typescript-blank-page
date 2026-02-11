@@ -151,24 +151,24 @@ function SortableCard({
 
   return (
     <div ref={setNodeRef} style={style} className="relative group">
-      <button
-        type="button"
-        ref={setActivatorNodeRef}
-        className={cn(
-          "absolute top-1 left-1 z-20 h-5 w-5 flex items-center justify-center rounded-none",
-          "cursor-grab active:cursor-grabbing",
-          "bg-white/70 dark:bg-[#1b1b1b]/70 backdrop-blur-sm",
-          "text-gray-400 hover:text-gray-700 dark:text-gray-500 dark:hover:text-gray-200",
-          "opacity-0 group-hover:opacity-100 transition-opacity",
-          disabled && "opacity-20 cursor-not-allowed"
-        )}
-        title={disabled ? "Reordenação desabilitada enquanto edita" : "Arraste para reordenar"}
-        {...attributes}
-        {...listeners}
-        disabled={!!disabled}
-      >
-        <GripVertical className="h-3 w-3" />
-      </button>
+      {!disabled && (
+        <button
+          type="button"
+          ref={setActivatorNodeRef}
+          className={cn(
+            "absolute top-1 left-1 z-20 h-5 w-5 flex items-center justify-center rounded-none",
+            "cursor-grab active:cursor-grabbing",
+            "bg-white/70 dark:bg-[#1b1b1b]/70 backdrop-blur-sm",
+            "text-gray-400 hover:text-gray-700 dark:text-gray-500 dark:hover:text-gray-200",
+            "opacity-0 group-hover:opacity-100 transition-opacity"
+          )}
+          title="Arraste para reordenar"
+          {...attributes}
+          {...listeners}
+        >
+          <GripVertical className="h-3 w-3" />
+        </button>
+      )}
       {children}
     </div>
   );
@@ -191,6 +191,7 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
   const fetchCtxPipelines = pipelinesContext?.fetchPipelines;
   
   const { getHeaders } = useWorkspaceHeaders();
+  const allowReorder = false;
 
   const [customConversions, setCustomConversions] = useState<CustomConversion[]>([]);
   const [pipelineColumnsMap, setPipelineColumnsMap] = useState<Record<string, { id: string, name: string }[]>>({});
@@ -1776,7 +1777,7 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
     }
 
     return (
-      <SortableCard key={conv.id} id={conv.id}>
+      <SortableCard key={conv.id} id={conv.id} disabled={!allowReorder}>
         <Card className="rounded-none border-gray-200 dark:border-gray-700 dark:bg-[#1b1b1b] relative group h-[132px]">
           <CardContent className="p-4 h-full flex flex-col justify-between">
             <div className="flex flex-col gap-0.5 mb-1">
@@ -3657,7 +3658,7 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
               </Button>
             )}
           </div>
-          <DndContext sensors={canEditCompanyFilters ? dndSensors : []} collisionDetection={closestCenter} onDragEnd={onDragEndCustomConversions}>
+          <DndContext sensors={canEditCompanyFilters && allowReorder ? dndSensors : []} collisionDetection={closestCenter} onDragEnd={onDragEndCustomConversions}>
             <SortableContext items={customConversions.map((c: any) => c.id)} strategy={rectSortingStrategy}>
               <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3">
                 {/* Conversões Customizadas */}
@@ -3775,7 +3776,7 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
               }
 
               return (
-                <SortableCard key={conv.id} id={conv.id}>
+                <SortableCard key={conv.id} id={conv.id} disabled={!allowReorder}>
                   <Card className="rounded-none border-gray-200 dark:border-gray-700 dark:bg-[#1b1b1b] relative group">
                     <CardContent className="p-3">
                     <div className="flex flex-col gap-0.5 mb-1">
@@ -3824,7 +3825,7 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
 
         {/* Equipe – Indicadores + Equipe – Conversão */}
         <section className="space-y-3">
-          <DndContext sensors={canEditCompanyFilters ? dndSensors : []} collisionDetection={closestCenter} onDragEnd={onDragEndTeamConversions}>
+          <DndContext sensors={canEditCompanyFilters && allowReorder ? dndSensors : []} collisionDetection={closestCenter} onDragEnd={onDragEndTeamConversions}>
             <SortableContext items={teamConversions.map((c: any) => c.id)} strategy={rectSortingStrategy}>
               
               {/* BLOCO SUPERIOR: Indicadores vs (Filtros + Cards) */}

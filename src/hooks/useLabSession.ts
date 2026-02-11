@@ -404,6 +404,16 @@ export function useLabSession(): UseLabSessionReturn {
 
       if (error) throw error;
 
+      // Verificar se o webhook foi enviado com sucesso
+      if (data && !data.success) {
+        console.error('[Lab] Webhook falhou:', data.webhook_error);
+        console.error('[Lab] URL usada:', data.webhook_url_used);
+        console.error('[Lab] Status HTTP:', data.webhook_response_status);
+        toast.error(`Erro no webhook: ${data.webhook_error || 'Erro desconhecido'}`);
+      } else if (data && data.webhook_status === 'success') {
+        console.log('[Lab] Webhook enviado com sucesso para:', data.webhook_url_used);
+      }
+
       // O Realtime vai atualizar as mensagens automaticamente
       // Não precisamos mais do loadSessionData aqui
 
