@@ -1673,15 +1673,57 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
       });
   };
 
+  const getTeamActivityMetricCount = (metricKey: TeamMetricKey, activitiesList: any[]) => {
+    const rawLabel = String(metricKey).replace(/^activity:/, '');
+    const normalizedLabel = normalizeText(rawLabel);
+
+    const isCallType = (a: any) => {
+      const t = norm(a?.type);
+      return t.includes('ligação') || t.includes('ligacao') || t.includes('chamada');
+    };
+
+    const isMeetingType = (a: any) => {
+      const t = norm(a?.type);
+      return t.includes('reunião') || t.includes('reuniao');
+    };
+
+    switch (normalizedLabel) {
+      case normalizeText('Mensagem'):
+        return activitiesList.filter((a: any) => norm(a?.type).includes('mensagem')).length;
+      case normalizeText('Ligação Não Atendida'):
+        return activitiesList.filter((a: any) => norm(a?.type).includes('ligação não atendida') || norm(a?.type).includes('ligacao nao atendida') || norm(a?.type).includes('ligacao não atendida')).length;
+      case normalizeText('Ligação Atendida'):
+        return activitiesList.filter((a: any) => norm(a?.type).includes('ligação atendida') || norm(a?.type).includes('ligacao atendida')).length;
+      case normalizeText('Ligação Abordada'):
+        return activitiesList.filter((a: any) => norm(a?.type).includes('ligação abordada') || norm(a?.type).includes('ligacao abordada') || norm(a?.status).includes('abordada')).length;
+      case normalizeText('Ligação Agendada'):
+        return activitiesList.filter((a: any) => isCallType(a) && (norm(a?.type).includes('agendada') || norm(a?.status).includes('agendada'))).length;
+      case normalizeText('Ligação de Follow up'):
+        return activitiesList.filter((a: any) => norm(a?.type).includes('follow') || norm(a?.status).includes('follow')).length;
+      case normalizeText('Reunião Agendada'):
+        return activitiesList.filter((a: any) => isMeetingType(a)).length;
+      case normalizeText('Reunião Realizada'):
+        return activitiesList.filter((a: any) => norm(a?.type).includes('realizada') || norm(a?.status).includes('realizada')).length;
+      case normalizeText('Reunião Não Realizada'):
+        return activitiesList.filter((a: any) => norm(a?.type).includes('não realizada') || norm(a?.type).includes('nao realizada') || norm(a?.status).includes('não realizada') || norm(a?.status).includes('nao realizada')).length;
+      case normalizeText('Reunião Reagendada'):
+        return activitiesList.filter((a: any) => norm(a?.type).includes('reagendada') || norm(a?.type).includes('reagenda') || norm(a?.status).includes('reagendada')).length;
+      case normalizeText('WhatsApp Enviado'):
+        return activitiesList.filter((a: any) => norm(a?.type).includes('whatsapp') || norm(a?.status).includes('whatsapp')).length;
+      default: {
+        // Fallback para compatibilidade com eventuais tipos customizados
+        const k = normalizeText(rawLabel);
+        return activitiesList.filter((a: any) => normalizeText(a?.type) === k).length;
+      }
+    }
+  };
+
   const renderTeamConversionCard = (conv: any) => {
-    const rng = getEffectiveRange(teamConvPeriodPreset, teamConvStartDate, teamConvEndDate);
-    const cardsFiltered = filterCardsForSection(cardsScoped || [], rng.from, rng.to, teamConvAgent, teamConvTags, teamConvStatus);
-    const activitiesFiltered = filterActivitiesForSection(activitiesScoped || [], rng.from, rng.to, teamConvAgent, teamConvTags);
+    const cardsFiltered = teamSectionCards;
+    const activitiesFiltered = teamSectionActivities;
 
     const getActivityCount = (metricKey: TeamMetricKey) => {
-      const rawLabel = String(metricKey).replace(/^activity:/, '');
-      const k = normalizeText(rawLabel);
-      return (activitiesFiltered || []).filter((a: any) => normalizeText(a?.type) === k).length;
+      return getTeamActivityMetricCount(metricKey, activitiesFiltered || []);
     };
 
     const countA = conv.metricA === 'leads' ? cardsFiltered.length : getActivityCount(conv.metricA);
@@ -1785,6 +1827,9 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
               <div className="text-[10px] text-gray-500 dark:text-gray-400 truncate">
                 {labelA} / {labelB}
               </div>
+              <div className="text-[10px] text-gray-500 dark:text-gray-400 tabular-nums">
+                {countA} / {countB}
+              </div>
             </div>
             <div className="text-2xl font-semibold text-gray-900 dark:text-gray-100">{result}%</div>
             {canEditCompanyFilters && (
@@ -1847,6 +1892,37 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
     }
     return cards;
   }, [cards, selectedAgent]);
+
+  // Normalizador local para filtros e métricas de atividades
+  const norm = (v?: string | null) => (v || '').toLowerCase().trim();
+
+  const teamSectionRange = useMemo(
+    () => getEffectiveRange(teamConvPeriodPreset, teamConvStartDate, teamConvEndDate),
+    [teamConvPeriodPreset, teamConvStartDate, teamConvEndDate]
+  );
+
+  const teamSectionCards = useMemo(
+    () => filterCardsForSection(cardsScoped || [], teamSectionRange.from, teamSectionRange.to, teamConvAgent, teamConvTags, teamConvStatus),
+    [cardsScoped, teamSectionRange, teamConvAgent, teamConvTags, teamConvStatus]
+  );
+
+  const teamSectionActivities = useMemo(
+    () => filterActivitiesForSection(activitiesScoped || [], teamSectionRange.from, teamSectionRange.to, teamConvAgent, teamConvTags),
+    [activitiesScoped, teamSectionRange, teamConvAgent, teamConvTags]
+  );
+
+  const teamCalls = teamSectionActivities.filter((a: any) => norm(a.type).includes('ligação') || norm(a.type).includes('ligacao') || norm(a.type).includes('chamada'));
+  const teamCallsAttended = teamSectionActivities.filter((a: any) => norm(a.type).includes('ligação atendida') || norm(a.type).includes('ligacao atendida'));
+  const teamCallsNotAttended = teamSectionActivities.filter((a: any) => norm(a.type).includes('ligação não atendida') || norm(a.type).includes('ligacao nao atendida') || norm(a.type).includes('ligacao não atendida'));
+  const teamCallsApproached = teamSectionActivities.filter((a: any) => norm(a.type).includes('ligação abordada') || norm(a.type).includes('ligacao abordada') || norm(a.status).includes('abordada'));
+  const teamMessages = teamSectionActivities.filter((a: any) => norm(a.type).includes('mensagem'));
+  const teamMeetings = teamSectionActivities.filter((a: any) => norm(a.type).includes('reunião') || norm(a.type).includes('reuniao'));
+  const teamMeetingsDone = teamSectionActivities.filter((a: any) => norm(a.type).includes('realizada') || norm(a.status).includes('realizada'));
+  const teamProposals = teamSectionActivities.filter((a: any) => norm(a.type).includes('proposta'));
+  const teamLeadsWon = teamSectionCards.filter((c: any) => {
+    const s = (c.status || '').toLowerCase();
+    return s === 'won' || s === 'ganho' || s === 'venda' || s === 'success' || s === 'sucesso';
+  }).length;
 
   // Lista de agentes filtrada: usuário "user" só vê ele mesmo
   const agentsFiltered = useMemo(() => {
@@ -2354,7 +2430,6 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
   }, [cards, availableProducts]);
 
   // Atividades: tudo do Ranking de Trabalho vem de public.activities (como você explicou)
-  const norm = (v?: string | null) => (v || '').toLowerCase().trim();
   const calls = activities.filter((a) => norm(a.type).includes('ligação') || norm(a.type).includes('ligacao') || norm(a.type).includes('chamada'));
   const callsAttended = activities.filter((a) => norm(a.type).includes('ligação atendida') || norm(a.type).includes('ligacao atendida'));
   const callsNotAttended = activities.filter((a) => norm(a.type).includes('ligação não atendida') || norm(a.type).includes('ligacao nao atendida') || norm(a.type).includes('ligacao não atendida'));
@@ -3846,16 +3921,16 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
                           </colgroup>
                           <tbody>
                             {[
-                              { k: 'Leads recebidos', v: leadsReceived },
-                              { k: 'Ligações realizadas', v: calls.length },
-                              { k: 'Ligações atendidas', v: callsAttended.length },
-                              { k: 'Ligações não atendidas', v: callsNotAttended.length },
-                              { k: 'Ligações abordadas', v: callsApproached.length },
-                              { k: 'Mensagens enviadas', v: messages.length },
-                              { k: 'Reuniões agendadas', v: meetings.length },
-                              { k: 'Reuniões realizadas', v: meetings.filter((m) => m.status === 'realizada').length },
-                              { k: 'Propostas enviadas', v: proposals.length },
-                              { k: 'Vendas realizadas', v: leadsWon },
+                              { k: 'Leads recebidos', v: teamSectionCards.length },
+                              { k: 'Ligações realizadas', v: teamCalls.length },
+                              { k: 'Ligações atendidas', v: teamCallsAttended.length },
+                              { k: 'Ligações não atendidas', v: teamCallsNotAttended.length },
+                              { k: 'Ligações abordadas', v: teamCallsApproached.length },
+                              { k: 'Mensagens enviadas', v: teamMessages.length },
+                              { k: 'Reuniões agendadas', v: teamMeetings.length },
+                              { k: 'Reuniões realizadas', v: teamMeetingsDone.length },
+                              { k: 'Propostas enviadas', v: teamProposals.length },
+                              { k: 'Vendas realizadas', v: teamLeadsWon },
                             ].map((row) => (
                               <tr key={row.k} className="border-t border-gray-200 dark:border-gray-800">
                                 <td className="px-2 py-1.5 truncate" title={row.k}>{row.k}</td>
