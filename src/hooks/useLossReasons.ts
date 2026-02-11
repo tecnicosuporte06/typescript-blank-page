@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, useCallback } from 'react';
-import { supabase } from '@/integrations/supabase/client';
+import { supabase, withUserContext } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 
 export interface LossReason {
@@ -84,21 +84,25 @@ export const useLossReasons = (workspaceId: string | null) => {
 
       for (let attempt = 0; attempt < 3; attempt++) {
         try {
-          // Usar VIEW para melhor performance e estabilidade
-          const res = await supabase
-            .from('loss_reasons_view' as any)
-            .select('id, name, workspace_id, is_active, created_at, updated_at')
-            .eq('workspace_id', workspaceId)
-            .order('name');
+          // Usar withUserContext para garantir contexto de usuário
+          const res = await withUserContext(() =>
+            supabase
+              .from('loss_reasons_view' as any)
+              .select('id, name, workspace_id, is_active, created_at, updated_at')
+              .eq('workspace_id', workspaceId)
+              .order('name')
+          );
 
           if (res.error) {
             // Fallback para tabela original se VIEW não existir
             console.log('⚠️ useLossReasons: VIEW não disponível, usando tabela original');
-            const fallbackRes = await supabase
-              .from('loss_reasons')
-              .select('*')
-              .eq('workspace_id', workspaceId)
-              .order('name');
+            const fallbackRes = await withUserContext(() =>
+              supabase
+                .from('loss_reasons')
+                .select('*')
+                .eq('workspace_id', workspaceId)
+                .order('name')
+            );
             
             if (fallbackRes.error) throw fallbackRes.error;
             data = fallbackRes.data || [];
@@ -168,15 +172,18 @@ export const useLossReasons = (workspaceId: string | null) => {
     console.log('🔵 createLossReason: Criando motivo de perda:', { name, workspaceId });
 
     try {
-      const { data, error } = await supabase
-        .from('loss_reasons')
-        .insert({
-          name,
-          workspace_id: workspaceId,
-          is_active: true,
-        })
-        .select()
-        .single();
+      // Usar withUserContext para garantir que o contexto do usuário está definido
+      const { data, error } = await withUserContext(() => 
+        supabase
+          .from('loss_reasons')
+          .insert({
+            name,
+            workspace_id: workspaceId,
+            is_active: true,
+          })
+          .select()
+          .single()
+      );
 
       if (error) {
         console.error('❌ createLossReason: Erro do Supabase:', {
@@ -246,10 +253,13 @@ export const useLossReasons = (workspaceId: string | null) => {
         updateData.is_active = isActive;
       }
 
-      const { error } = await supabase
-        .from('loss_reasons')
-        .update(updateData)
-        .eq('id', id);
+      // Usar withUserContext para garantir que o contexto do usuário está definido
+      const { error } = await withUserContext(() =>
+        supabase
+          .from('loss_reasons')
+          .update(updateData)
+          .eq('id', id)
+      );
 
       if (error) throw error;
       
@@ -283,10 +293,13 @@ export const useLossReasons = (workspaceId: string | null) => {
 
   const deleteLossReason = async (id: string) => {
     try {
-      const { error } = await supabase
-        .from('loss_reasons')
-        .delete()
-        .eq('id', id);
+      // Usar withUserContext para garantir que o contexto do usuário está definido
+      const { error } = await withUserContext(() =>
+        supabase
+          .from('loss_reasons')
+          .delete()
+          .eq('id', id)
+      );
 
       if (error) throw error;
       
