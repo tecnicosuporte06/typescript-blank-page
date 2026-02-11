@@ -34,6 +34,7 @@ interface WhatsAppMessage {
     external_id?: string;
   };
   evolution_key_id?: string | null;
+  provider_moment?: number; // 🕐 Timestamp real da mensagem no WhatsApp (Unix ms)
 }
 
 const isPlainObject = (value: unknown): value is Record<string, any> => {
@@ -139,9 +140,13 @@ const dedupeAndSortMessages = (messages: WhatsAppMessage[]): WhatsAppMessage[] =
     accumulator.push(message);
   }
 
-  return [...accumulator].sort(
-    (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
-  );
+  // 🕐 Ordenar por provider_moment (timestamp real do WhatsApp) se disponível
+  // Fallback para created_at para mensagens antigas sem provider_moment
+  return [...accumulator].sort((a, b) => {
+    const aTime = a.provider_moment || new Date(a.created_at).getTime();
+    const bTime = b.provider_moment || new Date(b.created_at).getTime();
+    return aTime - bTime;
+  });
 };
 
 const INVOKE_TIMEOUT_MS = 12000;
