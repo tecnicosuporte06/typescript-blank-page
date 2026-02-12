@@ -58,7 +58,17 @@ export function useReportFilterPresets(workspaceIdProp?: string) {
   const { selectedWorkspace } = useWorkspace();
 
   const workspaceId = workspaceIdProp || selectedWorkspace?.workspace_id || "";
-  const canEdit = userRole === "master" || userRole === "admin";
+  // Permitir edição para master, support e admin (incluindo gestor)
+  // Também verifica o profile direto do usuário para garantir compatibilidade
+  const userProfile = (user?.profile || "").toLowerCase();
+  const canEdit = 
+    userRole === "master" || 
+    userRole === "support" || 
+    userRole === "admin" ||
+    userProfile === "master" ||
+    userProfile === "mentor_master" ||
+    userProfile === "admin" ||
+    userProfile === "gestor";
 
   const [loading, setLoading] = useState(false);
   const [savedFilters, setSavedFilters] = useState<ReportFiltersData>(DEFAULT_FILTERS);
