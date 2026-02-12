@@ -3526,6 +3526,29 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
                   align="end"
                 >
                   <div className="max-h-64 overflow-y-auto space-y-2">
+                    {/* Opção de selecionar todas */}
+                    {availableTags.length > 0 && (
+                      <label className="flex items-center gap-2 text-[11px] font-medium border-b border-gray-200 dark:border-gray-700 pb-2 mb-1">
+                        <Checkbox
+                          checked={customConvTags.length === availableTags.length && availableTags.length > 0}
+                          onCheckedChange={(val) => {
+                            const next = val ? availableTags.map((t) => t.id) : [];
+                            setCustomConvTags(next);
+                            persistUserReportSettings({
+                              customConversionsFilter: {
+                                preset: customConvPeriodPreset,
+                                startDate: customConvStartDate ? customConvStartDate.toISOString() : null,
+                                endDate: customConvEndDate ? customConvEndDate.toISOString() : null,
+                                agent: customConvAgent,
+                                tags: next,
+                                status: customConvStatus,
+                              },
+                            });
+                          }}
+                        />
+                        <span>Selecionar todas</span>
+                      </label>
+                    )}
                     {availableTags.map((t) => {
                       const checked = customConvTags.includes(t.id);
                       return (
@@ -4043,6 +4066,29 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
                         align="end"
                       >
                         <div className="max-h-64 overflow-y-auto space-y-2">
+                          {/* Opção de selecionar todas */}
+                          {availableTags.length > 0 && (
+                            <label className="flex items-center gap-2 text-[11px] font-medium border-b border-gray-200 dark:border-gray-700 pb-2 mb-1">
+                              <Checkbox
+                                checked={teamConvTags.length === availableTags.length && availableTags.length > 0}
+                                onCheckedChange={(val) => {
+                                  const next = val ? availableTags.map((t) => t.id) : [];
+                                  setTeamConvTags(next);
+                                  persistUserReportSettings({
+                                    teamConversionsFilter: {
+                                      preset: teamConvPeriodPreset,
+                                      startDate: teamConvStartDate ? teamConvStartDate.toISOString() : null,
+                                      endDate: teamConvEndDate ? teamConvEndDate.toISOString() : null,
+                                      agent: teamConvAgent,
+                                      tags: next,
+                                      status: teamConvStatus,
+                                    },
+                                  });
+                                }}
+                              />
+                              <span>Selecionar todas</span>
+                            </label>
+                          )}
                           {availableTags.map((t) => {
                             const checked = teamConvTags.includes(t.id);
                             return (
