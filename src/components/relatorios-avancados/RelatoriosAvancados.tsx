@@ -1258,12 +1258,27 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
     return a.every((value, index) => value === b[index]);
   };
 
+  // Ref para controlar se já foi hidratado uma vez (evita "tremor" por re-hidratações)
+  const hasHydratedOnceRef = useRef(false);
+  const lastHydratedWorkspaceRef = useRef<string | null>(null);
+
   useEffect(() => {
     // Bloqueia qualquer lógica se não houver usuário ou workspace selecionado
     if (!user?.id || !settingsWorkspaceId) return;
 
     // Enquanto estiver carregando as configurações do usuário ou da empresa, não faz nada
     if (loadingUserSettings || loadingCompanyFilters) return;
+
+    // ✅ Se mudou de workspace, permite re-hidratação
+    if (lastHydratedWorkspaceRef.current !== settingsWorkspaceId) {
+      hasHydratedOnceRef.current = false;
+      setIsHydrated(false);
+    }
+
+    // ✅ CRÍTICO: Evita "tremor" - só hidrata uma vez por sessão/workspace
+    // Se já hidratou e as configurações mudaram (outro admin salvou), ignora
+    // O usuário verá as mudanças ao recarregar a página
+    if (hasHydratedOnceRef.current && isHydrated) return;
 
     // 1️⃣ Primeiro: Aplica filtros da empresa (padrão para todos)
     if (companyFilters && typeof companyFilters === 'object') {
@@ -1402,9 +1417,11 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
 
     // Marca como hidratado e libera a UI
     setIsHydrated(true);
+    hasHydratedOnceRef.current = true;
+    lastHydratedWorkspaceRef.current = settingsWorkspaceId;
 
     // ✅ CRÍTICO: Removido userSettings das dependências para evitar loop infinito
-  }, [savedFunnels, user?.id, userRole, loadingUserSettings, loadingCompanyFilters, settingsWorkspaceId]);
+  }, [savedFunnels, user?.id, userRole, loadingUserSettings, loadingCompanyFilters, settingsWorkspaceId, isHydrated]);
 
   // ✅ Disparar fetchData quando houver contexto válido
   useEffect(() => {
