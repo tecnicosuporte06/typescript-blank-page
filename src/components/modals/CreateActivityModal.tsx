@@ -318,6 +318,8 @@ export function CreateActivityModal({
                 <SelectItem value="Reunião">Reunião</SelectItem>
                 <SelectItem value="Agendamento">Agendamento</SelectItem>
                 <SelectItem value="Comentários">Observações</SelectItem>
+                <SelectItem value="Proposta enviada">Proposta enviada</SelectItem>
+                <SelectItem value="Venda realizada">Venda realizada</SelectItem>
               </SelectContent>
             </Select>
           </div>

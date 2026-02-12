@@ -76,6 +76,8 @@ type TeamWorkRankingRow = {
   reuniao_nao_realizada: number | null;
   reuniao_reagendada: number | null;
   whatsapp_enviado: number | null;
+  proposta_enviada: number | null;
+  venda_realizada: number | null;
 };
 
 interface PipelineCardRecord {
@@ -105,6 +107,14 @@ interface TagRecord {
   contact_id: string;
   tag_id: string;
   tag?: { name?: string | null };
+}
+
+// Histórico de movimentação de cards entre colunas
+interface CardColumnHistoryRecord {
+  card_id: string;
+  old_column_id: string | null;
+  new_column_id: string | null;
+  changed_at: string;
 }
 
 const pieColors = ['#10B981', '#3B82F6', '#F59E0B', '#EF4444', '#8B5CF6', '#14B8A6', '#6366F1'];
@@ -244,6 +254,7 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
   const [activities, setActivities] = useState<ActivityRecord[]>([]);
   const [cards, setCards] = useState<PipelineCardRecord[]>([]);
   const [tags, setTags] = useState<TagRecord[]>([]);
+  const [cardColumnHistory, setCardColumnHistory] = useState<CardColumnHistoryRecord[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [isHydrated, setIsHydrated] = useState(false);
   const [viewMode, setViewMode] = useState<'list' | 'bi' | 'kpis' | 'funnel'>('funnel');
@@ -1143,6 +1154,33 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
           setContacts(contactsAll);
           setActivities(activitiesAll);
 
+          // Buscar histórico de movimentação de cards (para métricas de conversão baseadas em histórico)
+          try {
+            const cardIds = allCardsLite.map((c: any) => c?.id).filter(Boolean);
+            if (cardIds.length > 0) {
+              const { data: historyData, error: historyError } = await supabase
+                .from('pipeline_card_history')
+                .select('card_id, metadata, changed_at')
+                .in('card_id', cardIds)
+                .eq('action', 'column_changed')
+                .gte('changed_at', from || '1970-01-01')
+                .lte('changed_at', to || '2099-12-31')
+                .order('changed_at', { ascending: true });
+              
+              if (!historyError && Array.isArray(historyData)) {
+                const historyRecords: CardColumnHistoryRecord[] = historyData.map((h: any) => ({
+                  card_id: h.card_id,
+                  old_column_id: (h.metadata as any)?.old_column_id || null,
+                  new_column_id: (h.metadata as any)?.new_column_id || null,
+                  changed_at: h.changed_at,
+                }));
+                setCardColumnHistory(historyRecords);
+              }
+            }
+          } catch (historyErr) {
+            console.warn('Erro ao buscar histórico de movimentação (não crítico):', historyErr);
+          }
+
         } catch (e) {
         }
       })();
@@ -1503,6 +1541,68 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
     return true;
   };
 
+  /**
+   * Verifica se um card passou por uma coluna específica durante o período filtrado.
+   * Considera o histórico de movimentação para métricas de conversão mais precisas.
+   * 
+   * Lógica:
+   * 1. Se o card está atualmente na coluna, conta
+   * 2. Se o card passou pela coluna no período (entrou ou saiu), conta
+   * 3. Se o card já estava na coluna antes do período e saiu durante, conta
+   */
+  const cardPassedThroughColumn = (
+    card: PipelineCardRecord,
+    columnId: string,
+    fromDate: Date | null,
+    toDate: Date | null
+  ): boolean => {
+    // Se a coluna é "all", sempre retorna true (sem filtro de coluna)
+    if (columnId === 'all') return true;
+    
+    // Caso 1: Card está atualmente na coluna
+    if (card.column_id === columnId) return true;
+    
+    // Caso 2 e 3: Verificar histórico de movimentação
+    const cardHistory = cardColumnHistory.filter(h => h.card_id === card.id);
+    if (cardHistory.length === 0) {
+      // Sem histórico, só conta se está na coluna atualmente
+      return card.column_id === columnId;
+    }
+    
+    // Verificar se alguma movimentação envolveu essa coluna no período
+    const fromTime = fromDate ? startOfDay(fromDate).getTime() : 0;
+    const toTime = toDate ? endOfDay(toDate).getTime() : Date.now();
+    
+    for (const h of cardHistory) {
+      const changeTime = new Date(h.changed_at).getTime();
+      
+      // Verificar se a movimentação está dentro do período
+      if (changeTime >= fromTime && changeTime <= toTime) {
+        // Card entrou ou saiu desta coluna durante o período
+        if (h.old_column_id === columnId || h.new_column_id === columnId) {
+          return true;
+        }
+      }
+      
+      // Verificar se card já estava na coluna antes do período e saiu durante
+      if (changeTime >= fromTime && h.old_column_id === columnId) {
+        return true;
+      }
+    }
+    
+    // Verificar se card estava na coluna no início do período (antes da primeira movimentação)
+    const firstMoveInPeriod = cardHistory.find(h => {
+      const t = new Date(h.changed_at).getTime();
+      return t >= fromTime;
+    });
+    
+    if (firstMoveInPeriod && firstMoveInPeriod.old_column_id === columnId) {
+      return true;
+    }
+    
+    return false;
+  };
+
   // ✅ Para relatórios: "data da atividade" deve refletir o dia do evento (agendada/concluída),
   // não apenas quando foi criada no banco.
   const getActivityDateIso = (a: any): string | undefined => {
@@ -1583,7 +1683,9 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
             reuniao_realizada: Number(row.reuniao_realizada || 0),
             reuniao_nao_realizada: Number(row.reuniao_nao_realizada || 0),
             reuniao_reagendada: Number(row.reuniao_reagendada || 0),
-            whatsapp_enviado: Number(row.whatsapp_enviado || 0)
+            whatsapp_enviado: Number(row.whatsapp_enviado || 0),
+            proposta_enviada: Number(row.proposta_enviada || 0),
+            venda_realizada: Number(row.venda_realizada || 0)
           }));
           setWorkRankingData(rows);
         } else if (error) {
@@ -1714,6 +1816,10 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
         return activitiesList.filter((a: any) => norm(a?.type).includes('reagendada') || norm(a?.type).includes('reagenda') || norm(a?.status).includes('reagendada')).length;
       case normalizeText('WhatsApp Enviado'):
         return activitiesList.filter((a: any) => norm(a?.type).includes('whatsapp') || norm(a?.status).includes('whatsapp')).length;
+      case normalizeText('Proposta Enviada'):
+        return activitiesList.filter((a: any) => norm(a?.type).includes('proposta') || norm(a?.status).includes('proposta')).length;
+      case normalizeText('Venda Realizada'):
+        return activitiesList.filter((a: any) => norm(a?.type).includes('venda') || norm(a?.status).includes('venda')).length;
       default: {
         // Fallback para compatibilidade com eventuais tipos customizados
         const k = normalizeText(rawLabel);
@@ -2149,7 +2255,12 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
         }
 
         // Aplicar métricas (pipeline/coluna) e agregar por set (evita double count entre grupos)
+        // Usa histórico de movimentação para contar cards que PASSARAM pela coluna no período
         if (leadMetricsCfg.length > 0) {
+          // Obter range de datas do grupo para verificação de histórico
+          const groupFromDate = g.dateRange?.from ? new Date(g.dateRange.from) : null;
+          const groupToDate = g.dateRange?.to ? new Date(g.dateRange.to) : null;
+          
           leadMetricsCfg.forEach((m: any) => {
             const id = String(m?.id || '');
             const set = metricSets.get(id);
@@ -2169,7 +2280,8 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
             }
             let scoped = cardsBase;
             if (mp !== 'all') scoped = scoped.filter((c: any) => c.pipeline_id === mp);
-            if (mc !== 'all') scoped = scoped.filter((c: any) => c.column_id === mc);
+            // Usar histórico para verificar se card passou pela coluna no período
+            if (mc !== 'all') scoped = scoped.filter((c: any) => cardPassedThroughColumn(c, mc, groupFromDate, groupToDate));
             scoped.forEach((c: any) => c?.id && set.add(String(c.id)));
           });
         }
@@ -2467,6 +2579,8 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
       'Reunião Não Realizada',
       'Reunião Reagendada',
       'WhatsApp Enviado',
+      'Proposta Enviada',
+      'Venda Realizada',
     ];
     return [
       { key: 'leads' as TeamMetricKey, label: 'Leads' },
@@ -2774,6 +2888,8 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
         reuniao_nao_realizada: 0,
         reuniao_reagendada: 0,
         whatsapp_enviado: 0,
+        proposta_enviada: 0,
+        venda_realizada: 0,
       };
     });
 
@@ -2796,6 +2912,8 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
             reuniao_nao_realizada: 0,
             reuniao_reagendada: 0,
             whatsapp_enviado: 0,
+            proposta_enviada: 0,
+            venda_realizada: 0,
           };
         }
         return agg[key];
@@ -2817,6 +2935,8 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
           reuniao_nao_realizada: 0,
           reuniao_reagendada: 0,
           whatsapp_enviado: 0,
+          proposta_enviada: 0,
+          venda_realizada: 0,
         };
       }
       return agg[key];
@@ -2837,6 +2957,8 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
       t.reuniao_nao_realizada = Number((r as any).reuniao_nao_realizada || 0);
       t.reuniao_reagendada = Number((r as any).reuniao_reagendada || 0);
       t.whatsapp_enviado = Number((r as any).whatsapp_enviado || 0);
+      t.proposta_enviada = Number((r as any).proposta_enviada || 0);
+      t.venda_realizada = Number((r as any).venda_realizada || 0);
     });
 
     const list = Object.values(agg).map((row: any) => {
@@ -2851,7 +2973,9 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
         (row.reuniao_realizada || 0) +
         (row.reuniao_nao_realizada || 0) +
         (row.reuniao_reagendada || 0) +
-        (row.whatsapp_enviado || 0);
+        (row.whatsapp_enviado || 0) +
+        (row.proposta_enviada || 0) +
+        (row.venda_realizada || 0);
       return { ...row, total };
     });
 
@@ -2893,6 +3017,8 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
       reuniao_nao_realizada: sum('reuniao_nao_realizada'),
       reuniao_reagendada: sum('reuniao_reagendada'),
       whatsapp_enviado: sum('whatsapp_enviado'),
+      proposta_enviada: sum('proposta_enviada'),
+      venda_realizada: sum('venda_realizada'),
     };
     const total =
       totals.mensagem +
@@ -2905,7 +3031,9 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
       totals.reuniao_realizada +
       totals.reuniao_nao_realizada +
       totals.reuniao_reagendada +
-      totals.whatsapp_enviado;
+      totals.whatsapp_enviado +
+      totals.proposta_enviada +
+      totals.venda_realizada;
     return { ...totals, total };
   }, [rankingTrabalho]);
 
@@ -3768,14 +3896,16 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
               const rng = getEffectiveRange(customConvPeriodPreset, customConvStartDate, customConvEndDate);
               const cardsInRange = filterCardsForSection(cardsScoped || [], rng.from, rng.to, customConvAgent, customConvTags, customConvStatus);
 
+              // Usar histórico de movimentação para contagem mais precisa
+              // Cards que PASSARAM pela coluna durante o período são contados
               const countA = cardsInRange.filter((c: any) =>
                 (conv.pipelineA === 'all' || c.pipeline_id === conv.pipelineA) &&
-                (conv.columnA === 'all' || c.column_id === conv.columnA)
+                cardPassedThroughColumn(c, conv.columnA, rng.from, rng.to)
               ).length;
 
               const countB = cardsInRange.filter((c: any) =>
                 (conv.pipelineB === 'all' || c.pipeline_id === conv.pipelineB) &&
-                (conv.columnB === 'all' || c.column_id === conv.columnB)
+                cardPassedThroughColumn(c, conv.columnB, rng.from, rng.to)
               ).length;
 
               const result = conversion(countA, countB);
@@ -4618,6 +4748,8 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
                       <th className="px-3 py-2 text-right">Reunião não realizada</th>
                       <th className="px-3 py-2 text-right">Reunião reagendada</th>
                       <th className="px-3 py-2 text-right">WhatsApp enviado</th>
+                      <th className="px-3 py-2 text-right">Proposta enviada</th>
+                      <th className="px-3 py-2 text-right">Venda realizada</th>
                       <th className="px-3 py-2 text-right">Total</th>
                     </tr>
                   </thead>
@@ -4636,6 +4768,8 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
                         <td className="px-3 py-2 text-right tabular-nums">{row.reuniao_nao_realizada}</td>
                         <td className="px-3 py-2 text-right tabular-nums">{row.reuniao_reagendada}</td>
                         <td className="px-3 py-2 text-right tabular-nums">{row.whatsapp_enviado}</td>
+                        <td className="px-3 py-2 text-right tabular-nums">{row.proposta_enviada}</td>
+                        <td className="px-3 py-2 text-right tabular-nums">{row.venda_realizada}</td>
                         <td className="px-3 py-2 text-right font-semibold tabular-nums">{row.total}</td>
                       </tr>
                     ))}
@@ -4654,6 +4788,8 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
                       <td className="px-3 py-2 text-right font-bold tabular-nums">{rankingTrabalhoTotals.reuniao_nao_realizada}</td>
                       <td className="px-3 py-2 text-right font-bold tabular-nums">{rankingTrabalhoTotals.reuniao_reagendada}</td>
                       <td className="px-3 py-2 text-right font-bold tabular-nums">{rankingTrabalhoTotals.whatsapp_enviado}</td>
+                      <td className="px-3 py-2 text-right font-bold tabular-nums">{rankingTrabalhoTotals.proposta_enviada}</td>
+                      <td className="px-3 py-2 text-right font-bold tabular-nums">{rankingTrabalhoTotals.venda_realizada}</td>
                       <td className="px-3 py-2 text-right font-bold tabular-nums">{rankingTrabalhoTotals.total}</td>
                     </tr>
                   </tfoot>

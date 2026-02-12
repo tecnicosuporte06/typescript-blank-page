@@ -5886,6 +5886,8 @@ const normalizeFieldKey = (label: string) => {
                         { label: "Reunião não realizada", type: "Reunião não realizada", icon: CalendarIconLucide },
                         { label: "Reunião reagendada", type: "Reunião reagendada", icon: CalendarIconLucide },
                         { label: "WhatsApp enviado", type: "WhatsApp enviado", icon: MessageSquareIcon },
+                        { label: "Proposta enviada", type: "Proposta enviada", icon: FileTextIcon },
+                        { label: "Venda realizada", type: "Venda realizada", icon: DollarSign },
                       ].map((option) => {
                         const Icon = option.icon;
                         return (

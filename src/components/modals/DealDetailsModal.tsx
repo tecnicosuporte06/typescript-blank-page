@@ -9,7 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Calendar } from "@/components/ui/calendar";
-import { ArrowLeft, MessageSquare, User, Phone, Plus, Check, X, Clock, Upload, CalendarIcon, Mail, FileText, Info, FileSpreadsheet, File as FileIcon, MessageCircle, ChevronRight } from "lucide-react";
+import { ArrowLeft, MessageSquare, User, Phone, Plus, Check, X, Clock, Upload, CalendarIcon, Mail, FileText, Info, FileSpreadsheet, File as FileIcon, MessageCircle, ChevronRight, DollarSign } from "lucide-react";
 import { ChatModal } from "./ChatModal";
 import { Progress } from "@/components/ui/progress";
 import { Badge } from "@/components/ui/badge";
@@ -2413,6 +2413,8 @@ export function DealDetailsModal({
                               { value: "Reunião", label: "Reunião", icon: User },
                               { value: "Agendamento", label: "Agendamento", icon: CalendarIcon },
                               { value: "Comentários", label: "Observações", icon: MessageCircle },
+                              { value: "Proposta enviada", label: "Proposta enviada", icon: FileText },
+                              { value: "Venda realizada", label: "Venda realizada", icon: DollarSign },
                             ];
                             const selectedType = activityTypes.find(t => t.value === activityForm.type);
                             const Icon = selectedType?.icon || Clock;
@@ -2434,6 +2436,8 @@ export function DealDetailsModal({
                           { value: "Reunião", label: "Reunião", icon: User },
                           { value: "Agendamento", label: "Agendamento", icon: CalendarIcon },
                           { value: "Comentários", label: "Observações", icon: MessageCircle },
+                          { value: "Proposta enviada", label: "Proposta enviada", icon: FileText },
+                          { value: "Venda realizada", label: "Venda realizada", icon: DollarSign },
                         ].map((type) => {
                           const Icon = type.icon;
                           return (
