@@ -715,7 +715,13 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
       return { ...f, lead_metrics: metrics.filter((m: any) => m.id !== metricId) };
     });
     setDraftFunnels(nextFunnels);
-    await persistUserReportSettings({ funnels: nextFunnels });
+    // Admin/master salva na empresa; outros salvam pessoal (fallback)
+    if (canEditCompanyFilters) {
+      const filtersToSave = { ...companyFilters, funnels: buildFunnelsForDb(nextFunnels) };
+      await saveCompanyFilters(filtersToSave);
+    } else {
+      await persistUserReportSettings({ funnels: nextFunnels });
+    }
   };
 
   const saveLeadMetric = async (funnelId: string, metricId: string) => {
@@ -736,7 +742,13 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
       };
     });
     setDraftFunnels(nextFunnels);
-    await persistUserReportSettings({ funnels: nextFunnels });
+    // Admin/master salva na empresa; outros salvam pessoal (fallback)
+    if (canEditCompanyFilters) {
+      const filtersToSave = { ...companyFilters, funnels: buildFunnelsForDb(nextFunnels) };
+      await saveCompanyFilters(filtersToSave);
+    } else {
+      await persistUserReportSettings({ funnels: nextFunnels });
+    }
   };
 
   const normalizeText = (s?: string | null) =>
@@ -1269,22 +1281,13 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
     }
 
     // 2️⃣ Depois: Aplica configurações
-    // Para usuários "user": sempre usa filtros da empresa (companyFilters ou savedFunnels)
-    // Para admin/master: pode usar configurações pessoais (userSettings) se existirem
+    // Todos os usuários (incluindo admin/master) veem os filtros da empresa
+    // Isso garante que quando admin salva para empresa, ele vê o que salvou
     let sourceFunnels: any[];
-    if (userRole === 'user') {
-      // Usuário "user" sempre vê o que a empresa configurou
-      sourceFunnels = (companyFilters?.funnels && Array.isArray(companyFilters.funnels) && companyFilters.funnels.length > 0)
-        ? companyFilters.funnels
-        : (savedFunnels || []);
-    } else {
-      // Admin/master pode ter configurações pessoais
-      sourceFunnels = Array.isArray(userSettings?.funnels) && userSettings!.funnels!.length > 0
-        ? (userSettings!.funnels as any[])
-        : (companyFilters?.funnels && Array.isArray(companyFilters.funnels) && companyFilters.funnels.length > 0)
-          ? companyFilters.funnels
-          : (savedFunnels || []);
-    }
+    // Sempre prioriza os dados da empresa (companyFilters) para funnels
+    sourceFunnels = (companyFilters?.funnels && Array.isArray(companyFilters.funnels) && companyFilters.funnels.length > 0)
+      ? companyFilters.funnels
+      : (savedFunnels || []);
 
     const normalizeLeadMetrics = (metricsRaw: any[] | undefined) =>
       (Array.isArray(metricsRaw) ? metricsRaw : [])
@@ -1315,21 +1318,22 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
       if (Array.isArray(gf.tags)) setSelectedTags(gf.tags);
     }
 
-    // Carregar conversões da empresa (companyFilters) - fallback para userSettings (legado)
+    // Carregar conversões da empresa (companyFilters) - sempre prioriza dados da empresa
     const companyCustomConv = (companyFilters as any)?.customConversions;
     const companyTeamConv = (companyFilters as any)?.teamConversions;
     
-    if (Array.isArray(companyCustomConv) && companyCustomConv.length > 0) {
+    // Sempre usa dados da empresa se existir (mesmo array vazio significa "limpo pela empresa")
+    if (Array.isArray(companyCustomConv)) {
       setCustomConversions(companyCustomConv.map((c: any) => ({ ...c, isEditing: false })));
     } else if (Array.isArray(userSettings?.customConversions)) {
-      // Fallback legado - dados antigos do usuário
+      // Fallback legado - apenas se empresa nunca salvou nada
       setCustomConversions((userSettings!.customConversions as any[]).map((c: any) => ({ ...c, isEditing: false })));
     }
     
-    if (Array.isArray(companyTeamConv) && companyTeamConv.length > 0) {
+    if (Array.isArray(companyTeamConv)) {
       setTeamConversions(companyTeamConv.map((c: any) => ({ ...c, isEditing: false })));
     } else if (Array.isArray(userSettings?.teamConversions)) {
-      // Fallback legado - dados antigos do usuário
+      // Fallback legado - apenas se empresa nunca salvou nada
       setTeamConversions((userSettings!.teamConversions as any[]).map((c: any) => ({ ...c, isEditing: false })));
     }
 
