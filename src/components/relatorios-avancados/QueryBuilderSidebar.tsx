@@ -564,6 +564,22 @@ export function QueryBuilderSidebar({
                 </Button>
               </PopoverTrigger>
               <PopoverContent className="w-56 p-2 rounded-none border-[#d4d4d4] dark:border-gray-700 bg-white dark:bg-[#0f0f0f]" align="start">
+                {/* Selecionar todas */}
+                {(products || []).length > 0 && (
+                  <div className="flex items-center justify-between pb-2 border-b border-gray-100 dark:border-gray-800 mb-2">
+                    <label className="flex items-center gap-2 text-xs text-gray-700 dark:text-gray-200 font-semibold cursor-pointer">
+                      <Checkbox
+                        checked={g.products.length === (products?.length || 0) && (products?.length || 0) > 0}
+                        onCheckedChange={(state) => {
+                          const nextProducts = state ? (products || []).map(p => p.id) : [];
+                          updateGroup(g.id, { products: nextProducts });
+                        }}
+                        className="h-3.5 w-3.5"
+                      />
+                      <span>Selecionar todas</span>
+                    </label>
+                  </div>
+                )}
                 <div className="space-y-1 max-h-64 overflow-y-auto">
                   {(products || []).map((p) => {
                     const checked = g.products.includes(p.id);
