@@ -201,7 +201,7 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
   const fetchCtxPipelines = pipelinesContext?.fetchPipelines;
   
   const { getHeaders } = useWorkspaceHeaders();
-  const allowReorder = false;
+  const allowReorder = true;
 
   const [customConversions, setCustomConversions] = useState<CustomConversion[]>([]);
   const [pipelineColumnsMap, setPipelineColumnsMap] = useState<Record<string, { id: string, name: string }[]>>({});
