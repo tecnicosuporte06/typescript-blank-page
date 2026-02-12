@@ -2210,10 +2210,10 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
           cardsF = cardsF.filter((c) => (c.products || []).some((p: any) => p?.product_id && productFilters.includes(p.product_id)));
         }
 
-        // data em cards (movimentação/edição): preferir updated_at, fallback created_at
+        // data em cards: usa created_at para filtrar quando o lead foi recebido
         if (dateRange && (dateRange.from || dateRange.to)) {
           cardsF = cardsF.filter((c: any) => {
-            const iso = c.updated_at || c.created_at;
+            const iso = c.created_at;
             // se não tiver data, mantém para evitar quedas bruscas
             if (!iso) return true;
             return withinDate(iso);
@@ -2258,7 +2258,7 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
         }
         if (dateRange && (dateRange.from || dateRange.to)) {
           cardsBase = cardsBase.filter((c: any) => {
-            const iso = c.updated_at || c.created_at;
+            const iso = c.created_at;
             if (!iso) return true;
             return withinDate(iso);
           });
@@ -2340,9 +2340,9 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
         agg.leadsOffer += leadsOfferF;
         agg.leadsWon += leadsWonF;
 
-        // Séries diárias: baseadas em cards (entrada no funil) e qualificação do card
+        // Séries diárias: baseadas em cards (entrada no funil = created_at) e qualificação do card
         cardsF.forEach((c: any) => {
-          const iso = c?.updated_at || c?.created_at;
+          const iso = c?.created_at; // Usa created_at para "Recebidos" (quando o lead entrou)
           if (!iso) return;
           const key = format(new Date(iso), 'yyyy-MM-dd');
           const isQualified = String(c.qualification || '').toLowerCase() === 'qualified';
@@ -2413,21 +2413,41 @@ export function RelatoriosAvancados({ workspaces = [] }: RelatoriosAvancadosProp
     return (draftFunnels || []).map(apply);
   }, [availableProducts, availableTags, activities, cards, contacts, conversations, draftFunnels, tags, cardsScoped]);
 
+  // ✅ Gráfico global usa TODOS os cards (filtrados pelo período global), não pelos filtros individuais dos funis
   const leadsSeriesGlobal = useMemo(() => {
     const m = new Map<string, { received: number; qualified: number }>();
-    (indicatorFunnels || []).forEach((f: any) => {
-      (f?.leadsSeries || []).forEach((p: any) => {
-        const key = p.date;
-        const curr = m.get(key) || { received: 0, qualified: 0 };
-        curr.received += Number(p.received || 0);
-        curr.qualified += Number(p.qualified || 0);
-        m.set(key, curr);
-      });
+    
+    // Usa cardsScoped (filtrado por agente global) com filtro de data global
+    const globalRangeFrom = startDate ? startOfDay(startDate).getTime() : null;
+    const globalRangeTo = endDate ? endOfDay(endDate).getTime() : null;
+    
+    (cardsScoped || []).forEach((c: any) => {
+      // Para "Recebidos": usa created_at (quando o lead entrou no sistema)
+      const createdIso = c?.created_at;
+      if (!createdIso) return;
+      
+      const createdTime = new Date(createdIso).getTime();
+      if (Number.isNaN(createdTime)) return;
+      
+      // Aplica filtro de data global baseado em created_at
+      if (globalRangeFrom && createdTime < globalRangeFrom) return;
+      if (globalRangeTo && createdTime > globalRangeTo) return;
+      
+      const key = format(new Date(createdIso), 'yyyy-MM-dd');
+      const curr = m.get(key) || { received: 0, qualified: 0 };
+      curr.received += 1;
+      
+      // Para "Qualificados": conta se o card está qualificado
+      if (String(c.qualification || '').toLowerCase() === 'qualified') {
+        curr.qualified += 1;
+      }
+      m.set(key, curr);
     });
+    
     return Array.from(m.entries())
       .map(([date, obj]) => ({ date, received: obj.received, qualified: obj.qualified }))
       .sort((a, b) => a.date.localeCompare(b.date));
-  }, [indicatorFunnels]);
+  }, [cardsScoped, startDate, endDate]);
 
   // Garante que o gráfico sempre inclua "hoje" (mesmo com 0) e evita bug de timezone ao renderizar yyyy-MM-dd
   const leadsSeriesGlobalForChart = useMemo(() => {
