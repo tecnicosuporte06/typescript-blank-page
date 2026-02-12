@@ -2115,7 +2115,7 @@ serve(async (req) => {
                 contact_id: card.contact_id,
                 conversation_id: card.conversation_id,
                 responsible_user_id: card.responsible_user_id,
-                title: card.title || card.description,
+                title: card.description,
                 description: card.description,
                 value: card.value,
                 status: card.status,

@@ -196,6 +196,11 @@ export function PipelinesProvider({ children }: { children: React.ReactNode }) {
   // 🔥 Ref para armazenar timeouts pendentes de movimentação de cards
   const pendingTimeoutsRef = useRef<Map<string, NodeJS.Timeout>>(new Map());
 
+  // 🚀 Cache de sessão para evitar re-fetches desnecessários
+  const lastFetchedPipelineRef = useRef<string | null>(null);
+  const isFetchingCardsRef = useRef<boolean>(false);
+  const cardsLoadedAtRef = useRef<number>(0);
+
   // Estabilizar a função getHeaders para evitar re-renders desnecessários
   const getHeaders = useMemo(() => {
     if (!selectedWorkspace?.workspace_id) {
@@ -441,7 +446,7 @@ export function PipelinesProvider({ children }: { children: React.ReactNode }) {
     }
   }, []);
 
-  const fetchCards = useCallback(async (pipelineId: string, cols: PipelineColumn[]) => {
+  const fetchCards = useCallback(async (pipelineId: string, cols: PipelineColumn[], forceRefresh = false) => {
     if (!getHeaders || !pipelineId) return;
 
     const effectiveColumns = Array.isArray(cols) ? cols : [];
@@ -453,6 +458,24 @@ export function PipelinesProvider({ children }: { children: React.ReactNode }) {
       setIsLoadingCards(false);
       return;
     }
+
+    // 🚀 Evitar re-fetch se já temos dados recentes (menos de 5 segundos)
+    const now = Date.now();
+    const timeSinceLastFetch = now - cardsLoadedAtRef.current;
+    const isSamePipeline = lastFetchedPipelineRef.current === pipelineId;
+    
+    if (!forceRefresh && isSamePipeline && cards.length > 0 && timeSinceLastFetch < 5000) {
+      devLog('🚀 [fetchCards] Usando cache (dados recentes, mesmo pipeline)');
+      return;
+    }
+
+    // 🚀 Evitar requisições simultâneas
+    if (isFetchingCardsRef.current) {
+      devLog('🚀 [fetchCards] Já existe um fetch em andamento, ignorando');
+      return;
+    }
+
+    isFetchingCardsRef.current = true;
 
     // Reset pagination state for current columns
     const initOffsets: Record<string, number> = {};
@@ -490,6 +513,10 @@ export function PipelinesProvider({ children }: { children: React.ReactNode }) {
       
       // Após todas as colunas carregarem, marcar como carregado
       setIsAllColumnsLoaded(true);
+      
+      // 🚀 Atualizar cache refs
+      lastFetchedPipelineRef.current = pipelineId;
+      cardsLoadedAtRef.current = Date.now();
     } catch (error) {
       const parsedError = await readFunctionErrorBodyAsync(error);
       console.error('❌ [fetchCards] Erro ao buscar cards (paginado):', { error, parsedError });
@@ -504,8 +531,9 @@ export function PipelinesProvider({ children }: { children: React.ReactNode }) {
       });
     } finally {
       setIsLoadingCards(false);
+      isFetchingCardsRef.current = false;
     }
-  }, [getHeaders, fetchCardsPage, fetchTotalCardsCounts, toast]);
+  }, [getHeaders, fetchCardsPage, fetchTotalCardsCounts, toast, cards.length]);
 
   const fetchMoreCards = useCallback(async (columnId: string) => {
     if (!selectedPipeline?.id || !getHeaders) return;
@@ -622,7 +650,7 @@ export function PipelinesProvider({ children }: { children: React.ReactNode }) {
   const refreshCurrentPipeline = useCallback(async () => {
     if (selectedPipeline?.id) {
       const cols = await fetchColumns(selectedPipeline.id);
-      await fetchCards(selectedPipeline.id, cols || []);
+      await fetchCards(selectedPipeline.id, cols || [], true); // forceRefresh = true
     }
   }, [selectedPipeline?.id, fetchColumns, fetchCards]);
 
