@@ -2085,8 +2085,74 @@ serve(async (req) => {
           }
 
           console.log(`📊 Fetching cards for pipeline: ${pipelineId}`);
+
+          // ============================================================
+          // OTIMIZAÇÃO: Usar RPC get_pipeline_cards_lite para modo lite + paginação
+          // A RPC usa uma VIEW com JOINs pré-calculados e índices otimizados
+          // ============================================================
+          if (isLite && shouldPaginate) {
+            console.log(`🚀 Using optimized RPC get_pipeline_cards_lite`);
+            
+            const excludeLabTest = userProfile !== 'master';
+            
+            const { data: rpcCards, error: rpcError } = await supabaseClient.rpc('get_pipeline_cards_lite', {
+              p_pipeline_id: pipelineId,
+              p_column_id: columnId || null,
+              p_limit: parsedLimit,
+              p_offset: parsedOffset,
+              p_exclude_lab_test: excludeLabTest
+            });
+
+            if (rpcError) {
+              console.error('❌ RPC get_pipeline_cards_lite failed, falling back to regular query:', rpcError);
+              // Fallback para query normal se a RPC falhar (ex: migration não aplicada ainda)
+            } else {
+              // Transformar o resultado da RPC para o formato esperado pelo frontend
+              const transformedCards = (rpcCards || []).map((card: any) => ({
+                id: card.id,
+                pipeline_id: card.pipeline_id,
+                column_id: card.column_id,
+                contact_id: card.contact_id,
+                conversation_id: card.conversation_id,
+                responsible_user_id: card.responsible_user_id,
+                title: card.title || card.description,
+                description: card.description,
+                value: card.value,
+                status: card.status,
+                tags: card.tags,
+                qualification: card.qualification,
+                is_lab_test: card.is_lab_test,
+                created_at: card.created_at,
+                updated_at: card.updated_at,
+                contact: card.contact_name ? {
+                  id: card.contact_id,
+                  name: card.contact_name,
+                  phone: card.contact_phone,
+                  email: card.contact_email,
+                  profile_image_url: card.contact_profile_image_url
+                } : null,
+                conversation: card.conversation_id ? {
+                  id: card.conversation_id,
+                  unread_count: card.conversation_unread_count,
+                  assigned_user_id: card.conversation_assigned_user_id,
+                  agente_ativo: card.conversation_agente_ativo,
+                  agent_active_id: card.conversation_agent_active_id
+                } : null,
+                responsible_user: card.responsible_user_id ? {
+                  id: card.responsible_user_id,
+                  name: card.responsible_user_name,
+                  avatar: card.responsible_user_avatar
+                } : null
+              }));
+
+              console.log(`✅ RPC returned ${transformedCards.length} cards`);
+              return new Response(JSON.stringify(transformedCards), {
+                headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+              });
+            }
+          }
           
-          // Primeiro tentar buscar apenas os cards básicos para identificar se o problema é nos relacionamentos
+          // Fallback: Query tradicional (usado quando RPC não está disponível ou para modo não-lite)
           const selectLite = `
                   id,
                   pipeline_id,

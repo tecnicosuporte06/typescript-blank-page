@@ -474,33 +474,11 @@ serve(async (req) => {
       }
 
       // ============================================================
-      // FILTRO: não disparar webhook para ReceivedCallback vindo da API (mensagem do sistema)
-      // Caso específico: ReceivedCallback + fromApi=true + is_system_message=true
+      // FILTRO REMOVIDO: Agora todas as mensagens vão para o N8N
+      // O N8N pode usar is_system_message para diferenciar o tipo de mensagem
+      // Motivo: regra de negócio agora requer salvar todas as mensagens via N8N
       // ============================================================
-      const isReceivedCallback =
-        data?.type === 'ReceivedCallback' ||
-        data?.event === 'ReceivedCallback' ||
-        n8nPayload.event_type === 'ReceivedCallback';
-
-      const fromApi =
-        data?.fromApi === true ||
-        data?.fromApi === 'true' ||
-        data?.from_api === true ||
-        data?.from_api === 'true';
-
-      if (is_system_message && isReceivedCallback && fromApi) {
-        console.log(`🛑 [${id}] Ignorando ReceivedCallback do sistema (fromApi=true) (sem forward para N8N)`, {
-          external_id: externalId,
-          connection_id: conn.id,
-          workspace_id: conn.workspace_id,
-          origin_debug: originDebug,
-        });
-
-        return new Response(
-          JSON.stringify({ success: true, ignored: true, reason: 'system_received_callback_from_api', id }),
-          { headers: { ...corsHeaders, "Content-Type": "application/json" } }
-        );
-      }
+      // (Filtro de ReceivedCallback do sistema removido - todas as mensagens passam)
       
       // Adicionar dados de mídia se disponível
       if (mediaInfo) {
