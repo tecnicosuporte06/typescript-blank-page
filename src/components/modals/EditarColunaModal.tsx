@@ -130,7 +130,7 @@ export function EditarColunaModal({
 
       toast({
         title: "Sucesso",
-        description: "Coluna atualizada com sucesso",
+        description: "Etapa atualizada com sucesso",
       });
 
       onUpdate();

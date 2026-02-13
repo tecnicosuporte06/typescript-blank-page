@@ -1,10 +1,7 @@
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
-import { useEffect } from 'react';
 
 export const useWorkspaceAgent = (conversationId?: string) => {
-  const queryClient = useQueryClient();
-  
   const { data: agent, isLoading, error } = useQuery({
     queryKey: ['conversation-agent', conversationId],
     queryFn: async () => {
@@ -43,33 +40,17 @@ export const useWorkspaceAgent = (conversationId?: string) => {
       return agentData;
     },
     enabled: !!conversationId,
+    // 🚀 Performance: evita refetch em massa ao remontar o board (50+ cards = 100+ queries)
+    // O pipeline-level realtime (usePipelineRealtime) já atualiza conversation.agente_ativo
+    // via handleConversationUpdate, então o staleTime pode ser alto.
+    staleTime: 5 * 60 * 1000,  // 5 minutos — dados são considerados frescos
+    gcTime: 10 * 60 * 1000,    // 10 minutos — mantém cache mesmo após unmount
+    refetchOnWindowFocus: false, // Não refazer 50+ queries ao focar na janela
   });
 
-  // Listener realtime para invalidar query quando conversa mudar
-  useEffect(() => {
-    if (!conversationId) return;
-
-    const channel = supabase
-      .channel(`agent-updates-${conversationId}`)
-      .on(
-        'postgres_changes',
-        {
-          event: 'UPDATE',
-          schema: 'public',
-          table: 'conversations',
-          filter: `id=eq.${conversationId}`
-        },
-        () => {
-          // Invalidar query para recarregar dados do agente
-          queryClient.invalidateQueries({ queryKey: ['conversation-agent', conversationId] });
-        }
-      )
-      .subscribe();
-
-    return () => {
-      supabase.removeChannel(channel);
-    };
-  }, [conversationId, queryClient]);
+  // ✅ Canal realtime REMOVIDO — o PipelinesContext já escuta conversations via
+  // usePipelineRealtime e atualiza agente_ativo/agent_active_id por handleConversationUpdate.
+  // Manter um canal por card criava N canais WebSocket (1 por card visível).
   
   const hasAgent = !!agent;
   

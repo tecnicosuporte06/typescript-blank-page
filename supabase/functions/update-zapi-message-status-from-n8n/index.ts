@@ -64,21 +64,44 @@ serve(async (req) => {
 
     // ✅ Strategy 0: provider id saved at send-time (preferred)
     if (providerExternalId) {
-      console.log('🔍 Strategy 0: Buscando por provider message id (evolution_key_id / metadata.provider_msg_id):', providerExternalId);
+      console.log('🔍 Strategy 0: Buscando por provider message id (external_id / evolution_key_id / metadata.provider_msg_id):', providerExternalId);
 
-      const { data: byEvolutionKey, error: byEvolutionKeyErr } = await supabase
+      // 0.1) Busca determinística principal: messages.external_id
+      const { data: byExternalId, error: byExternalIdErr } = await supabase
         .from('messages')
         .select('id, external_id, status, delivered_at, read_at, content, created_at, sender_type, conversation_id')
         .eq('workspace_id', workspaceId)
-        .eq('evolution_key_id', providerExternalId)
+        .eq('external_id', providerExternalId)
         .maybeSingle();
 
-      if (byEvolutionKeyErr) {
-        searchError = byEvolutionKeyErr;
-      } else if (byEvolutionKey) {
-        message = byEvolutionKey;
-        console.log('✅ Mensagem encontrada por evolution_key_id (provider id):', message.id);
-      } else {
+      if (byExternalIdErr) {
+        searchError = byExternalIdErr;
+      } else if (byExternalId) {
+        message = byExternalId;
+        searchError = null;
+        console.log('✅ Mensagem encontrada por external_id (provider id):', message.id);
+      }
+
+      // 0.2) Compatibilidade: evolution_key_id
+      if (!message) {
+        const { data: byEvolutionKey, error: byEvolutionKeyErr } = await supabase
+          .from('messages')
+          .select('id, external_id, status, delivered_at, read_at, content, created_at, sender_type, conversation_id')
+          .eq('workspace_id', workspaceId)
+          .eq('evolution_key_id', providerExternalId)
+          .maybeSingle();
+
+        if (byEvolutionKeyErr) {
+          searchError = byEvolutionKeyErr;
+        } else if (byEvolutionKey) {
+          message = byEvolutionKey;
+          searchError = null;
+          console.log('✅ Mensagem encontrada por evolution_key_id (provider id):', message.id);
+        }
+      }
+
+      // 0.3) Compatibilidade: metadata.provider_msg_id
+      if (!message) {
         const { data: byMetadataProviderId, error: byMetaErr } = await supabase
           .from('messages')
           .select('id, external_id, status, delivered_at, read_at, content, created_at, sender_type, conversation_id')
@@ -91,6 +114,7 @@ serve(async (req) => {
           searchError = byMetaErr;
         } else if (byMetadataProviderId) {
           message = byMetadataProviderId;
+          searchError = null;
           console.log('✅ Mensagem encontrada por metadata.provider_msg_id (provider id):', message.id);
         }
       }
@@ -112,8 +136,8 @@ serve(async (req) => {
       
       console.log('🎯 Buscando mensagem com status:', searchStatus || 'qualquer');
       
-      // Buscar mensagem mais RECENTE (últimos 60 segundos) para evitar atualizar mensagens antigas
-      const sixtySecondsAgo = new Date(Date.now() - 60000).toISOString();
+      // Buscar em uma janela maior para suportar callbacks atrasados do provider.
+      const lookback24h = new Date(Date.now() - (24 * 60 * 60 * 1000)).toISOString();
       
       let query = supabase
         .from('messages')
@@ -121,7 +145,7 @@ serve(async (req) => {
         .eq('conversation_id', conversationId)
         .eq('workspace_id', workspaceId)
         .in('sender_type', ['user', 'agent', 'system'])
-        .gte('created_at', sixtySecondsAgo); // Últimos 60 segundos
+        .gte('created_at', lookback24h); // Últimas 24h
       
       // Filtrar pelo status anterior se definido
       if (searchStatus) {
@@ -137,6 +161,7 @@ serve(async (req) => {
       searchError = error;
       
       if (message) {
+        searchError = null;
         console.log('✅ Mensagem encontrada por conversation_id (fallback):', message.id);
       }
     }
@@ -171,7 +196,7 @@ serve(async (req) => {
           searchStatus = 'sending';
         }
         
-        const sixtySecondsAgo = new Date(Date.now() - 60000).toISOString();
+        const lookback24h = new Date(Date.now() - (24 * 60 * 60 * 1000)).toISOString();
         
         let query = supabase
           .from('messages')
@@ -179,7 +204,7 @@ serve(async (req) => {
           .eq('conversation_id', conversation.id)
           .eq('workspace_id', workspaceId)
           .in('sender_type', ['user', 'agent', 'system'])
-          .gte('created_at', sixtySecondsAgo);
+          .gte('created_at', lookback24h);
         
         if (searchStatus) {
           query = query.eq('status', searchStatus);
@@ -194,6 +219,7 @@ serve(async (req) => {
         searchError = error;
         
         if (message) {
+          searchError = null;
           console.log('✅ Mensagem encontrada por phone + connection (fallback legado):', message.id);
         }
       }
@@ -228,7 +254,7 @@ serve(async (req) => {
         connectionId,
         workspaceId,
         providerExternalId,
-        strategy: 'provider_id (evolution_key_id/metadata.provider_msg_id) → conversation_id (timestamp) → phone+connection (timestamp)',
+        strategy: 'provider_id (external_id/evolution_key_id/metadata.provider_msg_id) → conversation_id (24h) → phone+connection (24h)',
         sender_types: ['user', 'agent', 'system']
       });
       
@@ -241,7 +267,7 @@ serve(async (req) => {
             phone,
             connection_id: connectionId,
             workspace_id: workspaceId,
-            strategy: 'conversation_id (timestamp) → phone+connection (timestamp)',
+            strategy: 'provider_id (external_id/evolution_key_id/metadata.provider_msg_id) → conversation_id (24h) → phone+connection (24h)',
             sender_types: ['user', 'agent', 'system']
           },
           last_messages: debugAll

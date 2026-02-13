@@ -4,6 +4,7 @@ import { useAuth } from '@/hooks/useAuth';
 export interface Workspace {
   workspace_id: string;
   name: string;
+  default_pipeline_id?: string | null;
   cnpj?: string;
   slug?: string;
   created_at: string;

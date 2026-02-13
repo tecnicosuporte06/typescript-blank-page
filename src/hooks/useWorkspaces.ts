@@ -50,6 +50,7 @@ export function useWorkspaces() {
       const workspaceData = data?.workspaces?.map((w: any) => ({
         workspace_id: w.workspace_id || w.id,
         name: w.name,
+        default_pipeline_id: w.default_pipeline_id ?? null,
         slug: w.slug,
         cnpj: w.cnpj,
         created_at: w.created_at,

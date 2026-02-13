@@ -20,11 +20,46 @@ import { useWorkspaceLimits } from "@/hooks/useWorkspaceLimits";
 
 type DisparadorTab = "dashboard" | "campanhas" | "listas";
 
+const getDisparadorErrorMessage = (e: unknown, fallback: string) => {
+  const defaultMessage = fallback;
+  const errorObj: any = e as any;
+  const status = errorObj?.context?.status ?? errorObj?.status;
+  const rawBody = errorObj?.context?.body;
+
+  let bodyError: string | null = null;
+  try {
+    if (typeof rawBody === "string") {
+      const parsed = JSON.parse(rawBody);
+      bodyError = parsed?.error || parsed?.message || null;
+    } else if (rawBody && typeof rawBody === "object") {
+      bodyError = rawBody?.error || rawBody?.message || null;
+    }
+  } catch {
+    bodyError = null;
+  }
+
+  const normalized = (bodyError || errorObj?.message || "").toUpperCase();
+
+  if (status === 401 || normalized.includes("AUTH_REQUIRED")) {
+    return "Sua sessão ainda não foi carregada. Recarregue a página e tente novamente.";
+  }
+  if (normalized.includes("INVALID_USER")) {
+    return "Não foi possível validar seu usuário. Faça logout e login novamente.";
+  }
+  if (status === 403 || normalized.includes("NOT_WORKSPACE_MEMBER")) {
+    return "Você não tem permissão neste workspace. Verifique sua associação ao workspace.";
+  }
+
+  if (bodyError) return bodyError;
+  if (e instanceof Error && e.message) return e.message;
+  return defaultMessage;
+};
+
 export function Disparador() {
   const { toast } = useToast();
   const [tab, setTab] = useState<DisparadorTab>("dashboard");
   const { selectedWorkspace } = useWorkspace();
-  const { user } = useAuth();
+  const { user, loading: authLoading } = useAuth();
   const workspaceId = selectedWorkspace?.workspace_id || "";
   const { limits, isLoading: isLoadingWorkspaceLimits } = useWorkspaceLimits(workspaceId);
   // Anti-flicker: enquanto carrega, considera desabilitado
@@ -68,7 +103,7 @@ export function Disparador() {
   const kpis = dashboardKpis;
 
   const fetchContacts = async () => {
-    if (!workspaceId) {
+    if (!workspaceId || authLoading || !user?.id || !user?.email) {
       setContacts([]);
       return;
     }
@@ -97,7 +132,7 @@ export function Disparador() {
       if (data?.success === false) throw new Error(data?.error || "Falha ao carregar");
       setContacts(Array.isArray(data?.contacts) ? data.contacts : []);
     } catch (e) {
-      const msg = e instanceof Error ? e.message : String(e);
+      const msg = getDisparadorErrorMessage(e, "Não foi possível carregar as listas.");
       toast({ title: "Erro ao carregar listas", description: msg, variant: "destructive" as any });
       setContacts([]);
     } finally {
@@ -107,16 +142,16 @@ export function Disparador() {
 
   // refetch automático ao mudar filtros (com debounce para busca)
   useEffect(() => {
-    if (!workspaceId) return;
+    if (!workspaceId || authLoading || !user?.id || !user?.email) return;
     const t = window.setTimeout(() => {
       fetchContacts();
     }, 250);
     return () => window.clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [workspaceId, contactsSearch, contactsTag, contactsDoc, contactsCreatedFrom, contactsCreatedTo]);
+  }, [workspaceId, authLoading, user?.id, user?.email, contactsSearch, contactsTag, contactsDoc, contactsCreatedFrom, contactsCreatedTo]);
 
   const fetchCampaigns = async () => {
-    if (!workspaceId) {
+    if (!workspaceId || authLoading || !user?.id || !user?.email) {
       setCampaigns([]);
       return;
     }
@@ -134,7 +169,7 @@ export function Disparador() {
       if (data?.success === false) throw new Error(data?.error || "Falha ao carregar");
       setCampaigns(Array.isArray(data?.campaigns) ? data.campaigns : []);
     } catch (e) {
-      const msg = e instanceof Error ? e.message : String(e);
+      const msg = getDisparadorErrorMessage(e, "Não foi possível carregar as campanhas.");
       toast({ title: "Erro ao carregar campanhas", description: msg, variant: "destructive" as any });
       setCampaigns([]);
     } finally {
@@ -217,7 +252,7 @@ export function Disparador() {
   };
 
   const fetchDashboard = async () => {
-    if (!workspaceId) {
+    if (!workspaceId || authLoading || !user?.id || !user?.email) {
       setDashboardKpis({
         campanhasAtivas: 0,
         enviosHoje: 0,
@@ -250,7 +285,7 @@ export function Disparador() {
       setDashboardKpis(data?.kpis || dashboardKpis);
       setUserPerf(Array.isArray(data?.userPerf) ? data.userPerf : []);
     } catch (e) {
-      const msg = e instanceof Error ? e.message : String(e);
+      const msg = getDisparadorErrorMessage(e, "Não foi possível carregar o dashboard.");
       toast({ title: "Erro ao carregar dashboard", description: msg, variant: "destructive" as any });
       setUserPerf([]);
     } finally {
@@ -259,11 +294,12 @@ export function Disparador() {
   };
 
   useEffect(() => {
+    if (!workspaceId || authLoading || !user?.id || !user?.email) return;
     if (tab === "listas") fetchContacts();
     if (tab === "campanhas") fetchCampaigns();
     if (tab === "dashboard") fetchDashboard();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tab, workspaceId]);
+  }, [tab, workspaceId, authLoading, user?.id, user?.email]);
 
   if (!isDisparadorEnabled) {
     return (

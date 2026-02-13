@@ -154,10 +154,10 @@ serve(async (req): Promise<Response> => {
           throw new Error(`Failed to fetch workspaces: ${workspacesError.message}`);
         }
 
-        // Fetch is_active status for each workspace
+        // Fetch status e default_pipeline_id direto da tabela base
         const { data: workspaceStatuses, error: statusError } = await supabase
           .from('workspaces')
-          .select('id, is_active')
+          .select('id, is_active, default_pipeline_id')
           .neq('id', '00000000-0000-0000-0000-000000000000');
 
         if (statusError) {
@@ -167,7 +167,8 @@ serve(async (req): Promise<Response> => {
         // Merge is_active into workspaces
         const workspacesWithStatus = workspaces?.map(w => ({
           ...w,
-          is_active: workspaceStatuses?.find(s => s.id === w.workspace_id)?.is_active ?? true
+          is_active: workspaceStatuses?.find(s => s.id === w.workspace_id)?.is_active ?? true,
+          default_pipeline_id: workspaceStatuses?.find(s => s.id === w.workspace_id)?.default_pipeline_id ?? null
         })) || [];
 
         console.log('✅ Returning', workspacesWithStatus?.length || 0, 'workspaces for', systemUser.profile, 'user');
@@ -188,6 +189,7 @@ serve(async (req): Promise<Response> => {
           workspaces!inner(
             id,
             name,
+            default_pipeline_id,
             slug,
             cnpj,
             created_at,
@@ -212,6 +214,7 @@ serve(async (req): Promise<Response> => {
         return {
           workspace_id: workspace.id,
           name: workspace.name,
+          default_pipeline_id: workspace.default_pipeline_id ?? null,
           slug: workspace.slug,
           cnpj: workspace.cnpj,
           created_at: workspace.created_at,

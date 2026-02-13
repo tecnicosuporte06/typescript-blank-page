@@ -151,6 +151,7 @@ interface PipelinesContextType {
   isLoading: boolean;
   isLoadingColumns: boolean;
   isLoadingCards: boolean;
+  isInitializingBoard: boolean;
   isLoadingInitialCardsByColumn: Record<string, boolean>;
   isAllColumnsLoaded: boolean;
   hasMoreCardsByColumn: Record<string, boolean>;
@@ -184,6 +185,7 @@ export function PipelinesProvider({ children }: { children: React.ReactNode }) {
   const [isLoadingCards, setIsLoadingCards] = useState(false);
   const [isLoadingInitialCardsByColumn, setIsLoadingInitialCardsByColumn] = useState<Record<string, boolean>>({});
   const [isAllColumnsLoaded, setIsAllColumnsLoaded] = useState(false); // Todas as colunas carregadas juntas
+  const [isInitializingBoard, setIsInitializingBoard] = useState(true); // 🚀 Estado unificado: true até pipeline+colunas+cards estarem prontos
   const [cardsOffsetByColumn, setCardsOffsetByColumn] = useState<Record<string, number>>({});
   const [hasMoreCardsByColumn, setHasMoreCardsByColumn] = useState<Record<string, boolean>>({});
   const [isLoadingMoreCardsByColumn, setIsLoadingMoreCardsByColumn] = useState<Record<string, boolean>>({});
@@ -200,6 +202,16 @@ export function PipelinesProvider({ children }: { children: React.ReactNode }) {
   const lastFetchedPipelineRef = useRef<string | null>(null);
   const isFetchingCardsRef = useRef<boolean>(false);
   const cardsLoadedAtRef = useRef<number>(0);
+
+  // 🚀 Refs estáveis para funções de fetch (evita dependências circulares nos effects)
+  const fetchColumnsRef = useRef<((pipelineId: string) => Promise<PipelineColumn[] | null>)>(null as any);
+  const fetchCardsRef = useRef<((pipelineId: string, cols: PipelineColumn[], forceRefresh?: boolean) => Promise<void>)>(null as any);
+  const fetchPipelinesRef = useRef<((forceSelectFirst?: boolean) => Promise<void>)>(null as any);
+  const fetchBoardDataRef = useRef<((pipelineId: string, forceRefresh?: boolean) => Promise<void>)>(null as any);
+  const cardsRef = useRef<PipelineCard[]>([]);
+
+  // 🚀 Guard: evitar reinicialização quando o workspace não mudou (ex: navegação entre abas)
+  const lastInitializedWorkspaceRef = useRef<string | null>(null);
 
   // Estabilizar a função getHeaders para evitar re-renders desnecessários
   const getHeaders = useMemo(() => {
@@ -226,6 +238,7 @@ export function PipelinesProvider({ children }: { children: React.ReactNode }) {
   const fetchPipelines = useCallback(async (forceSelectFirst = false) => {
     if (!getHeaders) {
       setIsLoading(false);
+      setIsInitializingBoard(false);
       return;
     }
     
@@ -242,13 +255,10 @@ export function PipelinesProvider({ children }: { children: React.ReactNode }) {
         throw error;
       }
 
-      // Ordenar pipelines: pipeline padrão primeiro, depois por created_at desc
+      // Ordenar pipelines: pipeline padrão do workspace primeiro, depois por created_at desc
       let sortedPipelines = data || [];
-      // Ordenação por data de criação (mais recentes primeiro) - default_pipeline_id desabilitado temporariamente
       if (sortedPipelines.length > 0) {
-        // TODO: Reabilitar quando migração 20260204110000 for aplicada
-        // Por enquanto, apenas ordenar por created_at
-        const defaultPipelineId: string | null = null;
+        const defaultPipelineId: string | null = selectedWorkspace?.default_pipeline_id ?? null;
         
         if (defaultPipelineId) {
           const defaultPipeline = sortedPipelines.find(p => p.id === defaultPipelineId);
@@ -256,7 +266,7 @@ export function PipelinesProvider({ children }: { children: React.ReactNode }) {
             // Remover a pipeline padrão da lista e colocá-la no início
             sortedPipelines = [
               defaultPipeline,
-              ...sortedPipelines.filter(p => p.id !== workspaceData.default_pipeline_id)
+              ...sortedPipelines.filter(p => p.id !== defaultPipelineId)
             ];
           }
         }
@@ -267,14 +277,25 @@ export function PipelinesProvider({ children }: { children: React.ReactNode }) {
       // Auto-select sem depender de closure (evita re-render/loop em effects que dependem de fetchPipelines)
       if (sortedPipelines.length > 0) {
         setSelectedPipeline((prev) => {
+          const defaultPipelineId: string | null = selectedWorkspace?.default_pipeline_id ?? null;
+          const defaultPipeline = defaultPipelineId
+            ? sortedPipelines.find((p) => p.id === defaultPipelineId)
+            : null;
+
+          // Se existe pipeline padrão no workspace, priorizar ele no carregamento.
+          if (defaultPipeline) return defaultPipeline;
           if (forceSelectFirst) return sortedPipelines[0];
           if (!prev) return sortedPipelines[0];
           const stillExists = sortedPipelines.some((p) => p.id === prev.id);
           return stillExists ? prev : sortedPipelines[0];
         });
+      } else {
+        // Sem pipelines → board não tem o que renderizar
+        setIsInitializingBoard(false);
       }
     } catch (error) {
       console.error('❌ Error fetching pipelines:', error);
+      setIsInitializingBoard(false);
       toast({
         title: "Erro",
         description: "Erro ao carregar pipelines. Verifique sua conexão.",
@@ -283,7 +304,7 @@ export function PipelinesProvider({ children }: { children: React.ReactNode }) {
     } finally {
       setIsLoading(false);
     }
-  }, [getHeaders, toast, selectedWorkspace?.workspace_id]);
+  }, [getHeaders, toast, selectedWorkspace?.workspace_id, selectedWorkspace?.default_pipeline_id]);
 
   const fetchColumns = useCallback(async (pipelineId: string): Promise<PipelineColumn[] | null> => {
     if (!getHeaders || !pipelineId) return null;
@@ -464,7 +485,7 @@ export function PipelinesProvider({ children }: { children: React.ReactNode }) {
     const timeSinceLastFetch = now - cardsLoadedAtRef.current;
     const isSamePipeline = lastFetchedPipelineRef.current === pipelineId;
     
-    if (!forceRefresh && isSamePipeline && cards.length > 0 && timeSinceLastFetch < 5000) {
+    if (!forceRefresh && isSamePipeline && cardsRef.current.length > 0 && timeSinceLastFetch < 5000) {
       devLog('🚀 [fetchCards] Usando cache (dados recentes, mesmo pipeline)');
       return;
     }
@@ -533,7 +554,122 @@ export function PipelinesProvider({ children }: { children: React.ReactNode }) {
       setIsLoadingCards(false);
       isFetchingCardsRef.current = false;
     }
-  }, [getHeaders, fetchCardsPage, fetchTotalCardsCounts, toast, cards.length]);
+  }, [getHeaders, fetchCardsPage, fetchTotalCardsCounts, toast]);
+
+  // ==========================================================================
+  // 🚀🚀🚀 FETCH UNIFICADO DO BOARD (1 única chamada HTTP → RPC get_pipeline_board)
+  // Substitui fetchColumns + N × fetchCardsPage + fetchTotalCardsCounts
+  // ==========================================================================
+  const fetchBoardData = useCallback(async (pipelineId: string, forceRefresh = false) => {
+    if (!getHeaders || !pipelineId) return;
+
+    // 🚀 Evitar re-fetch se já temos dados recentes (menos de 5 segundos)
+    const now = Date.now();
+    const timeSinceLastFetch = now - cardsLoadedAtRef.current;
+    const isSamePipeline = lastFetchedPipelineRef.current === pipelineId;
+
+    if (!forceRefresh && isSamePipeline && cardsRef.current.length > 0 && timeSinceLastFetch < 5000) {
+      devLog('🚀 [fetchBoardData] Usando cache (dados recentes, mesmo pipeline)');
+      setIsInitializingBoard(false);
+      return;
+    }
+
+    // 🚀 Evitar requisições simultâneas
+    if (isFetchingCardsRef.current) {
+      devLog('🚀 [fetchBoardData] Já existe um fetch em andamento, ignorando');
+      return;
+    }
+
+    isFetchingCardsRef.current = true;
+
+    try {
+      devLog('🚀 [fetchBoardData] Iniciando fetch unificado para pipeline:', pipelineId);
+
+      const { data, error } = await supabase.functions.invoke(
+        `pipeline-management/board?pipeline_id=${pipelineId}&limit=${PAGE_SIZE + 1}`,
+        {
+          method: 'GET',
+          headers: getHeaders,
+        }
+      );
+
+      if (error) throw error;
+
+      const boardColumns: any[] = data?.columns || [];
+      const boardCards: any[] = data?.cards || [];
+      const boardCounts: Record<string, number> = data?.counts || {};
+
+      // ---- COLUNAS: normalizar view_all_deals_permissions ----
+      const normalizedColumns: PipelineColumn[] = boardColumns.map((col: any) => {
+        const permissions = Array.isArray(col.view_all_deals_permissions)
+          ? col.view_all_deals_permissions.map((p: any) => String(p)).filter(Boolean)
+          : [];
+        return { ...col, view_all_deals_permissions: permissions };
+      });
+
+      // ---- CARDS: separar por coluna e aplicar lógica de paginação ----
+      const cardsByCol: Record<string, any[]> = {};
+      normalizedColumns.forEach(c => { cardsByCol[c.id] = []; });
+      boardCards.forEach((card: any) => {
+        if (cardsByCol[card.column_id]) {
+          cardsByCol[card.column_id].push(card);
+        }
+      });
+
+      const initOffsets: Record<string, number> = {};
+      const initHasMore: Record<string, boolean> = {};
+      const initInitialLoading: Record<string, boolean> = {};
+      const allVisibleCards: PipelineCard[] = [];
+
+      normalizedColumns.forEach((col) => {
+        const colCards = cardsByCol[col.id] || [];
+        const hasMore = colCards.length > PAGE_SIZE;
+        const rawPage = hasMore ? colCards.slice(0, PAGE_SIZE) : colCards;
+        const visiblePage = rawPage.filter(isCardVisibleForUser);
+
+        initOffsets[col.id] = rawPage.length;
+        initHasMore[col.id] = hasMore;
+        initInitialLoading[col.id] = false;
+
+        allVisibleCards.push(...(visiblePage as PipelineCard[]));
+      });
+
+      // ---- APLICAR TUDO DE UMA VEZ (batch setState minimiza re-renders) ----
+      setColumns(normalizedColumns);
+      setCards(allVisibleCards);
+      setCardsOffsetByColumn(initOffsets);
+      setHasMoreCardsByColumn(initHasMore);
+      setIsLoadingMoreCardsByColumn({});
+      setIsLoadingInitialCardsByColumn(initInitialLoading);
+      setTotalCardsByColumn(boardCounts);
+      setIsAllColumnsLoaded(true);
+
+      // 🚀 Atualizar cache refs
+      lastFetchedPipelineRef.current = pipelineId;
+      cardsLoadedAtRef.current = Date.now();
+
+      devLog('✅ [fetchBoardData] Board carregado:', {
+        columns: normalizedColumns.length,
+        cards: allVisibleCards.length,
+        counts: boardCounts,
+      });
+    } catch (error) {
+      const parsedError = await readFunctionErrorBodyAsync(error);
+      console.error('❌ [fetchBoardData] Erro ao buscar board unificado:', { error, parsedError });
+      toast({
+        title: "Erro",
+        description:
+          parsedError?.message ||
+          parsedError?.error ||
+          "Erro ao carregar o board. Tente recarregar a página.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsLoadingColumns(false);
+      setIsLoadingCards(false);
+      isFetchingCardsRef.current = false;
+    }
+  }, [getHeaders, isCardVisibleForUser, toast]);
 
   const fetchMoreCards = useCallback(async (columnId: string) => {
     if (!selectedPipeline?.id || !getHeaders) return;
@@ -639,20 +775,19 @@ export function PipelinesProvider({ children }: { children: React.ReactNode }) {
   }, [getHeaders, toast, fetchPipelines, selectedPipeline]);
 
   const selectPipeline = useCallback((pipeline: Pipeline) => {
+    setIsInitializingBoard(true); // 🚀 Loading unificado: um único spinner
     setSelectedPipeline(pipeline);
-    // Clear columns immediately when switching pipelines to trigger skeleton
+    // Limpar colunas/cards ao trocar pipeline
     setColumns([]);
     setCards([]);
-    setIsLoadingCards(true);
   }, []);
 
-  // New function to refresh the current pipeline data
+  // 🚀 Refresh do pipeline usando fetch unificado (1 chamada HTTP)
   const refreshCurrentPipeline = useCallback(async () => {
     if (selectedPipeline?.id) {
-      const cols = await fetchColumns(selectedPipeline.id);
-      await fetchCards(selectedPipeline.id, cols || [], true); // forceRefresh = true
+      await fetchBoardDataRef.current(selectedPipeline.id, true); // forceRefresh = true
     }
-  }, [selectedPipeline?.id, fetchColumns, fetchCards]);
+  }, [selectedPipeline?.id]);
 
   const createColumn = useCallback(async (name: string, color: string, icon: string = 'Circle') => {
     if (!getHeaders || !selectedPipeline) throw new Error('Requirements not met');
@@ -1546,41 +1681,75 @@ export function PipelinesProvider({ children }: { children: React.ReactNode }) {
 
   // ✅ (DEV-only) Debug removido do runtime para não degradar performance em pipelines com muitos cards.
 
+  // 🚀 Manter refs atualizados a cada render (executados antes dos effects)
+  fetchColumnsRef.current = fetchColumns;
+  fetchCardsRef.current = fetchCards;
+  fetchPipelinesRef.current = fetchPipelines;
+  fetchBoardDataRef.current = fetchBoardData;
+  cardsRef.current = cards;
+
   // Buscar pipelines quando o workspace mudar
+  // 🚀 Usa refs + guard de workspace para NUNCA re-inicializar desnecessariamente
   useEffect(() => {
+    const wsId = selectedWorkspace?.workspace_id;
+
     devLog('🔍 [PipelinesContext] useEffect triggered:', {
-      hasWorkspace: !!selectedWorkspace?.workspace_id,
+      hasWorkspace: !!wsId,
       hasHeaders: !!getHeaders,
-      workspaceId: selectedWorkspace?.workspace_id
+      workspaceId: wsId,
+      lastInitialized: lastInitializedWorkspaceRef.current
     });
     
-    if (selectedWorkspace?.workspace_id && getHeaders) {
+    if (wsId && getHeaders) {
+      // 🚀 Guard: se já inicializamos para este workspace, não refazer
+      if (lastInitializedWorkspaceRef.current === wsId) {
+        devLog('🚀 [PipelinesContext] Workspace já inicializado, ignorando re-fetch');
+        return;
+      }
+      
       devLog('✅ [PipelinesContext] Conditions met, fetching pipelines...');
-      // Workspace changed - clearing and fetching pipelines
-      // Limpar dados anteriores imediatamente para mostrar loading
+      lastInitializedWorkspaceRef.current = wsId;
+      
+      // 🚀 Loading unificado: um único spinner até tudo estar pronto
+      setIsInitializingBoard(true);
       setColumns([]);
       setCards([]);
       setSelectedPipeline(null);
-      setIsLoadingCards(true);
       
       // Buscar novos pipelines e forçar seleção do primeiro
-      fetchPipelines(true);
+      fetchPipelinesRef.current(true);
     } else {
       devLog('⚠️ [PipelinesContext] Conditions not met, clearing pipelines');
+      lastInitializedWorkspaceRef.current = null;
       setPipelines([]);
       setSelectedPipeline(null);
       setColumns([]);
       setCards([]);
+      setIsInitializingBoard(false);
     }
-  }, [selectedWorkspace?.workspace_id, fetchPipelines, getHeaders]);
+  }, [selectedWorkspace?.workspace_id, getHeaders]);
 
-  // Buscar colunas e cards quando o pipeline selecionado mudar
+  // 🚀🚀🚀 CARREGAMENTO UNIFICADO DO BOARD: 1 única chamada HTTP
+  // Substitui: fetchColumns → fetchCards (N+1 calls) → fetchTotalCardsCounts
+  // Agora: fetchBoardData (1 call) retorna colunas + cards + contagens via RPC
   useEffect(() => {
     if (selectedPipeline?.id) {
+      let cancelled = false;
+      const pipelineId = selectedPipeline.id;
+
       (async () => {
-        const cols = await fetchColumns(selectedPipeline.id);
-        await fetchCards(selectedPipeline.id, cols || []);
+        try {
+          await fetchBoardDataRef.current(pipelineId);
+        } catch (err) {
+          console.error('❌ [PipelinesContext] Erro ao inicializar board:', err);
+        } finally {
+          if (!cancelled) {
+            setIsInitializingBoard(false);
+          }
+        }
       })();
+
+      return () => { cancelled = true; };
     } else {
       setColumns([]);
       setCards([]);
@@ -1588,9 +1757,10 @@ export function PipelinesProvider({ children }: { children: React.ReactNode }) {
       setHasMoreCardsByColumn({});
       setIsLoadingMoreCardsByColumn({});
     }
-  }, [selectedPipeline?.id, fetchColumns, fetchCards]);
+  }, [selectedPipeline?.id]);
 
   // ✅ REFETCH INTELIGENTE: Garantir que cards apareçam mesmo se realtime falhar
+  // 🚀 Usa cardsRef para evitar recriar o interval a cada mudança de cards
   useEffect(() => {
     if (!selectedPipeline?.id) return;
 
@@ -1598,63 +1768,51 @@ export function PipelinesProvider({ children }: { children: React.ReactNode }) {
     let lastRealtimeUpdate = Date.now();
     let consecutiveEmptyFetches = 0;
 
-    // Função para atualizar timestamp de realtime (será chamada pelos handlers)
     const updateRealtimeTimestamp = () => {
       lastRealtimeUpdate = Date.now();
     };
 
-    // Expor função para handlers
     (window as any).__updateRealtimeTimestamp = updateRealtimeTimestamp;
 
-    // Refetch apenas quando necessário:
-    // 1. Cards incompletos (sem contact/conversation)
-    // 2. Pipeline sem atualizações realtime há mais de 60s
     const interval = setInterval(() => {
       const now = Date.now();
       const timeSinceLastFetch = now - lastFetchTime;
       const timeSinceLastRealtime = now - lastRealtimeUpdate;
+      const currentCards = cardsRef.current;
       
-      // Verificar cards incompletos
-      const hasIncompleteCards = cards.some(c => 
+      const hasIncompleteCards = currentCards.some(c => 
         (c.contact_id && !c.contact) || 
         (c.conversation_id && !c.conversation)
       );
       
-      // Se há cards incompletos, refetch imediatamente
       if (hasIncompleteCards) {
-        devLog('🔄 [Refetch] Cards incompletos detectados, refazendo fetch...');
-        // Com paginação/infinite scroll, evitar resetar toda a lista.
-        // A correção de cards incompletos deve acontecer via handlers pontuais (ex.: buscar card por id).
+        devLog('🔄 [Refetch] Cards incompletos detectados');
         return;
       }
       
-      // Se passou muito tempo desde última atualização realtime e não há cards
-      // (pode ter sido criado mas evento não chegou)
       if (
         timeSinceLastRealtime > 60000 && 
         timeSinceLastFetch > 30000 && 
-        cards.length === 0 && 
+        currentCards.length === 0 && 
         consecutiveEmptyFetches < 3
       ) {
         devLog('🔄 [Refetch] Sem atualizações realtime há muito tempo, verificando...');
-        // Aqui é seguro refazer o refresh, pois a lista está vazia.
         refreshCurrentPipeline();
         lastFetchTime = now;
         consecutiveEmptyFetches++;
         return;
       }
       
-      // Reset contador se houver cards
-      if (cards.length > 0) {
+      if (currentCards.length > 0) {
         consecutiveEmptyFetches = 0;
       }
-    }, 15000); // Verificar a cada 15 segundos (reduzido de 5s)
+    }, 15000);
 
     return () => {
       clearInterval(interval);
       delete (window as any).__updateRealtimeTimestamp;
     };
-  }, [selectedPipeline?.id, cards, fetchCards, refreshCurrentPipeline]);
+  }, [selectedPipeline?.id, refreshCurrentPipeline]);
 
   // Função para atualizar otimisticamente o status do agente de uma conversa
   const updateConversationAgentStatus = useCallback((
@@ -1689,6 +1847,7 @@ export function PipelinesProvider({ children }: { children: React.ReactNode }) {
     isLoading,
     isLoadingColumns,
     isLoadingCards,
+    isInitializingBoard,
     isLoadingInitialCardsByColumn,
     isAllColumnsLoaded,
     hasMoreCardsByColumn,
@@ -1716,6 +1875,7 @@ export function PipelinesProvider({ children }: { children: React.ReactNode }) {
     isLoading,
     isLoadingColumns,
     isLoadingCards,
+    isInitializingBoard,
     isLoadingInitialCardsByColumn,
     isAllColumnsLoaded,
     hasMoreCardsByColumn,

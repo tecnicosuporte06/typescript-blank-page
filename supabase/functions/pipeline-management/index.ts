@@ -1597,6 +1597,51 @@ serve(async (req) => {
           });
         }
 
+      // ============================================================
+      // 🚀 BOARD: Carregamento unificado (colunas + cards + contagens em 1 query)
+      // ============================================================
+      case 'board': {
+        if (method !== 'GET') {
+          return new Response(JSON.stringify({ error: 'Method not allowed' }), {
+            status: 405,
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          });
+        }
+
+        const boardPipelineId = url.searchParams.get('pipeline_id');
+        if (!boardPipelineId) {
+          return new Response(JSON.stringify({ error: 'pipeline_id is required' }), {
+            status: 400,
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          });
+        }
+
+        const boardLimit = Number(url.searchParams.get('limit') || '11');
+        const boardExcludeLabTest = userProfile !== 'master';
+
+        console.log(`🚀 [Board] Loading unified board for pipeline: ${boardPipelineId}, limit: ${boardLimit}, excludeLabTest: ${boardExcludeLabTest}`);
+
+        const { data: boardData, error: boardError } = await supabaseClient.rpc('get_pipeline_board', {
+          p_pipeline_id: boardPipelineId,
+          p_cards_per_column: boardLimit,
+          p_exclude_lab_test: boardExcludeLabTest,
+        });
+
+        if (boardError) {
+          console.error('❌ [Board] RPC get_pipeline_board failed:', boardError);
+          return new Response(JSON.stringify({ error: boardError.message }), {
+            status: 500,
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          });
+        }
+
+        console.log(`✅ [Board] Loaded: ${boardData?.columns?.length || 0} columns, ${boardData?.cards?.length || 0} cards`);
+
+        return new Response(JSON.stringify(boardData), {
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+      }
+
       case 'pipelines':
         if (method === 'GET') {
           console.log('📊 Fetching pipelines for workspace:', workspaceId);

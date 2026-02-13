@@ -849,6 +849,7 @@ function CRMNegociosContent({
     isLoading,
     isLoadingColumns,
     isLoadingCards,
+    isInitializingBoard,
     isLoadingInitialCardsByColumn,
     isAllColumnsLoaded,
     hasMoreCardsByColumn,
@@ -1807,8 +1808,9 @@ const [selectedCardForProduct, setSelectedCardForProduct] = useState<{
       </div>;
   }
 
-  // Show debug panel if loading or no pipelines found
-  if (isLoading || pipelines.length === 0) {
+  // 🚀 Early return: só mostra tela de "sem pipelines" se NÃO estiver inicializando
+  // Durante inicialização, o main render cuida do spinner unificado
+  if (!isInitializingBoard && (isLoading || pipelines.length === 0)) {
     return (
       <div className={`p-6 bg-white dark:bg-[#0f0f0f] ${isDarkMode ? 'dark' : ''}`}>
         <div className="flex items-center justify-end mb-6">
@@ -2231,12 +2233,85 @@ const [selectedCardForProduct, setSelectedCardForProduct] = useState<{
                 ref={!isMobile ? boardContainerRef : undefined}
                 className="flex-1 min-h-0 px-2 md:px-4 overflow-hidden"
               >
-                  {isLoading ? (
-                    <div className="flex items-center justify-center h-full w-full">
-                      <div className="flex flex-col items-center gap-2">
-                        <Loader2 className="h-7 w-7 animate-spin text-muted-foreground dark:text-gray-400" />
-                        <span className="text-xs text-muted-foreground dark:text-gray-400">Carregando pipeline...</span>
-                      </div>
+                  {isInitializingBoard ? (
+                    /* 🚀 Skeleton Kanban: simula a estrutura do board enquanto carrega */
+                    <div className={cn("h-full w-full", isMobile ? "flex justify-center" : "flex gap-4 items-stretch")}>
+                      {isMobile ? (
+                        /* Mobile: 1 coluna skeleton */
+                        <div className="w-full max-w-sm h-full flex flex-col">
+                          <div className="bg-white dark:bg-[#111111] border border-[#d4d4d4] dark:border-gray-700 border-t-[3px] border-t-[#d4d4d4] dark:border-t-gray-700 shadow-sm h-full flex flex-col overflow-hidden">
+                            <div className="bg-[#f3f3f3] dark:bg-[#1f1f1f] p-2 flex-shrink-0 border-b border-[#d4d4d4] dark:border-gray-700 space-y-2">
+                              <div className="flex items-center justify-between">
+                                <Skeleton className="h-4 w-24 rounded-sm dark:bg-gray-700" />
+                                <Skeleton className="h-5 w-8 rounded-full dark:bg-gray-700" />
+                              </div>
+                              <Skeleton className="h-3 w-20 rounded-sm dark:bg-gray-700" />
+                            </div>
+                            <div className="flex-1 p-2 bg-[#f9f9f9] dark:bg-[#0a0a0a] space-y-2">
+                              {[1, 2, 3].map(i => (
+                                <div key={i} className="bg-white dark:bg-[#1b1b1b] border border-[#e5e5e5] dark:border-gray-700 p-3 space-y-2">
+                                  <div className="flex items-center gap-2">
+                                    <Skeleton className="h-8 w-8 rounded-full dark:bg-gray-700" />
+                                    <div className="flex-1 space-y-1">
+                                      <Skeleton className="h-3.5 w-3/4 rounded-sm dark:bg-gray-700" />
+                                      <Skeleton className="h-2.5 w-1/2 rounded-sm dark:bg-gray-700" />
+                                    </div>
+                                  </div>
+                                  <div className="flex items-center justify-between">
+                                    <Skeleton className="h-3 w-16 rounded-sm dark:bg-gray-700" />
+                                    <Skeleton className="h-3 w-12 rounded-sm dark:bg-gray-700" />
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        </div>
+                      ) : (
+                        /* Desktop: 5 colunas skeleton (preenchendo a largura) */
+                        <>
+                          {[1, 2, 3, 4, 5].map(colIdx => (
+                            <div
+                              key={colIdx}
+                              className="flex-shrink-0 h-full min-h-0 flex flex-col pb-2"
+                              style={{
+                                width: `${columnWidth ?? 240}px`,
+                                minWidth: `${columnWidth ?? 240}px`,
+                                flexBasis: `${columnWidth ?? 240}px`,
+                              }}
+                            >
+                              <div className="bg-white dark:bg-[#111111] border border-[#d4d4d4] dark:border-gray-700 border-t-[3px] border-t-[#d4d4d4] dark:border-t-gray-700 shadow-sm h-full flex flex-col overflow-hidden">
+                                {/* Header skeleton */}
+                                <div className="bg-[#f3f3f3] dark:bg-[#1f1f1f] p-2 flex-shrink-0 border-b border-[#d4d4d4] dark:border-gray-700 space-y-2">
+                                  <div className="flex items-center justify-between">
+                                    <Skeleton className="h-4 w-20 rounded-sm dark:bg-gray-700" />
+                                    <Skeleton className="h-5 w-8 rounded-full dark:bg-gray-700" />
+                                  </div>
+                                  <Skeleton className="h-3 w-16 rounded-sm dark:bg-gray-700" />
+                                </div>
+                                {/* Cards skeleton */}
+                                <div className="flex-1 p-2 bg-[#f9f9f9] dark:bg-[#0a0a0a] space-y-2">
+                                  {/* Quantidade de cards skeleton variável por coluna para parecer natural */}
+                                  {Array.from({ length: colIdx <= 2 ? 3 : colIdx <= 4 ? 2 : 1 }).map((_, cardIdx) => (
+                                    <div key={cardIdx} className="bg-white dark:bg-[#1b1b1b] border border-[#e5e5e5] dark:border-gray-700 p-3 space-y-2">
+                                      <div className="flex items-center gap-2">
+                                        <Skeleton className="h-8 w-8 rounded-full flex-shrink-0 dark:bg-gray-700" />
+                                        <div className="flex-1 space-y-1">
+                                          <Skeleton className="h-3.5 w-3/4 rounded-sm dark:bg-gray-700" />
+                                          <Skeleton className="h-2.5 w-1/2 rounded-sm dark:bg-gray-700" />
+                                        </div>
+                                      </div>
+                                      <div className="flex items-center justify-between pt-1">
+                                        <Skeleton className="h-3 w-16 rounded-sm dark:bg-gray-700" />
+                                        <Skeleton className="h-3 w-12 rounded-sm dark:bg-gray-700" />
+                                      </div>
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                            </div>
+                          ))}
+                        </>
+                      )}
                     </div>
                   ) : !selectedPipeline ? (
                     <div className={`flex items-center justify-center h-64 border-2 border-dashed border-border dark:border-gray-700 rounded-lg`}>
@@ -2246,13 +2321,6 @@ const [selectedCardForProduct, setSelectedCardForProduct] = useState<{
                           <Plus className="h-4 w-4 mr-2" />
                           <span className="text-xs font-medium">Criar Pipeline</span>
                         </Button>
-                      </div>
-                    </div>
-                  ) : isLoadingColumns ? (
-                    <div className="flex items-center justify-center h-full w-full">
-                      <div className="flex flex-col items-center gap-2">
-                        <Loader2 className="h-7 w-7 animate-spin text-muted-foreground dark:text-gray-400" />
-                        <span className="text-xs text-muted-foreground dark:text-gray-400">Carregando etapas...</span>
                       </div>
                     </div>
                   ) : (

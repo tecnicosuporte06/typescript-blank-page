@@ -65,8 +65,8 @@ export function AdicionarUsuarioFilaModal({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto bg-white text-gray-900 dark:bg-[#0b0b0b] dark:text-gray-100 dark:border-gray-700">
-        <DialogHeader className="px-4 py-2 bg-primary text-primary-foreground border-b border-[#d4d4d4] rounded-t-none dark:border-gray-700">
-          <DialogTitle className="text-lg font-semibold text-primary-foreground">
+        <DialogHeader className="px-4 py-2 bg-primary text-primary-foreground border-b border-[#d4d4d4] rounded-t-none dark:bg-[#1f1f1f] dark:text-gray-100 dark:border-gray-700">
+          <DialogTitle className="text-lg font-semibold text-primary-foreground dark:text-gray-100">
             Adicionar usuários à fila
           </DialogTitle>
         </DialogHeader>

@@ -524,7 +524,7 @@ export function ColumnAutomationsTab({
         <div>
           <h3 className={`text-sm font-bold text-gray-800 dark:text-gray-100`}>Automações desta etapa</h3>
           <p className={`text-xs text-muted-foreground dark:text-gray-400`}>
-            Configure automações que disparam ações quando cards entram, saem ou ficam nesta coluna
+            Configure automações que disparam ações quando oportunidades entram, saem ou ficam nesta etapa
           </p>
         </div>
         <Button onClick={handleNewAutomation} className="h-8 text-xs rounded-none bg-primary hover:bg-primary/90">

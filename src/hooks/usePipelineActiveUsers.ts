@@ -1,4 +1,5 @@
-import { useState, useEffect, useCallback } from "react";
+import { useCallback } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 
@@ -11,20 +12,14 @@ interface ActiveUser {
 }
 
 export function usePipelineActiveUsers(pipelineId?: string, workspaceId?: string) {
-  const [activeUsers, setActiveUsers] = useState<ActiveUser[]>([]);
-  const [isLoading, setIsLoading] = useState(false);
   const { user } = useAuth();
+  const queryClient = useQueryClient();
 
-  const fetchActiveUsers = useCallback(async () => {
-    if (!pipelineId || !workspaceId) {
-      setActiveUsers([]);
-      return;
-    }
-    
-    console.log('🔍 Buscando usuários ativos para pipeline:', pipelineId);
-    setIsLoading(true);
-    
-    try {
+  const { data: activeUsers = [], isLoading } = useQuery({
+    queryKey: ['pipeline-active-users', pipelineId, workspaceId],
+    queryFn: async () => {
+      if (!pipelineId || !workspaceId) return [];
+      
       // Buscar membros do workspace via Edge Function
       const { data: membersResponse, error: membersError } = await supabase.functions.invoke('manage-workspace-members', {
         body: {
@@ -40,29 +35,23 @@ export function usePipelineActiveUsers(pipelineId?: string, workspaceId?: string
 
       if (membersError) {
         console.error('Error fetching workspace members:', membersError);
-        return;
+        return [];
       }
 
       if (!membersResponse?.success) {
         console.error('Failed to fetch workspace members:', membersResponse);
-        return;
+        return [];
       }
 
       const members = membersResponse.members || [];
       const allUsers = members
         .filter((member: any) => member.user)
         .map((member: any) => member.user);
-      
-      console.log(`👥 Encontrados ${allUsers.length} usuários do workspace`);
 
       const currentUser = allUsers.find((u: any) => u.email === user?.email);
+      if (!currentUser) return [];
 
-      if (!currentUser) {
-        console.error('Current user not found');
-        return;
-      }
-
-      // ✅ Buscar todos os cards do pipeline (RLS já gerencia permissões)
+      // Buscar todos os cards do pipeline
       const { data: cards, error: cardsError } = await supabase
         .from('pipeline_cards')
         .select(`
@@ -80,47 +69,34 @@ export function usePipelineActiveUsers(pipelineId?: string, workspaceId?: string
 
       if (cardsError) {
         console.error('Error fetching cards:', cardsError);
-        return;
+        return [];
       }
-
-      console.log('📊 Cards encontrados:', cards?.length);
 
       // Coletar IDs de usuários responsáveis
       const userIds = new Set<string>();
       
       cards?.forEach((card: any) => {
-        // Adicionar responsible_user_id se existir
         if (card.responsible_user_id) {
           userIds.add(card.responsible_user_id);
         }
-        // Adicionar assigned_user_id da conversa se existir
         if (card.conversations?.assigned_user_id) {
           userIds.add(card.conversations.assigned_user_id);
         }
       });
 
-      console.log('👥 IDs de usuários únicos:', Array.from(userIds));
+      if (userIds.size === 0) return [];
 
-      if (userIds.size === 0) {
-        console.log('ℹ️ Nenhum usuário ativo encontrado');
-        setActiveUsers([]);
-        return;
-      }
+      const users = allUsers.filter((u: any) => userIds.has(u.id));
 
-      // Filtrar usuários pelos IDs necessários
-      const users = allUsers.filter((user: any) => userIds.has(user.id));
-      console.log('✅ Usuários filtrados:', users.map((u: any) => u.name));
-
-      // Agrupar por usuário (contar quantos cards cada um tem)
+      // Agrupar por usuário
       const userMap = new Map<string, ActiveUser>();
       
       cards?.forEach((card: any) => {
-        // Priorizar responsible_user_id sobre assigned_user_id
         const userId = card.responsible_user_id || card.conversations?.assigned_user_id;
         
         if (userId) {
-          const user = users?.find(u => u.id === userId);
-          if (user) {
+          const foundUser = users?.find((u: any) => u.id === userId);
+          if (foundUser) {
             if (userMap.has(userId)) {
               const existingUser = userMap.get(userId)!;
               existingUser.dealCount += 1;
@@ -128,8 +104,8 @@ export function usePipelineActiveUsers(pipelineId?: string, workspaceId?: string
             } else {
               userMap.set(userId, {
                 id: userId,
-                name: user.name,
-                avatar: user.avatar,
+                name: foundUser.name,
+                avatar: foundUser.avatar,
                 dealCount: 1,
                 dealIds: [card.id]
               });
@@ -138,26 +114,19 @@ export function usePipelineActiveUsers(pipelineId?: string, workspaceId?: string
         }
       });
 
-      const activeUsersList = Array.from(userMap.values());
-      console.log('🎯 Usuários ativos finais:', activeUsersList.map(u => `${u.name} (${u.dealCount})`));
-      
-      setActiveUsers(activeUsersList);
-    } catch (error) {
-      console.error('Error fetching active users:', error);
-    } finally {
-      setIsLoading(false);
-    }
-  }, [pipelineId, workspaceId, user?.email]);
+      return Array.from(userMap.values());
+    },
+    enabled: !!pipelineId && !!workspaceId && !!user?.email,
+    // 🚀 Performance: cache por 5 min para evitar refetch pesado ao remontar o board
+    staleTime: 5 * 60 * 1000,
+    gcTime: 10 * 60 * 1000,
+    refetchOnWindowFocus: false,
+  });
 
-  useEffect(() => {
-    fetchActiveUsers();
-  }, [fetchActiveUsers]);
-
-  // Função para forçar atualização manual
+  // Função para forçar atualização manual (invalida cache)
   const refreshActiveUsers = useCallback(() => {
-    console.log('🔄 Forçando refresh de usuários ativos...');
-    fetchActiveUsers();
-  }, [fetchActiveUsers]);
+    queryClient.invalidateQueries({ queryKey: ['pipeline-active-users', pipelineId, workspaceId] });
+  }, [queryClient, pipelineId, workspaceId]);
 
   return { activeUsers, isLoading, refreshActiveUsers };
 }

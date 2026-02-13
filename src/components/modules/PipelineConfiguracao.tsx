@@ -58,7 +58,8 @@ export default function PipelineConfiguracao({
     userRole
   } = useAuth();
   const {
-    selectedWorkspace
+    selectedWorkspace,
+    setSelectedWorkspace
   } = useWorkspace();
   const { toast } = useToast();
   const [pipelineName, setPipelineName] = useState(selectedPipeline?.name || "Vendas");
@@ -521,6 +522,14 @@ export default function PipelineConfiguracao({
                             title: "Sucesso",
                             description: "Pipeline definido como padrão com sucesso!",
                           });
+
+                          // Atualiza contexto/localStorage para refletir o novo padrão imediatamente
+                          if (selectedWorkspace && setSelectedWorkspace) {
+                            setSelectedWorkspace({
+                              ...selectedWorkspace,
+                              default_pipeline_id: selectedPipeline.id
+                            });
+                          }
 
                           if (refreshCurrentPipeline) {
                             await refreshCurrentPipeline();

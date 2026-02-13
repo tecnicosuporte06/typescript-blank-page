@@ -56,9 +56,9 @@ interface Action {
 }
 
 const TRIGGER_TYPES = [
-  { value: 'enter_column', label: 'Entrada na coluna' },
-  { value: 'leave_column', label: 'Saída da coluna' },
-  { value: 'time_in_column', label: 'Tempo na coluna' },
+  { value: 'enter_column', label: 'Entrada na etapa' },
+  { value: 'leave_column', label: 'Saída da etapa' },
+  { value: 'time_in_column', label: 'Tempo na etapa' },
   { value: 'scheduled_time', label: 'Horário específico' },
   { value: 'message_received', label: 'Mensagens recebidas' },
 ];
@@ -66,7 +66,7 @@ const TRIGGER_TYPES = [
 const ACTION_TYPES = [
   { value: 'send_message', label: 'Enviar mensagem' },
   { value: 'send_funnel', label: 'Enviar funil' },
-  { value: 'move_to_column', label: 'Mudar coluna' },
+  { value: 'move_to_column', label: 'Mudar etapa' },
   { value: 'add_tag', label: 'Adicionar etiqueta' },
   { value: 'add_agent', label: 'Adicionar agente de IA' },
   { value: 'remove_agent', label: 'Remover agente de IA' },
@@ -851,7 +851,7 @@ export function AutomationModal({
               </SelectContent>
             </Select>
 
-            <Label className={`text-gray-700 dark:text-gray-200`}>Coluna de destino</Label>
+            <Label className={`text-gray-700 dark:text-gray-200`}>Etapa de destino</Label>
             <Select
               value={action.action_config?.column_id || action.action_config?.target_column_id || ''}
               onValueChange={(value) => {
@@ -1046,7 +1046,7 @@ export function AutomationModal({
               id="automation-name"
               value={name}
               onChange={(e) => setName(e.target.value)}
-              placeholder="Ex: Mensagem de boas-vindas quando entrar na coluna 'Pré-venda'"
+              placeholder="Ex: Mensagem de boas-vindas quando entrar na etapa 'Pré-venda'"
               className={`h-8 text-xs rounded-none border-gray-300 dark:border-gray-700 bg-white dark:bg-[#1b1b1b] text-gray-900 dark:text-gray-100 placeholder:text-gray-500 dark:placeholder:text-gray-400 focus-visible:ring-0`}
             />
           </div>
@@ -1234,7 +1234,7 @@ export function AutomationModal({
                     {trigger.trigger_type === 'time_in_column' && (
                       <p className={`text-[10px] text-muted-foreground dark:text-gray-400 flex items-start gap-2 pl-1`}>
                         <span className="text-yellow-500 dark:text-yellow-400 font-bold">⚠</span>
-                        Executa apenas uma vez quando o card atinge o tempo configurado na coluna
+                        Executa apenas uma vez quando a oportunidade atinge o tempo configurado na etapa
                       </p>
                     )}
 
