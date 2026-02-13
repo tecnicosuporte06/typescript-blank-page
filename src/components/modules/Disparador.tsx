@@ -63,8 +63,8 @@ export function Disparador() {
   const { user, loading: authLoading } = useAuth();
   const workspaceId = selectedWorkspace?.workspace_id || "";
   const { limits, isLoading: isLoadingWorkspaceLimits } = useWorkspaceLimits(workspaceId);
-  // Anti-flicker: enquanto carrega, considera desabilitado
-  const isDisparadorEnabled = isLoadingWorkspaceLimits ? false : (limits?.disparador_enabled ?? true);
+  // Anti-flicker: enquanto carrega, considera habilitado para não mostrar "não habilitado" antes dos dados
+  const isDisparadorEnabled = isLoadingWorkspaceLimits ? true : (limits?.disparador_enabled ?? true);
 
   const [isImportOpen, setIsImportOpen] = useState(false);
   const [contacts, setContacts] = useState<any[]>([]);
