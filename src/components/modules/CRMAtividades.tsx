@@ -263,36 +263,59 @@ export function CRMAtividades() {
 
       if (!activitiesData || activitiesData.length === 0) {
         setActivities([]);
+        setIsDataReady(true);
         return;
       }
 
-      // Buscar nomes dos responsáveis
+      // 🚀 Preparar IDs para as queries paralelas (extrair antes, executar junto)
       const responsibleIds = activitiesData
         .map((a) => a.responsible_id)
         .filter(Boolean) as string[];
-      
       const uniqueResponsibleIds = [...new Set(responsibleIds)];
-      let usersMap = new Map<string, string>();
 
-      if (uniqueResponsibleIds.length > 0) {
-        const { data: users } = await supabase
-          .from("system_users")
-          .select("id, name")
-          .in("id", uniqueResponsibleIds);
-
-        users?.forEach((u) => usersMap.set(u.id, u.name));
-      }
-
-      // Buscar cartões do pipeline relacionados
       const pipelineCardIds = activitiesData
         .map((a) => a.pipeline_card_id)
         .filter(Boolean) as string[];
+      const uniquePipelineCardIds = [...new Set(pipelineCardIds)];
 
-      // Buscar contact_ids diretamente das atividades (mesmo sem pipeline_card_id)
       const activityContactIds = activitiesData
         .map((a) => a.contact_id)
         .filter(Boolean) as string[];
+      const allContactIds = [...new Set(activityContactIds)];
 
+      // 🚀 EXECUTAR TODAS AS QUERIES EM PARALELO (antes: sequencial = soma dos tempos)
+      const [usersResult, contactsResult, cardsResult] = await Promise.all([
+        // Query 1: Nomes dos responsáveis
+        uniqueResponsibleIds.length > 0
+          ? supabase.from("system_users").select("id, name").in("id", uniqueResponsibleIds)
+          : Promise.resolve({ data: null, error: null }),
+        // Query 2: Contatos diretos das atividades
+        allContactIds.length > 0
+          ? supabase.from("contacts").select("id, name, phone").in("id", allContactIds).eq("workspace_id", selectedWorkspace.workspace_id)
+          : Promise.resolve({ data: null, error: null }),
+        // Query 3: Posições dos cards no pipeline
+        uniquePipelineCardIds.length > 0
+          ? supabase.from("v_card_positions").select("*").in("card_id", uniquePipelineCardIds)
+          : Promise.resolve({ data: null, error: null }),
+      ]);
+
+      // Montar mapa de responsáveis
+      const usersMap = new Map<string, string>();
+      usersResult.data?.forEach((u: any) => usersMap.set(u.id, u.name));
+
+      // Montar mapa de contatos diretos
+      const directContactsMap = new Map<string, { name: string; phone: string }>();
+      if (contactsResult.error) {
+        console.error("Erro ao buscar contatos das atividades:", contactsResult.error);
+      }
+      contactsResult.data?.forEach((contact: any) => {
+        directContactsMap.set(contact.id, {
+          name: contact.name || "-",
+          phone: contact.phone || "-",
+        });
+      });
+
+      // Montar mapa de cards do pipeline
       const pipelineCardsMap = new Map<
         string,
         {
@@ -309,65 +332,32 @@ export function CRMAtividades() {
         }
       >();
 
-      // Buscar contatos diretamente das atividades (para atividades sem pipeline_card_id)
-      const allContactIds = new Set<string>();
-      activityContactIds.forEach(id => allContactIds.add(id));
-
-      // Buscar contatos das atividades
-      let directContactsMap = new Map<string, { name: string; phone: string }>();
-      if (allContactIds.size > 0) {
-        const { data: directContactsData, error: contactsError } = await supabase
-          .from("contacts")
-          .select("id, name, phone")
-          .in("id", Array.from(allContactIds))
-          .eq("workspace_id", selectedWorkspace.workspace_id);
-
-        if (contactsError) {
-          console.error("Erro ao buscar contatos das atividades:", contactsError);
-        }
-
-        directContactsData?.forEach((contact) => {
-          directContactsMap.set(contact.id, {
-            name: contact.name || "-",
-            phone: contact.phone || "-",
-          });
-        });
+      if (cardsResult.error) {
+        console.error("Erro ao buscar posições dos cards:", cardsResult.error);
       }
-
-      if (pipelineCardIds.length > 0) {
-        const { data: cardsPositions, error: cardsError } = await supabase
-          .from("v_card_positions")
-          .select("*")
-          .in("card_id", [...new Set(pipelineCardIds)]);
-
-        if (cardsError) {
-          console.error("Erro ao buscar posições dos cards:", cardsError);
-        }
-
-        if (cardsPositions && cardsPositions.length > 0) {
-          cardsPositions.forEach((card: any) => {
-            pipelineCardsMap.set(card.card_id, {
-              description: card.description || card.contact_name,
-              pipeline_id: card.pipeline_id,
-              pipeline_name: card.pipeline_name || "-",
-              column_id: card.column_id,
-              column_name: card.column_name || "-",
-              contact_id: card.contact_id,
-              contact_name: card.contact_name || "-",
-              contact_phone: card.contact_phone || "-",
-              status: card.card_status,
-              pipeline_workspace_id: card.workspace_id,
-            });
-
-            // Também atualizar o mapa de contatos diretos se tivermos dados mais frescos
-            if (card.contact_id && card.contact_name) {
-              directContactsMap.set(card.contact_id, {
-                name: card.contact_name,
-                phone: card.contact_phone || "-",
-              });
-            }
+      if (cardsResult.data && cardsResult.data.length > 0) {
+        cardsResult.data.forEach((card: any) => {
+          pipelineCardsMap.set(card.card_id, {
+            description: card.description || card.contact_name,
+            pipeline_id: card.pipeline_id,
+            pipeline_name: card.pipeline_name || "-",
+            column_id: card.column_id,
+            column_name: card.column_name || "-",
+            contact_id: card.contact_id,
+            contact_name: card.contact_name || "-",
+            contact_phone: card.contact_phone || "-",
+            status: card.card_status,
+            pipeline_workspace_id: card.workspace_id,
           });
-        }
+
+          // Também atualizar o mapa de contatos diretos se tivermos dados mais frescos
+          if (card.contact_id && card.contact_name) {
+            directContactsMap.set(card.contact_id, {
+              name: card.contact_name,
+              phone: card.contact_phone || "-",
+            });
+          }
+        });
       }
 
       const formattedActivities: ActivityData[] = activitiesData
