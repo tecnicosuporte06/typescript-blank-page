@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { BarChart3, FileText, List, Megaphone, MoreVertical, Pencil, Play, Trash2 } from "lucide-react";
+import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -383,9 +384,55 @@ export function Disparador() {
 
                 <TabsContent value="dashboard" className="mt-4">
                   <div className="space-y-4">
-                    {loadingDashboard && (
-                      <div className="text-xs text-gray-500 dark:text-gray-300">Atualizando métricas...</div>
-                    )}
+                    {loadingDashboard ? (
+                      /* 🚀 Skeleton Dashboard */
+                      <>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+                          {[1, 2, 3, 4, 5, 6, 7].map(i => (
+                            <Card key={i} className="rounded-none border-[#d4d4d4] dark:border-gray-700 dark:bg-[#111111]">
+                              <CardHeader className="py-3 px-3">
+                                <Skeleton className="h-3 w-24 rounded-sm dark:bg-gray-700" />
+                              </CardHeader>
+                              <CardContent className="px-3 pb-3">
+                                <Skeleton className="h-7 w-16 rounded-sm dark:bg-gray-700" />
+                              </CardContent>
+                            </Card>
+                          ))}
+                        </div>
+                        <Card className="rounded-none border-[#d4d4d4] dark:border-gray-700 dark:bg-[#111111]">
+                          <CardHeader className="py-3 px-3">
+                            <Skeleton className="h-3 w-32 rounded-sm dark:bg-gray-700" />
+                          </CardHeader>
+                          <CardContent className="px-3 pb-3">
+                            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                              {[1, 2, 3].map(i => (
+                                <div key={i} className="border border-gray-200 dark:border-gray-700 p-3 rounded-none space-y-2">
+                                  <Skeleton className="h-2.5 w-28 rounded-sm dark:bg-gray-700" />
+                                  <Skeleton className="h-6 w-12 rounded-sm dark:bg-gray-700" />
+                                </div>
+                              ))}
+                            </div>
+                          </CardContent>
+                        </Card>
+                        <Card className="rounded-none border-[#d4d4d4] dark:border-gray-700 dark:bg-[#111111]">
+                          <CardHeader className="py-3 px-3">
+                            <Skeleton className="h-3 w-36 rounded-sm dark:bg-gray-700" />
+                          </CardHeader>
+                          <CardContent className="px-3 pb-3 space-y-3">
+                            {[1, 2, 3].map(i => (
+                              <div key={i} className="flex gap-4 items-center">
+                                <Skeleton className="h-3 w-24 rounded-sm dark:bg-gray-700" />
+                                <Skeleton className="h-3 w-10 rounded-sm dark:bg-gray-700" />
+                                <Skeleton className="h-3 w-10 rounded-sm dark:bg-gray-700" />
+                                <Skeleton className="h-3 w-10 rounded-sm dark:bg-gray-700" />
+                                <Skeleton className="h-3 w-14 rounded-sm dark:bg-gray-700" />
+                              </div>
+                            ))}
+                          </CardContent>
+                        </Card>
+                      </>
+                    ) : (
+                      <>
                     {/* KPIs */}
                     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
                       <Card className="rounded-none border-[#d4d4d4] dark:border-gray-700 dark:bg-[#111111]">
@@ -515,6 +562,8 @@ export function Disparador() {
                         </Table>
                       </CardContent>
                     </Card>
+                      </>
+                    )}
                   </div>
                 </TabsContent>
 
@@ -539,11 +588,15 @@ export function Disparador() {
                           </TableHeader>
                           <TableBody>
                             {loadingCampaigns ? (
-                              <TableRow>
-                                <TableCell colSpan={3} className="text-center text-gray-500 dark:text-gray-300">
-                                  Carregando...
-                                </TableCell>
-                              </TableRow>
+                              <>
+                                {[1, 2, 3].map(i => (
+                                  <TableRow key={i}>
+                                    <TableCell><Skeleton className="h-3 w-32 rounded-sm dark:bg-gray-700" /></TableCell>
+                                    <TableCell><Skeleton className="h-3 w-20 rounded-sm dark:bg-gray-700" /></TableCell>
+                                    <TableCell className="text-right"><Skeleton className="h-6 w-6 rounded-sm dark:bg-gray-700 ml-auto" /></TableCell>
+                                  </TableRow>
+                                ))}
+                              </>
                             ) : campaigns.length === 0 ? (
                               <TableRow>
                                 <TableCell colSpan={3} className="text-center text-gray-500 dark:text-gray-300">
@@ -718,11 +771,17 @@ export function Disparador() {
                           </TableHeader>
                           <TableBody>
                             {loadingContacts ? (
-                              <TableRow>
-                                <TableCell colSpan={5} className="text-center text-gray-500 dark:text-gray-300">
-                                  Carregando...
-                                </TableCell>
-                              </TableRow>
+                              <>
+                                {[1, 2, 3, 4, 5].map(i => (
+                                  <TableRow key={i}>
+                                    <TableCell><Skeleton className="h-3 w-28 rounded-sm dark:bg-gray-700" /></TableCell>
+                                    <TableCell><Skeleton className="h-3 w-24 rounded-sm dark:bg-gray-700" /></TableCell>
+                                    <TableCell><Skeleton className="h-3 w-16 rounded-sm dark:bg-gray-700" /></TableCell>
+                                    <TableCell><Skeleton className="h-3 w-20 rounded-sm dark:bg-gray-700" /></TableCell>
+                                    <TableCell className="text-right"><Skeleton className="h-6 w-6 rounded-sm dark:bg-gray-700 ml-auto" /></TableCell>
+                                  </TableRow>
+                                ))}
+                              </>
                             ) : contacts.length === 0 ? (
                               <TableRow>
                                 <TableCell colSpan={5} className="text-center text-gray-500 dark:text-gray-300">
