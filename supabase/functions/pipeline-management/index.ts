@@ -1635,9 +1635,56 @@ serve(async (req) => {
           });
         }
 
-        console.log(`✅ [Board] Loaded: ${boardData?.columns?.length || 0} columns, ${boardData?.cards?.length || 0} cards`);
+        // 🚀 Transformar cards planos (da VIEW) em objetos aninhados (contact, conversation, responsible_user)
+        // para manter compatibilidade com o frontend
+        const rawCards: any[] = boardData?.cards || [];
+        const transformedCards = rawCards.map((card: any) => ({
+          id: card.id,
+          pipeline_id: card.pipeline_id,
+          column_id: card.column_id,
+          contact_id: card.contact_id,
+          conversation_id: card.conversation_id,
+          responsible_user_id: card.responsible_user_id,
+          title: card.description,
+          description: card.description,
+          value: card.value,
+          status: card.status,
+          tags: card.tags,
+          qualification: card.qualification,
+          is_lab_test: card.is_lab_test,
+          created_at: card.created_at,
+          updated_at: card.updated_at,
+          contact: card.contact_name ? {
+            id: card.contact_id,
+            name: card.contact_name,
+            phone: card.contact_phone,
+            email: card.contact_email,
+            profile_image_url: card.contact_profile_image_url
+          } : null,
+          conversation: card.conversation_id ? {
+            id: card.conversation_id,
+            unread_count: card.conversation_unread_count,
+            assigned_user_id: card.conversation_assigned_user_id,
+            agente_ativo: card.conversation_agente_ativo,
+            agent_active_id: card.conversation_agent_active_id
+          } : null,
+          responsible_user: card.responsible_user_id ? {
+            id: card.responsible_user_id,
+            name: card.responsible_user_name,
+            avatar: card.responsible_user_avatar
+          } : null,
+          // Campos planos mantidos para compatibilidade com buscas/filtros
+          contact_name: card.contact_name,
+          contact_phone: card.contact_phone,
+        }));
 
-        return new Response(JSON.stringify(boardData), {
+        console.log(`✅ [Board] Loaded: ${boardData?.columns?.length || 0} columns, ${transformedCards.length} cards`);
+
+        return new Response(JSON.stringify({
+          columns: boardData?.columns || [],
+          cards: transformedCards,
+          counts: boardData?.counts || {},
+        }), {
           headers: { ...corsHeaders, 'Content-Type': 'application/json' },
         });
       }
