@@ -5,7 +5,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { ConnectionBadge } from "@/components/chat/ConnectionBadge";
 import { useToast } from "@/hooks/use-toast";
 import { useQueryClient } from "@tanstack/react-query";
-import { DndContext, DragEndEvent, DragOverlay, DragStartEvent, PointerSensor, useSensor, useSensors, closestCenter, DragOverEvent, Active, Over, rectIntersection, CollisionDetection } from "@dnd-kit/core";
+import { DndContext, DragEndEvent, DragOverlay, DragStartEvent, PointerSensor, useSensor, useSensors, closestCenter, DragOverEvent, Active, Over, rectIntersection, pointerWithin, CollisionDetection } from "@dnd-kit/core";
 import { SortableContext, verticalListSortingStrategy, horizontalListSortingStrategy, arrayMove } from "@dnd-kit/sortable";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -1457,24 +1457,40 @@ const [selectedCardForProduct, setSelectedCardForProduct] = useState<{
   const customCollisionDetection: CollisionDetection = useCallback((args) => {
     // Se estamos arrastando uma coluna, filtrar apenas colunas como alvos
     if (draggedColumn) {
-      // Filtrar apenas droppables que são colunas
       const columnDroppables = args.droppableContainers.filter(container => 
         container.id.toString().startsWith('column-')
       );
-      
-      // Criar um novo args com apenas as colunas
       const filteredArgs = {
         ...args,
         droppableContainers: columnDroppables
       };
-      
-      // Usar rectIntersection para melhor detecção em elementos grandes
       return rectIntersection(filteredArgs);
     }
     
-    // Para cards, usar o algoritmo padrão
+    // Para cards: primeiro detectar se o ponteiro está sobre uma coluna vazia
+    const columnDroppables = args.droppableContainers.filter(container => 
+      container.id.toString().startsWith('column-')
+    );
+    
+    // Usar pointerWithin para verificar se o ponteiro está dentro de alguma coluna
+    const columnCollisions = pointerWithin({
+      ...args,
+      droppableContainers: columnDroppables
+    });
+    
+    if (columnCollisions.length > 0) {
+      const topColumnId = columnCollisions[0].id.toString().replace('column-', '');
+      const columnCardsList = getFilteredCards(topColumnId);
+      
+      // Se a coluna está vazia, retornar a coluna como alvo diretamente
+      if (columnCardsList.length === 0) {
+        return columnCollisions;
+      }
+    }
+    
+    // Para colunas com cards, usar closestCenter (detecta os cards individuais)
     return closestCenter(args);
-  }, [draggedColumn]);
+  }, [draggedColumn, getFilteredCards]);
 
   const handleDragStart = useCallback((event: DragStartEvent) => {
     const activeId = event.active.id as string;
@@ -2709,10 +2725,30 @@ const [selectedCardForProduct, setSelectedCardForProduct] = useState<{
                         {!isAllColumnsLoaded ? (
                           <div className="h-24" />
                         ) : columnCards.length === 0 ? (
-                          <div className="flex items-center justify-center h-32 text-center">
-                            <p className={`text-muted-foreground dark:text-gray-400 text-sm`}>
-                              Nenhuma oportunidade encontrada nesta etapa
-                            </p>
+                          <div className="flex flex-col h-32">
+                            {/* Placeholder animado para colunas vazias */}
+                            <div 
+                              className={`border-2 border-dashed rounded-sm overflow-hidden transition-all duration-150 ease-out ${
+                                activeId && !draggedColumn && dragOverColumn === column.id 
+                                  ? 'border-primary/50 bg-primary/5 dark:bg-primary/10 opacity-100' 
+                                  : 'border-transparent bg-transparent opacity-0 pointer-events-none'
+                              }`}
+                              style={{ 
+                                height: activeId && !draggedColumn && dragOverColumn === column.id ? '85px' : '0px',
+                                marginBottom: activeId && !draggedColumn && dragOverColumn === column.id ? '8px' : '0px',
+                              }}
+                            >
+                              <div className="h-full flex items-center justify-center text-xs text-primary/60 dark:text-primary/50">
+                                Solte aqui
+                              </div>
+                            </div>
+                            {!(activeId && !draggedColumn && dragOverColumn === column.id) && (
+                              <div className="flex items-center justify-center flex-1 text-center">
+                                <p className={`text-muted-foreground dark:text-gray-400 text-sm`}>
+                                  Nenhuma oportunidade encontrada nesta etapa
+                                </p>
+                              </div>
+                            )}
                           </div>
                         ) : (
                           <div className="space-y-1.5 md:space-y-2">

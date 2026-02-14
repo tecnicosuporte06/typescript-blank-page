@@ -35,16 +35,26 @@ serve(async (req) => {
     if (!userId) return json({ error: "missing x-system-user-id" }, 401);
     if (!workspaceId) return json({ error: "workspaceId is required" }, 400);
 
-    // membership check
-    const { data: wm, error: wmError } = await supabase
-      .from("workspace_members")
-      .select("user_id, workspace_id")
-      .eq("workspace_id", workspaceId)
-      .eq("user_id", userId)
+    // membership check (masters/support bypass — podem acessar qualquer workspace)
+    const { data: userProfile } = await supabase
+      .from("system_users")
+      .select("profile")
+      .eq("id", userId)
       .maybeSingle();
 
-    if (wmError) throw wmError;
-    if (!wm) return json({ error: "forbidden" }, 403);
+    const isMasterOrSupport = userProfile?.profile === "master" || userProfile?.profile === "support";
+
+    if (!isMasterOrSupport) {
+      const { data: wm, error: wmError } = await supabase
+        .from("workspace_members")
+        .select("user_id, workspace_id")
+        .eq("workspace_id", workspaceId)
+        .eq("user_id", userId)
+        .maybeSingle();
+
+      if (wmError) throw wmError;
+      if (!wm) return json({ error: "forbidden" }, 403);
+    }
 
     // READ
     if (settings === undefined) {

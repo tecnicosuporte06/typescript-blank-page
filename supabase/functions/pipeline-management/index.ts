@@ -226,6 +226,40 @@ async function isWithinBusinessHours(
   }
 }
 
+/**
+ * Seleciona aleatoriamente entre a mensagem principal e variações (se existirem).
+ */
+function selectMessageVariation(actionConfig: any): string {
+  const mainMessage = actionConfig?.message || '';
+  const variations: string[] = Array.isArray(actionConfig?.message_variations)
+    ? actionConfig.message_variations.filter((v: string) => v && v.trim())
+    : [];
+  
+  if (variations.length === 0) return mainMessage;
+  
+  const allMessages = [mainMessage, ...variations].filter(Boolean);
+  return allMessages[Math.floor(Math.random() * allMessages.length)];
+}
+
+/**
+ * Substitui variáveis de template ({{nome}}, {{primeiro_nome}}, etc.) pelos dados reais.
+ */
+function replaceMessageVariables(
+  message: string,
+  contact?: { name?: string; phone?: string; email?: string } | null,
+  columnName?: string,
+  pipelineName?: string
+): string {
+  if (!message) return message;
+  return message
+    .replace(/\{\{nome\}\}/gi, contact?.name || '')
+    .replace(/\{\{primeiro_nome\}\}/gi, (contact?.name || '').split(' ')[0] || '')
+    .replace(/\{\{telefone\}\}/gi, contact?.phone || '')
+    .replace(/\{\{email\}\}/gi, contact?.email || '')
+    .replace(/\{\{etapa\}\}/gi, columnName || '')
+    .replace(/\{\{pipeline\}\}/gi, pipelineName || '');
+}
+
 // ✅ Função para executar ações de automação
 async function executeAutomationAction(
   action: any,
@@ -513,14 +547,38 @@ async function executeAutomationAction(
       console.log(`✅ Conexão final determinada: ${finalConnectionId}`);
       console.log(`=========================================\n`);
       
-      // Obter conteúdo da mensagem do action_config
-      const messageContent = action.action_config?.message || action.action_config?.content || '';
+      // ✅ Selecionar variação aleatória (se houver variações configuradas)
+      const rawMessageContent = selectMessageVariation(action.action_config) || action.action_config?.content || '';
       
-      if (!messageContent) {
+      if (!rawMessageContent) {
         console.error(`❌ ERRO: Ação send_message não tem conteúdo configurado`);
         console.error(`   action_config:`, action.action_config);
         return;
       }
+
+      // ✅ Buscar dados do contato, coluna e pipeline para substituição de variáveis
+      let contactData: { name?: string; phone?: string; email?: string } | null = null;
+      let columnName = '';
+      let pipelineName = '';
+      try {
+        if (card.contact_id) {
+          const { data: cData } = await supabaseClient.from('contacts').select('name, phone, email').eq('id', card.contact_id).maybeSingle();
+          contactData = cData || null;
+        }
+        if (card.column_id) {
+          const { data: colData } = await supabaseClient.from('pipeline_columns').select('name').eq('id', card.column_id).maybeSingle();
+          columnName = colData?.name || '';
+        }
+        if (card.pipeline_id) {
+          const { data: pipData } = await supabaseClient.from('pipelines').select('name').eq('id', card.pipeline_id).maybeSingle();
+          pipelineName = pipData?.name || '';
+        }
+      } catch (varErr) {
+        console.warn('⚠️ Erro ao buscar dados para variáveis de template:', varErr);
+      }
+
+      // ✅ Substituir variáveis de template
+      const messageContent = replaceMessageVariables(rawMessageContent, contactData, columnName, pipelineName);
       
       console.log(`📝 Mensagem a ser enviada (${messageContent.length} caracteres):`, 
         messageContent.length > 100 ? messageContent.substring(0, 100) + '...' : messageContent);
@@ -562,7 +620,7 @@ async function executeAutomationAction(
           message_type: 'text',
           sender_type: 'system', // Sistema (automação)
           sender_id: null, // Sistema não tem sender_id
-          clientMessageId: `automation_${Date.now()}_${Math.random().toString(36).substr(2, 9)}` // ID único para deduplicação
+          clientMessageId: `automation_${Date.now()}_${Math.random().toString(36).substring(2, 11)}` // ID único para deduplicação
         };
         
         console.log(`📦 Payload completo:`, JSON.stringify(payload, null, 2));
@@ -1523,6 +1581,16 @@ serve(async (req) => {
                 // Executar as ações
                 if (actions && actions.length > 0) {
                   console.log(`   🎬 Executando ${actions.length} ação(ões)...`);
+                  
+                  // ✅ ANTI-SPAM: Delay aleatório entre 27-40s antes de enviar para cada card (exceto o primeiro)
+                  const messageActionTypesForTime = ['send_message', 'send_funnel'];
+                  const hasMessageActionsForTime = actions.some((a: any) => messageActionTypesForTime.includes(a.action_type));
+                  
+                  if (hasMessageActionsForTime && executedCount > 0) {
+                    const randomCardDelay = (Math.floor(Math.random() * (40 - 27 + 1)) + 27) * 1000;
+                    console.log(`   ⏳ Aguardando ${Math.round(randomCardDelay / 1000)}s (delay aleatório anti-spam) antes de processar próximo card...`);
+                    await new Promise(resolve => setTimeout(resolve, randomCardDelay));
+                  }
                   
                   let allActionsSucceeded = true;
                   
@@ -3037,9 +3105,8 @@ serve(async (req) => {
                 console.log(`ℹ️ Nenhuma automação ativa encontrada para processar`);
               } else {
                 // 3️⃣ Processar cada automação
-                // ✅ ANTI-SPAM: Rastrear última vez que enviamos mensagem para adicionar delay entre automações
-                let lastAutomationMessageTime = 0;
-                const MIN_DELAY_BETWEEN_AUTOMATIONS = 3000; // 3 segundos mínimo entre automações que enviam mensagens
+                // ✅ ANTI-SPAM: Delay aleatório entre 27-40 segundos para simular comportamento humano e evitar bloqueio do provider
+                const getRandomDelay = () => (Math.floor(Math.random() * (40 - 27 + 1)) + 27) * 1000;
                 
                 for (let automationIndex = 0; automationIndex < automationsToProcess.length; automationIndex++) {
                   const { automation, triggerType } = automationsToProcess[automationIndex];
@@ -3106,14 +3173,11 @@ serve(async (req) => {
                     const messageActionTypesCheck = ['send_message', 'send_funnel'];
                     const automationHasMessageActions = actions.some((a: any) => messageActionTypesCheck.includes(a.action_type));
                     
-                    // Se esta automação envia mensagens e não é a primeira, aguardar delay
-                    if (automationHasMessageActions && automationIndex > 0 && lastAutomationMessageTime > 0) {
-                      const timeSinceLastMessage = Date.now() - lastAutomationMessageTime;
-                      if (timeSinceLastMessage < MIN_DELAY_BETWEEN_AUTOMATIONS) {
-                        const delayNeeded = MIN_DELAY_BETWEEN_AUTOMATIONS - timeSinceLastMessage;
-                        console.log(`⏳ Aguardando ${delayNeeded}ms antes de executar próxima automação com mensagens (anti-spam)...`);
-                        await new Promise(resolve => setTimeout(resolve, delayNeeded));
-                      }
+                    // Se esta automação envia mensagens e não é a primeira, aguardar delay aleatório (27-40s)
+                    if (automationHasMessageActions && automationIndex > 0) {
+                      const randomDelay = getRandomDelay();
+                      console.log(`⏳ Aguardando ${Math.round(randomDelay / 1000)}s (delay aleatório anti-spam) antes de executar próxima automação...`);
+                      await new Promise(resolve => setTimeout(resolve, randomDelay));
                     }
                     
                     console.log(`🚀 ========== EXECUTANDO AUTOMAÇÃO ==========`);
@@ -3164,22 +3228,18 @@ serve(async (req) => {
                       
                       let successful = 0;
                       let failed = 0;
-                      let lastMessageActionTime = 0;
-                      const MIN_DELAY_BETWEEN_MESSAGES = 2000; // 2 segundos mínimo entre mensagens
+                      let lastMessageSent = false;
                       
                       for (let i = 0; i < sortedActions.length; i++) {
                           const action = sortedActions[i];
                           const isMessageAction = messageActionTypes.includes(action.action_type);
                         
                         try {
-                          // Se é ação de mensagem e não é a primeira, aguardar delay
-                          if (isMessageAction && i > 0) {
-                            const timeSinceLastMessage = Date.now() - lastMessageActionTime;
-                            if (timeSinceLastMessage < MIN_DELAY_BETWEEN_MESSAGES) {
-                              const delayNeeded = MIN_DELAY_BETWEEN_MESSAGES - timeSinceLastMessage;
-                              console.log(`⏳ Aguardando ${delayNeeded}ms antes de enviar próxima mensagem (anti-spam)...`);
-                              await new Promise(resolve => setTimeout(resolve, delayNeeded));
-                            }
+                          // Se é ação de mensagem e já enviou uma antes, aguardar delay aleatório (27-40s)
+                          if (isMessageAction && lastMessageSent) {
+                            const randomMsgDelay = (Math.floor(Math.random() * (40 - 27 + 1)) + 27) * 1000;
+                            console.log(`⏳ Aguardando ${Math.round(randomMsgDelay / 1000)}s (delay aleatório anti-spam) antes de enviar próxima mensagem...`);
+                            await new Promise(resolve => setTimeout(resolve, randomMsgDelay));
                           }
                           
                           console.log(`\n🎬 ========== EXECUTANDO AÇÃO ${i + 1}/${sortedActions.length} ==========`);
@@ -3206,9 +3266,9 @@ serve(async (req) => {
                           
                           await executeAutomationAction(action, card, supabaseClient, automation);
                           
-                          // Atualizar timestamp se for ação de mensagem
+                          // Marcar que já enviou mensagem (para ativar delay no próximo)
                           if (isMessageAction) {
-                            lastMessageActionTime = Date.now();
+                            lastMessageSent = true;
                           }
                           
                           console.log(`✅ Ação ${action.action_type} executada com sucesso`);
@@ -3226,10 +3286,7 @@ serve(async (req) => {
                       
                       console.log(`✅ Automação "${automation.name}" executada: ${successful} sucesso(s), ${failed} falha(s)\n`);
                       
-                      // Atualizar timestamp se automação enviou mensagens
-                      if (automationHasMessageActions && successful > 0) {
-                        lastAutomationMessageTime = Date.now();
-                      }
+                      // (delay aleatório aplicado diretamente antes de cada automação)
                     } else {
                       // Para ações que não enviam mensagens, executar em paralelo (melhor performance)
                       console.log(`⚡ Executando ações em paralelo (nenhuma ação de envio de mensagem)`);

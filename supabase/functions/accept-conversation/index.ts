@@ -73,22 +73,33 @@ serve(async (req) => {
     console.log(`👤 User ${systemUserId} trying to accept conversation ${conversation_id} in workspace ${workspaceId}`);
 
     // Verificar se o usuário tem permissão para aceitar conversas neste workspace
-    const { data: workspaceMember, error: memberError } = await supabase
-      .from('workspace_members')
-      .select('role')
-      .eq('workspace_id', workspaceId)
-      .eq('user_id', systemUserId)
-      .single();
+    // Masters/support têm acesso a todos os workspaces
+    const { data: userProfileData } = await supabase
+      .from('system_users')
+      .select('profile')
+      .eq('id', systemUserId)
+      .maybeSingle();
 
-    if (memberError || !workspaceMember) {
-      console.error('❌ User not a member of workspace:', memberError);
-      return new Response(JSON.stringify({ 
-        success: false,
-        error: 'Usuário não tem permissão neste workspace'
-      }), {
-        status: 403,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-      });
+    const isMasterOrSupport = userProfileData?.profile === 'master' || userProfileData?.profile === 'support';
+
+    if (!isMasterOrSupport) {
+      const { data: workspaceMember, error: memberError } = await supabase
+        .from('workspace_members')
+        .select('role')
+        .eq('workspace_id', workspaceId)
+        .eq('user_id', systemUserId)
+        .single();
+
+      if (memberError || !workspaceMember) {
+        console.error('❌ User not a member of workspace:', memberError);
+        return new Response(JSON.stringify({ 
+          success: false,
+          error: 'Usuário não tem permissão neste workspace'
+        }), {
+          status: 403,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+        });
+      }
     }
 
     // Preparar dados de atualização

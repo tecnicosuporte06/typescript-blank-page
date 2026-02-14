@@ -75,37 +75,57 @@ Deno.serve(async (req) => {
       changed_by: systemUserId
     });
 
-    // Verify current user is workspace member
-    const { data: currentUserMember, error: currentUserError } = await supabase
-      .from('workspace_members')
-      .select('role')
-      .eq('workspace_id', workspaceId)
-      .eq('user_id', systemUserId)
-      .single();
+    // Verify current user is workspace member (masters/support bypass)
+    const { data: userProfileData } = await supabase
+      .from('system_users')
+      .select('profile')
+      .eq('id', systemUserId)
+      .maybeSingle();
 
-    if (currentUserError || !currentUserMember) {
-      console.error('❌ Current user not a workspace member:', currentUserError);
-      return new Response(
-        JSON.stringify({ error: 'Você não tem permissão para atribuir conversas neste workspace' }),
-        { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
-    }
+    const isMasterOrSupport = userProfileData?.profile === 'master' || userProfileData?.profile === 'support';
 
-    if (targetUserId) {
-      // Verify target user is workspace member
-      const { data: targetUserMember, error: targetUserError } = await supabase
+    if (!isMasterOrSupport) {
+      const { data: currentUserMember, error: currentUserError } = await supabase
         .from('workspace_members')
         .select('role')
         .eq('workspace_id', workspaceId)
-        .eq('user_id', targetUserId)
+        .eq('user_id', systemUserId)
         .single();
 
-      if (targetUserError || !targetUserMember) {
-        console.error('❌ Target user not a workspace member:', targetUserError);
+      if (currentUserError || !currentUserMember) {
+        console.error('❌ Current user not a workspace member:', currentUserError);
         return new Response(
-          JSON.stringify({ error: 'Usuário selecionado não é membro deste workspace' }),
-          { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          JSON.stringify({ error: 'Você não tem permissão para atribuir conversas neste workspace' }),
+          { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         );
+      }
+    }
+
+    if (targetUserId) {
+      // Verify target user is workspace member (masters/support podem atribuir a qualquer um)
+      const { data: targetProfile } = await supabase
+        .from('system_users')
+        .select('profile')
+        .eq('id', targetUserId)
+        .maybeSingle();
+
+      const isTargetMasterOrSupport = targetProfile?.profile === 'master' || targetProfile?.profile === 'support';
+
+      if (!isTargetMasterOrSupport) {
+        const { data: targetUserMember, error: targetUserError } = await supabase
+          .from('workspace_members')
+          .select('role')
+          .eq('workspace_id', workspaceId)
+          .eq('user_id', targetUserId)
+          .single();
+
+        if (targetUserError || !targetUserMember) {
+          console.error('❌ Target user not a workspace member:', targetUserError);
+          return new Response(
+            JSON.stringify({ error: 'Usuário selecionado não é membro deste workspace' }),
+            { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          );
+        }
       }
     }
 

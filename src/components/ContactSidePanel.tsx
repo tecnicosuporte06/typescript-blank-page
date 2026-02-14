@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from "react";
-import { User, Briefcase, FileText, Paperclip, Pencil, Trash2, Plus, Pin, MapPin, MessageCircle, Trophy, Mail, Phone, Home, Globe, X, Loader2 } from "lucide-react";
+import { User, Briefcase, FileText, Paperclip, Pencil, Trash2, Plus, Pin, MapPin, MessageCircle, Trophy, Mail, Phone, Home, Globe, X, Loader2, Cake } from "lucide-react";
 import { getInitials, getAvatarColor } from '@/lib/avatarUtils';
 import { Sheet, SheetContent } from "@/components/ui/sheet";
 import { DealDetailsPage } from "@/pages/DealDetailsPage";
@@ -34,6 +34,7 @@ interface Contact {
   name: string;
   phone?: string;
   email?: string;
+  birth_date?: string | null;
   profile_image_url?: string;
   extra_info?: Record<string, any>;
 }
@@ -83,6 +84,7 @@ export function ContactSidePanel({
   const [isCreateDealModalOpen, setIsCreateDealModalOpen] = useState(false);
   const [isEditingEmail, setIsEditingEmail] = useState(false);
   const [isEditingName, setIsEditingName] = useState(false);
+  const [isEditingBirthDate, setIsEditingBirthDate] = useState(false);
   const [viewingMedia, setViewingMedia] = useState<{
     url: string;
     type: string;
@@ -158,6 +160,7 @@ export function ContactSidePanel({
               name, 
               phone, 
               email, 
+              birth_date,
               profile_image_url, 
               workspace_id, 
               created_at, 
@@ -224,9 +227,10 @@ export function ContactSidePanel({
   const handleSaveContact = async () => {
     if (!editingContact) return;
     try {
-      const updateData = {
+      const updateData: Record<string, any> = {
         name: editingContact.name?.trim() || '',
-        email: editingContact.email?.trim() || ''
+        email: editingContact.email?.trim() || '',
+        birth_date: editingContact.birth_date || null
       };
       const {
         data: updatedData,
@@ -533,6 +537,28 @@ export function ContactSidePanel({
                     }} autoFocus className="text-sm text-center bg-transparent border-none outline-none border-b-2 border-primary mt-1 pb-0.5 text-white dark:text-gray-200" /> : <p onDoubleClick={() => setIsEditingEmail(true)} className="text-sm text-white mt-1 cursor-pointer hover:text-white/80 transition-colors dark:text-gray-300 dark:hover:text-gray-100" title="Clique duas vezes para editar">
                           {editingContact?.email || 'Adicionar email'}
                         </p>}
+
+                      {/* Data de Nascimento - editável ao duplo clique */}
+                      {isEditingBirthDate ? <div className="flex items-center gap-1 mt-1">
+                        <Cake className="h-3.5 w-3.5 text-slate-300" />
+                        <input type="date" value={editingContact?.birth_date || ''} onChange={e => setEditingContact(prev => prev ? {
+                        ...prev,
+                        birth_date: e.target.value || null
+                      } : null)} onBlur={async () => {
+                        setIsEditingBirthDate(false);
+                        await handleSaveContact();
+                      }} onKeyDown={e => {
+                        if (e.key === 'Enter') {
+                          setIsEditingBirthDate(false);
+                          handleSaveContact();
+                        }
+                      }} autoFocus className="text-xs text-center bg-transparent border-none outline-none border-b-2 border-primary pb-0.5 text-white dark:text-gray-200 [color-scheme:dark]" />
+                      </div> : <div onDoubleClick={() => setIsEditingBirthDate(true)} className="flex items-center gap-1 mt-1 cursor-pointer hover:text-white/80 transition-colors" title="Clique duas vezes para editar">
+                        <Cake className="h-3.5 w-3.5 text-slate-300" />
+                        <p className="text-xs text-white dark:text-gray-300">
+                          {editingContact?.birth_date ? new Date(editingContact.birth_date + 'T00:00:00').toLocaleDateString('pt-BR') : 'Adicionar aniversário'}
+                        </p>
+                      </div>}
                     </div>
                   </div>
                 </div>

@@ -43,6 +43,17 @@ async function resolveSystemUserId(req: Request): Promise<{ systemUserId: string
 }
 
 async function assertWorkspaceMembership(supabase: any, workspaceId: string, systemUserId: string) {
+  // Masters e support têm acesso a todos os workspaces
+  const { data: userProfile } = await supabase
+    .from("system_users")
+    .select("profile")
+    .eq("id", systemUserId)
+    .maybeSingle();
+
+  if (userProfile?.profile === "master" || userProfile?.profile === "support") {
+    return; // bypass
+  }
+
   const { data, error } = await supabase
     .from("workspace_members")
     .select("user_id")

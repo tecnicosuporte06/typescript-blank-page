@@ -774,6 +774,7 @@ export type Database = {
       }
       contacts: {
         Row: {
+          birth_date: string | null
           created_at: string
           email: string | null
           extra_info: Json | null
@@ -789,6 +790,7 @@ export type Database = {
           workspace_id: string
         }
         Insert: {
+          birth_date?: string | null
           created_at?: string
           email?: string | null
           extra_info?: Json | null
@@ -804,6 +806,7 @@ export type Database = {
           workspace_id: string
         }
         Update: {
+          birth_date?: string | null
           created_at?: string
           email?: string | null
           extra_info?: Json | null

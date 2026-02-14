@@ -92,6 +92,25 @@ const MINUTES_OPTIONS = Array.from({ length: 60 }, (_, index) =>
   String(index).padStart(2, '0')
 );
 
+const DAY_OPTIONS: { value: number; label: string }[] = [
+  { value: 1, label: 'Seg' },
+  { value: 2, label: 'Ter' },
+  { value: 3, label: 'Qua' },
+  { value: 4, label: 'Qui' },
+  { value: 5, label: 'Sex' },
+  { value: 6, label: 'Sáb' },
+  { value: 0, label: 'Dom' },
+];
+
+const AUTOMATION_VARIABLES = [
+  { label: 'Nome', tag: '{{nome}}' },
+  { label: 'Primeiro Nome', tag: '{{primeiro_nome}}' },
+  { label: 'Telefone', tag: '{{telefone}}' },
+  { label: 'Email', tag: '{{email}}' },
+  { label: 'Etapa', tag: '{{etapa}}' },
+  { label: 'Pipeline', tag: '{{pipeline}}' },
+];
+
 export function AutomationModal({
   open,
   onOpenChange,
@@ -644,19 +663,122 @@ export function AutomationModal({
     }
   };
 
+  const insertVariableAtCursor = (
+    textareaId: string,
+    tag: string,
+    currentValue: string,
+    setter: (newValue: string) => void
+  ) => {
+    const textarea = document.getElementById(textareaId) as HTMLTextAreaElement | null;
+    if (!textarea) {
+      setter(currentValue + tag);
+      return;
+    }
+    const start = textarea.selectionStart;
+    const end = textarea.selectionEnd;
+    const newValue = currentValue.substring(0, start) + tag + currentValue.substring(end);
+    setter(newValue);
+    // Reposicionar cursor após a tag
+    setTimeout(() => {
+      textarea.selectionStart = textarea.selectionEnd = start + tag.length;
+      textarea.focus();
+    }, 0);
+  };
+
+  const renderVariableButtons = (textareaId: string, currentValue: string, setter: (v: string) => void) => (
+    <div className="flex flex-wrap gap-1">
+      {AUTOMATION_VARIABLES.map((v) => (
+        <button
+          key={v.tag}
+          type="button"
+          onClick={() => insertVariableAtCursor(textareaId, v.tag, currentValue, setter)}
+          className="h-5 px-1.5 text-[9px] font-medium rounded-none border border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-[#222] text-gray-600 dark:text-gray-400 hover:bg-primary/10 hover:text-primary hover:border-primary/40 dark:hover:bg-primary/20 dark:hover:text-primary transition-colors"
+        >
+          {v.tag}
+        </button>
+      ))}
+    </div>
+  );
+
   const renderActionFields = (action: Action) => {
     switch (action.action_type) {
-      case 'send_message':
+      case 'send_message': {
+        const variations: string[] = Array.isArray(action.action_config?.message_variations) ? action.action_config.message_variations : [];
+        const variationCount = variations.length;
+
         return (
           <div className="space-y-2">
-            <Label className={`text-gray-700 dark:text-gray-200`}>Mensagem</Label>
+            {/* Mensagem principal */}
+            <Label className={`text-gray-700 dark:text-gray-200`}>Mensagem principal</Label>
             <Textarea
+              id={`msg-main-${action.id}`}
               value={action.action_config?.message || ''}
               onChange={(e) => updateActionConfig(action.id, { message: e.target.value })}
               placeholder="Digite a mensagem a ser enviada"
               rows={3}
               className={`border-gray-300 dark:border-gray-700 bg-white dark:bg-[#1b1b1b] text-gray-900 dark:text-gray-100 placeholder:text-gray-500 dark:placeholder:text-gray-400`}
             />
+            {renderVariableButtons(`msg-main-${action.id}`, action.action_config?.message || '', (v) => updateActionConfig(action.id, { message: v }))}
+
+            {/* Variações */}
+            {variations.map((variation: string, idx: number) => (
+              <div key={idx} className="space-y-1">
+                <div className="flex items-center justify-between">
+                  <Label className="text-gray-700 dark:text-gray-200 text-xs">
+                    Variação {idx + 2}
+                  </Label>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const newVariations = [...variations];
+                      newVariations.splice(idx, 1);
+                      updateActionConfig(action.id, { message_variations: newVariations });
+                    }}
+                    className="text-gray-400 hover:text-red-500 dark:hover:text-red-400 transition-colors"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+                <Textarea
+                  id={`msg-var-${action.id}-${idx}`}
+                  value={variation}
+                  onChange={(e) => {
+                    const newVariations = [...variations];
+                    newVariations[idx] = e.target.value;
+                    updateActionConfig(action.id, { message_variations: newVariations });
+                  }}
+                  placeholder={`Variação ${idx + 2} da mensagem`}
+                  rows={3}
+                  className={`border-gray-300 dark:border-gray-700 bg-white dark:bg-[#1b1b1b] text-gray-900 dark:text-gray-100 placeholder:text-gray-500 dark:placeholder:text-gray-400`}
+                />
+                {renderVariableButtons(`msg-var-${action.id}-${idx}`, variation, (v) => {
+                  const newVariations = [...variations];
+                  newVariations[idx] = v;
+                  updateActionConfig(action.id, { message_variations: newVariations });
+                })}
+              </div>
+            ))}
+
+            {/* Botão para adicionar variação */}
+            {variationCount < 2 && (
+              <button
+                type="button"
+                onClick={() => {
+                  const newVariations = [...variations, ''];
+                  updateActionConfig(action.id, { message_variations: newVariations });
+                }}
+                className="flex items-center gap-1 text-[10px] text-primary hover:text-primary/80 font-medium transition-colors"
+              >
+                <Plus className="w-3 h-3" />
+                Adicionar variação ({variationCount + 1}/3)
+              </button>
+            )}
+            {variationCount > 0 && (
+              <p className="text-[10px] text-muted-foreground dark:text-gray-400">
+                Uma das {variationCount + 1} variações será escolhida aleatoriamente para cada envio.
+              </p>
+            )}
+
             <Label className={`text-gray-700 dark:text-gray-200`}>Modo de conexão</Label>
             <Select
               value={action.action_config?.connection_mode || 'default'}
@@ -713,6 +835,7 @@ export function AutomationModal({
             )}
           </div>
         );
+      }
 
       case 'send_funnel':
         return (
@@ -1171,62 +1294,96 @@ export function AutomationModal({
                     )}
 
                     {trigger.trigger_type === 'scheduled_time' && (
-                      <div className="flex items-center gap-2 pt-2">
-                        <div className="flex-1">
-                          <Popover>
-                            <PopoverTrigger asChild>
-                              <button
-                                type="button"
-                                className="flex w-full items-center justify-between h-8 text-xs rounded-none border border-gray-300 dark:border-gray-700 bg-white dark:bg-[#1b1b1b] text-gray-900 dark:text-gray-100 px-3 focus-visible:outline-none focus-visible:ring-0"
-                              >
-                                <span>
-                                  {trigger.trigger_config?.scheduled_time || 'Selecione o horário'}
-                                </span>
-                                <span className="text-[10px] text-gray-500 dark:text-gray-400">▼</span>
-                              </button>
-                            </PopoverTrigger>
-                            <PopoverContent className="rounded-none border-gray-300 dark:border-gray-700 bg-white dark:bg-[#1b1b1b] p-3 w-56">
-                              <div className="flex items-center gap-2">
-                                <Select
-                                  value={(trigger.trigger_config?.scheduled_time || '').split(':')[0] || '00'}
-                                  onValueChange={(value) => {
-                                    const minutes = (trigger.trigger_config?.scheduled_time || '00:00').split(':')[1] || '00';
-                                    updateTriggerConfig(trigger.id, 'scheduled_time', `${value}:${minutes}`);
-                                  }}
+                      <div className="space-y-3 pt-2">
+                        <div className="flex items-center gap-2">
+                          <div className="flex-1">
+                            <Popover>
+                              <PopoverTrigger asChild>
+                                <button
+                                  type="button"
+                                  className="flex w-full items-center justify-between h-8 text-xs rounded-none border border-gray-300 dark:border-gray-700 bg-white dark:bg-[#1b1b1b] text-gray-900 dark:text-gray-100 px-3 focus-visible:outline-none focus-visible:ring-0"
                                 >
-                                  <SelectTrigger className="h-8 text-xs rounded-none border-gray-300 dark:border-gray-700 bg-white dark:bg-[#1b1b1b] text-gray-900 dark:text-gray-100 focus:ring-0">
-                                    <SelectValue />
-                                  </SelectTrigger>
-                                  <SelectContent className="rounded-none border-gray-300 dark:border-gray-700 bg-white dark:bg-[#1b1b1b]">
-                                    {HOURS_OPTIONS.map((hour) => (
-                                      <SelectItem key={hour} value={hour} className="text-xs rounded-none text-gray-900 dark:text-gray-100 focus:bg-gray-100 dark:focus:bg-[#2a2a2a]">
-                                        {hour}
-                                      </SelectItem>
-                                    ))}
-                                  </SelectContent>
-                                </Select>
-                                <span className="text-xs text-gray-600 dark:text-gray-300">:</span>
-                                <Select
-                                  value={(trigger.trigger_config?.scheduled_time || '').split(':')[1] || '00'}
-                                  onValueChange={(value) => {
-                                    const hours = (trigger.trigger_config?.scheduled_time || '00:00').split(':')[0] || '00';
-                                    updateTriggerConfig(trigger.id, 'scheduled_time', `${hours}:${value}`);
+                                  <span>
+                                    {trigger.trigger_config?.scheduled_time || 'Selecione o horário'}
+                                  </span>
+                                  <span className="text-[10px] text-gray-500 dark:text-gray-400">▼</span>
+                                </button>
+                              </PopoverTrigger>
+                              <PopoverContent className="rounded-none border-gray-300 dark:border-gray-700 bg-white dark:bg-[#1b1b1b] p-3 w-56">
+                                <div className="flex items-center gap-2">
+                                  <Select
+                                    value={(trigger.trigger_config?.scheduled_time || '').split(':')[0] || '00'}
+                                    onValueChange={(value) => {
+                                      const minutes = (trigger.trigger_config?.scheduled_time || '00:00').split(':')[1] || '00';
+                                      updateTriggerConfig(trigger.id, 'scheduled_time', `${value}:${minutes}`);
+                                    }}
+                                  >
+                                    <SelectTrigger className="h-8 text-xs rounded-none border-gray-300 dark:border-gray-700 bg-white dark:bg-[#1b1b1b] text-gray-900 dark:text-gray-100 focus:ring-0">
+                                      <SelectValue />
+                                    </SelectTrigger>
+                                    <SelectContent className="rounded-none border-gray-300 dark:border-gray-700 bg-white dark:bg-[#1b1b1b]">
+                                      {HOURS_OPTIONS.map((hour) => (
+                                        <SelectItem key={hour} value={hour} className="text-xs rounded-none text-gray-900 dark:text-gray-100 focus:bg-gray-100 dark:focus:bg-[#2a2a2a]">
+                                          {hour}
+                                        </SelectItem>
+                                      ))}
+                                    </SelectContent>
+                                  </Select>
+                                  <span className="text-xs text-gray-600 dark:text-gray-300">:</span>
+                                  <Select
+                                    value={(trigger.trigger_config?.scheduled_time || '').split(':')[1] || '00'}
+                                    onValueChange={(value) => {
+                                      const hours = (trigger.trigger_config?.scheduled_time || '00:00').split(':')[0] || '00';
+                                      updateTriggerConfig(trigger.id, 'scheduled_time', `${hours}:${value}`);
+                                    }}
+                                  >
+                                    <SelectTrigger className="h-8 text-xs rounded-none border-gray-300 dark:border-gray-700 bg-white dark:bg-[#1b1b1b] text-gray-900 dark:text-gray-100 focus:ring-0">
+                                      <SelectValue />
+                                    </SelectTrigger>
+                                    <SelectContent className="rounded-none border-gray-300 dark:border-gray-700 bg-white dark:bg-[#1b1b1b]">
+                                      {MINUTES_OPTIONS.map((minute) => (
+                                        <SelectItem key={minute} value={minute} className="text-xs rounded-none text-gray-900 dark:text-gray-100 focus:bg-gray-100 dark:focus:bg-[#2a2a2a]">
+                                          {minute}
+                                        </SelectItem>
+                                      ))}
+                                    </SelectContent>
+                                  </Select>
+                                </div>
+                              </PopoverContent>
+                            </Popover>
+                          </div>
+                        </div>
+
+                        {/* Seletor de dias da semana */}
+                        <div>
+                          <Label className="text-[10px] text-gray-600 dark:text-gray-400 mb-1.5 block">
+                            Dias da semana (deixe vazio para todos os dias)
+                          </Label>
+                          <div className="flex flex-wrap gap-1">
+                            {DAY_OPTIONS.map((day) => {
+                              const currentDays: number[] = Array.isArray(trigger.trigger_config?.days_of_week) ? trigger.trigger_config.days_of_week : [];
+                              const isSelected = currentDays.includes(day.value);
+                              return (
+                                <button
+                                  key={day.value}
+                                  type="button"
+                                  onClick={() => {
+                                    const newDays = isSelected
+                                      ? currentDays.filter((d: number) => d !== day.value)
+                                      : [...currentDays, day.value];
+                                    updateTriggerConfig(trigger.id, 'days_of_week', newDays.length > 0 ? newDays : []);
                                   }}
+                                  className={`h-7 px-2.5 text-[10px] font-medium rounded-none border transition-colors ${
+                                    isSelected
+                                      ? 'bg-primary text-primary-foreground border-primary'
+                                      : 'bg-white dark:bg-[#1b1b1b] text-gray-600 dark:text-gray-400 border-gray-300 dark:border-gray-700 hover:bg-gray-100 dark:hover:bg-[#2a2a2a]'
+                                  }`}
                                 >
-                                  <SelectTrigger className="h-8 text-xs rounded-none border-gray-300 dark:border-gray-700 bg-white dark:bg-[#1b1b1b] text-gray-900 dark:text-gray-100 focus:ring-0">
-                                    <SelectValue />
-                                  </SelectTrigger>
-                                  <SelectContent className="rounded-none border-gray-300 dark:border-gray-700 bg-white dark:bg-[#1b1b1b]">
-                                    {MINUTES_OPTIONS.map((minute) => (
-                                      <SelectItem key={minute} value={minute} className="text-xs rounded-none text-gray-900 dark:text-gray-100 focus:bg-gray-100 dark:focus:bg-[#2a2a2a]">
-                                        {minute}
-                                      </SelectItem>
-                                    ))}
-                                  </SelectContent>
-                                </Select>
-                              </div>
-                            </PopoverContent>
-                          </Popover>
+                                  {day.label}
+                                </button>
+                              );
+                            })}
+                          </div>
                         </div>
                       </div>
                     )}
@@ -1241,7 +1398,9 @@ export function AutomationModal({
                     {trigger.trigger_type === 'scheduled_time' && (
                       <p className={`text-[10px] text-muted-foreground dark:text-gray-400 flex items-start gap-2 pl-1`}>
                         <span className="text-blue-500 dark:text-blue-400 font-bold">⏰</span>
-                        Executa diariamente no horário configurado enquanto o card estiver na coluna
+                        {(Array.isArray(trigger.trigger_config?.days_of_week) && trigger.trigger_config.days_of_week.length > 0)
+                          ? 'Executa nos dias selecionados no horário configurado enquanto o card estiver na coluna'
+                          : 'Executa diariamente no horário configurado enquanto o card estiver na coluna'}
                       </p>
                     )}
                     

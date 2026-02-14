@@ -54,6 +54,7 @@ interface Contact {
   name: string;
   phone: string;
   email: string;
+  birth_date?: string | null;
   createdAt: string;
   created_at?: string; // Campo original para exportação
   tags: Array<{
@@ -280,6 +281,7 @@ export function CRMContatos() {
           name: contact.name,
           phone: contact.phone || "",
           email: contact.email || "",
+          birth_date: contact.birth_date || null,
           createdAt: format(new Date(contact.created_at), "dd/MM/yyyy HH:mm:ss"),
           created_at: contact.created_at, // Manter o original para exportação
           tags: contactTags,
@@ -527,6 +529,7 @@ export function CRMContatos() {
             name: contact.name,
             phone: contact.phone || "",
             email: contact.email || "",
+            birth_date: contact.birth_date || null,
             createdAt: format(new Date(contact.created_at), "dd/MM/yyyy HH:mm:ss"),
             created_at: contact.created_at, // Manter o original para exportação
             tags: contactTags,
@@ -982,6 +985,7 @@ export function CRMContatos() {
             name: editingContact.name.trim(),
             phone: sanitizedPhone || null,
             email: editingContact.email.trim() || null,
+            birth_date: editingContact.birth_date || null,
             workspace_id: selectedWorkspace!.workspace_id,
             extra_info: Object.keys(extraInfoObject).length > 0 ? extraInfoObject : null,
           })
@@ -1030,6 +1034,7 @@ export function CRMContatos() {
           .update({
             name: editingContact.name.trim(),
             email: editingContact.email.trim() || null,
+            birth_date: editingContact.birth_date || null,
             updated_at: new Date().toISOString(),
             // phone removido - não pode ser alterado para preservar histórico
             extra_info: Object.keys(extraInfoObject).length > 0 ? extraInfoObject : null,
@@ -1296,6 +1301,7 @@ export function CRMContatos() {
           name: contact.name,
           phone: contact.phone || "",
           email: contact.email || "",
+          birth_date: contact.birth_date || null,
           createdAt: format(new Date(contact.created_at), "dd/MM/yyyy HH:mm:ss"),
           created_at: contact.created_at,
           tags: contactTags,
@@ -2438,6 +2444,25 @@ export function CRMContatos() {
                   )
                 }
                 className="dark:bg-[#161616] dark:border-gray-700 dark:text-gray-100"
+              />
+            </div>
+
+            <div>
+              <Label className="text-gray-700 dark:text-gray-200">Data de Nascimento</Label>
+              <Input
+                type="date"
+                value={editingContact?.birth_date || ""}
+                onChange={(e) =>
+                  setEditingContact((prev) =>
+                    prev
+                      ? {
+                          ...prev,
+                          birth_date: e.target.value || null,
+                        }
+                      : null,
+                  )
+                }
+                className="dark:bg-[#1b1b1b] dark:border-gray-700 dark:text-gray-100 dark:[color-scheme:dark]"
               />
             </div>
 

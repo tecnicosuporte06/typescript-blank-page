@@ -61,7 +61,9 @@ serve(async (req) => {
     if (wmError) throw wmError;
 
     const profile = (su as any)?.profile || null;
-    const isMember = Boolean(wm);
+    // Masters e support têm acesso a todos os workspaces (mesmo sem registro em workspace_members)
+    const isMasterOrSupport = profile === "master" || profile === "support";
+    const isMember = isMasterOrSupport || Boolean(wm);
     const canWrite = isMember && (profile === "master" || profile === "admin");
 
     // GET: return saved funnels

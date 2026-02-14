@@ -106,6 +106,17 @@ async function requireSystemUser(supabase: any, req: Request) {
 }
 
 async function requireWorkspaceMember(supabase: any, workspaceId: string, systemUserId: string) {
+  // Masters e support têm acesso a todos os workspaces (mesmo sem registro em workspace_members)
+  const { data: userProfile } = await supabase
+    .from("system_users")
+    .select("profile")
+    .eq("id", systemUserId)
+    .maybeSingle();
+
+  if (userProfile?.profile === "master" || userProfile?.profile === "support") {
+    return; // bypass — master/support pode acessar qualquer workspace
+  }
+
   const { data, error } = await supabase
     .from("workspace_members")
     .select("user_id")

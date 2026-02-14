@@ -233,7 +233,7 @@ serve(async (req) => {
       if (targetConnection?.id) {
         updates.connection_id = targetConnection.id;
         updates.evolution_instance = targetConnection.instance_name || null;
-        updates.connection_phone = targetConnection.phone_number || null;
+        updates.instance_phone = targetConnection.phone_number || null;
       }
 
       const { error: reopenError } = await supabase

@@ -113,9 +113,13 @@ const formatActionLabel = (action: AutomationAction) => {
   switch (action.action_type) {
     case "send_message": {
       const message = typeof config.message === "string" ? config.message : "";
+      const variationsCount = Array.isArray(config.message_variations)
+        ? config.message_variations.filter((v: string) => v && v.trim()).length
+        : 0;
+      const variationsLabel = variationsCount > 0 ? ` (${variationsCount + 1} variações)` : "";
       return message
-        ? `Enviar mensagem: "${truncateText(message)}"`
-        : "Enviar mensagem";
+        ? `Enviar mensagem${variationsLabel}: "${truncateText(message)}"`
+        : `Enviar mensagem${variationsLabel}`;
     }
     case "send_funnel":
       return config.funnel_name

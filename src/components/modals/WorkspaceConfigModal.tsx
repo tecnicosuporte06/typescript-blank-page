@@ -4,6 +4,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ConexoesNova } from "@/components/modules/ConexoesNova";
 import { BusinessHoursConfig } from "@/components/modules/BusinessHoursConfig";
+import { WorkspaceAutomationsConfig } from "@/components/modules/WorkspaceAutomationsConfig";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
@@ -107,7 +108,7 @@ export function WorkspaceConfigModal({
 
         <div className="space-y-6">
           <Tabs defaultValue="connections" className="w-full">
-            <TabsList className="grid w-full grid-cols-2 bg-[#f3f3f3] dark:bg-[#2d2d2d] rounded-none h-auto p-0 border-b border-[#d4d4d4] dark:border-gray-700">
+            <TabsList className="grid w-full grid-cols-3 bg-[#f3f3f3] dark:bg-[#2d2d2d] rounded-none h-auto p-0 border-b border-[#d4d4d4] dark:border-gray-700">
               <TabsTrigger 
                 value="connections"
                 className="rounded-none py-3 px-6 text-xs font-semibold uppercase tracking-wide data-[state=active]:bg-[#FEF3C7] dark:data-[state=active]:bg-gray-700 data-[state=active]:text-black dark:data-[state=active]:text-white data-[state=active]:border-b-2 data-[state=active]:border-gray-300 dark:data-[state=active]:border-gray-600 data-[state=active]:shadow-none text-gray-700 dark:text-gray-300"
@@ -120,6 +121,12 @@ export function WorkspaceConfigModal({
               >
                 Horários de Funcionamento
               </TabsTrigger>
+              <TabsTrigger 
+                value="automations"
+                className="rounded-none py-3 px-6 text-xs font-semibold uppercase tracking-wide data-[state=active]:bg-[#FEF3C7] dark:data-[state=active]:bg-gray-700 data-[state=active]:text-black dark:data-[state=active]:text-white data-[state=active]:border-b-2 data-[state=active]:border-gray-300 dark:data-[state=active]:border-gray-600 data-[state=active]:shadow-none text-gray-700 dark:text-gray-300"
+              >
+                Automações
+              </TabsTrigger>
             </TabsList>
             
             <TabsContent value="connections" className="mt-6">
@@ -128,6 +135,10 @@ export function WorkspaceConfigModal({
             
             <TabsContent value="business-hours" className="mt-6">
               <BusinessHoursConfig workspaceId={workspaceId} />
+            </TabsContent>
+
+            <TabsContent value="automations" className="mt-6">
+              <WorkspaceAutomationsConfig workspaceId={workspaceId} />
             </TabsContent>
           </Tabs>
         </div>

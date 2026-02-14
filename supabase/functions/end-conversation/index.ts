@@ -54,20 +54,30 @@ serve(async (req) => {
 
     console.log(`🔄 Ending conversation ${conversation_id} by user ${systemUserId}`)
 
-    // Verify user is member of workspace
-    const { data: membership, error: membershipError } = await supabaseClient
-      .from('workspace_members')
-      .select('role')
-      .eq('workspace_id', workspaceId)
-      .eq('user_id', systemUserId)
-      .single()
+    // Verify user is member of workspace (masters/support bypass)
+    const { data: userProfileData } = await supabaseClient
+      .from('system_users')
+      .select('profile')
+      .eq('id', systemUserId)
+      .maybeSingle()
 
-    if (membershipError || !membership) {
-      console.log('❌ User not member of workspace:', membershipError)
-      return new Response(
-        JSON.stringify({ success: false, error: 'Usuário não é membro do workspace' }),
-        { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      )
+    const isMasterOrSupport = userProfileData?.profile === 'master' || userProfileData?.profile === 'support'
+
+    if (!isMasterOrSupport) {
+      const { data: membership, error: membershipError } = await supabaseClient
+        .from('workspace_members')
+        .select('role')
+        .eq('workspace_id', workspaceId)
+        .eq('user_id', systemUserId)
+        .single()
+
+      if (membershipError || !membership) {
+        console.log('❌ User not member of workspace:', membershipError)
+        return new Response(
+          JSON.stringify({ success: false, error: 'Usuário não é membro do workspace' }),
+          { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        )
+      }
     }
 
     // Buscar conversa atual para registrar histórico e preservar queue/responsável antes da alteração

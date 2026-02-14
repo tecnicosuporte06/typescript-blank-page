@@ -177,6 +177,40 @@ function parseScheduledTime(value?: string) {
   return { hours, minutes };
 }
 
+/**
+ * Seleciona aleatoriamente entre a mensagem principal e variações (se existirem).
+ */
+function selectMessageVariation(actionConfig: any): string {
+  const mainMessage = actionConfig?.message || '';
+  const variations: string[] = Array.isArray(actionConfig?.message_variations)
+    ? actionConfig.message_variations.filter((v: string) => v && v.trim())
+    : [];
+  
+  if (variations.length === 0) return mainMessage;
+  
+  const allMessages = [mainMessage, ...variations].filter(Boolean);
+  return allMessages[Math.floor(Math.random() * allMessages.length)];
+}
+
+/**
+ * Substitui variáveis de template ({{nome}}, {{primeiro_nome}}, etc.) pelos dados reais.
+ */
+function replaceMessageVariables(
+  message: string,
+  contact?: { name?: string; phone?: string; email?: string } | null,
+  columnName?: string,
+  pipelineName?: string
+): string {
+  if (!message) return message;
+  return message
+    .replace(/\{\{nome\}\}/gi, contact?.name || '')
+    .replace(/\{\{primeiro_nome\}\}/gi, (contact?.name || '').split(' ')[0] || '')
+    .replace(/\{\{telefone\}\}/gi, contact?.phone || '')
+    .replace(/\{\{email\}\}/gi, contact?.email || '')
+    .replace(/\{\{etapa\}\}/gi, columnName || '')
+    .replace(/\{\{pipeline\}\}/gi, pipelineName || '');
+}
+
 function getLocalTimeInfo(now: Date, timeZone: string) {
   const formatter = new Intl.DateTimeFormat('en-US', {
     timeZone,
@@ -399,8 +433,9 @@ async function executeAutomationActions(
 
         case 'send_message':
         case 'enviar_mensagem': {
-          const messageText = actionConfig?.message;
-          if (!messageText) {
+          // ✅ Selecionar variação aleatória (se houver variações configuradas)
+          const rawMessageText = selectMessageVariation(actionConfig);
+          if (!rawMessageText) {
             console.warn('⚠️ [Time Automations] send_message sem mensagem configurada');
             actionSuccess = false;
             break;
@@ -438,9 +473,6 @@ async function executeAutomationActions(
             console.warn(`⚠️ [Time Automations] Workspace ID não encontrado - não é possível verificar horário de funcionamento`);
           }
 
-          console.log(`📤 [Time Automations] Enviando mensagem para conversa ${card.conversation_id}`);
-          console.log(`📤 [Time Automations] Conteúdo da mensagem: "${messageText}"`);
-
           // ========== ENVIO DIRETO (BYPASS send-message para evitar 401 JWT) ==========
           // 1. Buscar dados da conversa (usando relacionamento explícito para evitar erro PGRST201)
           const { data: conversation, error: conversationError } = await supabase
@@ -449,7 +481,7 @@ async function executeAutomationActions(
               id,
               workspace_id,
               connection_id,
-              contact:contacts(id, phone, name),
+              contact:contacts(id, phone, name, email),
               connection:connections!conversations_connection_id_fkey(id, instance_name, status)
             `)
             .eq('id', card.conversation_id)
@@ -468,6 +500,28 @@ async function executeAutomationActions(
           const contact = Array.isArray(conversation.contact) 
             ? conversation.contact[0] 
             : conversation.contact;
+
+          // ✅ Buscar nome da coluna e pipeline para substituição de variáveis
+          let columnName = '';
+          let pipelineName = '';
+          try {
+            if (card.column_id) {
+              const { data: colData } = await supabase.from('pipeline_columns').select('name').eq('id', card.column_id).maybeSingle();
+              columnName = colData?.name || '';
+            }
+            if (card.pipeline_id) {
+              const { data: pipData } = await supabase.from('pipelines').select('name').eq('id', card.pipeline_id).maybeSingle();
+              pipelineName = pipData?.name || '';
+            }
+          } catch (varErr) {
+            console.warn('⚠️ [Time Automations] Erro ao buscar dados para variáveis de template:', varErr);
+          }
+
+          // ✅ Substituir variáveis de template
+          const messageText = replaceMessageVariables(rawMessageText, contact, columnName, pipelineName);
+
+          console.log(`📤 [Time Automations] Enviando mensagem para conversa ${card.conversation_id}`);
+          console.log(`📤 [Time Automations] Conteúdo da mensagem: "${messageText}"`);
 
           // Validar conexão
           if (!connection || connection.status !== 'connected') {
